@@ -905,8 +905,17 @@ function buildKartuGantungHistory(katalog, txns, stocks, lokasiList) {
     }
   });
   events.sort((a,b)=>(a.tgl||0)-(b.tgl||0));
-  let running = 0;
-  return events.map(e => { running += e.masuk - e.keluar; return { ...e, sisa: running }; });
+  // Hitung Sisa MUNDUR dari qty stok nyata saat ini (ground truth dari Data Stok),
+  // bukan maju dari 0 — supaya baris terbaru selalu pas dengan qty sebenarnya,
+  // walau ada stok awal yang tidak tercatat lewat transaksi TUG.
+  const currentQty = (stocks||[]).filter(s=>s.katalogId===katalogId).reduce((a,s)=>a+(s.qty||0),0);
+  const withSisa = new Array(events.length);
+  let running = currentQty;
+  for (let i = events.length-1; i >= 0; i--) {
+    withSisa[i] = { ...events[i], sisa: running };
+    running -= (events[i].masuk - events[i].keluar);
+  }
+  return withSisa;
 }
 
 // ─── SPARKLINE ───────────────────────────────────────────────────────
@@ -1757,6 +1766,28 @@ export default function PLNWarehouse() {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
+  // Auto-sync ke Supabase setiap kali ada transaksi TUG yang berubah (approve/reject/dll),
+  // supaya tidak perlu klik tombol "Sync ke Supabase" manual. Di-debounce 2.5 detik supaya
+  // tidak nembak Supabase berkali-kali kalau banyak perubahan state beruntun.
+  useEffect(() => {
+    if (!currentUser || loading) return;
+    const timer = setTimeout(async () => {
+      try {
+        const filter = { dateFrom:"", dateTo:"", katalogId:"ALL", jenisBarang:"ALL", sapStatus:"ALL", docTypes:["TUG9","TUG8","TUG10","TUG3"] };
+        const rows = buildMutasiRows(txns, katalogList, stocks, filter, lokasiList);
+        const histRes = await syncTUG15ToSupabase(rows, katalogList);
+        await syncStockQtyToSupabase(stocks, katalogList);
+        await syncFotoMaterialToSupabase(stocks, katalogList);
+        if (histRes.historyCount > 0) {
+          showToastRef.current && showToastRef.current(`☁️ Auto-sync Supabase: ${histRes.historyCount} baris histori baru.`, "success");
+        }
+      } catch (err) {
+        console.error("Auto-sync Supabase gagal:", err.message);
+      }
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [txns, stocks, katalogList, currentUser, loading]);
   const [ocrSuggestions, setOcrSuggestions] = useState([]); // usulan blok batch dari OCR denah: [{id,kode,xPct,yPct,checked}]
   const [ocrSuggestGudangId, setOcrSuggestGudangId] = useState(null); // gudang mana yang usulannya sedang tampil
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -3712,7 +3743,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             return (
               <button key={n.id} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:tab===n.id?"rgba(255,255,255,0.15)":"transparent",color:tab===n.id?"white":"rgba(255,255,255,0.65)",fontSize:13,fontWeight:tab===n.id?700:400,marginBottom:2,textAlign:"left"}} onClick={()=>{setTab(n.id); if(n.id!=="transaction") setTugExpanded(false); if(n.id!=="master") setMasterExpanded(false); setMobileMenuOpen(false);}}>
                 <span>{n.icon}</span> {n.label}
-                {n.badge>0 && <span style={{marginLeft:"auto",background:C.yellow,color:"#7c2d12",borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:800}}>{n.badge}</span>}
+                {n.badge>0 && <span style={{marginLeft:"auto",background:"#dc2626",color:"white",borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:800}}>{n.badge}</span>}
               </button>
             );
           })}
@@ -4533,6 +4564,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 txns={txns} katalogList={katalogList} stocks={stocks}
                 sty={sty} C={C}
                 filter={tug15Filter} setFilter={setTug15Filter}
+                lokasiList={lokasiList}
               />
             ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -5845,7 +5877,7 @@ function getMaterialAkanHabis(stocks, katalogList, txns, n) {
   return results.slice(0, n);
 }
 
-function buildMutasiRows(txns, katalogList, stocks, filter) {
+function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList) {
   const { dateFrom, dateTo, katalogId, jenisBarang, sapStatus, docTypes } = filter;
   const fromMs = dateFrom ? new Date(dateFrom).getTime() : 0;
   const toMs   = dateTo   ? new Date(dateTo).getTime() + 86399999 : Infinity;
@@ -5898,6 +5930,7 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
           jenisBarang: stockRow?.jenisBarang||"-",
           docType: t.docType,
           lokasiId: stockRow?.lokasiId||"",
+          lokasiKode: (lokasiList||[]).find(l=>l.id===stockRow?.lokasiId)?.kode||"-",
         });
       });
     }
@@ -5922,7 +5955,8 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
           sapLabel: getSAPLabel(kat?.katalog),
           jenisBarang: fakeStockRow.jenisBarang,
           docType: "TUG10",
-          lokasiId: "",
+          lokasiId: t.lokasiTujuanId||"",
+          lokasiKode: (lokasiList||[]).find(l=>l.id===t.lokasiTujuanId)?.kode||"-",
         });
       });
     }
@@ -5947,7 +5981,8 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
           sapLabel: getSAPLabel(kat?.katalog),
           jenisBarang: "Persediaan",
           docType: "TUG3",
-          lokasiId: "",
+          lokasiId: si.lokasiTujuanId||"",
+          lokasiKode: (lokasiList||[]).find(l=>l.id===si.lokasiTujuanId)?.kode||"-",
         });
       });
     }
@@ -6011,16 +6046,21 @@ async function syncTUG15ToSupabase(rows, katalogList) {
   });
   if (!katRes.ok) throw new Error(`Gagal sync katalog: ${await katRes.text()}`);
 
-  // 2. Insert baris mutasi (MASUK & KELUAR jadi baris terpisah sesuai skema tug15_history)
+  // 2. Insert baris mutasi (MASUK & KELUAR jadi baris terpisah sesuai skema tug15_history).
+  // sync_key dibuat dari isi transaksi (bukan random) + upsert on_conflict=sync_key dengan
+  // ignore-duplicates — supaya kalau cache lokal kebetulan kosong/di-reset dan baris yang sama
+  // terkirim ulang (atau ada race antar tab), Supabase sendiri yang menolak duplikatnya,
+  // bukan cuma mengandalkan cache di localStorage.
   const historyPayload = [];
   newRows.forEach(r => {
     const tanggal = new Date(r.ts).toISOString().slice(0,10);
-    if (r.masuk > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "MASUK", qty: r.masuk, lokasi_id: r.lokasiId||null, doc_type: r.docType });
-    if (r.keluar > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "KELUAR", qty: r.keluar, lokasi_id: r.lokasiId||null, doc_type: r.docType });
+    const baseKey = `${r.katalogId}_${r.ts}_${r.docType}`;
+    if (r.masuk > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "MASUK", qty: r.masuk, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: `${baseKey}_MASUK` });
+    if (r.keluar > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "KELUAR", qty: r.keluar, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: `${baseKey}_KELUAR` });
   });
-  const histRes = await fetch(`${SUPABASE_URL}/rest/v1/tug15_history`, {
+  const histRes = await fetch(`${SUPABASE_URL}/rest/v1/tug15_history?on_conflict=sync_key`, {
     method: "POST",
-    headers,
+    headers: { ...headers, "Prefer": "resolution=ignore-duplicates" },
     body: JSON.stringify(historyPayload),
   });
   if (!histRes.ok) throw new Error(`Gagal sync tug15_history: ${await histRes.text()}`);
@@ -6075,6 +6115,65 @@ async function syncStockQtyToSupabase(stocks, katalogList) {
   return { katalogCount: katalogPayload.length, stockCount: stockPayload.length };
 }
 
+// ─── SUPABASE SYNC (Foto Material Keseluruhan → Supabase Storage) ───────
+// Upload base64 dataURL ke bucket "material-photos" (lihat supabase/schema.sql
+// untuk SQL pembuatan bucket + policy), lalu simpan URL publiknya di
+// katalog.foto_keseluruhan_url supaya halaman scan QR (ScanPublicView) bisa
+// menampilkan foto tanpa perlu login.
+const FOTO_SYNCED_HASHES_STORAGE = "warnoto_synced_foto_hashes";
+
+function dataUrlToBlob(dataUrl) {
+  const match = dataUrl.match(/^data:(.*?);base64,(.*)$/);
+  if (!match) throw new Error("Format foto tidak valid (bukan base64 dataURL).");
+  const mime = match[1] || "image/jpeg";
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
+async function syncFotoMaterialToSupabase(stocks, katalogList) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
+  }
+  const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
+  let synced = {};
+  try { synced = JSON.parse(localStorage.getItem(FOTO_SYNCED_HASHES_STORAGE) || "{}"); } catch { synced = {}; }
+
+  let uploadCount = 0;
+  for (const kat of katalogList) {
+    const stockRow = (stocks||[]).find(s => s.katalogId === kat.id && s.fotoKeseluruhan);
+    if (!stockRow) continue;
+    const img = stockRow.fotoKeseluruhan;
+    const fingerprint = `${img.length}:${img.slice(0, 60)}`;
+    if (synced[kat.id] === fingerprint) continue;
+
+    const blob = dataUrlToBlob(img);
+    const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+    const path = `${kat.id}.${ext}`;
+
+    const upRes = await fetch(`${SUPABASE_URL}/storage/v1/object/material-photos/${path}`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": blob.type, "x-upsert": "true" },
+      body: blob,
+    });
+    if (!upRes.ok) throw new Error(`Gagal upload foto ${kat.name}: ${await upRes.text()}`);
+
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/material-photos/${path}`;
+    const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify([{ id: kat.id, nama: kat.name||kat.id, kategori: kat.katalog||null, satuan: kat.satuan||null, jenis_barang: stockRow.jenisBarang||null, foto_keseluruhan_url: publicUrl }]),
+    });
+    if (!katRes.ok) throw new Error(`Gagal simpan URL foto ke katalog: ${await katRes.text()}`);
+
+    synced[kat.id] = fingerprint;
+    uploadCount++;
+  }
+  localStorage.setItem(FOTO_SYNCED_HASHES_STORAGE, JSON.stringify(synced));
+  return { uploadCount };
+}
+
 // ─── PUBLIC SCAN VIEW (HP scan QR → riwayat TUG-2, tanpa login) ──────────
 // Dibuka lewat URL "?scan=<katalogId>". Ambil data langsung dari Supabase
 // (anon key, read-only) — TIDAK butuh login/state aplikasi, supaya siapa pun
@@ -6093,7 +6192,7 @@ function ScanPublicView({ katalogId }) {
       try {
         const [katRes, histRes, stockRes] = await Promise.all([
           fetch(`${SUPABASE_URL}/rest/v1/katalog?id=eq.${encodeURIComponent(katalogId)}&select=*`, { headers }),
-          fetch(`${SUPABASE_URL}/rest/v1/tug15_history?katalog_id=eq.${encodeURIComponent(katalogId)}&select=*&order=tanggal.desc`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/tug15_history?katalog_id=eq.${encodeURIComponent(katalogId)}&select=*&order=tanggal.asc,id.asc`, { headers }),
           fetch(`${SUPABASE_URL}/rest/v1/stock_current?katalog_id=eq.${encodeURIComponent(katalogId)}&select=qty`, { headers }),
         ]);
         if (!katRes.ok || !histRes.ok || !stockRes.ok) throw new Error("Gagal ambil data dari server.");
@@ -6103,7 +6202,18 @@ function ScanPublicView({ katalogId }) {
           setState({ loading:false, error:"Material dengan kode ini tidak ditemukan.", katalog:null, qty:0, history:[] });
           return;
         }
-        setState({ loading:false, error:"", katalog:katArr[0], qty:stockArr[0]?.qty||0, history:histArr });
+        // Hitung Sisa MUNDUR dari qty stok nyata saat ini (stock_current, ground
+        // truth), sama seperti buildKartuGantungHistory di web — bukan dijumlah
+        // maju dari 0, supaya baris terbaru selalu pas dengan qty sebenarnya.
+        const currentQty = stockArr[0]?.qty || 0;
+        const historyWithSisa = new Array(histArr.length); // histArr sudah urut tanggal.asc,id.asc
+        let running = currentQty;
+        for (let i = histArr.length - 1; i >= 0; i--) {
+          const h = histArr[i];
+          historyWithSisa[i] = { ...h, sisa: running };
+          running -= (h.jenis_transaksi === "MASUK" ? h.qty : -h.qty);
+        }
+        setState({ loading:false, error:"", katalog:katArr[0], qty:currentQty, history:historyWithSisa });
       } catch (err) {
         if (!cancelled) setState({ loading:false, error:err.message, katalog:null, qty:0, history:[] });
       }
@@ -6113,7 +6223,7 @@ function ScanPublicView({ katalogId }) {
   }, [katalogId]);
 
   const wrap = { minHeight:"100vh", background:"#f1f5f9", fontFamily:"'Inter',system-ui,sans-serif", padding:16 };
-  const card = { background:"white", borderRadius:14, padding:18, boxShadow:"0 4px 16px rgba(0,0,0,0.08)", maxWidth:480, margin:"0 auto" };
+  const card = { background:"white", borderRadius:14, padding:18, boxShadow:"0 4px 16px rgba(0,0,0,0.08)", maxWidth:560, margin:"0 auto" };
 
   if (state.loading) return <div style={wrap}><div style={card}>⏳ Memuat riwayat...</div></div>;
   if (state.error) return <div style={wrap}><div style={card}><b style={{color:"#dc2626"}}>⚠️ {state.error}</b></div></div>;
@@ -6125,23 +6235,45 @@ function ScanPublicView({ katalogId }) {
         <div style={{fontSize:11,color:"#6b7280",fontWeight:700,letterSpacing:.5}}>PT PLN (PERSERO) UPT SURABAYA — WARNOTO</div>
         <h2 style={{fontSize:17,fontWeight:800,margin:"4px 0 2px"}}>🏷️ {katalog.nama}</h2>
         <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>No. Katalog: {katalog.kategori||"-"} • Satuan: {katalog.satuan||"-"} • {katalog.jenis_barang||"-"}</div>
+        {katalog.foto_keseluruhan_url && (
+          <img src={katalog.foto_keseluruhan_url} alt="Foto Material Keseluruhan" style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius:10,marginBottom:14,border:"1px solid #e5e7eb"}}/>
+        )}
         <div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:10,padding:"10px 14px",marginBottom:16,textAlign:"center"}}>
           <div style={{fontSize:11,color:"#047857",fontWeight:700}}>QTY STOK SAAT INI</div>
-          <div style={{fontSize:26,fontWeight:800,color:"#047857"}}>{qty}</div>
+          <div style={{fontSize:26,fontWeight:800,color:"#047857"}}>{fmtNum(qty)}</div>
         </div>
         <div style={{fontSize:12,fontWeight:800,color:"#003087",marginBottom:8}}>📋 Riwayat Mutasi (TUG-2)</div>
         {history.length===0 && <div style={{fontSize:12,color:"#9ca3af",textAlign:"center",padding:14}}>Belum ada riwayat mutasi untuk material ini.</div>}
-        {history.map((h,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f1f5f9",fontSize:12}}>
-            <div>
-              <div style={{fontWeight:700}}>{h.tanggal}</div>
-              <div style={{color:"#9ca3af",fontSize:11}}>{h.doc_type||"-"}</div>
-            </div>
-            <div style={{fontWeight:800,color:h.jenis_transaksi==="MASUK"?"#16a34a":"#dc2626"}}>
-              {h.jenis_transaksi==="MASUK"?"+":"-"}{h.qty}
-            </div>
+        {history.length>0 && (
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:10.5}}>
+              <thead>
+                <tr style={{background:"#003087",color:"white"}}>
+                  <th style={{padding:"5px 6px",textAlign:"left"}}>TGL</th>
+                  <th style={{padding:"5px 6px",textAlign:"left"}}>NO. BON</th>
+                  <th style={{padding:"5px 6px",textAlign:"center"}}>MASUK</th>
+                  <th style={{padding:"5px 6px",textAlign:"center"}}>KELUAR</th>
+                  <th style={{padding:"5px 6px",textAlign:"center"}}>SISA</th>
+                  <th style={{padding:"5px 6px",textAlign:"left"}}>RAK</th>
+                  <th style={{padding:"5px 6px",textAlign:"left"}}>CATATAN</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h,i)=>(
+                  <tr key={i} style={{borderBottom:"1px solid #f1f5f9"}}>
+                    <td style={{padding:"4px 6px"}}>{fmtDateOnly(h.tanggal)}</td>
+                    <td style={{padding:"4px 6px"}}>{h.no_bon||"-"}</td>
+                    <td style={{padding:"4px 6px",textAlign:"center",color:"#16a34a",fontWeight:700}}>{h.jenis_transaksi==="MASUK"?fmtNum(h.qty):""}</td>
+                    <td style={{padding:"4px 6px",textAlign:"center",color:"#dc2626",fontWeight:700}}>{h.jenis_transaksi==="KELUAR"?fmtNum(h.qty):""}</td>
+                    <td style={{padding:"4px 6px",textAlign:"center",fontWeight:700}}>{fmtNum(h.sisa)}</td>
+                    <td style={{padding:"4px 6px"}}>{h.lokasi_kode||"-"}</td>
+                    <td style={{padding:"4px 6px",color:"#6b7280"}}>{h.catatan||"-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -7664,8 +7796,8 @@ function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, sty, C, s
   );
 }
 
-function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter }) {
-  const rows = buildMutasiRows(txns, katalogList, stocks, filter);
+function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasiList }) {
+  const rows = buildMutasiRows(txns, katalogList, stocks, filter, lokasiList);
   const [syncState, setSyncState] = useState({ loading:false, msg:"" });
 
   async function handleSyncSupabase() {
@@ -7673,9 +7805,11 @@ function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter }) {
     try {
       const histRes = await syncTUG15ToSupabase(rows, katalogList);
       const stockRes = await syncStockQtyToSupabase(stocks, katalogList);
+      const fotoRes = await syncFotoMaterialToSupabase(stocks, katalogList);
       const parts = [];
       parts.push(histRes.historyCount>0 ? `${histRes.historyCount} baris histori baru` : "tidak ada histori baru");
       parts.push(`qty ${stockRes.stockCount} katalog`);
+      if (fotoRes.uploadCount>0) parts.push(`${fotoRes.uploadCount} foto baru diupload`);
       setSyncState({ loading:false, msg: `✓ Tersinkron: ${parts.join(", ")}.` });
     } catch (err) {
       setSyncState({ loading:false, msg: `✗ Gagal sync: ${err.message}` });

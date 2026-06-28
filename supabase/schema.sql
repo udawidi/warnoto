@@ -14,11 +14,16 @@ create table if not exists katalog (
   kategori text,
   satuan text,
   jenis_barang text,                -- Cadang / Persediaan / Pre Memory / dst
+  foto_keseluruhan_url text,        -- URL publik foto material keseluruhan (bucket material-photos)
   created_at timestamptz default now()
 );
 
+-- Jika tabel katalog sudah ada dari sebelumnya (skema versi lama), tambahkan kolom baru:
+alter table katalog add column if not exists foto_keseluruhan_url text;
+
 -- ────────────────────────────────────────────────────────────
--- 2. TUG15_HISTORY — riwayat mutasi stok (sumber data training ML)
+-- 2. TUG15_HISTORY — riwayat mutasi stok (sumber data training ML
+--    + ditampilkan di halaman scan QR TUG-2 publik)
 --    Diisi dari hasil export Laporan Mutasi Stok (TUG-15) di App.jsx
 -- ────────────────────────────────────────────────────────────
 create table if not exists tug15_history (
@@ -28,10 +33,37 @@ create table if not exists tug15_history (
   jenis_transaksi text not null check (jenis_transaksi in ('MASUK','KELUAR')),
   qty numeric not null,
   lokasi_id text,
+  lokasi_kode text,                 -- kode rak (cth "GD-A1"), didenormalisasi saat sync supaya scan page tidak perlu join
   doc_type text,                    -- TUG-3/4/5/8/9/10 dst, untuk jejak asal data
+  no_bon text,                      -- cth "TUG-9 / 123/TUG9/2026"
+  catatan text,                     -- nama pekerjaan / keterangan dari dokumen TUG terkait
+  sync_key text,                    -- kunci unik per-transaksi (katalog+tgl+doctype+jenis), cegah baris dobel
   created_at timestamptz default now()
 );
 create index if not exists idx_tug15_katalog_tanggal on tug15_history(katalog_id, tanggal);
+
+-- Jika tabel tug15_history sudah ada dari sebelumnya, tambahkan kolom baru:
+alter table tug15_history add column if not exists lokasi_kode text;
+alter table tug15_history add column if not exists no_bon text;
+alter table tug15_history add column if not exists catatan text;
+alter table tug15_history add column if not exists sync_key text;
+
+-- PENTING: bersihkan dulu baris yang sudah dobel (kalau ada) SEBELUM membuat
+-- index unik di bawah, supaya pembuatan index-nya tidak gagal karena ada
+-- duplikat. Aturan: simpan baris dengan id TERKECIL per grup duplikat,
+-- hapus sisanya. Grup duplikat = sama katalog, tanggal, jenis, qty, doc_type, no_bon.
+delete from tug15_history a
+using tug15_history b
+where a.id > b.id
+  and a.katalog_id = b.katalog_id
+  and a.tanggal = b.tanggal
+  and a.jenis_transaksi = b.jenis_transaksi
+  and a.qty = b.qty
+  and coalesce(a.doc_type,'') = coalesce(b.doc_type,'')
+  and coalesce(a.no_bon,'') = coalesce(b.no_bon,'');
+
+-- Index unik (NULL tidak dianggap konflik, jadi baris lama tanpa sync_key tetap aman).
+create unique index if not exists idx_tug15_sync_key on tug15_history(sync_key);
 
 -- ────────────────────────────────────────────────────────────
 -- 3. FORECAST_PREDICTIONS — hasil ML, ditimpa ulang tiap malam oleh job training
@@ -83,6 +115,14 @@ alter table forecast_predictions enable row level security;
 alter table stock_scan_log enable row level security;
 alter table stock_current enable row level security;
 
+-- drop policy if exists dulu di tiap policy, supaya script ini aman dijalankan
+-- BERULANG KALI (cth: setelah update skema ini) tanpa error "policy already exists".
+drop policy if exists "Public read katalog" on katalog;
+drop policy if exists "Public read tug15_history" on tug15_history;
+drop policy if exists "Public read forecast_predictions" on forecast_predictions;
+drop policy if exists "Public read stock_scan_log" on stock_scan_log;
+drop policy if exists "Public read stock_current" on stock_current;
+
 create policy "Public read katalog" on katalog for select using (true);
 create policy "Public read tug15_history" on tug15_history for select using (true);
 create policy "Public read forecast_predictions" on forecast_predictions for select using (true);
@@ -93,8 +133,36 @@ create policy "Public read stock_current" on stock_current for select using (tru
 -- data mentah (katalog, tug15_history, stock_current), supaya forecast_predictions
 -- tetap cuma bisa ditulis lewat service_role (job GitHub Actions), tidak bisa
 -- "dipalsukan" dari browser.
+drop policy if exists "Public insert katalog" on katalog;
+drop policy if exists "Public update katalog" on katalog;
+drop policy if exists "Public insert tug15_history" on tug15_history;
+drop policy if exists "Public insert stock_current" on stock_current;
+drop policy if exists "Public update stock_current" on stock_current;
+
 create policy "Public insert katalog" on katalog for insert with check (true);
 create policy "Public update katalog" on katalog for update using (true);
 create policy "Public insert tug15_history" on tug15_history for insert with check (true);
 create policy "Public insert stock_current" on stock_current for insert with check (true);
 create policy "Public update stock_current" on stock_current for update using (true);
+
+-- ────────────────────────────────────────────────────────────
+-- 6. STORAGE BUCKET — "material-photos", untuk Foto Material Keseluruhan
+--    yang ditampilkan di halaman scan QR publik (?scan=<katalogId>).
+--    Bucket harus PUBLIC supaya foto bisa dimuat tanpa login di HP.
+-- ────────────────────────────────────────────────────────────
+insert into storage.buckets (id, name, public)
+values ('material-photos', 'material-photos', true)
+on conflict (id) do update set public = true;
+
+-- Anon/publishable key boleh upload & timpa foto (dipakai App.jsx saat sync),
+-- siapa pun boleh baca (publik, supaya scan page bisa load foto tanpa login).
+drop policy if exists "Public read material-photos" on storage.objects;
+drop policy if exists "Public upload material-photos" on storage.objects;
+drop policy if exists "Public update material-photos" on storage.objects;
+
+create policy "Public read material-photos" on storage.objects
+  for select using (bucket_id = 'material-photos');
+create policy "Public upload material-photos" on storage.objects
+  for insert with check (bucket_id = 'material-photos');
+create policy "Public update material-photos" on storage.objects
+  for update using (bucket_id = 'material-photos');
