@@ -925,6 +925,55 @@ function buildKartuGantungHistory(katalog, txns, stocks, lokasiList) {
   return withSisa;
 }
 
+// ─── SEARCHABLE SELECT (combobox) ────────────────────────────────────
+// Ganti <select> raksasa (semua barang/material dijejer dalam 1 dropdown
+// panjang) dengan field cari + daftar hasil yang bisa disaring sambil
+// mengetik — dipakai di semua form TUG saat memilih barang/material.
+function SearchableSelect({ options, value, onChange, getLabel, getSearchText, renderOption, placeholder="-- Cari & pilih barang --", sty, C, emptyText="Tidak ada barang yang cocok" }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const selected = options.find(o=>o.id===value);
+
+  useEffect(() => {
+    function onDocClick(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? options.filter(o => (getSearchText?getSearchText(o):getLabel(o)).toLowerCase().includes(q))
+    : options;
+
+  return (
+    <div ref={wrapRef} style={{position:"relative"}}>
+      <input
+        style={sty.input}
+        placeholder={placeholder}
+        value={open ? query : (selected ? getLabel(selected) : "")}
+        onFocus={()=>{setOpen(true); setQuery("");}}
+        onChange={e=>{setQuery(e.target.value); setOpen(true);}}
+      />
+      {open && (
+        <div style={{position:"absolute",zIndex:50,top:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:8,marginTop:2,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
+          {value && (
+            <div onClick={()=>{onChange("");setOpen(false);setQuery("");}} style={{padding:"8px 10px",fontSize:11,color:C.muted,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>✕ Kosongkan pilihan</div>
+          )}
+          {filtered.length===0 && <div style={{padding:"12px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>{emptyText}</div>}
+          {filtered.slice(0,50).map(o=>(
+            <div key={o.id} onClick={()=>{onChange(o.id);setOpen(false);setQuery("");}}
+              style={{padding:"8px 10px",fontSize:12,cursor:"pointer",background:o.id===value?"#eff6ff":"white",borderBottom:`1px solid #f1f5f9`}}>
+              {renderOption?renderOption(o):getLabel(o)}
+            </div>
+          ))}
+          {filtered.length>50 && <div style={{padding:"6px 10px",fontSize:10,color:C.muted,textAlign:"center"}}>+{filtered.length-50} lainnya — ketik lebih spesifik untuk menyaring</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── SPARKLINE ───────────────────────────────────────────────────────
 function Sparkline({ data, color="#3b82f6", h=36, w=100 }) {
   if (!data || data.length<2) return <svg width={w} height={h}><line x1="0" y1={h/2} x2={w} y2={h/2} stroke={color} strokeOpacity="0.3" strokeWidth="1.5" strokeDasharray="4"/></svg>;
@@ -2771,20 +2820,39 @@ export default function PLNWarehouse() {
 
   // ── Barcode scan handling ──
   function openScanner(target) { setScannerTarget(target); setScannerOpen(true); }
+  // QR di label Kartu Gantung TUG-2 (lihat KartuGantungModal "Label QR Print")
+  // berisi URL lengkap "?scan=<katalogId>", bukan sekadar nomor katalog.
+  // Ekstrak katalogId-nya supaya scan QR fisik di rak langsung match ke
+  // material yang benar, baik via URL utuh maupun fallback regex kalau
+  // kamera cuma menangkap sebagian teks.
+  function extractKatalogIdFromScan(code) {
+    try { const u = new URL(code); const id = u.searchParams.get("scan"); if (id) return id; } catch {}
+    const m = code.match(/[?&]scan=([^&\s]+)/);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+
   function handleScanResult(code) {
     if (scannerTarget === "katalogForm") {
       setKatalogForm(kf => ({ ...kf, katalog: code }));
       showToast(`📷 Kode terdeteksi: ${code}`);
     } else if (scannerTarget?.txnIndex !== undefined) {
-      // try to match existing stock row by katalog (enriched lookup)
-      const match = enrichedStocks.find(s => s.katalog === code);
-      if (match) {
+      const scannedKatalogId = extractKatalogIdFromScan(code);
+      // Scan QR Kartu Gantung TUG-2 (berisi katalogId) → cari semua baris Data
+      // Stok untuk material itu; kalau scan kode katalog biasa (bukan QR
+      // TUG-2), fallback ke pencocokan lama by katalog code.
+      const matches = scannedKatalogId
+        ? enrichedStocks.filter(s => s.katalogId === scannedKatalogId)
+        : enrichedStocks.filter(s => s.katalog === code);
+      if (matches.length > 0) {
+        const match = matches.find(s=>s.qty>0) || matches[0];
         setTxnForm(tf => {
           const items = [...tf.stockItems];
           items[scannerTarget.txnIndex] = { ...items[scannerTarget.txnIndex], stockId: match.id };
           return { ...tf, stockItems: items };
         });
-        showToast(`📷 Barang ditemukan: ${match.name} (${match.lokasi})`);
+        showToast(matches.length>1
+          ? `📷 ${match.name} ditemukan di ${matches.length} lokasi — terpilih: ${match.lokasi}. Cek lokasinya sudah benar.`
+          : `📷 Barang ditemukan: ${match.name} (${match.lokasi})`);
       } else {
         showToast(`Kode ${code} tidak ditemukan di database katalog`, "error");
       }
@@ -4001,7 +4069,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
           <div style={{marginTop:20}}/>
           <DashboardDefault
-            stocks={enrichedStocks} txns={txns} katalogList={katalogList}
+            stocks={enrichedStocks} txns={txns} katalogList={katalogList} lokasiList={lokasiList}
             rencanaKedatanganList={rencanaKedatanganList}
             myPendingApprovals={myPendingApprovals}
             lowStocks={lowStocks} totalVal={totalVal}
@@ -5443,10 +5511,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:8}}>
                     <div style={{flex:3}}>
                       <label style={sty.label}>Nama Barang {idx+1}</label>
-                      <select style={sty.select} value={si.katalogId} onChange={e=>updateItemRow(idx,"katalogId",e.target.value)}>
-                        <option value="">-- Pilih dari Master Katalog --</option>
-                        {katalogList.map(k=><option key={k.id} value={k.id}>{k.name} [{k.katalog||"-"}]</option>)}
-                      </select>
+                      <SearchableSelect
+                        options={katalogList}
+                        value={si.katalogId}
+                        onChange={v=>updateItemRow(idx,"katalogId",v)}
+                        getLabel={k=>`${k.name} [${k.katalog||"-"}]`}
+                        getSearchText={k=>`${k.name} ${k.katalog||""}`}
+                        placeholder="-- Cari & pilih dari Master Katalog --"
+                        sty={sty} C={C}
+                      />
                     </div>
                     {txnForm.stockItems.length>1 && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>removeItemRow(idx)}>✕</button>}
                   </div>
@@ -5533,10 +5606,21 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <div key={idx} style={{display:"flex",gap:8,marginBottom:8,alignItems:"flex-end"}}>
                   <div style={{flex:3}}>
                     <label style={sty.label}>Barang {idx+1}</label>
-                    <select style={sty.select} value={si.stockId} onChange={e=>updateItemRow(idx,"stockId",e.target.value)}>
-                      <option value="">-- Pilih Barang --</option>
-                      {enrichedStocks.map(s=><option key={s.id} value={s.id}>{s.name} [{s.katalog}] @ {s.lokasi} {s.jenisBarang!=="Non-Stock"?`(Stok: ${s.qty} ${s.unit})`:"(Non-Stock)"}</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={enrichedStocks}
+                      value={si.stockId}
+                      onChange={v=>updateItemRow(idx,"stockId",v)}
+                      getLabel={s=>`${s.name} [${s.katalog}] @ ${s.lokasi}`}
+                      getSearchText={s=>`${s.name} ${s.katalog} ${s.lokasi}`}
+                      renderOption={s=>(
+                        <div>
+                          <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
+                          <div style={{fontSize:10,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
+                        </div>
+                      )}
+                      placeholder="-- Cari & pilih barang --"
+                      sty={sty} C={C}
+                    />
                   </div>
                   <div style={{flex:1}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/></div>
                   <button type="button" style={{...sty.btn("ghost","sm"),height:36}} onClick={()=>openScanner({txnIndex:idx})}>📷</button>
@@ -5644,10 +5728,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 {si.katalogMode==="existing" ? (
                   <div style={{marginBottom:8}}>
                     <label style={sty.label}>Pilih Barang</label>
-                    <select style={sty.select} value={si.katalogId} onChange={e=>updateItemRow(idx,"katalogId",e.target.value)}>
-                      <option value="">-- Pilih dari Master Katalog --</option>
-                      {katalogList.map(k=><option key={k.id} value={k.id}>{k.name} [{k.katalog}]</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={katalogList}
+                      value={si.katalogId}
+                      onChange={v=>updateItemRow(idx,"katalogId",v)}
+                      getLabel={k=>`${k.name} [${k.katalog}]`}
+                      getSearchText={k=>`${k.name} ${k.katalog||""}`}
+                      placeholder="-- Cari & pilih dari Master Katalog --"
+                      sty={sty} C={C}
+                    />
                   </div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
@@ -5759,10 +5848,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 {si.katalogMode==="existing" ? (
                   <div style={{marginBottom:8}}>
                     <label style={sty.label}>Pilih Barang</label>
-                    <select style={sty.select} value={si.katalogId} onChange={e=>updateItemRow(idx,"katalogId",e.target.value)}>
-                      <option value="">-- Pilih dari Master Katalog --</option>
-                      {katalogList.map(k=><option key={k.id} value={k.id}>{k.name} [{k.katalog}]</option>)}
-                    </select>
+                    <SearchableSelect
+                      options={katalogList}
+                      value={si.katalogId}
+                      onChange={v=>updateItemRow(idx,"katalogId",v)}
+                      getLabel={k=>`${k.name} [${k.katalog}]`}
+                      getSearchText={k=>`${k.name} ${k.katalog||""}`}
+                      placeholder="-- Cari & pilih dari Master Katalog --"
+                      sty={sty} C={C}
+                    />
                   </div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
@@ -6479,13 +6573,17 @@ function RencanaWidget({ rencanaKedatanganList, C, sty, setTab }) {
     .flatMap(r=>(r.items||[]).map(item=>({...item, noKontrak:r.noKontrak, supplier:r.supplier, tanggalSerahTerima:r.tanggalSerahTerima})))
     .filter(item=>{const d=item.tanggalSerahTerima?new Date(item.tanggalSerahTerima).getTime():0; return d<=plus30;})
     .sort((a,b)=>new Date(a.tanggalSerahTerima)-new Date(b.tanggalSerahTerima));
-  if (upcoming.length===0) return null;
   return (
     <div style={{...sty.card,marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
         <h3 style={{fontSize:13,fontWeight:700}}>📅 Rencana Kedatangan (30 Hari)</h3>
         <button style={sty.btn("ghost","sm")} onClick={()=>setTab("rencana")}>Lihat Semua</button>
       </div>
+      {upcoming.length===0 && (
+        <div style={{textAlign:"center",padding:"16px 0",color:C.muted,fontSize:12}}>
+          Tidak ada rencana kedatangan barang dalam 30 hari ke depan.
+        </div>
+      )}
       {upcoming.slice(0,5).map((item,i)=>{
         const isLate = item.tanggalSerahTerima && new Date(item.tanggalSerahTerima).getTime()<today;
         return (
@@ -6505,8 +6603,52 @@ function RencanaWidget({ rencanaKedatanganList, C, sty, setTab }) {
   );
 }
 
+// Ringkasan 1 transaksi untuk widget "Transaksi Terbaru" di Dashboard: No TUG,
+// pekerjaan, tanggal, lokasi terkait, dan pihak (penerima/supplier) — beda
+// makna per docType (TUG9/8 keluar ke pihak luar, TUG10 retur internal,
+// TUG3 penerimaan dari supplier).
+function summarizeTxnDashboard(t, stocks, lokasiList) {
+  const docKey = t.docType==="TUG9"?"tug9":t.docType==="TUG8"?"tug8":t.docType==="TUG10"?"tug10":t.docType==="TUG5"?"tug5":t.docType==="TUG7"?"tug7":"tug3";
+  const noTugLabel = `${t.docType.replace("TUG","TUG-")} / ${t.docNumbers?.[docKey]||t.id}`;
+  const pekerjaan = t.namaPekerjaan || t.keteranganUmum || (t.docType==="TUG7"?`Pemakaian Unit Lain → ${t.unitPenerima||"UPT"}`:"-");
+  const tanggal = fmtDate(t.createdAt);
+  let lokasiLabel = "-", pihakLabel = "-";
+  if (t.docType==="TUG9" || t.docType==="TUG8") {
+    const stockRow = (stocks||[]).find(s=>s.id===t.stockItems?.[0]?.stockId);
+    lokasiLabel = stockRow?.lokasi || "-";
+    pihakLabel = t.penerimaNama ? `${t.penerimaNama}${t.penerimaUnit?` (${t.penerimaUnit})`:""}` : "-";
+  } else if (t.docType==="TUG10") {
+    lokasiLabel = (lokasiList||[]).find(l=>l.id===t.lokasiTujuanId)?.kode || "-";
+    pihakLabel = "Retur material (internal)";
+  } else if (t.docType==="TUG3") {
+    lokasiLabel = (lokasiList||[]).find(l=>l.id===t.stockItems?.[0]?.lokasiTujuanId)?.kode || "-";
+    pihakLabel = t.dariSupplier || "-";
+  } else if (t.docType==="TUG7") {
+    pihakLabel = t.unitPenerima || "-";
+  } else if (t.docType==="TUG5") {
+    pihakLabel = "Permintaan internal UPT/UIT";
+  }
+  return { noTugLabel, pekerjaan, tanggal, lokasiLabel, pihakLabel };
+}
+
 // ─── DASHBOARD DEFAULT (Admin, TL, Viewer, Pengadaan) ────────────────────
-function DashboardDefault({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser }) {
+function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser }) {
+  const [dashModal, setDashModal] = useState(null); // null | "totalItem" | "nilai" | "kritis" | "tindakan"
+
+  const jenisBreakdown = JENIS_BARANG.map(jb => ({
+    jenis: jb,
+    count: stocks.filter(s=>s.jenisBarang===jb).length,
+    qty: stocks.filter(s=>s.jenisBarang===jb).reduce((a,s)=>a+(s.qty||0),0),
+    nilai: stocks.filter(s=>s.jenisBarang===jb).reduce((a,s)=>a+(s.qty||0)*(s.price||0),0),
+  })).filter(r=>r.count>0);
+
+  const kpiCards = [
+    {key:"totalItem",label:"Total Item",val:stocks.length,icon:"📦",color:C.accent,sub:"jenis barang"},
+    {key:"nilai",label:"Nilai Inventory",val:fmtRp(totalVal),icon:"💰",color:"#16a34a",sub:"estimasi total"},
+    {key:"kritis",label:"Stok Kritis",val:lowStocks.length,icon:"⚠️",color:lowStocks.length>0?"#dc2626":"#16a34a",sub:"perlu reorder"},
+    {key:"tindakan",label:"Butuh Tindakan",val:myPendingApprovals.length,icon:"⏳",color:myPendingApprovals.length>0?"#f59e0b":"#16a34a",sub:"menunggu kamu"},
+  ];
+
   return (
     <div>
       <div style={{marginBottom:16}}>
@@ -6514,13 +6656,8 @@ function DashboardDefault({ stocks, txns, katalogList, rencanaKedatanganList, my
         <p style={{color:C.muted,fontSize:13}}>{WAREHOUSE} • {new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:14,marginBottom:20}}>
-        {[
-          {label:"Total Item",val:stocks.length,icon:"📦",color:C.accent,sub:"jenis barang"},
-          {label:"Nilai Inventory",val:fmtRp(totalVal),icon:"💰",color:"#16a34a",sub:"estimasi total"},
-          {label:"Stok Kritis",val:lowStocks.length,icon:"⚠️",color:lowStocks.length>0?"#dc2626":"#16a34a",sub:"perlu reorder"},
-          {label:"Butuh Tindakan",val:myPendingApprovals.length,icon:"⏳",color:myPendingApprovals.length>0?"#f59e0b":"#16a34a",sub:"menunggu kamu"},
-        ].map((s,i)=>(
-          <div key={i} style={{...sty.card,borderLeft:`4px solid ${s.color}`}}>
+        {kpiCards.map((s,i)=>(
+          <div key={i} style={{...sty.card,borderLeft:`4px solid ${s.color}`,cursor:"pointer"}} onClick={()=>setDashModal(s.key)} title="Klik untuk lihat ringkasan">
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <div><div style={{fontSize:20,fontWeight:900,color:s.color}}>{s.val}</div><div style={{fontSize:12,fontWeight:700,marginTop:2}}>{s.label}</div><div style={{fontSize:10,color:C.muted}}>{s.sub}</div></div>
               <div style={{fontSize:26}}>{s.icon}</div>
@@ -6534,17 +6671,97 @@ function DashboardDefault({ stocks, txns, katalogList, rencanaKedatanganList, my
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
           <div style={sty.card}>
             <h3 style={{fontSize:13,fontWeight:700,marginBottom:10}}>Transaksi Terbaru</h3>
-            {txns.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,6).map(t=>(
-              <div key={t.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
-                <div><div style={{fontSize:11,fontWeight:600}}>{t.namaPekerjaan}</div><div style={{fontSize:10,color:C.muted}}>{new Date(t.createdAt).toLocaleDateString("id-ID")}</div></div>
-                <span style={sty.statusBadge(t.status)}>{t.status}</span>
-              </div>
-            ))}
+            {txns.length===0 && <div style={{textAlign:"center",padding:"16px 0",color:C.muted,fontSize:12}}>Belum ada transaksi.</div>}
+            {txns.slice().sort((a,b)=>b.createdAt-a.createdAt).slice(0,6).map(t=>{
+              const r = summarizeTxnDashboard(t, stocks, lokasiList);
+              return (
+                <div key={t.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,fontWeight:700}}>{r.noTugLabel}</div>
+                      <div style={{fontSize:11,color:C.text,marginTop:1}}>{r.pekerjaan}</div>
+                    </div>
+                    <span style={sty.statusBadge(t.status)}>{t.status}</span>
+                  </div>
+                  <div style={{fontSize:10,color:C.muted,marginTop:3}}>
+                    📅 {r.tanggal} • 📍 {r.lokasiLabel} • 🏢 {r.pihakLabel}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
         <div><RencanaWidget rencanaKedatanganList={rencanaKedatanganList} C={C} sty={sty} setTab={setTab}/></div>
       </div>
       <DashboardAnalitikSection txns={txns} stocks={stocks} katalogList={katalogList} topN={topN} setTopN={setTopN} pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode} C={C} sty={sty}/>
+
+      {/* ── POPUP RINGKASAN KPI ── */}
+      {dashModal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}} onClick={()=>setDashModal(null)}>
+          <div style={{...sty.card,width:480,maxHeight:"80vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+              <h3 style={{fontSize:15,fontWeight:800}}>
+                {dashModal==="totalItem"&&"📦 Ringkasan Total Item"}
+                {dashModal==="nilai"&&"💰 Ringkasan Nilai Inventory"}
+                {dashModal==="kritis"&&"⚠️ Material Stok Kritis"}
+                {dashModal==="tindakan"&&"⏳ Butuh Tindakan Anda"}
+              </h3>
+              <button style={{background:"transparent",border:"none",fontSize:18,cursor:"pointer",color:C.muted}} onClick={()=>setDashModal(null)}>✕</button>
+            </div>
+
+            {(dashModal==="totalItem"||dashModal==="nilai") && (
+              <div>
+                {jenisBreakdown.length===0 && <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}>Belum ada data stok.</div>}
+                {jenisBreakdown.map(r=>(
+                  <div key={r.jenis} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:12,fontWeight:600}}>{r.jenis}</div>
+                    <div style={{textAlign:"right"}}>
+                      <div style={{fontSize:12,fontWeight:700}}>{dashModal==="nilai"?fmtRp(r.nilai):`${r.count} item`}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{fmtNum(r.qty)} qty total</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {dashModal==="kritis" && (
+              <div>
+                {lowStocks.length===0 && <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}>✅ Tidak ada material kritis saat ini.</div>}
+                {lowStocks.map(s=>(
+                  <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</div>
+                      <div style={{fontSize:10,color:C.muted}}>📍 {s.lokasi||"-"}</div>
+                    </div>
+                    <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#dc2626"}}>{fmtNum(s.qty)} / min {fmtNum(s.minQty)}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{s.unit}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {dashModal==="tindakan" && (
+              <div>
+                {myPendingApprovals.length===0 && <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}>✅ Tidak ada yang menunggu tindakan Anda.</div>}
+                {myPendingApprovals.map(t=>{
+                  const r = summarizeTxnDashboard(t, stocks, lokasiList);
+                  return (
+                    <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:600}}>{r.noTugLabel}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{r.pekerjaan}</div>
+                      </div>
+                      <button style={sty.btn("primary","sm")} onClick={()=>{setDashModal(null);setTab("approval");}}>Review</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -7889,10 +8106,15 @@ function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, sty, C, s
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,alignItems:"flex-end"}}>
                 <div>
                   <label style={sty.label}>Link ke Master Katalog (opsional)</label>
-                  <select style={sty.select} value={item.katalogId||""} onChange={e=>updateItem(i,"katalogId",e.target.value)}>
-                    <option value="">-- Pilih jika ada --</option>
-                    {katalogList.map(k=><option key={k.id} value={k.id}>{k.name} [{k.katalog||"-"}]</option>)}
-                  </select>
+                  <SearchableSelect
+                    options={katalogList}
+                    value={item.katalogId||""}
+                    onChange={v=>updateItem(i,"katalogId",v)}
+                    getLabel={k=>`${k.name} [${k.katalog||"-"}]`}
+                    getSearchText={k=>`${k.name} ${k.katalog||""}`}
+                    placeholder="-- Cari & pilih jika ada --"
+                    sty={sty} C={C}
+                  />
                 </div>
                 <div><label style={sty.label}>Keterangan</label><input style={sty.input} value={item.keterangan||""} onChange={e=>updateItem(i,"keterangan",e.target.value)}/></div>
                 {form.items.length>1 && <button style={{...sty.btn("danger","sm"),height:36}} onClick={()=>removeItem(i)}>✕</button>}
