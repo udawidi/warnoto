@@ -3537,6 +3537,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       color: j==="Pre Memory"?"#1d4ed8":j==="Cadang"?"#7c3aed":j==="Persediaan"?C.green:j==="Persediaan Bursa"?"#ea580c":j==="ATTB"?C.yellow:j==="Non-Stock"?"#be185d":C.muted }),
   };
 
+  // ══════════════════════ PUBLIC SCAN VIEW (QR dari HP, tanpa login) ══════════════════════
+  const scanKatalogId = new URLSearchParams(window.location.search).get("scan");
+  if (scanKatalogId) return <ScanPublicView katalogId={scanKatalogId} />;
+
   // ══════════════════════ LOGIN ══════════════════════
   if (!currentUser) return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#001a57 0%,#003087 50%,#0052cc 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',system-ui,sans-serif"}}>
@@ -5892,6 +5896,8 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
           sapStatus: getSAPStatus(kat.katalog),
           sapLabel: getSAPLabel(kat.katalog),
           jenisBarang: stockRow?.jenisBarang||"-",
+          docType: t.docType,
+          lokasiId: stockRow?.lokasiId||"",
         });
       });
     }
@@ -5915,6 +5921,8 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
           sapStatus: getSAPStatus(kat?.katalog),
           sapLabel: getSAPLabel(kat?.katalog),
           jenisBarang: fakeStockRow.jenisBarang,
+          docType: "TUG10",
+          lokasiId: "",
         });
       });
     }
@@ -5938,6 +5946,8 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
           sapStatus: getSAPStatus(kat?.katalog),
           sapLabel: getSAPLabel(kat?.katalog),
           jenisBarang: "Persediaan",
+          docType: "TUG3",
+          lokasiId: "",
         });
       });
     }
@@ -5951,6 +5961,190 @@ function buildMutasiRows(txns, katalogList, stocks, filter) {
     saldoMap[r.katalogId] = saldo;
     return { ...r, saldoAwal: prev, saldoAkhir: saldo, no: i+1 };
   });
+}
+
+// ─── SUPABASE SYNC (TUG-15 → tug15_history) ──────────────────────────────
+// Push approved mutasi rows ke Supabase supaya bisa dipakai job ML forecast.
+// Pakai anon/publishable key (write diizinkan lewat RLS policy "Public insert"
+// yang scope-nya cuma ke tabel katalog & tug15_history — lihat supabase/schema.sql).
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const SYNCED_KEYS_STORAGE = "warnoto_synced_tug15_keys";
+
+function rowSyncKey(r) {
+  return `${r.katalogId}|${r.ts}|${r.masuk}|${r.keluar}|${r.docType}`;
+}
+
+function getSyncedKeys() {
+  try { return new Set(JSON.parse(localStorage.getItem(SYNCED_KEYS_STORAGE) || "[]")); }
+  catch { return new Set(); }
+}
+
+function saveSyncedKeys(set) {
+  localStorage.setItem(SYNCED_KEYS_STORAGE, JSON.stringify([...set]));
+}
+
+async function syncTUG15ToSupabase(rows, katalogList) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
+  }
+  const synced = getSyncedKeys();
+  const newRows = rows.filter(r => r.katalogId && r.katalogId!=="-" && !synced.has(rowSyncKey(r)));
+  if (newRows.length === 0) return { katalogCount: 0, historyCount: 0 };
+
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  // 1. Upsert katalog yang dipakai (FK target — harus ada dulu sebelum insert history)
+  const katalogIds = [...new Set(newRows.map(r=>r.katalogId))];
+  const katalogPayload = katalogIds.map(kid => {
+    const kat = katalogList.find(k=>k.id===kid);
+    return { id: kid, nama: kat?.name||kid, kategori: kat?.katalog||null, satuan: kat?.satuan||null, jenis_barang: kat?.jenisBarang||null };
+  });
+  const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+    method: "POST",
+    headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify(katalogPayload),
+  });
+  if (!katRes.ok) throw new Error(`Gagal sync katalog: ${await katRes.text()}`);
+
+  // 2. Insert baris mutasi (MASUK & KELUAR jadi baris terpisah sesuai skema tug15_history)
+  const historyPayload = [];
+  newRows.forEach(r => {
+    const tanggal = new Date(r.ts).toISOString().slice(0,10);
+    if (r.masuk > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "MASUK", qty: r.masuk, lokasi_id: r.lokasiId||null, doc_type: r.docType });
+    if (r.keluar > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "KELUAR", qty: r.keluar, lokasi_id: r.lokasiId||null, doc_type: r.docType });
+  });
+  const histRes = await fetch(`${SUPABASE_URL}/rest/v1/tug15_history`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(historyPayload),
+  });
+  if (!histRes.ok) throw new Error(`Gagal sync tug15_history: ${await histRes.text()}`);
+
+  newRows.forEach(r => synced.add(rowSyncKey(r)));
+  saveSyncedKeys(synced);
+  return { katalogCount: katalogPayload.length, historyCount: historyPayload.length };
+}
+
+// ─── SUPABASE SYNC (Data Stok → stock_current) ───────────────────────────
+// Push qty stok terkini (dijumlah per katalog dari semua lokasi) supaya job
+// training bisa hitung estimasi_hari_sampai_habis = qty_saat_ini / rata2 prediksi harian.
+async function syncStockQtyToSupabase(stocks, katalogList) {
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
+  }
+  const headers = {
+    "apikey": SUPABASE_KEY,
+    "Authorization": `Bearer ${SUPABASE_KEY}`,
+    "Content-Type": "application/json",
+  };
+
+  // Jumlahkan qty per katalog (1 katalog bisa ada di banyak lokasi/baris stok)
+  const qtyMap = {};
+  (stocks||[]).forEach(s => {
+    if (!s.katalogId) return;
+    qtyMap[s.katalogId] = (qtyMap[s.katalogId]||0) + (s.qty||0);
+  });
+  const katalogIds = Object.keys(qtyMap);
+  if (katalogIds.length === 0) return { katalogCount: 0, stockCount: 0 };
+
+  // Pastikan katalog-nya ada dulu (FK target)
+  const katalogPayload = katalogIds.map(kid => {
+    const kat = katalogList.find(k=>k.id===kid);
+    return { id: kid, nama: kat?.name||kid, kategori: kat?.katalog||null, satuan: kat?.satuan||null, jenis_barang: kat?.jenisBarang||null };
+  });
+  const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+    method: "POST",
+    headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify(katalogPayload),
+  });
+  if (!katRes.ok) throw new Error(`Gagal sync katalog: ${await katRes.text()}`);
+
+  const stockPayload = katalogIds.map(kid => ({ katalog_id: kid, qty: qtyMap[kid], updated_at: new Date().toISOString() }));
+  const stockRes = await fetch(`${SUPABASE_URL}/rest/v1/stock_current?on_conflict=katalog_id`, {
+    method: "POST",
+    headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
+    body: JSON.stringify(stockPayload),
+  });
+  if (!stockRes.ok) throw new Error(`Gagal sync stock_current: ${await stockRes.text()}`);
+
+  return { katalogCount: katalogPayload.length, stockCount: stockPayload.length };
+}
+
+// ─── PUBLIC SCAN VIEW (HP scan QR → riwayat TUG-2, tanpa login) ──────────
+// Dibuka lewat URL "?scan=<katalogId>". Ambil data langsung dari Supabase
+// (anon key, read-only) — TIDAK butuh login/state aplikasi, supaya siapa pun
+// yang scan QR fisik di rak bisa langsung lihat riwayat material itu dari HP.
+function ScanPublicView({ katalogId }) {
+  const [state, setState] = useState({ loading:true, error:"", katalog:null, qty:0, history:[] });
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!SUPABASE_URL || !SUPABASE_KEY) {
+        setState({ loading:false, error:"Supabase belum dikonfigurasi.", katalog:null, qty:0, history:[] });
+        return;
+      }
+      const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
+      try {
+        const [katRes, histRes, stockRes] = await Promise.all([
+          fetch(`${SUPABASE_URL}/rest/v1/katalog?id=eq.${encodeURIComponent(katalogId)}&select=*`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/tug15_history?katalog_id=eq.${encodeURIComponent(katalogId)}&select=*&order=tanggal.desc`, { headers }),
+          fetch(`${SUPABASE_URL}/rest/v1/stock_current?katalog_id=eq.${encodeURIComponent(katalogId)}&select=qty`, { headers }),
+        ]);
+        if (!katRes.ok || !histRes.ok || !stockRes.ok) throw new Error("Gagal ambil data dari server.");
+        const [katArr, histArr, stockArr] = await Promise.all([katRes.json(), histRes.json(), stockRes.json()]);
+        if (cancelled) return;
+        if (katArr.length === 0) {
+          setState({ loading:false, error:"Material dengan kode ini tidak ditemukan.", katalog:null, qty:0, history:[] });
+          return;
+        }
+        setState({ loading:false, error:"", katalog:katArr[0], qty:stockArr[0]?.qty||0, history:histArr });
+      } catch (err) {
+        if (!cancelled) setState({ loading:false, error:err.message, katalog:null, qty:0, history:[] });
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [katalogId]);
+
+  const wrap = { minHeight:"100vh", background:"#f1f5f9", fontFamily:"'Inter',system-ui,sans-serif", padding:16 };
+  const card = { background:"white", borderRadius:14, padding:18, boxShadow:"0 4px 16px rgba(0,0,0,0.08)", maxWidth:480, margin:"0 auto" };
+
+  if (state.loading) return <div style={wrap}><div style={card}>⏳ Memuat riwayat...</div></div>;
+  if (state.error) return <div style={wrap}><div style={card}><b style={{color:"#dc2626"}}>⚠️ {state.error}</b></div></div>;
+
+  const { katalog, qty, history } = state;
+  return (
+    <div style={wrap}>
+      <div style={card}>
+        <div style={{fontSize:11,color:"#6b7280",fontWeight:700,letterSpacing:.5}}>PT PLN (PERSERO) UPT SURABAYA — WARNOTO</div>
+        <h2 style={{fontSize:17,fontWeight:800,margin:"4px 0 2px"}}>🏷️ {katalog.nama}</h2>
+        <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>No. Katalog: {katalog.kategori||"-"} • Satuan: {katalog.satuan||"-"} • {katalog.jenis_barang||"-"}</div>
+        <div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:10,padding:"10px 14px",marginBottom:16,textAlign:"center"}}>
+          <div style={{fontSize:11,color:"#047857",fontWeight:700}}>QTY STOK SAAT INI</div>
+          <div style={{fontSize:26,fontWeight:800,color:"#047857"}}>{qty}</div>
+        </div>
+        <div style={{fontSize:12,fontWeight:800,color:"#003087",marginBottom:8}}>📋 Riwayat Mutasi (TUG-2)</div>
+        {history.length===0 && <div style={{fontSize:12,color:"#9ca3af",textAlign:"center",padding:14}}>Belum ada riwayat mutasi untuk material ini.</div>}
+        {history.map((h,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f1f5f9",fontSize:12}}>
+            <div>
+              <div style={{fontWeight:700}}>{h.tanggal}</div>
+              <div style={{color:"#9ca3af",fontSize:11}}>{h.doc_type||"-"}</div>
+            </div>
+            <div style={{fontWeight:800,color:h.jenis_transaksi==="MASUK"?"#16a34a":"#dc2626"}}>
+              {h.jenis_transaksi==="MASUK"?"+":"-"}{h.qty}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function buildTUG15HTML(rows, filter, katalogList) {
@@ -7472,6 +7666,21 @@ function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, sty, C, s
 
 function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter }) {
   const rows = buildMutasiRows(txns, katalogList, stocks, filter);
+  const [syncState, setSyncState] = useState({ loading:false, msg:"" });
+
+  async function handleSyncSupabase() {
+    setSyncState({ loading:true, msg:"" });
+    try {
+      const histRes = await syncTUG15ToSupabase(rows, katalogList);
+      const stockRes = await syncStockQtyToSupabase(stocks, katalogList);
+      const parts = [];
+      parts.push(histRes.historyCount>0 ? `${histRes.historyCount} baris histori baru` : "tidak ada histori baru");
+      parts.push(`qty ${stockRes.stockCount} katalog`);
+      setSyncState({ loading:false, msg: `✓ Tersinkron: ${parts.join(", ")}.` });
+    } catch (err) {
+      setSyncState({ loading:false, msg: `✗ Gagal sync: ${err.message}` });
+    }
+  }
 
   function downloadTUG15() {
     const html = buildTUG15HTML(rows, filter, katalogList);
@@ -7583,10 +7792,14 @@ function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter }) {
           <button style={{...sty.btn("ghost","sm")}} onClick={()=>setFilter({dateFrom:"",dateTo:"",katalogId:"ALL",jenisBarang:"ALL",sapStatus:"ALL",docTypes:["TUG9","TUG8","TUG10","TUG3"]})}>↺ Reset Filter</button>
           <span style={{fontSize:11,color:C.muted}}>{rows.length} baris ditemukan</span>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
+            <button style={{...sty.btn("ghost"),border:`1px solid #0ea5e9`,color:"#0ea5e9"}} onClick={handleSyncSupabase} disabled={rows.length===0||syncState.loading}>
+              {syncState.loading?"⏳ Sinkron...":"☁️ Sync ke Supabase"}
+            </button>
             <button style={{...sty.btn("ghost"),border:`1px solid ${C.green}`,color:C.green}} onClick={downloadTUG15Excel} disabled={rows.length===0}>📊 Download Excel (.xlsx)</button>
             <button style={sty.btn("success")} onClick={downloadTUG15} disabled={rows.length===0}>⬇️ Download HTML/PDF</button>
           </div>
         </div>
+        {syncState.msg && <div style={{marginTop:10,fontSize:12,color:syncState.msg.startsWith("✗")?C.red||"#dc2626":"#0ea5e9",fontWeight:600}}>{syncState.msg}</div>}
       </div>
 
       {/* Preview Tabel */}
@@ -7834,42 +8047,6 @@ function KartuGantungModal({ katalog, stocks, txns, lokasiList, sty, C, onClose 
   const accent = jenisBarangAccentColor(dominantJenis);
   const sampleFoto = stocks.find(s=>s.katalogId===katalog.id && s.img)?.img || null;
 
-  function downloadLabel() {
-    const svg = document.getElementById("qr-label-svg-" + katalog.id);
-    if (!svg) return;
-    const serializer = new XMLSerializer();
-    const svgStr = serializer.serializeToString(svg);
-    const blob = new Blob([svgStr], { type: "image/svg+xml" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Label_${(katalog.katalog||katalog.id)}.svg`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url), 2000);
-  }
-
-  // Simple deterministic placeholder QR-like pattern (visual identifier only —
-  // not a scannable QR in this artifact, see project notes on public scan-to-view).
-  function PseudoQR({ seed, size=120 }) {
-    const cells = 11;
-    const cellSize = size / cells;
-    let hash = 0;
-    for (let i=0;i<seed.length;i++) hash = (hash*31 + seed.charCodeAt(i)) >>> 0;
-    const rects = [];
-    for (let y=0;y<cells;y++) {
-      for (let x=0;x<cells;x++) {
-        hash = (hash*1103515245 + 12345) >>> 0;
-        const onCorner = (x<3&&y<3)||(x>cells-4&&y<3)||(x<3&&y>cells-4);
-        if (onCorner ? (x===0||x===2||y===0||y===2||x>cells-3||y>cells-3) : (hash % 100 < 48)) {
-          rects.push(<rect key={`${x}-${y}`} x={x*cellSize} y={y*cellSize} width={cellSize} height={cellSize} fill="#111827"/>);
-        }
-      }
-    }
-    return <svg width={size} height={size} style={{background:"white"}}>{rects}</svg>;
-  }
-
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
       <div style={{...sty.card,width:560,maxHeight:"92vh",overflowY:"auto"}}>
@@ -7929,23 +8106,26 @@ function KartuGantungModal({ katalog, stocks, txns, lokasiList, sty, C, onClose 
           </div>
         )}
 
-        {view==="label" && (
-          <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-            <div style={{border:`3px solid ${accent}`,borderRadius:10,padding:16,background:"white",width:260,textAlign:"center",marginBottom:16}}>
-              <PseudoQR seed={katalog.katalog||katalog.id} size={140} />
-              <div style={{fontSize:12,fontWeight:800,marginTop:10,lineHeight:1.3}}>{katalog.name}</div>
-              <div style={{fontSize:10,color:C.muted,marginTop:4}}>No. Katalog: {katalog.katalog||"-"}</div>
-              <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:accent,color:dominantJenis==="Pre Memory"?"#111":"white",border:dominantJenis==="Pre Memory"?`1px solid #d1d5db`:"none"}}>{dominantJenis}</span>
+        {view==="label" && (()=>{
+          const scanUrl = `${window.location.origin}/?scan=${encodeURIComponent(katalog.id)}`;
+          const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
+          return (
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+              <div style={{border:`3px solid ${accent}`,borderRadius:10,padding:16,background:"white",width:260,textAlign:"center",marginBottom:16}}>
+                <img src={qrImgUrl} alt="QR Scan TUG-2" width={140} height={140} style={{display:"block",margin:"0 auto"}}/>
+                <div style={{fontSize:12,fontWeight:800,marginTop:10,lineHeight:1.3}}>{katalog.name}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:4}}>No. Katalog: {katalog.katalog||"-"}</div>
+                <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:accent,color:dominantJenis==="Pre Memory"?"#111":"white",border:dominantJenis==="Pre Memory"?`1px solid #d1d5db`:"none"}}>{dominantJenis}</span>
+              </div>
+              <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:14,maxWidth:320}}>
+                Scan QR ini dari HP (lewat kamera/aplikasi browser) untuk melihat riwayat TUG-2 material ini — tanpa perlu login. Label bisa di-screenshot untuk diprint dan ditempel di material.
+              </div>
+              <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:8,padding:"8px 10px",maxWidth:340,textAlign:"center",wordBreak:"break-all"}}>
+                🔗 {scanUrl}
+              </div>
             </div>
-            <svg id={"qr-label-svg-"+katalog.id} style={{display:"none"}}></svg>
-            <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:14,maxWidth:320}}>
-              Label ini bisa di-screenshot untuk diprint dan ditempel di material. Border warna menandakan kategori Jenis Barang (Hijau=Persediaan, Merah=Cadang, Putih=Pre Memory, Kuning=Bongkaran/ATTB, Hitam=Non-Stock).
-            </div>
-            <div style={{fontSize:10,color:"#92400e",background:"#fffbeb",border:`1px solid #fde68a`,borderRadius:8,padding:10,maxWidth:340,textAlign:"center"}}>
-              ℹ️ QR ini adalah identifier visual di dalam aplikasi. Scan-langsung-tanpa-login dari HP belum didukung karena artifact ini tidak memiliki server/URL publik — lihat catatan di warnoto.md.
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

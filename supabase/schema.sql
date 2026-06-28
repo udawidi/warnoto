@@ -61,6 +61,17 @@ create table if not exists stock_scan_log (
 );
 
 -- ────────────────────────────────────────────────────────────
+-- 5. STOCK_CURRENT — snapshot qty stok terkini per katalog (untuk hitung
+--    estimasi_hari_sampai_habis). Ditimpa ulang tiap kali Sync dari App.jsx,
+--    1 baris per katalog_id (qty dijumlah dari semua lokasi).
+-- ────────────────────────────────────────────────────────────
+create table if not exists stock_current (
+  katalog_id text primary key references katalog(id),
+  qty numeric not null default 0,
+  updated_at timestamptz default now()
+);
+
+-- ────────────────────────────────────────────────────────────
 -- Row Level Security — aktifkan, biar tidak semua orang bisa baca/tulis sembarangan
 -- nanti kalau ada otentikasi user Supabase, policy ini bisa diperketat lagi.
 -- Untuk sekarang: anon key cuma boleh READ (SELECT), tulis cuma lewat service_role
@@ -70,8 +81,20 @@ alter table katalog enable row level security;
 alter table tug15_history enable row level security;
 alter table forecast_predictions enable row level security;
 alter table stock_scan_log enable row level security;
+alter table stock_current enable row level security;
 
 create policy "Public read katalog" on katalog for select using (true);
 create policy "Public read tug15_history" on tug15_history for select using (true);
 create policy "Public read forecast_predictions" on forecast_predictions for select using (true);
 create policy "Public read stock_scan_log" on stock_scan_log for select using (true);
+create policy "Public read stock_current" on stock_current for select using (true);
+
+-- Tulis dari App.jsx (anon/publishable key) — sengaja DIBATASI cuma tabel sumber
+-- data mentah (katalog, tug15_history, stock_current), supaya forecast_predictions
+-- tetap cuma bisa ditulis lewat service_role (job GitHub Actions), tidak bisa
+-- "dipalsukan" dari browser.
+create policy "Public insert katalog" on katalog for insert with check (true);
+create policy "Public update katalog" on katalog for update using (true);
+create policy "Public insert tug15_history" on tug15_history for insert with check (true);
+create policy "Public insert stock_current" on stock_current for insert with check (true);
+create policy "Public update stock_current" on stock_current for update using (true);

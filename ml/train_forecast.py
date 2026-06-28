@@ -6,10 +6,8 @@ Alur:
   2. Per katalog_id, susun time-series qty KELUAR harian.
   3. Latih model Prophet (kalau histori cukup, minimal MIN_DATA_POINTS baris).
   4. Prediksi qty pemakaian 30 hari ke depan, tulis/timpa ke tabel forecast_predictions.
-
-Catatan: estimasi_hari_sampai_habis BELUM dihitung di sini karena skema saat ini
-belum menyimpan qty stok terkini di Supabase (baru histori mutasi). Begitu ada
-tabel/snapshot qty terkini, tinggal tambahkan: hari_habis = qty_saat_ini / rata2_qty_prediksi_harian.
+  5. Ambil qty stok terkini dari stock_current, hitung estimasi_hari_sampai_habis
+     = qty_saat_ini / rata2_qty_prediksi_harian (hanya diisi di baris prediksi pertama).
 """
 import os
 import sys
@@ -33,6 +31,11 @@ def get_client():
 def fetch_history(sb):
     res = sb.table("tug15_history").select("katalog_id, tanggal, jenis_transaksi, qty").eq("jenis_transaksi", "KELUAR").execute()
     return pd.DataFrame(res.data)
+
+
+def fetch_stock_current(sb):
+    res = sb.table("stock_current").select("katalog_id, qty").execute()
+    return {row["katalog_id"]: row["qty"] for row in res.data}
 
 
 def train_one_katalog(df_katalog):
@@ -59,6 +62,8 @@ def main():
         print("Tidak ada data tug15_history sama sekali. Berhenti.")
         return
 
+    stock_qty = fetch_stock_current(sb)
+
     katalog_ids = history["katalog_id"].dropna().unique()
     print(f"Ditemukan {len(katalog_ids)} katalog dengan histori KELUAR.")
 
@@ -72,16 +77,21 @@ def main():
         except Exception as e:
             print(f"  ⚠️ Gagal latih {kid}: {e}")
             continue
+
+        avg_qty_harian = forecast["yhat"].clip(lower=0).mean()
+        qty_saat_ini = stock_qty.get(kid)
+        estimasi_hari = round(qty_saat_ini / avg_qty_harian) if qty_saat_ini is not None and avg_qty_harian > 0 else None
+
         for _, row in forecast.iterrows():
             rows_to_upsert.append({
                 "katalog_id": kid,
                 "tanggal_prediksi": row["ds"].strftime("%Y-%m-%d"),
                 "qty_prediksi": max(0, round(float(row["yhat"]), 2)),
-                "estimasi_hari_sampai_habis": None,  # lihat catatan di docstring atas
+                "estimasi_hari_sampai_habis": estimasi_hari,
                 "model_version": MODEL_VERSION,
                 "updated_at": datetime.utcnow().isoformat(),
             })
-        print(f"  ✓ {kid}: {len(df_k)} baris histori → {FORECAST_DAYS} hari prediksi")
+        print(f"  ✓ {kid}: {len(df_k)} baris histori → {FORECAST_DAYS} hari prediksi (estimasi habis: {estimasi_hari})")
 
     if not rows_to_upsert:
         print("Tidak ada katalog dengan histori cukup (>= %d baris). Tidak ada yang disimpan." % MIN_DATA_POINTS)
