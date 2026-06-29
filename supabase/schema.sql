@@ -213,3 +213,89 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_auth_user();
+
+-- ────────────────────────────────────────────────────────────
+-- 8. MASTER DATA (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) — sebelumnya hanya
+--    tersimpan di localStorage tiap browser, sekarang Supabase jadi sumber
+--    utamanya supaya sinkron antar device/user. 1 baris = 1 entri; kolom
+--    `data` (jsonb) menyimpan object-nya apa adanya karena field-nya beragam
+--    dan berkembang (mis. lokasi punya mapX/mapY/pendingData/jenisArea yang
+--    tidak semua dipakai di semua baris) — kolom id/relasi/status dipisah
+--    di luar `data` supaya tetap bisa di-query/relasikan.
+-- ────────────────────────────────────────────────────────────
+create table if not exists uit (
+  id text primary key,
+  data jsonb not null,
+  created_at bigint
+);
+create table if not exists upt (
+  id text primary key,
+  uit_id text references uit(id) on delete set null,
+  data jsonb not null,
+  created_at bigint
+);
+create table if not exists gudang (
+  id text primary key,
+  upt_id text references upt(id) on delete set null,
+  data jsonb not null,
+  created_at bigint
+);
+create table if not exists lokasi (
+  id text primary key,
+  gudang_id text references gudang(id) on delete set null,
+  status text,
+  data jsonb not null,
+  created_at bigint
+);
+create index if not exists idx_lokasi_gudang on lokasi(gudang_id);
+create table if not exists satpam (
+  id text primary key,
+  data jsonb not null,
+  created_at bigint
+);
+create table if not exists tim_mutu (
+  id text primary key,
+  data jsonb not null,
+  created_at bigint
+);
+
+alter table uit enable row level security;
+alter table upt enable row level security;
+alter table gudang enable row level security;
+alter table lokasi enable row level security;
+alter table satpam enable row level security;
+alter table tim_mutu enable row level security;
+
+-- Baca: siapa saja yang sudah login boleh baca semua master data (app butuh
+-- ini di banyak tempat — dropdown, laporan, dst). Tulis: dibatasi authenticated
+-- juga (bukan publik/anon) — konsisten dengan model trust app ini, dimana
+-- pembatasan PER ROLE (Admin/TL) ditegakkan di level UI seperti fitur lain.
+drop policy if exists "Authenticated read uit" on uit;
+drop policy if exists "Authenticated write uit" on uit;
+create policy "Authenticated read uit" on uit for select using (auth.role() = 'authenticated');
+create policy "Authenticated write uit" on uit for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read upt" on upt;
+drop policy if exists "Authenticated write upt" on upt;
+create policy "Authenticated read upt" on upt for select using (auth.role() = 'authenticated');
+create policy "Authenticated write upt" on upt for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read gudang" on gudang;
+drop policy if exists "Authenticated write gudang" on gudang;
+create policy "Authenticated read gudang" on gudang for select using (auth.role() = 'authenticated');
+create policy "Authenticated write gudang" on gudang for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read lokasi" on lokasi;
+drop policy if exists "Authenticated write lokasi" on lokasi;
+create policy "Authenticated read lokasi" on lokasi for select using (auth.role() = 'authenticated');
+create policy "Authenticated write lokasi" on lokasi for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read satpam" on satpam;
+drop policy if exists "Authenticated write satpam" on satpam;
+create policy "Authenticated read satpam" on satpam for select using (auth.role() = 'authenticated');
+create policy "Authenticated write satpam" on satpam for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read tim_mutu" on tim_mutu;
+drop policy if exists "Authenticated write tim_mutu" on tim_mutu;
+create policy "Authenticated read tim_mutu" on tim_mutu for select using (auth.role() = 'authenticated');
+create policy "Authenticated write tim_mutu" on tim_mutu for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

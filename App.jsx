@@ -71,6 +71,54 @@ const CLOUD = {
   },
 };
 
+// ─── MASTER DATA TABLES (Supabase = sumber utama) ──────────────────────
+// Satpam, Tim Mutu, UIT, UPT, Gudang, Lokasi dulu hanya tersimpan di
+// localStorage/CLOUD (per-browser, tidak sinkron antar device/user). Sekarang
+// disimpan sebagai baris asli di Supabase: 1 baris = {id, data jsonb, ...kolom
+// relasi}. Kolom `data` menyimpan object JS apa adanya (field-nya beragam dan
+// berkembang seiring waktu, mis. lokasi punya mapX/mapY/pendingData/jenisArea
+// yang tidak semua dipakai di semua baris) — kolom id/relasi/status dipisah
+// supaya tetap bisa di-query/relasikan di Supabase Studio, tapi tidak perlu
+// mendaftar ulang setiap field yang mungkin ada.
+async function loadMasterTable(table) {
+  if (!supabase) return null;
+  const { data, error } = await supabase.from(table).select("*");
+  if (error) { console.error(`loadMasterTable(${table})`, error); return null; }
+  return data.map(row => ({ ...row.data, id: row.id }));
+}
+// extraCols(item) => kolom tambahan per baris (FK/status) di luar id & data, opsional
+async function syncMasterTable(table, list, extraCols) {
+  if (!supabase) return false;
+  const rows = list.map(item => ({
+    id: item.id,
+    data: item,
+    created_at: item.createdAt ?? Date.now(),
+    ...(extraCols ? extraCols(item) : {}),
+  }));
+  if (rows.length) {
+    const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
+    if (error) { console.error(`syncMasterTable upsert(${table})`, error); return false; }
+  }
+  const { data: existing, error: selErr } = await supabase.from(table).select("id");
+  if (selErr) { console.error(`syncMasterTable select(${table})`, selErr); return false; }
+  const currentIds = new Set(list.map(i => i.id));
+  const toDelete = (existing || []).filter(r => !currentIds.has(r.id)).map(r => r.id);
+  if (toDelete.length) {
+    const { error: delErr } = await supabase.from(table).delete().in("id", toDelete);
+    if (delErr) { console.error(`syncMasterTable delete(${table})`, delErr); return false; }
+  }
+  return true;
+}
+// Seed Supabase sekali dari DEFAULT_* kalau tabelnya masih kosong (instalasi pertama kali)
+async function seedMasterTableIfEmpty(table, defaults, extraCols) {
+  if (!supabase || !defaults?.length) return defaults || [];
+  const existing = await loadMasterTable(table);
+  if (existing === null) return defaults; // Supabase tidak terkonfigurasi/error — fallback lokal
+  if (existing.length > 0) return existing;
+  await syncMasterTable(table, defaults, extraCols);
+  return defaults;
+}
+
 // ─── DEFAULT DATA ────────────────────────────────────────────────────
 // User & password TIDAK lagi disimpan di source code (lihat Supabase Auth +
 // tabel "profiles" di supabase/schema.sql) — daftar user kini di-fetch dari
@@ -1786,6 +1834,8 @@ export default function PLNWarehouse() {
   const [tab, setTab] = useState("dashboard");
   const [search, setSearch] = useState("");
   const [filterJenis, setFilterJenis] = useState("ALL");
+  const [stockPage, setStockPage] = useState(1);
+  const [stockPageSize, setStockPageSize] = useState(10);
   const [filterStatus, setFilterStatus] = useState("ALL");
 
   const [stockModal, setStockModal] = useState(null);
@@ -1876,18 +1926,26 @@ export default function PLNWarehouse() {
       setLoading(true);
       const cs = await CLOUD.get("pln_stocks_v4");
       const ckat = await CLOUD.get("pln_katalog_v4");
-      const clok = await CLOUD.get("pln_lokasi_v4");
+      const clokLocal = await CLOUD.get("pln_lokasi_v4");
       const ct = await CLOUD.get("pln_txns_v3");
       const cseq = await CLOUD.get("pln_docseq_v3");
-      const csp = await CLOUD.get("pln_satpam_v3");
-      const ctm = await CLOUD.get("pln_timmutu_v1");
-      const cuit = await CLOUD.get("pln_uit_v1");
-      const cupt = await CLOUD.get("pln_upt_v1");
-      const cgdg = await CLOUD.get("pln_gudang_v1");
       const crk = await CLOUD.get("pln_rencana_v1");
       const copn = await CLOUD.get("pln_opname_v1");
       const cah = await CLOUD.get("pln_approval_history_v1");
       const cma = await CLOUD.get("pln_maturity_v1");
+
+      // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
+      // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
+      // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
+      const [cuit, cupt, cgdg, clokRemote, csp, ctm] = await Promise.all([
+        seedMasterTableIfEmpty("uit", DEFAULT_UIT),
+        seedMasterTableIfEmpty("upt", DEFAULT_UPT_LIST, u => ({ uit_id: u.uitId || null })),
+        seedMasterTableIfEmpty("gudang", DEFAULT_GUDANG, g => ({ upt_id: g.uptId || null })),
+        seedMasterTableIfEmpty("lokasi", DEFAULT_LOKASI, l => ({ gudang_id: l.gudangId || null, status: l.status || null })),
+        seedMasterTableIfEmpty("satpam", DEFAULT_SATPAM),
+        seedMasterTableIfEmpty("tim_mutu", DEFAULT_TIM_MUTU),
+      ]);
+      const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
       if (cs && ckat && clok) {
         // Already on new master-data structure.
@@ -1902,7 +1960,7 @@ export default function PLNWarehouse() {
           showToastRef.current && showToastRef.current(`🧹 Membersihkan ${totalRemoved} data duplikat (id ganda) di Master Katalog/Stok/Lokasi.`, "success");
           CLOUD.set("pln_katalog_v4", dKat.list);
           CLOUD.set("pln_stocks_v4", dStk.list);
-          CLOUD.set("pln_lokasi_v4", dLok.list);
+          syncMasterTable("lokasi", dLok.list, l => ({ gudang_id: l.gudangId || null, status: l.status || null }));
         }
       } else {
         // Check for legacy flat-stock data from older version of the app
@@ -1912,16 +1970,16 @@ export default function PLNWarehouse() {
           setStocks(migrated.stocks); setKatalogList(migrated.katalog); setLokasiList(migrated.lokasi);
           showToastRef.current && showToastRef.current("📦 Data lama berhasil dimigrasikan ke struktur Master Data baru!", "success");
         } else {
-          setStocks(DEFAULT_STOCKS); setKatalogList(DEFAULT_KATALOG); setLokasiList(DEFAULT_LOKASI);
+          setStocks(DEFAULT_STOCKS); setKatalogList(DEFAULT_KATALOG); setLokasiList(clok || DEFAULT_LOKASI);
         }
       }
       setTxns(ct || DEFAULT_TXNS);
       setDocSeq(cseq || 196);
-      setSatpamList(csp || DEFAULT_SATPAM);
-      setTimMutuList(ctm || DEFAULT_TIM_MUTU);
-      setUitList(cuit || DEFAULT_UIT);
-      setUptList(cupt || DEFAULT_UPT_LIST);
-      setGudangList(cgdg || DEFAULT_GUDANG);
+      setSatpamList(csp);
+      setTimMutuList(ctm);
+      setUitList(cuit);
+      setUptList(cupt);
+      setGudangList(cgdg);
       setRencanaKedatanganList(crk || []);
       setOpnameList(copn || []);
       setApprovalHistoryList(cah || []);
@@ -1936,18 +1994,17 @@ export default function PLNWarehouse() {
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
   stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, rencanaKedatanganList, opnameList, approvalHistoryList, maturityAssessments };
+  // Catatan: satpamList/timMutuList/uitList/uptList/gudangList/lokasiList TIDAK
+  // lagi ditulis di sini — sumber utamanya sekarang Supabase (tabel satpam/
+  // tim_mutu/uit/upt/gudang/lokasi), ditulis langsung oleh masing-masing
+  // fungsi CRUD-nya lewat syncMasterTable(). saveToCloud tetap menangani sisa
+  // data yang belum dimigrasi (stocks, katalog, txns, dst).
   const saveToCloud = useCallback(async (overrides = {}) => {
     const s = overrides.stocks ?? stateRef.current.stocks;
     const t = overrides.txns ?? stateRef.current.txns;
     const seq = overrides.docSeq ?? stateRef.current.docSeq;
-    const sp = overrides.satpamList ?? stateRef.current.satpamList;
     const kat = overrides.katalogList ?? stateRef.current.katalogList;
-    const lok = overrides.lokasiList ?? stateRef.current.lokasiList;
-    const tm = overrides.timMutuList ?? stateRef.current.timMutuList;
-    const uit = overrides.uitList ?? stateRef.current.uitList;
-    const upt = overrides.uptList ?? stateRef.current.uptList;
     const rk = overrides.rencanaKedatanganList ?? stateRef.current.rencanaKedatanganList;
-    const gdg = overrides.gudangList ?? stateRef.current.gudangList;
     const opn = overrides.opnameList ?? stateRef.current.opnameList;
     const ah = overrides.approvalHistoryList ?? stateRef.current.approvalHistoryList;
     const ma = overrides.maturityAssessments ?? stateRef.current.maturityAssessments;
@@ -1955,14 +2012,8 @@ export default function PLNWarehouse() {
     await Promise.all([
       CLOUD.set("pln_stocks_v4", s),
       CLOUD.set("pln_katalog_v4", kat),
-      CLOUD.set("pln_lokasi_v4", lok),
       CLOUD.set("pln_txns_v3", t),
       CLOUD.set("pln_docseq_v3", seq),
-      CLOUD.set("pln_satpam_v3", sp),
-      CLOUD.set("pln_timmutu_v1", tm),
-      CLOUD.set("pln_uit_v1", uit),
-      CLOUD.set("pln_upt_v1", upt),
-      CLOUD.set("pln_gudang_v1", gdg),
       CLOUD.set("pln_rencana_v1", rk),
       CLOUD.set("pln_opname_v1", opn),
       CLOUD.set("pln_approval_history_v1", ah),
@@ -1973,6 +2024,7 @@ export default function PLNWarehouse() {
   }, []);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatHistory]);
+  useEffect(() => { setStockPage(1); }, [search, filterJenis, stockPageSize]);
 
   // Peta Wilayah Gudang UPT Surabaya — render/refresh marker Leaflet tiap kali Dashboard dibuka atau data gudang berubah
   useEffect(() => {
@@ -2109,7 +2161,10 @@ export default function PLNWarehouse() {
     });
   }
 
+  function syncLokasi(nl) { return syncMasterTable("lokasi", nl, l => ({ gudang_id: l.gudangId || null, status: l.status || null })); }
+
   async function saveLokasi() {
+    if (!lokasiForm.gudangId) { showToast("Pilih Gudang dulu sebelum mengisi Blok! Data harus berjenjang: Gudang → Blok.","error"); return; }
     if (!lokasiForm.kode?.trim()) { showToast("Kode Lokasi tidak boleh kosong!","error"); return; }
     if (isKodeDuplicateInGudang(lokasiForm.kode, lokasiForm.gudangId, lokasiModal==="edit"?lokasiForm.id:null)) {
       showToast(`Kode blok "${lokasiForm.kode}" sudah dipakai di gudang ini!`,"error"); return;
@@ -2130,7 +2185,7 @@ export default function PLNWarehouse() {
       nl = [...lokasiList, baru];
     }
     setLokasiList(nl); setLokasiModal(null);
-    await saveToCloud({lokasiList: nl});
+    await syncLokasi(nl);
     showToast(isTL ? (lokasiModal==="edit"?"Master Lokasi diupdate!":"Lokasi gudang baru ditambahkan!") : "📨 Diajukan! Menunggu approval TL.");
   }
   async function deleteLokasi(id) {
@@ -2143,7 +2198,7 @@ export default function PLNWarehouse() {
     } else {
       nl = lokasiList.map(l=>l.id===id ? {...l, status:"PENDING", pendingAction:"DELETE", requestedBy:currentUser.id, requestedAt:Date.now()} : l);
     }
-    setLokasiList(nl); await saveToCloud({lokasiList: nl});
+    setLokasiList(nl); await syncLokasi(nl);
     showToast(isTL ? "Lokasi dihapus." : "📨 Penghapusan diajukan! Menunggu approval TL.");
   }
 
@@ -2176,7 +2231,7 @@ export default function PLNWarehouse() {
     } else {
       nl = lokasiList.map(l=>l.id===id ? {...l, status:"APPROVED", pendingAction:null, approvedBy:currentUser.id, approvedAt:Date.now()} : l);
     }
-    setLokasiList(nl); await saveToCloud({lokasiList: nl});
+    setLokasiList(nl); await syncLokasi(nl);
     const aksiLabel = {ADD:"Tambah Blok Baru",EDIT:"Ubah Data Blok",DELETE:"Hapus Blok"}[item.pendingAction]||item.pendingAction;
     await logApprovalHistory({type:"LOKASI", decision:"APPROVED", title:`${aksiLabel}: ${item.pendingAction==="EDIT"?item.pendingData?.kode:item.kode}`, requestedBy:item.requestedBy, requestedAt:item.requestedAt});
     showToast("✅ Perubahan Blok Lokasi disetujui.");
@@ -2190,7 +2245,7 @@ export default function PLNWarehouse() {
     } else {
       nl = lokasiList.map(l=>l.id===id ? {...l, status:"APPROVED", pendingAction:null, pendingData:null} : l);
     }
-    setLokasiList(nl); await saveToCloud({lokasiList: nl});
+    setLokasiList(nl); await syncLokasi(nl);
     const aksiLabel = {ADD:"Tambah Blok Baru",EDIT:"Ubah Data Blok",DELETE:"Hapus Blok"}[item.pendingAction]||item.pendingAction;
     await logApprovalHistory({type:"LOKASI", decision:"REJECTED", title:`${aksiLabel}: ${item.pendingAction==="EDIT"?item.pendingData?.kode:item.kode}`, requestedBy:item.requestedBy, requestedAt:item.requestedAt});
     showToast("❌ Perubahan Blok Lokasi ditolak.");
@@ -2356,13 +2411,13 @@ export default function PLNWarehouse() {
     if (satpamModal==="edit") nsp = satpamList.map(s=>s.id===satpamForm.id?{...satpamForm}:s);
     else nsp = [...satpamList, {...satpamForm, createdAt:Date.now()}];
     setSatpamList(nsp); setSatpamModal(null);
-    await saveToCloud({satpamList: nsp});
+    await syncMasterTable("satpam", nsp);
     showToast(satpamModal==="edit" ? "Data Satpam diupdate!" : "Satpam baru ditambahkan!");
   }
   async function deleteSatpam(id) {
     if (!window.confirm("Hapus Satpam ini dari daftar?")) return;
     const nsp = satpamList.filter(s=>s.id!==id);
-    setSatpamList(nsp); await saveToCloud({satpamList: nsp}); showToast("Satpam dihapus.");
+    setSatpamList(nsp); await syncMasterTable("satpam", nsp); showToast("Satpam dihapus.");
   }
 
   // ── Master Tim Mutu CRUD (2 paket TETAP — hanya edit anggota, tidak tambah/hapus paket) ──
@@ -2370,7 +2425,7 @@ export default function PLNWarehouse() {
   async function saveTimMutu() {
     const ntm = timMutuList.map(t=>t.id===timMutuForm.id?{...timMutuForm}:t);
     setTimMutuList(ntm); setTimMutuModal(null);
-    await saveToCloud({timMutuList: ntm});
+    await syncMasterTable("tim_mutu", ntm);
     showToast("Paket Tim Mutu diupdate!");
   }
 
@@ -2381,29 +2436,30 @@ export default function PLNWarehouse() {
     if (!uitForm.nama?.trim()||!uitForm.kode?.trim()) { showToast("Nama dan Kode UIT wajib diisi!","error"); return; }
     const nu = uitModal==="add" ? [...uitList, uitForm] : uitList.map(u=>u.id===uitForm.id?uitForm:u);
     setUitList(nu); setUitModal(null);
-    await saveToCloud({uitList: nu});
+    await syncMasterTable("uit", nu);
     showToast(uitModal==="add"?"UIT ditambahkan!":"UIT diupdate!");
   }
   async function deleteUIT(id) {
     if (!window.confirm("Hapus UIT ini?")) return;
     const nu = uitList.filter(u=>u.id!==id);
-    setUitList(nu); await saveToCloud({uitList: nu}); showToast("UIT dihapus.");
+    setUitList(nu); await syncMasterTable("uit", nu); showToast("UIT dihapus.");
   }
 
   // ── Master UPT CRUD ──
   function openAddUPT() { setUptForm({id:"UPT-"+uid().slice(0,4).toUpperCase(), nama:"", kode:"", alamat:"", uitId: uitList[0]?.id||"", createdAt:Date.now()}); setUptModal("add"); }
   function openEditUPT(u) { setUptForm({...u}); setUptModal("edit"); }
+  function syncUpt(nu) { return syncMasterTable("upt", nu, u => ({ uit_id: u.uitId || null })); }
   async function saveUPT() {
     if (!uptForm.nama?.trim()||!uptForm.kode?.trim()) { showToast("Nama dan Kode UPT wajib diisi!","error"); return; }
     const nu = uptModal==="add" ? [...uptList, uptForm] : uptList.map(u=>u.id===uptForm.id?uptForm:u);
     setUptList(nu); setUptModal(null);
-    await saveToCloud({uptList: nu});
+    await syncUpt(nu);
     showToast(uptModal==="add"?"UPT ditambahkan!":"UPT diupdate!");
   }
   async function deleteUPT(id) {
     if (!window.confirm("Hapus UPT ini?")) return;
     const nu = uptList.filter(u=>u.id!==id);
-    setUptList(nu); await saveToCloud({uptList: nu}); showToast("UPT dihapus.");
+    setUptList(nu); await syncUpt(nu); showToast("UPT dihapus.");
   }
 
   // ── Master Gudang CRUD ──
@@ -2423,11 +2479,12 @@ export default function PLNWarehouse() {
   function openAddGudang() { setGudangForm({id:"GDG-"+uid().slice(-6), nama:"", kode:"", alamat:"", uptId:uptList[0]?.id||"", denahImageData:null, denahUploadedAt:null, createdAt:Date.now()}); setGudangModal("add"); setGudangWizardStep(1); setWizardBlokDraft(null); }
   function openEditGudang(g) { setGudangForm({...g}); setGudangModal("edit"); }
   function closeGudangWizard() { setGudangModal(null); setGudangWizardStep(1); setWizardBlokDraft(null); }
+  function syncGudang(ng) { return syncMasterTable("gudang", ng, g => ({ upt_id: g.uptId || null })); }
   async function saveGudang() {
     if (!gudangForm.nama?.trim()) { showToast("Nama Gudang wajib diisi!","error"); return; }
     const ng = gudangModal==="add" ? [...gudangList, gudangForm] : gudangList.map(g=>g.id===gudangForm.id?gudangForm:g);
     setGudangList(ng); setGudangModal(null);
-    await saveToCloud({gudangList: ng});
+    await syncGudang(ng);
     showToast(gudangModal==="add"?"Gudang ditambahkan!":"Gudang diupdate!");
   }
   // Step 1 wizard: simpan data gudang lalu lanjut ke Step 2 (upload denah) tanpa menutup modal
@@ -2436,13 +2493,13 @@ export default function PLNWarehouse() {
     const exists = gudangList.some(g=>g.id===gudangForm.id);
     const ng = exists ? gudangList.map(g=>g.id===gudangForm.id?gudangForm:g) : [...gudangList, gudangForm];
     setGudangList(ng);
-    await saveToCloud({gudangList: ng});
+    await syncGudang(ng);
     setGudangWizardStep(2);
   }
   async function deleteGudang(id) {
     if (!window.confirm("Hapus gudang ini? Koordinat blok yang terkait akan hilang.")) return;
     const ng = gudangList.filter(g=>g.id!==id);
-    setGudangList(ng); await saveToCloud({gudangList: ng}); showToast("Gudang dihapus.");
+    setGudangList(ng); await syncGudang(ng); showToast("Gudang dihapus.");
   }
   // Tambah blok langsung dari klik titik di denah pada wizard step 3 (tanpa modal Lokasi terpisah)
   async function addWizardBlok() {
@@ -2462,7 +2519,7 @@ export default function PLNWarehouse() {
     };
     const nl = [...lokasiList, baru];
     setLokasiList(nl);
-    await saveToCloud({ lokasiList: nl });
+    await syncLokasi(nl);
     setWizardBlokDraft(null);
     showToast(isTL ? "✅ Blok ditambahkan!" : "📨 Blok diajukan! Menunggu approval TL.");
   }
@@ -2497,7 +2554,7 @@ export default function PLNWarehouse() {
       });
       const ng = gudangList.map(g=>g.id===gudangId ? {...g, denahImageData:imgData, denahUploadedAt:Date.now(), denahOcrWords:null} : g);
       setGudangList(ng);
-      await saveToCloud({gudangList: ng});
+      await syncGudang(ng);
       showToast("✅ Denah gudang berhasil diupload! Membaca label blok di gambar...");
       await runOcrOnDenah(gudangId, imgData);
     } catch(e) {
@@ -2530,7 +2587,7 @@ export default function PLNWarehouse() {
       // menimpa balik denahImageData yang baru diset di uploadDenahGudang sehingga gambar hilang.
       const ng2 = stateRef.current.gudangList.map(g => g.id === gudangId ? { ...g, denahOcrWords: words } : g);
       setGudangList(ng2);
-      await saveToCloud({ gudangList: ng2 });
+      await syncGudang(ng2);
 
       // Usulkan blok batch dari semua label yang terbaca (filter noise teks pendek/simbol)
       const suggestions = words
@@ -2589,7 +2646,7 @@ export default function PLNWarehouse() {
     }));
     const nl = [...lokasiList, ...baru];
     setLokasiList(nl);
-    await saveToCloud({ lokasiList: nl });
+    await syncLokasi(nl);
     setOcrSuggestions(s => s.filter(x => !checked.includes(x)));
     const dupMsg = duplikat.length ? ` (${duplikat.length} dilewati karena duplikat kode: ${duplikat.join(", ")})` : "";
     showToast((isTL ? `✅ ${baru.length} blok ditambahkan!` : `📨 ${baru.length} blok diajukan! Menunggu approval TL.`) + dupMsg);
@@ -2612,14 +2669,14 @@ export default function PLNWarehouse() {
   async function assignLokasiKoordinat(lokasiId, xPct, yPct, gudangId) {
     const nl = lokasiList.map(l=>l.id===lokasiId ? {...l, mapX:xPct, mapY:yPct, gudangId} : l);
     setLokasiList(nl);
-    await saveToCloud({lokasiList: nl});
+    await syncLokasi(nl);
     showToast(`📍 Koordinat Blok disimpan!`);
   }
 
   async function resetLokasiKoordinat(lokasiId) {
     const nl = lokasiList.map(l=>l.id===lokasiId ? {...l, mapX:null, mapY:null, gudangId:null} : l);
     setLokasiList(nl);
-    await saveToCloud({lokasiList: nl});
+    await syncLokasi(nl);
     showToast("Koordinat blok direset.");
   }
 
@@ -3654,6 +3711,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     const mj = filterJenis==="ALL" || s.jenisBarang===filterJenis;
     return ms && mj;
   });
+  const stockTotalPages = Math.max(1, Math.ceil(filteredStocks.length / stockPageSize));
+  const stockPageClamped = Math.min(stockPage, stockTotalPages);
+  const pagedStocks = filteredStocks.slice((stockPageClamped-1)*stockPageSize, stockPageClamped*stockPageSize);
   const filteredTxns = txns.filter(t=> filterStatus==="ALL" || t.status===filterStatus).sort((a,b)=>b.createdAt-a.createdAt);
 
   // ── DESIGN TOKENS ──
@@ -4169,7 +4229,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStocks.map(st=>{
+                  {pagedStocks.map(st=>{
                     const isLow = st.jenisBarang!=="Non-Stock" && st.qty<=st.minQty;
                     const noLokasi = !st.lokasiId;
                     const lok = lokasiList.find(l=>l.id===st.lokasiId);
@@ -4224,11 +4284,21 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                 onChange={async e=>{
                                   const newLokasiId = e.target.value;
                                   const lokSel = lokasiList.find(l=>l.id===newLokasiId);
-                                  const updated = {...st, lokasiMovePending:true, pendingLokasiId:newLokasiId, pendingLokasiKode:lokSel?.kode||"-", moveRequestedBy:currentUser.id, moveRequestedAt:Date.now()};
+                                  const pindahGudang = (lokSel?.gudangId||null) !== (lok?.gudangId||null);
+                                  let updated, msg;
+                                  if (pindahGudang) {
+                                    // Pindah ke Gudang lain wajib approval TL.
+                                    updated = {...st, lokasiMovePending:true, pendingLokasiId:newLokasiId, pendingLokasiKode:lokSel?.kode||"-", moveRequestedBy:currentUser.id, moveRequestedAt:Date.now()};
+                                    msg = `📨 Pemindahan ${st.name} ke Gudang lain (${lokSel?.kode||"-"}) diajukan! Menunggu approval TL.`;
+                                  } else {
+                                    // Pindah blok dalam Gudang yang sama: Admin langsung, tanpa approval.
+                                    updated = {...st, lokasiId:newLokasiId, lokasi:lokSel?.kode||"-", lokasiMovePending:false, pendingLokasiId:null, pendingLokasiKode:null};
+                                    msg = `📍 Blok ${st.name} → ${lokSel?.kode||"-"}`;
+                                  }
                                   const ns = stocks.map(s=>s.id===st.id?updated:s);
                                   setStocks(ns);
                                   await saveToCloud({stocks:ns});
-                                  showToast(`📨 Pemindahan blok ${st.name} → ${lokSel?.kode||"-"} diajukan! Menunggu approval TL.`);
+                                  showToast(msg);
                                 }}>
                                 <option value="">-- Pilih Blok --</option>
                                 {lokasiList.filter(l=>(l.gudangId ?? gudangList[0]?.id) === (stockGudangFilter[st.id] ?? gdg?.id ?? gudangList[0]?.id)).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
@@ -4284,6 +4354,22 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </tbody>
               </table>
             </div>
+            {filteredStocks.length > 0 && (
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted}}>
+                  Tampilkan
+                  <select style={{...sty.select,width:"auto",padding:"4px 8px",minHeight:"unset",fontSize:12}} value={stockPageSize} onChange={e=>setStockPageSize(Number(e.target.value))}>
+                    {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+                  </select>
+                  item per halaman — {filteredStocks.length} total
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button style={{...sty.btn("ghost","sm")}} disabled={stockPageClamped<=1} onClick={()=>setStockPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+                  <span style={{fontSize:12,color:C.muted,padding:"0 6px"}}>Halaman {stockPageClamped} / {stockTotalPages}</span>
+                  <button style={{...sty.btn("ghost","sm")}} disabled={stockPageClamped>=stockTotalPages} onClick={()=>setStockPage(p=>Math.min(stockTotalPages,p+1))}>Berikutnya →</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -5058,19 +5144,24 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
           <div style={{...sty.card,width:420}}>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:20}}>{lokasiModal==="edit"?"Edit Master Lokasi":"Tambah Lokasi Gudang Baru"}</h3>
-            <div style={{marginBottom:12}}><label style={sty.label}>Kode Lokasi</label><input style={sty.input} value={lokasiForm.kode||""} placeholder="cth: Rak A-1" onChange={e=>setLokasiForm(lf=>({...lf,kode:e.target.value}))}/></div>
-            <div style={{marginBottom:12}}><label style={sty.label}>Keterangan Area</label><input style={sty.input} value={lokasiForm.keterangan||""} placeholder="cth: Area Transformator" onChange={e=>setLokasiForm(lf=>({...lf,keterangan:e.target.value}))}/></div>
-            <div style={{marginBottom:12}}><label style={sty.label}>Kapasitas Maksimal</label><input style={sty.input} type="number" inputMode="decimal" value={lokasiForm.kapasitas||0} onChange={e=>setLokasiForm(lf=>({...lf,kapasitas:Number(e.target.value)}))}/></div>
+            {gudangList.length===0 ? (
+              <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Belum ada Master Gudang. Tambahkan Gudang dulu di menu "Master Data" → "Master Gudang" sebelum bisa mengisi Blok — data harus berjenjang: Gudang dulu, baru Blok.</div>
+            ) : (
+              <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#1e40af",marginBottom:16}}>ℹ️ Pilih Gudang dulu, baru isi data Blok-nya (berjenjang).</div>
+            )}
             <div style={{marginBottom:12}}>
-              <label style={sty.label}>Gudang</label>
-              <select style={sty.select} value={lokasiForm.gudangId||""} onChange={e=>setLokasiForm(lf=>({...lf,gudangId:e.target.value||null}))}>
-                <option value="">-- Belum di-assign --</option>
+              <label style={sty.label}>Gudang *</label>
+              <select style={sty.select} value={lokasiForm.gudangId||""} disabled={gudangList.length===0} onChange={e=>setLokasiForm(lf=>({...lf,gudangId:e.target.value||null}))}>
+                <option value="">-- Pilih Gudang --</option>
                 {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
               </select>
             </div>
+            <div style={{marginBottom:12}}><label style={sty.label}>Kode Lokasi (Blok)</label><input style={sty.input} value={lokasiForm.kode||""} placeholder="cth: Rak A-1" disabled={!lokasiForm.gudangId} onChange={e=>setLokasiForm(lf=>({...lf,kode:e.target.value}))}/></div>
+            <div style={{marginBottom:12}}><label style={sty.label}>Keterangan Area</label><input style={sty.input} value={lokasiForm.keterangan||""} placeholder="cth: Area Transformator" disabled={!lokasiForm.gudangId} onChange={e=>setLokasiForm(lf=>({...lf,keterangan:e.target.value}))}/></div>
+            <div style={{marginBottom:12}}><label style={sty.label}>Kapasitas Maksimal</label><input style={sty.input} type="number" inputMode="decimal" value={lokasiForm.kapasitas||0} disabled={!lokasiForm.gudangId} onChange={e=>setLokasiForm(lf=>({...lf,kapasitas:Number(e.target.value)}))}/></div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setLokasiModal(null)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={saveLokasi}>💾 Simpan ke Cloud</button>
+              <button style={{...sty.btn("primary"),flex:2}} disabled={!lokasiForm.gudangId} onClick={saveLokasi}>💾 Simpan ke Cloud</button>
             </div>
           </div>
         </div>
