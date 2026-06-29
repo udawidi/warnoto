@@ -33,6 +33,34 @@ const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createClient(SUPABASE_URL, SUP
 const AUTH_EMAIL_DOMAIN = "@warnoto.pln.local";
 function usernameToAuthEmail(username) { return `${(username||"").trim().toLowerCase()}${AUTH_EMAIL_DOMAIN}`; }
 
+// ─── RAG (Retrieval-Augmented Generation) — knowledge base AI Agent ────
+// Embedding pakai Cohere (embed-multilingual-v3.0, 1024 dim) — model
+// terpisah dari Groq (dipakai untuk chat), karena Groq tidak punya endpoint
+// embedding. Vector disimpan di Supabase (pgvector, tabel rag_chunks, lihat
+// schema.sql section 9), dicari via fungsi match_rag_chunks (cosine
+// similarity) saat user bertanya ke AI Agent.
+async function cohereEmbed(texts, inputType) {
+  const key = import.meta.env.VITE_COHERE_API_KEY;
+  if (!key) throw new Error("VITE_COHERE_API_KEY belum diisi di .env");
+  const resp = await fetch("https://api.cohere.com/v1/embed", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
+    body: JSON.stringify({ model: "embed-multilingual-v3.0", texts, input_type: inputType }),
+  });
+  if (!resp.ok) throw new Error(`Cohere embed gagal (${resp.status}): ${await resp.text()}`);
+  const data = await resp.json();
+  return data.embeddings; // array of vectors, sejajar urutan dengan `texts`
+}
+// Teks deskriptif 1 katalog — dipakai sebagai 1 "chunk" RAG.
+function buildKatalogRagContent(k) {
+  return `Material: ${k.name}. Nomor Katalog: ${k.katalog||"-"}. Kategori: ${k.category||"-"}. Jenis Barang: ${k.jenisBarang||"-"}. Satuan: ${k.satuan||"-"}. Keterangan: ${k.keterangan||"-"}.`;
+}
+// Ringkasan 1 transaksi TUG (approved) — dipakai sebagai 1 "chunk" RAG.
+function buildTxnRagContent(t) {
+  const namaBarang = (t.stockItems||[]).map(si=>si.namaBarang||si.name).filter(Boolean).join(", ") || "-";
+  return `Transaksi ${t.docType||"-"} (${t.id}) — Pekerjaan: ${t.namaPekerjaan||t.pekerjaan||"-"}. Lokasi: ${t.lokasiPekerjaan||"-"}. Tanggal: ${fmtDateOnly(t.createdAt)}. Status: ${t.status||"-"}. Barang: ${namaBarang}.`;
+}
+
 const JENIS_BARANG = ["Pre Memory", "Cadang", "Persediaan", "Persediaan Bursa", "ATTB", "Non-Stock", "Bongkaran"];
 const STATUS_MATERIAL_RETUR = ["Material Sisa Baru", "Bongkaran", "Bongkaran ATTB (MTU)"]; // used in TUG-10 returns
 // Maps a return status to the resulting Jenis Barang in Data Stok (null = leave as user's manual choice)
@@ -1916,6 +1944,8 @@ export default function PLNWarehouse() {
   const [chatHistory, setChatHistory] = useState([{ role:"ai", text:`Selamat datang di Sistem TUG Digital ${WAREHOUSE}! ⚡\n\nSaya siap membantu analisa stok, forecast kebutuhan material, dan rekomendasi pengadaan.\n\nTanya apa saja!` }]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+  const [ragSyncing, setRagSyncing] = useState(false);
+  const [ragLastSync, setRagLastSync] = useState(null);
   const chatEndRef = useRef(null);
   const petaWilayahDivRef = useRef(null);
   const petaWilayahMapRef = useRef(null);
@@ -3591,6 +3621,44 @@ export default function PLNWarehouse() {
     showToast(`✅ Draft TUG-8 dikonfirmasi! Status: PENDING, menunggu approval ${ROLES[requiredApprover]}.`);
   }
 
+  // Bangun ulang knowledge base RAG (tabel rag_chunks di Supabase) dari
+  // Master Katalog + transaksi TUG yang approved. Dipicu MANUAL lewat tombol
+  // di AI Agent (bukan otomatis tiap save) supaya tidak boros panggilan API
+  // embedding Cohere. Batasi transaksi ke 6 bulan terakhir supaya knowledge
+  // base tidak membengkak tanpa batas dari histori lama.
+  async function syncRagChunks() {
+    if (!supabase) { showToast("Supabase belum terkonfigurasi.", "error"); return; }
+    setRagSyncing(true);
+    try {
+      const enam_bulan_lalu = Date.now() - 180*24*60*60*1000;
+      const txnRelevant = txns.filter(t=>t.status==="APPROVED" && t.createdAt>=enam_bulan_lalu);
+      const chunks = [
+        ...katalogList.map(k=>({ id:`katalog_${k.id}`, source_type:"katalog", source_id:k.id, content:buildKatalogRagContent(k) })),
+        ...txnRelevant.map(t=>({ id:`txn_${t.id}`, source_type:"txn", source_id:t.id, content:buildTxnRagContent(t) })),
+      ];
+      if (chunks.length===0) { showToast("Tidak ada data untuk di-index.", "error"); setRagSyncing(false); return; }
+      // Cohere embed API maks ~96 teks per request — kirim per batch.
+      const BATCH = 90;
+      for (let i=0; i<chunks.length; i+=BATCH) {
+        const batch = chunks.slice(i, i+BATCH);
+        const vectors = await cohereEmbed(batch.map(c=>c.content), "search_document");
+        const rows = batch.map((c,idx)=>({ ...c, embedding: vectors[idx], updated_at: new Date().toISOString() }));
+        const { error } = await supabase.from("rag_chunks").upsert(rows, { onConflict: "id" });
+        if (error) throw error;
+      }
+      // Hapus chunk lama yang sumbernya sudah tidak ada lagi (katalog/txn terhapus)
+      const currentIds = new Set(chunks.map(c=>c.id));
+      const { data: existing } = await supabase.from("rag_chunks").select("id");
+      const toDelete = (existing||[]).filter(r=>!currentIds.has(r.id)).map(r=>r.id);
+      if (toDelete.length) await supabase.from("rag_chunks").delete().in("id", toDelete);
+      setRagLastSync(Date.now());
+      showToast(`✅ Knowledge Base RAG disinkron: ${chunks.length} item (${katalogList.length} katalog, ${txnRelevant.length} transaksi).`);
+    } catch (err) {
+      showToast("Gagal sinkron Knowledge Base: " + err.message, "error");
+    }
+    setRagSyncing(false);
+  }
+
   async function sendChat(overrideMsg) {
     const msg = overrideMsg || chatInput.trim();
     if (!msg || chatLoading) return;
@@ -3645,6 +3713,27 @@ export default function PLNWarehouse() {
     });
     const topPakai = Object.entries(usageSummary).sort((a,b)=>b[1].total-a[1].total).slice(0,10);
 
+    // ── RAG: cari chunk (katalog/transaksi) yang paling relevan secara makna
+    // dengan pertanyaan user — pelengkap snapshot di atas yang cuma top-N
+    // hardcoded. Kalau Cohere/knowledge base belum siap, lewati saja (tetap
+    // jawab pakai snapshot biasa) — RAG di sini bersifat tambahan, bukan
+    // syarat AI Agent bisa jalan.
+    let ragContextText = "Belum ada hasil pencarian (Knowledge Base RAG belum disinkron atau belum terkonfigurasi).";
+    try {
+      if (supabase && import.meta.env.VITE_COHERE_API_KEY) {
+        const [queryVector] = await cohereEmbed([msg], "search_query");
+        const { data: matches, error } = await supabase.rpc("match_rag_chunks", { query_embedding: queryVector, match_count: 8 });
+        if (error) throw error;
+        if (matches && matches.length>0) {
+          ragContextText = matches.map(m=>`- (relevansi ${(m.similarity*100).toFixed(0)}%) ${m.content}`).join("\n");
+        } else {
+          ragContextText = "Tidak ada hasil yang relevan ditemukan di Knowledge Base.";
+        }
+      }
+    } catch (e) {
+      ragContextText = `(Pencarian Knowledge Base gagal: ${e.message})`;
+    }
+
     const systemPrompt = `Kamu adalah AI Agent sistem manajemen gudang PLN bernama WARNOTO untuk ${WAREHOUSE}.
 
 INSTRUKSI FORMAT JAWABAN:
@@ -3683,7 +3772,11 @@ ${pendingDetailText}
 RENCANA KEDATANGAN (30 hari, ${rencana30.length} item):
 ${rencana30DetailText}
 
-Jawab pertanyaan user berdasarkan data di atas. Gunakan Bahasa Indonesia yang profesional.`;
+---
+HASIL PENCARIAN KNOWLEDGE BASE (paling relevan dengan pertanyaan user, dari RAG — bisa berisi data yang TIDAK ada di snapshot top-N di atas, mis. material di luar top 20/transaksi lebih lama):
+${ragContextText}
+
+Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pencarian Knowledge Base). Gunakan Bahasa Indonesia yang profesional.`;
 
     try {
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
@@ -5131,6 +5224,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             chatLoading={chatLoading}
             chatEndRef={chatEndRef}
             sendChat={sendChat}
+            syncRagChunks={syncRagChunks}
+            ragSyncing={ragSyncing}
+            ragLastSync={ragLastSync}
+            currentUser={currentUser}
             C={C} sty={sty}
           />
         )}
@@ -7223,7 +7320,7 @@ function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanga
 // ─── AI AGENT PAGE (Forecast + Chat terintegrasi) ────────────────────────
 function AIAgentPage({ enrichedStocks, katalogList, stocks, txns,
   rencanaKedatanganList, chatHistory, setChatHistory, chatInput, setChatInput,
-  chatLoading, chatEndRef, sendChat, C, sty }) {
+  chatLoading, chatEndRef, sendChat, syncRagChunks, ragSyncing, ragLastSync, currentUser, C, sty }) {
 
   const SUGGESTED = [
     "Analisa kondisi stok sekarang dan material yang perlu perhatian",
@@ -7236,9 +7333,19 @@ function AIAgentPage({ enrichedStocks, katalogList, stocks, txns,
 
   return (
     <div>
-      <div style={{marginBottom:16}}>
-        <h1 style={{fontSize:22,fontWeight:900}}>🤖 AI Agent</h1>
-        <p style={{color:C.muted,fontSize:13}}>Powered by Claude AI • Data real-time {WAREHOUSE} • Untuk prediksi stok/forecast, lihat menu "📈 Forecast Stok"</p>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:900}}>🤖 AI Agent</h1>
+          <p style={{color:C.muted,fontSize:13}}>Powered by Claude AI • Data real-time {WAREHOUSE} • Untuk prediksi stok/forecast, lihat menu "📈 Forecast Stok"</p>
+        </div>
+        {currentUser?.role==="ADMIN" && (
+          <div style={{textAlign:"right"}}>
+            <button style={{...sty.btn("ghost","sm"),opacity:ragSyncing?0.6:1}} disabled={ragSyncing} onClick={syncRagChunks}>
+              {ragSyncing?"Menyinkron...":"🔄 Sync Knowledge Base (RAG)"}
+            </button>
+            {ragLastSync && <div style={{fontSize:10,color:C.muted,marginTop:4}}>Terakhir sync: {fmtDate(ragLastSync)}</div>}
+          </div>
+        )}
       </div>
 
       {/* ── CHAT AI ── */}

@@ -299,3 +299,45 @@ drop policy if exists "Authenticated read tim_mutu" on tim_mutu;
 drop policy if exists "Authenticated write tim_mutu" on tim_mutu;
 create policy "Authenticated read tim_mutu" on tim_mutu for select using (auth.role() = 'authenticated');
 create policy "Authenticated write tim_mutu" on tim_mutu for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 9. RAG (Retrieval-Augmented Generation) — knowledge base AI Agent.
+--    Tiap baris = 1 "chunk" teks (deskripsi 1 katalog, atau ringkasan 1
+--    transaksi TUG) + vector embedding-nya (Cohere embed-multilingual-v3.0,
+--    1024 dimensi). Saat user tanya ke AI Agent, pertanyaannya di-embed lalu
+--    dicari (via fungsi match_rag_chunks) chunk yang paling relevan secara
+--    makna — bukan cuma top-20/10 hardcoded seperti context-stuffing yang
+--    sudah ada sebelumnya. Sinkron knowledge base ini DIPICU MANUAL (tombol
+--    "Sync Knowledge Base" di AI Agent, khusus Admin) — bukan otomatis tiap
+--    ada perubahan data, supaya tidak boros panggilan API embedding.
+-- ────────────────────────────────────────────────────────────
+create extension if not exists vector;
+
+create table if not exists rag_chunks (
+  id text primary key,           -- cth "katalog_KAT-1060011" atau "txn_TUG9-xxxxx"
+  source_type text not null,     -- 'katalog' | 'txn'
+  source_id text not null,       -- id katalog/txn aslinya, utk update/hapus saat sumber berubah
+  content text not null,         -- teks yang di-embed (yang juga dikirim balik ke AI sebagai konteks)
+  embedding vector(1024),
+  updated_at timestamptz default now()
+);
+create index if not exists idx_rag_chunks_source on rag_chunks(source_type, source_id);
+create index if not exists idx_rag_chunks_embedding on rag_chunks using hnsw (embedding vector_cosine_ops);
+
+alter table rag_chunks enable row level security;
+drop policy if exists "Authenticated read rag_chunks" on rag_chunks;
+drop policy if exists "Authenticated write rag_chunks" on rag_chunks;
+create policy "Authenticated read rag_chunks" on rag_chunks for select using (auth.role() = 'authenticated');
+create policy "Authenticated write rag_chunks" on rag_chunks for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- Pencarian similarity (cosine) — dipanggil dari App.jsx lewat supabase.rpc('match_rag_chunks', ...)
+create or replace function match_rag_chunks(query_embedding vector(1024), match_count int default 8)
+returns table(id text, source_type text, source_id text, content text, similarity float)
+language sql stable
+as $$
+  select id, source_type, source_id, content, 1 - (embedding <=> query_embedding) as similarity
+  from rag_chunks
+  where embedding is not null
+  order by embedding <=> query_embedding
+  limit match_count;
+$$;
