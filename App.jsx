@@ -626,8 +626,6 @@ function parseSAPRowsFromCSV(text) {
 }
 
 function parseSAPRowsFromXLSX(arrayBuffer) {
-  const XLSX = window.XLSX;
-  if (!XLSX) throw new Error("SheetJS (XLSX) tidak tersedia");
   const wb = XLSX.read(arrayBuffer, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
@@ -1824,6 +1822,7 @@ export default function PLNWarehouse() {
   const [gudangList, setGudangList] = useState([]);
   const [rencanaKedatanganList, setRencanaKedatanganList] = useState([]);
   const [opnameList, setOpnameList] = useState([]);
+  const [stockCountList, setStockCountList] = useState([]); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [approvalHistoryList, setApprovalHistoryList] = useState([]); // log keputusan approval (Lokasi/Blok, Pemindahan Stok, dkk) — TUG tetap diturunkan dari txns
   const [maturityAssessments, setMaturityAssessments] = useState([]); // riwayat asesmen Maturity Level Gudang UPT Surabaya, diisi manual oleh Admin
   const [docSeq, setDocSeq] = useState(196);
@@ -1836,6 +1835,8 @@ export default function PLNWarehouse() {
   const [filterJenis, setFilterJenis] = useState("ALL");
   const [stockPage, setStockPage] = useState(1);
   const [stockPageSize, setStockPageSize] = useState(10);
+  const [katalogPage, setKatalogPage] = useState(1);
+  const [katalogPageSize, setKatalogPageSize] = useState(10);
   const [filterStatus, setFilterStatus] = useState("ALL");
 
   const [stockModal, setStockModal] = useState(null);
@@ -1866,6 +1867,8 @@ export default function PLNWarehouse() {
   const [tugExpanded, setTugExpanded] = useState(false); // sidebar accordion state for TUG
   const [tugSubTab, setTugSubTab] = useState("TUG3"); // "TUG3" | "TUG10" (penerimaan) or "TUG9" | "TUG8" (pengeluaran)
   const [masterExpanded, setMasterExpanded] = useState(false); // sidebar accordion state for Master Data
+  const [opnameExpanded, setOpnameExpanded] = useState(false); // sidebar accordion state for Stock Opname & Stock Count (digabung 1 menu)
+  const [opnameSubTab, setOpnameSubTab] = useState("opname"); // "opname" | "stockCount"
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth <= 768);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // drawer sidebar di HP
   const [stockGudangFilter, setStockGudangFilter] = useState({}); // UI-only: stockId -> gudangId terpilih, untuk menyaring opsi dropdown Blok
@@ -1931,6 +1934,7 @@ export default function PLNWarehouse() {
       const cseq = await CLOUD.get("pln_docseq_v3");
       const crk = await CLOUD.get("pln_rencana_v1");
       const copn = await CLOUD.get("pln_opname_v1");
+      const csc = await CLOUD.get("pln_stockcount_v1");
       const cah = await CLOUD.get("pln_approval_history_v1");
       const cma = await CLOUD.get("pln_maturity_v1");
 
@@ -1982,6 +1986,7 @@ export default function PLNWarehouse() {
       setGudangList(cgdg);
       setRencanaKedatanganList(crk || []);
       setOpnameList(copn || []);
+      setStockCountList(csc || []);
       setApprovalHistoryList(cah || []);
       setMaturityAssessments(cma || []);
       setLoading(false);
@@ -1993,7 +1998,7 @@ export default function PLNWarehouse() {
   // to the latest React state via stateRef (always up to date, avoids stale
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
-  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, rencanaKedatanganList, opnameList, approvalHistoryList, maturityAssessments };
+  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments };
   // Catatan: satpamList/timMutuList/uitList/uptList/gudangList/lokasiList TIDAK
   // lagi ditulis di sini — sumber utamanya sekarang Supabase (tabel satpam/
   // tim_mutu/uit/upt/gudang/lokasi), ditulis langsung oleh masing-masing
@@ -2006,6 +2011,7 @@ export default function PLNWarehouse() {
     const kat = overrides.katalogList ?? stateRef.current.katalogList;
     const rk = overrides.rencanaKedatanganList ?? stateRef.current.rencanaKedatanganList;
     const opn = overrides.opnameList ?? stateRef.current.opnameList;
+    const sc = overrides.stockCountList ?? stateRef.current.stockCountList;
     const ah = overrides.approvalHistoryList ?? stateRef.current.approvalHistoryList;
     const ma = overrides.maturityAssessments ?? stateRef.current.maturityAssessments;
     setCloudSaving(true);
@@ -2016,6 +2022,7 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_docseq_v3", seq),
       CLOUD.set("pln_rencana_v1", rk),
       CLOUD.set("pln_opname_v1", opn),
+      CLOUD.set("pln_stockcount_v1", sc),
       CLOUD.set("pln_approval_history_v1", ah),
       CLOUD.set("pln_maturity_v1", ma),
     ]);
@@ -2025,6 +2032,7 @@ export default function PLNWarehouse() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatHistory]);
   useEffect(() => { setStockPage(1); }, [search, filterJenis, stockPageSize]);
+  useEffect(() => { setKatalogPage(1); }, [katalogPageSize]);
 
   // Peta Wilayah Gudang UPT Surabaya — render/refresh marker Leaflet tiap kali Dashboard dibuka atau data gudang berubah
   useEffect(() => {
@@ -2796,6 +2804,90 @@ export default function PLNWarehouse() {
     const nl = opnameList.filter(o=>o.id!==id);
     setOpnameList(nl); await saveToCloud({opnameList: nl});
     showToast("Opname dihapus.");
+  }
+
+  // ── STOCK COUNT (banding SAP vs Aplikasi) — read-only, TIDAK mengubah
+  // Data Stok/Master Katalog sama sekali (beda dari "Import dari SAP" yang
+  // memang sengaja mengganti Data Stok). Cuma membandingkan qty per material
+  // ber-status SAP, lalu setiap temuan selisih menunggu approval Asman
+  // (per item, bukan bulk — konsisten dengan aturan approval lain di app
+  // ini). Approval di sini TIDAK memicu aksi otomatis apa pun (tidak bikin
+  // draft TUG / tidak bikin Data Stok baru) — cuma menandai temuan itu valid
+  // atau tidak, rekomendasi tindak lanjutnya tetap teks saran saja.
+  function computeStockCountItems(sapRows) {
+    const TOL_PCT = 5; // toleransi sama dengan widget "Akurasi Material" sebelumnya
+    return (sapRows||[]).filter(r=>r.katalog).map(row => {
+      const kat = katalogList.find(k=>k.katalog===row.katalog);
+      const qtyApp = kat ? totalQtyForKatalog(kat.id, stocks) : 0;
+      const qtySap = row.qty || 0;
+      const selisih = qtyApp - qtySap;
+      const selisihPct = qtySap===0 ? (qtyApp===0?0:100) : Math.round(Math.abs(selisih)/qtySap*1000)/10;
+      let status = "AKURAT", rekomendasi = null;
+      if (selisihPct > TOL_PCT) {
+        if (selisih < 0) { status = "APP_KURANG"; rekomendasi = "TAMBAH_STOK"; }
+        else { status = "APP_LEBIH"; rekomendasi = "BUAT_TUG_KELUAR"; }
+      }
+      return {
+        id: `SCI-${uid().slice(-8)}`,
+        katalogId: kat?.id || null,
+        katalogKode: row.katalog,
+        nama: row.nama || kat?.name || "(tidak ada di Master Katalog)",
+        satuan: row.satuan || kat?.satuan || "-",
+        qtySap, qtyApp, selisih, selisihPct, status, rekomendasi,
+        approval: status==="AKURAT" ? null : "PENDING",
+        approvedBy: null, approvedAt: null, catatan: null,
+      };
+    });
+  }
+  // Upload CSV/XLSX hanya menghasilkan DRAFT (dihitung di memori, belum
+  // disimpan/belum terlihat siapa pun) — Admin me-review tiap item satu per
+  // satu (termasuk material baru yang belum ada di Master Katalog) dan boleh
+  // mencoret item yang tidak relevan, baru tombol "Simpan & Kirim ke Asman"
+  // di review yang benar-benar membuat sesi dan memunculkan approval Asman.
+  function previewStockCount(sapRows) {
+    return computeStockCountItems(sapRows);
+  }
+  async function saveStockCountSession(items) {
+    const akuratCount = items.filter(i=>i.status==="AKURAT").length;
+    const session = {
+      id: `SC-${uid().slice(-8)}`,
+      uploadedAt: Date.now(), uploadedBy: currentUser.id,
+      items,
+      summary: { totalItem: items.length, akuratCount, akuratPct: items.length ? Math.round(akuratCount/items.length*100) : 0 },
+    };
+    const nsc = [session, ...stockCountList].slice(0, 50); // riwayat dibatasi 50 sesi terakhir
+    setStockCountList(nsc);
+    await saveToCloud({ stockCountList: nsc });
+    showToast(`✅ Stock Count disimpan: ${items.length} item, ${akuratCount} akurat.`);
+    return session;
+  }
+  async function approveStockCountItem(sessionId, itemId, catatan) {
+    const session = stockCountList.find(s=>s.id===sessionId);
+    const item = session?.items.find(i=>i.id===itemId);
+    if (!item) return;
+    const nsc = stockCountList.map(s=>s.id!==sessionId ? s : {
+      ...s, items: s.items.map(it=>it.id!==itemId?it:{...it, approval:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), catatan:catatan||it.catatan})
+    });
+    setStockCountList(nsc); await saveToCloud({stockCountList: nsc});
+    await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, requestedBy:null, requestedAt:session.uploadedAt});
+    showToast("✅ Temuan Stock Count disetujui.");
+  }
+  async function rejectStockCountItem(sessionId, itemId, catatan) {
+    const session = stockCountList.find(s=>s.id===sessionId);
+    const item = session?.items.find(i=>i.id===itemId);
+    if (!item) return;
+    const nsc = stockCountList.map(s=>s.id!==sessionId ? s : {
+      ...s, items: s.items.map(it=>it.id!==itemId?it:{...it, approval:"REJECTED", approvedBy:currentUser.id, approvedAt:Date.now(), catatan:catatan||it.catatan})
+    });
+    setStockCountList(nsc); await saveToCloud({stockCountList: nsc});
+    await logApprovalHistory({type:"STOCK_COUNT", decision:"REJECTED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, requestedBy:null, requestedAt:session.uploadedAt});
+    showToast("❌ Temuan Stock Count ditolak.");
+  }
+  async function deleteStockCountSession(id) {
+    if (!window.confirm("Hapus sesi Stock Count ini?")) return;
+    const nsc = stockCountList.filter(s=>s.id!==id);
+    setStockCountList(nsc); await saveToCloud({stockCountList: nsc});
+    showToast("Sesi Stock Count dihapus.");
   }
 
   async function saveRencana(rencana) {
@@ -3704,6 +3796,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     return false;
   });
   const pendingTxns = txns.filter(t=>t.status==="PENDING");
+  const stockCountPendingCount = stockCountList.reduce((a,s)=>a+s.items.filter(i=>i.approval==="PENDING").length, 0);
   const lowStocks = enrichedStocks.filter(s=>s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty);
   const totalVal = enrichedStocks.reduce((a,s)=>a+s.qty*s.price,0);
   const filteredStocks = enrichedStocks.filter(s=>{
@@ -3714,6 +3807,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const stockTotalPages = Math.max(1, Math.ceil(filteredStocks.length / stockPageSize));
   const stockPageClamped = Math.min(stockPage, stockTotalPages);
   const pagedStocks = filteredStocks.slice((stockPageClamped-1)*stockPageSize, stockPageClamped*stockPageSize);
+  const katalogTotalPages = Math.max(1, Math.ceil(katalogList.length / katalogPageSize));
+  const katalogPageClamped = Math.min(katalogPage, katalogTotalPages);
+  const pagedKatalog = katalogList.slice((katalogPageClamped-1)*katalogPageSize, katalogPageClamped*katalogPageSize);
   const filteredTxns = txns.filter(t=> filterStatus==="ALL" || t.status===filterStatus).sort((a,b)=>b.createdAt-a.createdAt);
 
   // ── DESIGN TOKENS ──
@@ -3801,7 +3897,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"transaction",icon:"🔄",label:"TUG"},
     ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length}] : []),
     {id:"peta",icon:"🗺️",label:"Peta Gudang"},
-    {id:"opname",icon:"📋",label:"Stock Opname"},
+    {id:"opname",icon:"📋",label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"rencana",icon:"📅",label:"Rencana Kedatangan"},
     {id:"forecastStok",icon:"📈",label:"Forecast Stok"},
     {id:"ai",icon:"🤖",label:"AI Agent"},
@@ -3919,9 +4015,45 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </div>
               );
             }
+            if (n.id === "opname") {
+              // Stock Opname & Stock Count digabung 1 menu: accordion parent — click expands, sub-items navigate
+              const isActive = tab === "opname";
+              return (
+                <div key="opname">
+                  <button
+                    style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:isActive?"rgba(255,255,255,0.15)":"transparent",color:isActive?"white":"rgba(255,255,255,0.65)",fontSize:13,fontWeight:isActive?700:400,marginBottom:2,textAlign:"left"}}
+                    onClick={()=>setOpnameExpanded(e=>!e)}
+                  >
+                    <span>{n.icon}</span>
+                    <span style={{flex:1}}>{n.label}</span>
+                    {n.badge>0 && <span style={{background:"#dc2626",color:"white",borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:800,marginRight:4}}>{n.badge}</span>}
+                    <span style={{fontSize:10,opacity:0.7,transition:"transform 0.2s",transform:opnameExpanded?"rotate(90deg)":"rotate(0deg)"}}>▶</span>
+                  </button>
+                  {opnameExpanded && (
+                    <div style={{marginBottom:4}}>
+                      {[
+                        {id:"opname",icon:"📋",label:"Stock Opname"},
+                        {id:"stockCount",icon:"📊",label:"Stock Count",badge:stockCountPendingCount},
+                      ].map(sub=>{
+                        const subActive = isActive && opnameSubTab===sub.id;
+                        return (
+                          <button
+                            key={sub.id}
+                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
+                            onClick={()=>{setTab("opname"); setOpnameSubTab(sub.id); setMobileMenuOpen(false);}}
+                          >
+                            <span>{sub.icon}</span> {sub.label} {sub.badge>0 && <span style={{background:"#dc2626",color:"white",borderRadius:20,padding:"1px 6px",fontSize:9,fontWeight:800,marginLeft:4}}>{sub.badge}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
             // Regular nav item
             return (
-              <button key={n.id} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:tab===n.id?"rgba(255,255,255,0.15)":"transparent",color:tab===n.id?"white":"rgba(255,255,255,0.65)",fontSize:13,fontWeight:tab===n.id?700:400,marginBottom:2,textAlign:"left"}} onClick={()=>{setTab(n.id); if(n.id!=="transaction") setTugExpanded(false); if(n.id!=="master") setMasterExpanded(false); setMobileMenuOpen(false);}}>
+              <button key={n.id} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"9px 12px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:tab===n.id?"rgba(255,255,255,0.15)":"transparent",color:tab===n.id?"white":"rgba(255,255,255,0.65)",fontSize:13,fontWeight:tab===n.id?700:400,marginBottom:2,textAlign:"left"}} onClick={()=>{setTab(n.id); if(n.id!=="transaction") setTugExpanded(false); if(n.id!=="master") setMasterExpanded(false); if(n.id!=="opname") setOpnameExpanded(false); setMobileMenuOpen(false);}}>
                 <span>{n.icon}</span> {n.label}
                 {n.badge>0 && <span style={{marginLeft:"auto",background:"#dc2626",color:"white",borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:800}}>{n.badge}</span>}
               </button>
@@ -4047,41 +4179,26 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             )}
           </div>
 
-          {/* ── AKURASI MATERIAL (SAP vs Aplikasi) ── */}
+          {/* ── STOCK COUNT (SAP vs Aplikasi) — ringkasan sesi terakhir ── */}
           {(()=>{
-            const withBaseline = katalogList.filter(k=>k.sapBaselineQty!=null);
-            const items = withBaseline.map(k=>{
-              const qtyApp = totalQtyForKatalog(k.id, stocks);
-              const baseline = k.sapBaselineQty || 0;
-              const selisihPct = baseline===0 ? (qtyApp===0?0:100) : Math.abs(qtyApp-baseline)/baseline*100;
-              return { katalog:k, qtyApp, baseline, selisihPct, akurat: selisihPct<=5 };
-            });
-            const akuratCount = items.filter(i=>i.akurat).length;
-            const pct = items.length ? Math.round((akuratCount/items.length)*100) : 0;
-            const mismatch = items.filter(i=>!i.akurat).sort((a,b)=>b.selisihPct-a.selisihPct);
+            const latest = stockCountList[0];
             return (
               <div style={{...sty.card,marginTop:16}}>
-                <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>📊 Akurasi Material (SAP vs Aplikasi)</div>
-                {items.length===0 ? (
-                  <div style={{fontSize:12,color:C.muted}}>Belum ada baseline SAP. Lakukan "Import dari SAP (PEMAT)" di Data Stok dulu.</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <div style={{fontWeight:800,fontSize:15}}>📊 Stock Count (SAP vs Aplikasi)</div>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>{setTab("opname"); setOpnameSubTab("stockCount");}}>Lihat detail →</button>
+                </div>
+                {!latest ? (
+                  <div style={{fontSize:12,color:C.muted}}>Belum pernah ada sesi Stock Count. Jalankan di menu "Stock Count" → upload CSV SAP.</div>
                 ) : (
                   <>
-                    <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:10}}>
-                      <span style={{fontSize:30,fontWeight:900,color:pct>=90?C.green:pct>=70?C.yellow:C.red}}>{pct}%</span>
-                      <span style={{fontSize:12,color:C.muted}}>{akuratCount} dari {items.length} item akurat (toleransi selisih ≤5%)</span>
+                    <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:6}}>
+                      <span style={{fontSize:30,fontWeight:900,color:latest.summary.akuratPct>=90?C.green:latest.summary.akuratPct>=70?C.yellow:C.red}}>{latest.summary.akuratPct}%</span>
+                      <span style={{fontSize:12,color:C.muted}}>{latest.summary.akuratCount} dari {latest.summary.totalItem} item akurat (toleransi ≤5%) — sesi {fmtDate(latest.uploadedAt)}</span>
                     </div>
-                    {mismatch.length>0 && (
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700,marginBottom:6,color:C.red}}>⚠️ {mismatch.length} item dengan selisih &gt;5%:</div>
-                        <div style={{maxHeight:220,overflowY:"auto"}}>
-                          {mismatch.slice(0,30).map(i=>(
-                            <div key={i.katalog.id} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
-                              <span style={{flex:1}}>{i.katalog.name}</span>
-                              <span style={{color:C.muted,marginRight:10}}>SAP {fmtNum(i.baseline)} / App {fmtNum(i.qtyApp)}</span>
-                              <span style={{fontWeight:700,color:C.red}}>{i.selisihPct.toFixed(1)}%</span>
-                            </div>
-                          ))}
-                        </div>
+                    {latest.items.some(i=>i.approval==="PENDING") && (
+                      <div style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",borderRadius:8,padding:"6px 10px"}}>
+                        ⏳ {latest.items.filter(i=>i.approval==="PENDING").length} temuan menunggu approval Asman
                       </div>
                     )}
                   </>
@@ -4140,22 +4257,42 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         </>
         )}
 
-                {/* STOCK OPNAME */}
+                {/* STOCK OPNAME & STOCK COUNT (digabung 1 menu, dipilih lewat sub-tab sidebar) */}
         {tab==="opname" && (
-          <StockOpnameTab
-            opnameList={opnameList}
-            stocks={stocks}
-            katalogList={katalogList}
-            currentUser={currentUser}
-            users={users}
-            sty={sty} C={C}
-            saveOpname={saveOpname}
-            submitOpname={submitOpname}
-            approveOpname_Asman={approveOpname_Asman}
-            approveOpname_Manager={approveOpname_Manager}
-            rejectOpname={rejectOpname}
-            deleteOpname={deleteOpname}
-          />
+          <div>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              {[{id:"opname",label:"📋 Stock Opname"},{id:"stockCount",label:"📊 Stock Count"}].map(s=>(
+                <button key={s.id} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${opnameSubTab===s.id?C.accent:C.border}`,background:opnameSubTab===s.id?C.accent:"white",color:opnameSubTab===s.id?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}} onClick={()=>setOpnameSubTab(s.id)}>{s.label}</button>
+              ))}
+            </div>
+            {opnameSubTab==="opname" ? (
+              <StockOpnameTab
+                opnameList={opnameList}
+                stocks={stocks}
+                katalogList={katalogList}
+                currentUser={currentUser}
+                users={users}
+                sty={sty} C={C}
+                saveOpname={saveOpname}
+                submitOpname={submitOpname}
+                approveOpname_Asman={approveOpname_Asman}
+                approveOpname_Manager={approveOpname_Manager}
+                rejectOpname={rejectOpname}
+                deleteOpname={deleteOpname}
+              />
+            ) : (
+              <StockCountTab
+                stockCountList={stockCountList}
+                currentUser={currentUser}
+                sty={sty} C={C}
+                previewStockCount={previewStockCount}
+                saveStockCountSession={saveStockCountSession}
+                approveStockCountItem={approveStockCountItem}
+                rejectStockCountItem={rejectStockCountItem}
+                deleteStockCountSession={deleteStockCountSession}
+              />
+            )}
+          </div>
         )}
 
         {/* RENCANA KEDATANGAN BARANG */}
@@ -4406,7 +4543,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     </tr>
                   </thead>
                   <tbody>
-                    {katalogList.map(k=>{
+                    {pagedKatalog.map(k=>{
                       const sampleFoto = stocks.find(s=>s.katalogId===k.id && s.img)?.img || null;
                       const bs = getSAPBadgeStyle(k.katalog);
                       return (
@@ -4439,6 +4576,22 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </table>
               </div>
               )
+            )}
+            {stockSubTab==="katalog" && katalogList.length>0 && (
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,flexWrap:"wrap",gap:10}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted}}>
+                  Tampilkan
+                  <select style={{...sty.select,width:"auto",padding:"4px 8px",minHeight:"unset",fontSize:12}} value={katalogPageSize} onChange={e=>setKatalogPageSize(Number(e.target.value))}>
+                    {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+                  </select>
+                  item per halaman — {katalogList.length} total
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <button style={{...sty.btn("ghost","sm")}} disabled={katalogPageClamped<=1} onClick={()=>setKatalogPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+                  <span style={{fontSize:12,color:C.muted,padding:"0 6px"}}>Halaman {katalogPageClamped} / {katalogTotalPages}</span>
+                  <button style={{...sty.btn("ghost","sm")}} disabled={katalogPageClamped>=katalogTotalPages} onClick={()=>setKatalogPage(p=>Math.min(katalogTotalPages,p+1))}>Berikutnya →</button>
+                </div>
+              </div>
             )}
 
 
@@ -8116,6 +8269,169 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(()=>URL.revokeObjectURL(url),2000);
   }
+}
+
+function StockCountTab({ stockCountList, currentUser, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, rejectStockCountItem, deleteStockCountSession }) {
+  const [uploading, setUploading] = useState(false);
+  const [expandedId, setExpandedId] = useState(stockCountList[0]?.id || null);
+  const [catatanDraft, setCatatanDraft] = useState({}); // itemId -> teks catatan sedang diketik
+  const [draftItems, setDraftItems] = useState(null); // hasil baca file, BELUM disimpan — masih bisa direview/dicoret per item
+  const [saving, setSaving] = useState(false);
+  const [rejectingItemId, setRejectingItemId] = useState(null); // itemId yang sedang dikonfirmasi penolakannya (bisa Batal)
+
+  async function handleFile(e) {
+    const f = e.target.files[0]; if (!f) return;
+    setUploading(true);
+    try {
+      const sapRows = await parseSAPFile(f);
+      const items = previewStockCount(sapRows).map(it => ({ ...it, included: true }));
+      setDraftItems(items);
+    } catch (err) {
+      alert("Gagal membaca file: " + err.message);
+    }
+    setUploading(false);
+    e.target.value = "";
+  }
+
+  function toggleDraftItem(id) {
+    setDraftItems(items => items.map(it => it.id===id ? {...it, included: !it.included} : it));
+  }
+
+  async function confirmSaveDraft() {
+    const included = draftItems.filter(it => it.included).map(({included, ...it}) => it);
+    setSaving(true);
+    const session = await saveStockCountSession(included);
+    setSaving(false);
+    setDraftItems(null);
+    setExpandedId(session.id);
+  }
+
+  const REKOMENDASI_LABEL = {
+    TAMBAH_STOK: "➕ Disarankan: tambah stok baru di Data Stok (selisih kurang dari SAP)",
+    BUAT_TUG_KELUAR: "📤 Disarankan: buat TUG-9/8 (kemungkinan ada pemakaian belum tercatat)",
+  };
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:900}}>Stock Count</h1>
+          <p style={{color:C.muted,fontSize:13}}>Banding qty SAP vs Aplikasi untuk material ber-status SAP — temuan selisih perlu approval Asman.</p>
+        </div>
+        {currentUser.role==="ADMIN" && !draftItems && (
+          <label style={{...sty.btn("primary"),cursor:uploading?"default":"pointer",opacity:uploading?0.6:1}}>
+            {uploading ? "Memproses..." : "📂 Upload CSV/XLSX SAP"}
+            <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
+          </label>
+        )}
+      </div>
+      <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#1d4ed8",marginBottom:16}}>
+        ℹ️ Stock Count ini cuma membaca & membandingkan — <b>tidak mengubah</b> Data Stok atau Master Katalog. Rekomendasi (tambah stok / buat TUG) cuma saran, tidak otomatis membuat apa pun.
+      </div>
+
+      {/* DRAFT REVIEW — hasil upload belum tersimpan, belum terlihat Asman.
+          Admin review satu per satu (termasuk material baru yang belum ada
+          di Master Katalog) sebelum klik Simpan & Kirim. */}
+      {draftItems && (
+        <div style={{...sty.card,marginBottom:20,border:`2px solid #f59e0b`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontWeight:800,fontSize:15}}>📝 Review Draft Stock Count ({draftItems.length} item)</div>
+            <button style={sty.btn("ghost","sm")} onClick={()=>setDraftItems(null)}>✕ Batal</button>
+          </div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Centang item yang mau disertakan. Item yang akurat tetap ditampilkan sebagai informasi, tidak akan masuk approval Asman.</div>
+          <div style={{maxHeight:380,overflowY:"auto",marginBottom:14}}>
+            {draftItems.map(item => (
+              <label key={item.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 10px",borderBottom:`1px solid ${C.border}`,cursor:"pointer",opacity:item.included?1:0.45}}>
+                <input type="checkbox" checked={item.included} onChange={()=>toggleDraftItem(item.id)} style={{marginTop:3}}/>
+                <div style={{flex:1}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                    <span style={{fontWeight:700,fontSize:12}}>{item.nama}{!item.katalogId && <span style={{marginLeft:6,fontSize:9,fontWeight:800,color:"#7c3aed",background:"#f3e8ff",padding:"1px 6px",borderRadius:10}}>MATERIAL BARU</span>}</span>
+                    {item.status==="AKURAT"
+                      ? <span style={{fontSize:11,fontWeight:700,color:C.green}}>✓ Akurat</span>
+                      : <span style={{fontSize:11,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>}
+                  </div>
+                  <div style={{fontSize:10,color:C.muted}}>No. Katalog: {item.katalogKode} • SAP {fmtNum(item.qtySap)} {item.satuan} • App {fmtNum(item.qtyApp)} {item.satuan}</div>
+                  {item.rekomendasi && <div style={{fontSize:10,color:"#1d4ed8",marginTop:2}}>{REKOMENDASI_LABEL[item.rekomendasi]}</div>}
+                </div>
+              </label>
+            ))}
+          </div>
+          <button style={{...sty.btn("primary"),width:"100%"}} disabled={saving} onClick={confirmSaveDraft}>
+            {saving ? "Menyimpan..." : `💾 Simpan & Kirim ke Asman (${draftItems.filter(i=>i.included).length} item)`}
+          </button>
+        </div>
+      )}
+
+      {stockCountList.length===0 ? (
+        !draftItems && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada sesi Stock Count. {currentUser.role==="ADMIN" && "Klik \"Upload CSV/XLSX SAP\" untuk mulai."}</div>
+      ) : stockCountList.map(session => {
+        const isOpen = expandedId===session.id;
+        const mismatch = session.items.filter(i=>i.status!=="AKURAT").sort((a,b)=>b.selisihPct-a.selisihPct);
+        return (
+          <div key={session.id} style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",cursor:"pointer",background:"#f9fafb"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
+              <div>
+                <div style={{fontWeight:800,fontSize:14}}>{fmtDate(session.uploadedAt)} — {session.summary.totalItem} item dibandingkan</div>
+                <div style={{fontSize:11,color:C.muted}}>{session.summary.akuratCount} akurat • {mismatch.length} selisih{mismatch.some(i=>i.approval==="PENDING")&&` • ${mismatch.filter(i=>i.approval==="PENDING").length} menunggu approval`}</div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:22,fontWeight:900,color:session.summary.akuratPct>=90?C.green:session.summary.akuratPct>=70?C.yellow:C.red}}>{session.summary.akuratPct}%</span>
+                <span style={{fontSize:14,color:C.muted}}>{isOpen?"▲":"▼"}</span>
+              </div>
+            </div>
+            {isOpen && (
+              <div style={{padding:"0 16px 16px"}}>
+                {currentUser.role==="ADMIN" && (
+                  <div style={{textAlign:"right",marginBottom:8}}>
+                    <button style={sty.btn("danger","sm")} onClick={()=>deleteStockCountSession(session.id)}>🗑️ Hapus Sesi</button>
+                  </div>
+                )}
+                {mismatch.length===0 ? (
+                  <div style={{fontSize:12,color:C.green,fontWeight:700}}>✅ Semua item akurat, tidak ada selisih &gt;5%.</div>
+                ) : mismatch.map(item => (
+                  <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:8,background:item.approval==="PENDING"?"#fffbeb":item.approval==="APPROVED"?"#f0fdf4":"#fef2f2"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:13}}>{item.nama}</div>
+                        <div style={{fontSize:10,color:C.muted}}>No. Katalog: {item.katalogKode}{!item.katalogId && " — tidak ada di Master Katalog"}</div>
+                      </div>
+                      <span style={{fontSize:11,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626",whiteSpace:"nowrap"}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>
+                    </div>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:6}}>SAP: {fmtNum(item.qtySap)} {item.satuan} • Aplikasi: {fmtNum(item.qtyApp)} {item.satuan}</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#1d4ed8",marginBottom:8}}>{REKOMENDASI_LABEL[item.rekomendasi]}</div>
+                    {item.approval==="PENDING" ? (
+                      currentUser.role==="ASMAN" ? (
+                        <div>
+                          <input style={{...sty.input,fontSize:12,marginBottom:6}} placeholder="Catatan (opsional)" value={catatanDraft[item.id]||""} onChange={e=>setCatatanDraft(d=>({...d,[item.id]:e.target.value}))}/>
+                          {rejectingItemId===item.id ? (
+                            <div style={{display:"flex",gap:8}}>
+                              <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>{rejectStockCountItem(session.id, item.id, catatanDraft[item.id]); setRejectingItemId(null);}}>❌ Konfirmasi Tolak</button>
+                              <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>setRejectingItemId(null)}>Batal</button>
+                            </div>
+                          ) : (
+                            <div style={{display:"flex",gap:8}}>
+                              <button style={{...sty.btn("success","sm"),flex:1}} onClick={()=>approveStockCountItem(session.id, item.id, catatanDraft[item.id])}>✓ Setuju</button>
+                              <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>setRejectingItemId(item.id)}>✕ Tolak</button>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div style={{fontSize:11,fontWeight:700,color:"#92400e"}}>⏳ Menunggu approval Asman</div>
+                      )
+                    ) : (
+                      <div style={{fontSize:11,fontWeight:700,color:item.approval==="APPROVED"?C.green:C.red}}>
+                        {item.approval==="APPROVED"?"✓ Disetujui":"✕ Ditolak"} oleh Asman{item.catatan && ` — "${item.catatan}"`}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, sty, C, saveRencana, deleteRencana, aiExtractKontrak }) {
