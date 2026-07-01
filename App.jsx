@@ -74,7 +74,148 @@ const CAN_CREATE = ["ADMIN", "TL"];
 // ADMIN-created -> needs TL approve -> Asman auto-approved alongside
 // TL-created     -> needs ASMAN approve -> directly APPROVED
 
+const HEAVY_EQUIPMENT_RAW = `
+HE-001|Surabaya|Gudang Ketintang|TRUCK CRANE|Angkat|Nissan|8 TON|||Baik|
+HE-002|Surabaya|Gudang Ketintang|TRUCK CRANE|Angkat Angkut|Hino|3 TON|||Service Time|
+HE-003|Surabaya|GI Sukolilo|TRUCK CRANE|Angkat Angkut|Isuzu|3 TON||2024|Baik|
+HE-004|Surabaya|Gudang Ketintang|FORKLIFT|Angkat Angkut|Patria|3 TON|||Baik|
+HE-005|Surabaya|Gudang Ketintang|FORKLIFT|Angkat Angkut|Nissan|5 TON|||Baik|
+HE-006|Surabaya|Gudang Ketintang|MANLIFT|Angkat|Haulotte|-|||Baik|
+HE-007|Surabaya|Gudang Ketintang|MOBILE MANLIFT|Angkat|Hino|-|||Baik|
+HE-008|Surabaya|Gudang Ketintang|HANDLIFT|Angkat|Krisbow|3 TON||2025|Baik|
+HE-009|Surabaya|Gudang Ketintang|HANDLIFT|Angkat|Magna|3 TON||2021|Baik|
+HE-010|Surabaya|Gudang Wonorejo|HANDLIFT|Angkat|HEMNEX|3 TON||2026|Baik|
+HE-011|Surabaya|Gudang Wonorejo|HANDLIFT|Angkat|HEMNEX|3 TON||2026|Baik|
+HE-012|Surabaya|Gudang Ketintang|TRUCK|Angkut|Rangger|-|||Baik|
+HE-013|Probolinggo|KANTOR UPT PROBOLINGGO|TRUCK CRANE 5 TON|ANGKAT  ANGKUT|TADANO|5000|||BAIK|PERPANJANGAN
+HE-014|Probolinggo|KANTOR UPT PROBOLINGGO|TRUCK CRANE 3 TON|ANGKAT  ANGKUT|TADANO|3000|||BAIK|PERPANJANGAN
+HE-015|Probolinggo|GUDANG BANGIL|FORKLIFT|ANGKAT|TOYOTA|5000|||BAIK|PERPANJANGAN
+HE-016|Probolinggo|GUDANG BANGIL|HAND PALLET|ANGKAT|KRISBOW|2000|||KERUSAKAN PISTON|
+HE-017|Probolinggo|GUDANG BANGIL|HAND STACKER|ANGKAT|CAR LIFT|2000|||BAIK|
+HE-018|Probolinggo|GUDANG BANGIL|HAND STACKER SEMI ELECTRIC|ANGKAT|GONON|2000|||BAIK|
+HE-019|Bali|KAPAL|TROLLEY||KRISBOW|300 KG|||BAIK|
+HE-020|Bali|KAPAL|TROLLEY||KRISBOW|300 KG|10544133||BAIK|
+HE-021|Bali|KAPAL|DRUM HANDLING TROLLEY||KRISBOW||050087-0025-0825||BAIK|
+HE-022|Bali|KAPAL|HYDRAULIC HAND PALLET||DALTON|2 TON|||BAIK|
+HE-023|Bali|KAPAL|HYDRAULIC HAND PALLET||KRISBOW|3 TON|||BAIK|
+HE-024|Bali|KAPAL|HYDRAULIC HAND PALLET||TOYO|5 TON|||BAIK|
+HE-025|Bali|KAPAL|HYDRAULIC HAND STACKER||KRISBOW|2 TON x 1.5 M|051845-0094-0825||BAIK|
+HE-026|Bali|KAPAL|MANLIFT||HINO|200 KG|DK 9002 FB||BAIK|
+HE-027|Bali|KAPAL|FORKLIFT||KOMATSU|1 TON|||BAIK|
+HE-028|Bali|KAPAL|FORKLIFT||TCM|4 TON|59204586||BAIK|
+HE-029|Bali|KAPAL|CRANE||TOYOTA|2 TON|DK 8126 FE||BAIK|
+HE-030|Bali|KAPAL|TRUCK CRANE||ISUZU|5 TON|DK 8214 JF||BAIK|
+HE-031|Madiun|GUDANG PLTD|CRANE|ANGKAT / ANGKUT|HINO / SANNY PALFINGER|4 TON|NR:FF173MA14295 ;NM: H07CEJ15745|1990|NORMAL / KONDISI FISIK 60%|
+HE-032|Madiun|GUDANG PLTD|CRANE|ANGKAT / ANGKUT|ISUZU GIGA / SANNY PALFINGER|10 TON|NR:MHCFVZ34URJ000690; NM:6HK1F108452|2024|NORMAL / KONDISI FISIK BAGUS|
+HE-033|Madiun|GUDANG PLTD|FORKLIFT|ANGKAT|TOYOTA|5 TON||2022|NORMAL / KONDISI FISIK BAGUS|
+HE-034|Madiun|GUDANG ULTG BABAT|FORKLIFT|ANGKAT|PATRIA|2 TON||2012|NORMAL / KONDISI FISIK 60%|
+HE-035|Madiun|GUDANG PLTD / GUDANG DOLOPO|HAND STACKER|ANGKAT|NOBLELIFT|2 TON||2023|NORMAL / KONDISI FISIK BAGUS|
+HE-036|Madiun|GUDANG PLTD / GUDANG DOLOPO|HAND STACKER|ANGKAT|NOBLELIFT|2 TON||2023|NORMAL / KONDISI FISIK BAGUS|
+HE-037|Madiun|GUDANG PLTD / GUDANG DOLOPO|HANDLIFT|ANGKAT|KRISBOW|2 TON||2022|GUDANG PLTD NORMAL / GUDANG DOLOPO BOCOR SIL OIL|
+HE-038|Madiun|GUDANG PLTD / GUDANG DOLOPO|HANDLIFT|ANGKAT|KRISBOW|2 TON||2022|GUDANG PLTD NORMAL / GUDANG DOLOPO BOCOR SIL OIL|
+HE-039|Gresik|Gudang Tandes|TRUCK CRANE|Angkat Angkut|Tadano|3 TON|KE2298|2020|Baik|28 May 2026
+HE-040|Gresik|Gudang Tandes|TRUCK CRANE|Angkat Angkut|Isuzu|8 TON|1100183287|2026|Baik|
+HE-041|Gresik|Gudang Tandes|FORKLIFT|Angkat Angkut|Toyota|5 TON|8FD50N-22639|2023|Baik|28 May 2026
+HE-042|Gresik|Gudang Tandes|FORKLIFT|Angkat Angkut|Komatsu|3 TON|413225-P||Butuh Peremajaan|28 May 2026
+HE-043|Gresik|Gudang Tandes|HAND PALLET|Angkat|Krisbow||||Baik|
+HE-044|Gresik|Gudang Tandes|TROLLEY|Angkat|Krisbow||||Baik|
+HE-045|Malang|Gudang Polehan|TRUCK CRANE||Hino|5 TON||2024|Baik|June 2026
+HE-046|Malang|Gudang Polehan|FORKLIFT||Patria|3 TON|||Butuh Peremajaan|
+HE-047|Malang|Gudang Polehan|HAND PALLET||Krisbow|3 TON||2025|Baik|
+HE-048|Malang|Gudang Polehan|HAND STACKER||Wipro|3 TON||2025|Baik|
+HE-049|Malang|Gudang Polehan|TRUCK||Hino Ranger|-|||Baik|
+HE-050|Malang|Gudang Krian|TRUCK CRANE||Isuzu|8 TON||2018|Butuh Perbaikan|
+HE-051|Malang|Gudang Mojokerto|TRUCK CRANE||Mitsubishi Fuso|5 TON|||Butuh Peremajaan|
+`;
+
+function normalizeHeavyEquipmentJenis(jenis, nama) {
+  const raw = String(jenis || "").toUpperCase().replace(/\s+/g, " ").trim();
+  if (raw.includes("ANGKAT") && raw.includes("ANGKUT")) return "Angkat Angkut";
+  if (raw.includes("ANGKUT")) return "Angkut";
+  if (raw.includes("ANGKAT")) return "Angkat";
+  const n = String(nama || "").toUpperCase();
+  if (n.includes("TRUCK") || n.includes("TROLLEY")) return "Angkut";
+  return "Angkat";
+}
+
+function heavyEquipmentStatusFromKondisi(kondisi) {
+  const s = String(kondisi || "").toUpperCase();
+  if (s.includes("PEREMAJAAN")) return "BUTUH_PEREMAJAAN";
+  if (s.includes("PERBAIKAN") || s.includes("KERUSAKAN") || s.includes("BOCOR")) return "BUTUH_PERBAIKAN";
+  if (s.includes("SERVICE")) return "PERLU_SERVICE";
+  return "LAYAK";
+}
+
+const DEFAULT_HEAVY_EQUIPMENT = HEAVY_EQUIPMENT_RAW.trim().split("\n").map(line => {
+  const [id, upt, lokasi, nama, jenis, merkType, kapasitas, nomorSeri, tahun, kondisi, suratIzinAlat] = line.split("|");
+  return {
+    id, upt, lokasi, nama,
+    jenis: normalizeHeavyEquipmentJenis(jenis, nama),
+    merkType, kapasitas, nomorSeri, tahun, kondisi,
+    statusAlat: heavyEquipmentStatusFromKondisi(kondisi),
+    suratIzinAlat,
+    foto: null,
+    availabilityStatus: "TERSEDIA",
+    source: "KAPASITAS GUDANG UIT JBM.xlsx - ALAT ANGKAT ANGKUT",
+    createdAt: 1751245200000,
+  };
+});
+
 // ─── CLOUD STORAGE (auto-detect: Artifact window.storage vs localStorage) ──
+function getHeavyEquipmentLoanOwnerUpt(loan) {
+  return loan?.ownerUpt || loan?.fromUpt || loan?.requiredApproverUpt || "";
+}
+
+function getHeavyEquipmentLoanRequesterUpt(loan) {
+  return loan?.requesterUpt || loan?.toUpt || "";
+}
+
+function getHeavyEquipmentLoanStartDate(loan) {
+  return loan?.tanggalAmbil || loan?.tanggalMulai || "";
+}
+
+function getHeavyEquipmentLoanReturnDate(loan) {
+  return loan?.tanggalKembali || loan?.tanggalSelesai || "";
+}
+
+function getHeavyEquipmentLoanJobName(loan) {
+  return loan?.namaPekerjaan || loan?.keperluan || "";
+}
+
+function normalizeHeavyEquipmentLoanStatus(status) {
+  if (status === "PENDING_ASMAN") return "PENDING_OWNER_ASMAN";
+  if (status === "APPROVED") return "DIPINJAM";
+  return status || "PENDING_OWNER_ASMAN";
+}
+
+function isPendingHeavyEquipmentLoan(loan) {
+  return normalizeHeavyEquipmentLoanStatus(loan?.status) === "PENDING_OWNER_ASMAN";
+}
+
+function getHeavyEquipmentLoanRuntimeStatus(loan, now = Date.now()) {
+  const normalized = normalizeHeavyEquipmentLoanStatus(loan?.status);
+  if (["SELESAI", "REJECTED", "PENDING_OWNER_ASMAN"].includes(normalized)) return normalized;
+  const plannedReturn = getHeavyEquipmentLoanReturnDate(loan);
+  if (plannedReturn) {
+    const returnEnd = new Date(`${plannedReturn}T23:59:59`).getTime();
+    if (!Number.isNaN(returnEnd) && returnEnd < now) return "OVERDUE";
+  }
+  return normalized;
+}
+
+function getUserUptScope(user) {
+  return user?.upt || user?.uptName || user?.uptKode || user?.uptId || "";
+}
+
+function canApproveHeavyEquipmentLoan(user, loan) {
+  if (user?.role !== "ASMAN") return false;
+  const userUpt = getUserUptScope(user);
+  const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
+  // Data user existing belum punya UPT binding. Jika kosong, Asman tetap bisa approve
+  // agar fitur usable sampai profil UPT ditambahkan.
+  return !userUpt || !ownerUpt || userUpt === ownerUpt;
+}
+
 const CLOUD = {
   async get(key) {
     try {
@@ -1853,6 +1994,14 @@ export default function PLNWarehouse() {
   const [stockCountList, setStockCountList] = useState([]); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [approvalHistoryList, setApprovalHistoryList] = useState([]); // log keputusan approval (Lokasi/Blok, Pemindahan Stok, dkk) — TUG tetap diturunkan dari txns
   const [maturityAssessments, setMaturityAssessments] = useState([]); // riwayat asesmen Maturity Level Gudang UPT Surabaya, diisi manual oleh Admin
+  const [heavyEquipmentList, setHeavyEquipmentList] = useState([]);
+  const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState([]);
+  const [materialCadangData, setMaterialCadangData] = useState({ imports:[], analyses:[], applyHistory:[] });
+  const [maraReference, setMaraReference] = useState(null); // session-only, tidak disimpan ke cloud/localStorage
+  const [catalogMasterRef, setCatalogMasterRef] = useState(null); // session-only hidden cataloger reference
+  const [gudangCapacityList, setGudangCapacityList] = useState([]);
+  const [gudangCapacityImports, setGudangCapacityImports] = useState([]);
+  const [migratedTug15History, setMigratedTug15History] = useState([]);
   const [docSeq, setDocSeq] = useState(196);
   const [loading, setLoading] = useState(true);
   const [cloudSaving, setCloudSaving] = useState(false);
@@ -1967,6 +2116,12 @@ export default function PLNWarehouse() {
       const csc = await CLOUD.get("pln_stockcount_v1");
       const cah = await CLOUD.get("pln_approval_history_v1");
       const cma = await CLOUD.get("pln_maturity_v1");
+      const che = await CLOUD.get("pln_heavy_equipment_v1");
+      const chel = await CLOUD.get("pln_heavy_equipment_loans_v1");
+      const cmcd = await CLOUD.get("pln_material_cadang_v1");
+      const cgcap = await CLOUD.get("pln_gudang_capacity_v1");
+      const cgcapi = await CLOUD.get("pln_gudang_capacity_imports_v1");
+      const cmig = await CLOUD.get("pln_migrated_tug15_v1");
 
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
@@ -2019,6 +2174,12 @@ export default function PLNWarehouse() {
       setStockCountList(csc || []);
       setApprovalHistoryList(cah || []);
       setMaturityAssessments(cma || []);
+      setHeavyEquipmentList(che || DEFAULT_HEAVY_EQUIPMENT);
+      setHeavyEquipmentLoans(chel || []);
+      setMaterialCadangData(cmcd || { imports:[], analyses:[], applyHistory:[] });
+      setGudangCapacityList(cgcap || []);
+      setGudangCapacityImports(cgcapi || []);
+      setMigratedTug15History(cmig || []);
       setLoading(false);
     }
     loadCloud();
@@ -2028,7 +2189,7 @@ export default function PLNWarehouse() {
   // to the latest React state via stateRef (always up to date, avoids stale
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
-  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments };
+  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, gudangCapacityList, gudangCapacityImports, migratedTug15History };
   // Catatan: satpamList/timMutuList/uitList/uptList/gudangList/lokasiList TIDAK
   // lagi ditulis di sini — sumber utamanya sekarang Supabase (tabel satpam/
   // tim_mutu/uit/upt/gudang/lokasi), ditulis langsung oleh masing-masing
@@ -2044,6 +2205,12 @@ export default function PLNWarehouse() {
     const sc = overrides.stockCountList ?? stateRef.current.stockCountList;
     const ah = overrides.approvalHistoryList ?? stateRef.current.approvalHistoryList;
     const ma = overrides.maturityAssessments ?? stateRef.current.maturityAssessments;
+    const he = overrides.heavyEquipmentList ?? stateRef.current.heavyEquipmentList;
+    const hel = overrides.heavyEquipmentLoans ?? stateRef.current.heavyEquipmentLoans;
+    const mcd = overrides.materialCadangData ?? stateRef.current.materialCadangData;
+    const gcap = overrides.gudangCapacityList ?? stateRef.current.gudangCapacityList;
+    const gcapi = overrides.gudangCapacityImports ?? stateRef.current.gudangCapacityImports;
+    const mig = overrides.migratedTug15History ?? stateRef.current.migratedTug15History;
     setCloudSaving(true);
     await Promise.all([
       CLOUD.set("pln_stocks_v4", s),
@@ -2055,6 +2222,12 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_stockcount_v1", sc),
       CLOUD.set("pln_approval_history_v1", ah),
       CLOUD.set("pln_maturity_v1", ma),
+      CLOUD.set("pln_heavy_equipment_v1", he),
+      CLOUD.set("pln_heavy_equipment_loans_v1", hel),
+      CLOUD.set("pln_material_cadang_v1", mcd),
+      CLOUD.set("pln_gudang_capacity_v1", gcap),
+      CLOUD.set("pln_gudang_capacity_imports_v1", gcapi),
+      CLOUD.set("pln_migrated_tug15_v1", mig),
     ]);
     setLastSaved(Date.now());
     setCloudSaving(false);
@@ -2986,6 +3159,84 @@ export default function PLNWarehouse() {
     const f = e.target.files[0]; if (!f) return;
     const r = new FileReader(); r.onload = ev => setter(ev.target.result); r.readAsDataURL(f);
   }
+  async function saveHeavyEquipmentPhoto(equipmentId, img) {
+    const next = heavyEquipmentList.map(eq => eq.id === equipmentId ? { ...eq, foto: img, fotoUpdatedAt: Date.now(), fotoUpdatedBy: currentUser.id } : eq);
+    setHeavyEquipmentList(next);
+    await saveToCloud({heavyEquipmentList: next});
+    showToast("Foto alat disimpan.");
+  }
+  async function createHeavyEquipmentLoan(form) {
+    if (!["ADMIN","TL"].includes(currentUser.role)) { showToast("Hanya Admin/TL yang bisa mengajukan peminjaman alat.","error"); return; }
+    if (!form.equipmentId || !form.requesterUpt || !form.namaPekerjaan?.trim() || !form.tanggalAmbil || !form.tanggalKembali || !form.keperluan?.trim()) {
+      showToast("Lengkapi alat, UPT peminjam, nama pekerjaan, tanggal, dan keperluan.","error"); return;
+    }
+    const alat = heavyEquipmentList.find(eq=>eq.id===form.equipmentId);
+    if (!alat) { showToast("Alat tidak ditemukan.","error"); return; }
+    if (alat.availabilityStatus === "DIPINJAM") { showToast("Alat sedang dipinjam, tidak bisa diajukan lagi.","error"); return; }
+    if (alat.upt === form.requesterUpt) { showToast("Peminjaman harus antar UPT. Pilih UPT peminjam yang berbeda dari UPT pemilik alat.","error"); return; }
+    const loan = {
+      id: `HLOAN-${uid().slice(-8)}`,
+      equipmentId: form.equipmentId,
+      ownerUpt: alat.upt,
+      requesterUpt: form.requesterUpt,
+      fromUpt: alat.upt,
+      toUpt: form.requesterUpt,
+      namaPekerjaan: form.namaPekerjaan.trim(),
+      tanggalAmbil: form.tanggalAmbil,
+      tanggalKembali: form.tanggalKembali,
+      tanggalMulai: form.tanggalAmbil,
+      tanggalSelesai: form.tanggalKembali,
+      keperluan: form.keperluan.trim(),
+      catatan: form.catatan || "",
+      status: "PENDING_OWNER_ASMAN",
+      requestedBy: currentUser.id,
+      requestedAt: Date.now(),
+      requiredApprover: "ASMAN",
+      requiredApproverUpt: alat.upt,
+    };
+    const nextLoans = [loan, ...heavyEquipmentLoans];
+    setHeavyEquipmentLoans(nextLoans);
+    await saveToCloud({heavyEquipmentLoans: nextLoans});
+    showToast("Peminjaman alat diajukan. Menunggu approval Asman.");
+  }
+  async function approveHeavyEquipmentLoan(loanId, catatan="") {
+    const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
+    if (!loan || !isPendingHeavyEquipmentLoan(loan)) return;
+    if (!canApproveHeavyEquipmentLoan(currentUser, loan)) { showToast("Hanya Asman UPT pemilik alat yang bisa approve peminjaman ini.","error"); return; }
+    const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
+    const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
+    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ownerUpt, requesterUpt, status:"DIPINJAM", approvedBy:currentUser.id, approvedAt:Date.now(), catatanApproval:catatan } : l);
+    const nextEquipment = heavyEquipmentList.map(eq=>eq.id===loan.equipmentId ? { ...eq, availabilityStatus:"DIPINJAM", activeLoanId:loanId, borrowedToUpt:requesterUpt, borrowedJobName:getHeavyEquipmentLoanJobName(loan), borrowedUntil:getHeavyEquipmentLoanReturnDate(loan) } : eq);
+    setHeavyEquipmentLoans(nextLoans);
+    setHeavyEquipmentList(nextEquipment);
+    await saveToCloud({heavyEquipmentLoans: nextLoans, heavyEquipmentList: nextEquipment});
+    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"APPROVED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
+    showToast("Peminjaman alat disetujui.");
+  }
+  async function rejectHeavyEquipmentLoan(loanId, reason) {
+    if (!reason?.trim()) { showToast("Masukkan alasan penolakan.","error"); return; }
+    const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
+    if (!loan || !isPendingHeavyEquipmentLoan(loan)) return;
+    if (!canApproveHeavyEquipmentLoan(currentUser, loan)) { showToast("Hanya Asman UPT pemilik alat yang bisa menolak peminjaman ini.","error"); return; }
+    const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
+    const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
+    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ownerUpt, requesterUpt, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason.trim() } : l);
+    setHeavyEquipmentLoans(nextLoans);
+    await saveToCloud({heavyEquipmentLoans: nextLoans});
+    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"REJECTED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
+    showToast("Peminjaman alat ditolak.", "error");
+  }
+  async function completeHeavyEquipmentLoan(loanId) {
+    const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
+    if (!loan || !["DIPINJAM","OVERDUE"].includes(getHeavyEquipmentLoanRuntimeStatus(loan))) return;
+    if (!["ADMIN","TL","ASMAN"].includes(currentUser.role)) { showToast("Role kamu tidak bisa menandai alat kembali.","error"); return; }
+    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, status:"SELESAI", returnedBy:currentUser.id, returnedAt:Date.now() } : l);
+    const nextEquipment = heavyEquipmentList.map(eq=>eq.id===loan.equipmentId ? { ...eq, availabilityStatus:"TERSEDIA", activeLoanId:null, borrowedToUpt:null, borrowedJobName:null, borrowedUntil:null } : eq);
+    setHeavyEquipmentLoans(nextLoans);
+    setHeavyEquipmentList(nextEquipment);
+    await saveToCloud({heavyEquipmentLoans: nextLoans, heavyEquipmentList: nextEquipment});
+    showToast("Alat ditandai sudah kembali.");
+  }
   function setMaterialPhoto(stockId, dataUrl) {
     setTxnForm(tf => {
       const existing = tf.fotoMaterial.filter(fm => fm.stockId !== stockId);
@@ -3890,6 +4141,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   });
   const pendingTxns = txns.filter(t=>t.status==="PENDING");
   const stockCountPendingCount = stockCountList.reduce((a,s)=>a+s.items.filter(i=>i.approval==="PENDING").length, 0);
+  const heavyEquipmentPendingCount = heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)).length;
+  const heavyEquipmentOverdueCount = heavyEquipmentLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE").length;
   const lowStocks = enrichedStocks.filter(s=>s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty);
   const totalVal = enrichedStocks.reduce((a,s)=>a+s.qty*s.price,0);
   const filteredStocks = enrichedStocks.filter(s=>{
@@ -3988,10 +4241,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"stock",icon:"📦",label:"Data Stok"},
     {id:"master",icon:"🗂️",label:"Master Data"},
     {id:"transaction",icon:"🔄",label:"TUG"},
-    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length}] : []),
-    {id:"peta",icon:"🗺️",label:"Peta Gudang"},
+    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0)}] : []),
+    {id:"heavyEquipment",icon:"🚜",label:"Alat Berat",badge:(currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"opname",icon:"📋",label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"rencana",icon:"📅",label:"Rencana Kedatangan"},
+    {id:"kapasitasGudang",icon:"📐",label:"Kapasitas Gudang"},
     {id:"forecastStok",icon:"📈",label:"Forecast Stok"},
     {id:"ai",icon:"🤖",label:"AI Agent"},
   ];
@@ -4091,6 +4345,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         {id:"uit",icon:"🏢",label:"Master UIT"},
                         {id:"upt",icon:"📍",label:"Master UPT"},
                         {id:"gudang",icon:"🏭",label:"Master Gudang"},
+                        ...(currentUser.role==="ADMIN" ? [{id:"migrasi",icon:"🔄",label:"Migrasi Data"}] : []),
                       ].map(sub=>{
                         const subActive = isActive && stockSubTab===sub.id;
                         return (
@@ -4165,7 +4420,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 const data = {
                   stocks, katalogList, lokasiList, txns, docSeq,
                   satpamList, timMutuList, uitList, uptList, gudangList,
-                  rencanaKedatanganList, opnameList,
+                  rencanaKedatanganList, opnameList, heavyEquipmentList, heavyEquipmentLoans,
                   exportedAt: new Date().toISOString(),
                   version: "v31"
                 };
@@ -4200,6 +4455,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   if(data.gudangList) setGudangList(data.gudangList);
                   if(data.rencanaKedatanganList) setRencanaKedatanganList(data.rencanaKedatanganList);
                   if(data.opnameList) setOpnameList(data.opnameList);
+                  if(data.heavyEquipmentList) setHeavyEquipmentList(data.heavyEquipmentList);
+                  if(data.heavyEquipmentLoans) setHeavyEquipmentLoans(data.heavyEquipmentLoans);
                   await saveToCloud({
                     stocks:data.stocks||stocks, katalogList:data.katalogList||katalogList,
                     lokasiList:data.lokasiList||lokasiList, txns:data.txns||txns,
@@ -4208,6 +4465,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     uptList:data.uptList||uptList, gudangList:data.gudangList||gudangList,
                     rencanaKedatanganList:data.rencanaKedatanganList||rencanaKedatanganList,
                     opnameList:data.opnameList||opnameList,
+                    heavyEquipmentList:data.heavyEquipmentList||heavyEquipmentList,
+                    heavyEquipmentLoans:data.heavyEquipmentLoans||heavyEquipmentLoans,
                   });
                   showToast("✅ Data berhasil di-import!");
                   e.target.value="";
@@ -4246,6 +4505,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             topN={topN} setTopN={setTopN}
             pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode}
             C={C} sty={sty} setTab={setTab}
+            heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
           />
         )}
         {tab==="dashboard" && currentUser.role==="ASMAN" && (
@@ -4256,6 +4516,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             topN={topN} setTopN={setTopN}
             pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode}
             C={C} sty={sty} setTab={setTab}
+            heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
           />
         )}
         {tab==="dashboard" && !["MANAGER","ASMAN"].includes(currentUser.role) && (
@@ -4346,6 +4607,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             topN={topN} setTopN={setTopN}
             pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode}
             C={C} sty={sty} setTab={setTab} currentUser={currentUser}
+            heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
           />
         </>
         )}
@@ -4388,15 +4650,20 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           </div>
         )}
 
-        {/* RENCANA KEDATANGAN BARANG */}
-        {/* PETA GUDANG */}
-        {tab==="peta" && (
-          <PetaGudangTab
+        {/* KAPASITAS GUDANG (termasuk Peta Gudang sebagai sub-tab) */}
+        {tab==="kapasitasGudang" && (
+          <KapasitasGudangTab
+            gudangCapacityList={gudangCapacityList}
+            setGudangCapacityList={setGudangCapacityList}
+            gudangCapacityImports={gudangCapacityImports}
+            setGudangCapacityImports={setGudangCapacityImports}
             gudangList={gudangList}
             lokasiList={lokasiList}
             stocks={enrichedStocks}
-            sty={sty} C={C}
             currentUser={currentUser}
+            sty={sty} C={C}
+            saveToCloud={saveToCloud}
+            showToast={showToast}
           />
         )}
 
@@ -4609,10 +4876,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div>
                 <h1 style={{fontSize:22,fontWeight:900}}>
-                  {stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="uit"?"Master UIT (Unit Induk)":stockSubTab==="upt"?"Master UPT (Unit Pelaksana)":"Master Gudang"}
+                  {stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="uit"?"Master UIT (Unit Induk)":stockSubTab==="upt"?"Master UPT (Unit Pelaksana)":stockSubTab==="migrasi"?"🔄 Migrasi Data SAP/Non-SAP":"Master Gudang"}
                 </h1>
                 <p style={{color:C.muted,fontSize:13}}>
-                  {stockSubTab==="katalog"?`${katalogList.length} jenis barang terdaftar`:stockSubTab==="satpam"?`${satpamList.length} satpam terdaftar`:stockSubTab==="timmutu"?`${timMutuList.length} paket tim mutu`:stockSubTab==="uit"?`${uitList.length} UIT terdaftar`:stockSubTab==="upt"?`${uptList.length} UPT terdaftar`:`${gudangList.length} gudang • ${lokasiList.length} blok lokasi terdaftar`}
+                  {stockSubTab==="katalog"?`${katalogList.length} jenis barang terdaftar`:stockSubTab==="satpam"?`${satpamList.length} satpam terdaftar`:stockSubTab==="timmutu"?`${timMutuList.length} paket tim mutu`:stockSubTab==="uit"?`${uitList.length} UIT terdaftar`:stockSubTab==="upt"?`${uptList.length} UPT terdaftar`:stockSubTab==="migrasi"?"Cutover terkontrol data stok dari SAP — wajib backup sebelum apply":`${gudangList.length} gudang • ${lokasiList.length} blok lokasi terdaftar`}
                 </p>
               </div>
               {currentUser.role==="ADMIN" && stockSubTab==="katalog" && <button style={sty.btn("primary")} onClick={openAddKatalog}>+ Tambah Katalog Barang</button>}
@@ -4947,6 +5214,27 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 )}
               </div>
             )}
+
+            {/* ── SUB-TAB: MIGRASI DATA (ADMIN only) ── */}
+            {stockSubTab==="migrasi" && currentUser.role==="ADMIN" && (
+              <MigrasiDataTab
+                stocks={stocks}
+                katalogList={katalogList}
+                lokasiList={lokasiList}
+                txns={txns}
+                migratedTug15History={migratedTug15History}
+                setMigratedTug15History={setMigratedTug15History}
+                maraReference={maraReference}
+                setMaraReference={setMaraReference}
+                currentUser={currentUser}
+                sty={sty} C={C}
+                saveToCloud={saveToCloud}
+                setStocks={setStocks}
+                setKatalogList={setKatalogList}
+                setTxns={setTxns}
+                showToast={showToast}
+              />
+            )}
           </div>
         )}
         {tab==="transaction" && (
@@ -5065,6 +5353,23 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           </div>
         )}
 
+        {tab==="heavyEquipment" && (
+          <HeavyEquipmentTabV2
+            equipmentList={heavyEquipmentList}
+            loans={heavyEquipmentLoans}
+            currentUser={currentUser}
+            users={users}
+            sty={sty}
+            C={C}
+            handleImg={handleImg}
+            savePhoto={saveHeavyEquipmentPhoto}
+            createLoan={createHeavyEquipmentLoan}
+            approveLoan={approveHeavyEquipmentLoan}
+            rejectLoan={rejectHeavyEquipmentLoan}
+            completeLoan={completeHeavyEquipmentLoan}
+          />
+        )}
+
         {/* APPROVAL — semua notifikasi approval (TUG, Lokasi/Blok, Pemindahan Stok, dkk) dikumpulkan di sini, dipisah per-bagian + riwayat di bawah */}
         {tab==="approval" && ["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) && (
           <div>
@@ -5162,6 +5467,34 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             )}
 
             {/* ── BAGIAN: Transaksi TUG (TUG-3/4/5/7/8/9/10, dkk) ── */}
+            {currentUser.role==="ASMAN" && heavyEquipmentLoans.some(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)) && (
+              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🚜 Peminjaman Alat Berat ({heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)).length})</div>
+                {heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)).map(l=>{
+                  const alat = heavyEquipmentList.find(eq=>eq.id===l.equipmentId);
+                  const pemohon = users.find(u=>u.id===l.requestedBy);
+                  const ownerUpt = getHeavyEquipmentLoanOwnerUpt(l);
+                  const requesterUpt = getHeavyEquipmentLoanRequesterUpt(l);
+                  return (
+                    <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700}}>{alat?.nama||l.equipmentId} • {ownerUpt} → {requesterUpt}</div>
+                        <div style={{fontSize:11,color:C.muted}}>{getHeavyEquipmentLoanStartDate(l)} s/d {getHeavyEquipmentLoanReturnDate(l)} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
+                        <div style={{fontSize:11,color:C.text,marginTop:2}}>{getHeavyEquipmentLoanJobName(l)}{l.keperluan ? ` • ${l.keperluan}` : ""}</div>
+                      </div>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        <button style={sty.btn("primary","sm")} onClick={()=>approveHeavyEquipmentLoan(l.id)}>✓ Setuju</button>
+                        <button style={sty.btn("danger","sm")} onClick={()=>{
+                          const rejectReason = window.prompt("Alasan penolakan peminjaman alat?");
+                          if (rejectReason) rejectHeavyEquipmentLoan(l.id, rejectReason);
+                        }}>✕ Tolak</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <div style={{fontWeight:800,fontSize:14,margin:"4px 0 10px"}}>🔄 Transaksi TUG</div>
             <ApprovalTab
               pendingTxns={myPendingApprovals}
@@ -5183,7 +5516,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 decidedAt: t.status==="REJECTED" ? t.rejectedAt : t.approvedAt,
               }));
               const combined = [...approvalHistoryList, ...histTUG].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt).slice(0,40);
-              const typeLabel = {LOKASI:"📍 Lokasi/Blok", STOCK_MOVE:"📦 Pemindahan Stok", STOCK_EDIT:"✏️ Edit Stok", STOCK_DELETE:"🗑️ Hapus Stok", TUG:"🔄 TUG"};
+              const typeLabel = {LOKASI:"📍 Lokasi/Blok", STOCK_MOVE:"📦 Pemindahan Stok", STOCK_EDIT:"✏️ Edit Stok", STOCK_DELETE:"🗑️ Hapus Stok", HEAVY_EQUIPMENT_LOAN:"🚜 Peminjaman Alat", TUG:"🔄 TUG"};
               return (
                 <div style={{...sty.card,marginTop:16}}>
                   <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📜 Riwayat Approval</div>
@@ -5246,6 +5579,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             forecastDrillDown={forecastDrillDown}
             setTab={setTab}
             sendChat={sendChat}
+            materialCadangData={materialCadangData}
+            setMaterialCadangData={setMaterialCadangData}
+            maraReference={maraReference}
+            setMaraReference={setMaraReference}
+            catalogMasterRef={catalogMasterRef}
+            setCatalogMasterRef={setCatalogMasterRef}
+            saveToCloud={saveToCloud}
+            showToast={showToast}
+            currentUser={currentUser}
             C={C} sty={sty}
           />
         )}
@@ -6973,7 +7315,48 @@ function summarizeTxnDashboard(t, stocks, lokasiList) {
 }
 
 // ─── DASHBOARD DEFAULT (Admin, TL, Viewer, Pengadaan) ────────────────────
-function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser }) {
+function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [], C, sty, setTab }) {
+  const overdueLoans = loans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE");
+  const pendingLoans = loans.filter(isPendingHeavyEquipmentLoan);
+  const borrowedLoans = loans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="DIPINJAM");
+  const availableCount = equipmentList.filter(e=>e.availabilityStatus!=="DIPINJAM").length;
+  const issueCount = equipmentList.filter(e=>["PERLU_SERVICE","BUTUH_PERBAIKAN","BUTUH_PEREMAJAAN"].includes(e.statusAlat)).length;
+  if (equipmentList.length === 0 && loans.length === 0) return null;
+  return (
+    <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${overdueLoans.length?C.red:C.accent}`,cursor:"pointer"}} onClick={()=>setTab("heavyEquipment")}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:900}}>🚜 Ringkasan Alat Berat</div>
+          <div style={{fontSize:11,color:C.muted}}>Status peminjaman, ketersediaan, dan reminder overdue lintas UPT.</div>
+        </div>
+        <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("heavyEquipment");}}>Buka Menu</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8}}>
+        {[
+          {label:"Total", val:equipmentList.length, color:C.accent},
+          {label:"Tersedia", val:availableCount, color:C.green},
+          {label:"Dipinjam", val:borrowedLoans.length, color:"#c2410c"},
+          {label:"Overdue", val:overdueLoans.length, color:overdueLoans.length?C.red:C.green},
+          {label:"Pending", val:pendingLoans.length, color:pendingLoans.length?C.yellow:C.green},
+          {label:"Perlu Tindakan", val:issueCount, color:issueCount?C.red:C.green},
+        ].map(k=>(
+          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+            <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
+            <div style={{fontSize:20,fontWeight:900,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+      {overdueLoans.length > 0 && (
+        <div style={{marginTop:10,fontSize:11,color:C.red,fontWeight:700}}>
+          {overdueLoans.slice(0,2).map(l=>`${getHeavyEquipmentLoanRequesterUpt(l)} - ${getHeavyEquipmentLoanJobName(l) || l.equipmentId}`).join(" • ")}
+          {overdueLoans.length>2 ? ` • +${overdueLoans.length-2} lainnya` : ""}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser, heavyEquipmentList, heavyEquipmentLoans }) {
   const [dashModal, setDashModal] = useState(null); // null | "totalItem" | "nilai" | "kritis" | "tindakan"
 
   const jenisBreakdown = JENIS_BARANG.map(jb => ({
@@ -7007,6 +7390,7 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
         ))}
       </div>
       <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
+      <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab}/>
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:20}}>
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
@@ -7108,7 +7492,7 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
 }
 
 // ─── DASHBOARD ASMAN (Operasional UPT Surabaya) ──────────────────────────
-function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab }) {
+function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const stokKritis = stocks.filter(s=>s.minQty>0 && s.qty<=s.minQty);
   const akanHabis = getMaterialAkanHabis(stocks, katalogList, txns, 5);
@@ -7148,6 +7532,7 @@ function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPe
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:16}}>
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
+          <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab}/>
           {/* Material Kritis */}
           {stokKritis.length>0 && (
             <div style={{...sty.card,borderLeft:`4px solid #dc2626`,marginBottom:16}}>
@@ -7187,7 +7572,7 @@ function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPe
 }
 
 // ─── DASHBOARD MANAGER (Eksekutif Multi-UPT) ─────────────────────────────
-function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab }) {
+function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiCadang = stocks.filter(s=>s.jenisBarang==="Cadang").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiPersediaan = stocks.filter(s=>s.jenisBarang==="Persediaan").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
@@ -7245,6 +7630,7 @@ function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanga
       </div>
 
       <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
+      <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab}/>
 
       {/* Tabel per UPT */}
       <div style={{...sty.card,marginBottom:20}}>
@@ -7412,7 +7798,11 @@ function AIAgentPage({ enrichedStocks, katalogList, stocks, txns,
 // ─── FORECAST STOK PAGE — heuristik lokal + AI Groq (kiri) vs ML Prophet (kanan), berdampingan ──
 function ForecastStokPage({ katalogList, stocks, txns, forecastDetail, setForecastDetail,
   forecastDetailResult, setForecastDetailResult, forecastDetailLoading, forecastDrillDown,
-  setTab, sendChat, C, sty }) {
+  setTab, sendChat,
+  materialCadangData, setMaterialCadangData, maraReference, setMaraReference,
+  catalogMasterRef, setCatalogMasterRef, saveToCloud, showToast, currentUser,
+  C, sty }) {
+  const [forecastView, setForecastView] = useState("forecast"); // "forecast" | "material_cadang"
 
   // Prediksi ML (Prophet, dihitung tiap malam via GitHub Actions job
   // ml/train_forecast.py) — diambil dari forecast_predictions, terpisah dari
@@ -7553,6 +7943,32 @@ function ForecastStokPage({ katalogList, stocks, txns, forecastDetail, setForeca
   // ── LIST SEMUA MATERIAL ──
   return (
     <div>
+      {/* Toggle: Forecast Stok vs Material Cadang */}
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${forecastView==="forecast"?C.accent:C.border}`,background:forecastView==="forecast"?C.accent:"white",color:forecastView==="forecast"?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}}
+          onClick={()=>setForecastView("forecast")}>📈 Forecast Stok</button>
+        <button style={{padding:"8px 18px",borderRadius:8,border:`1px solid ${forecastView==="material_cadang"?C.accent:C.border}`,background:forecastView==="material_cadang"?C.accent:"white",color:forecastView==="material_cadang"?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}}
+          onClick={()=>setForecastView("material_cadang")}>🔩 Material Cadang</button>
+      </div>
+
+      {forecastView==="material_cadang" && (
+        <MaterialCadangTab
+          materialCadangData={materialCadangData}
+          setMaterialCadangData={setMaterialCadangData}
+          maraReference={maraReference}
+          setMaraReference={setMaraReference}
+          catalogMasterRef={catalogMasterRef}
+          setCatalogMasterRef={setCatalogMasterRef}
+          katalogList={katalogList}
+          stocks={stocks}
+          currentUser={currentUser}
+          sty={sty} C={C}
+          saveToCloud={saveToCloud}
+          showToast={showToast}
+        />
+      )}
+
+      {forecastView==="forecast" && <div>
       <div style={{marginBottom:16}}>
         <h1 style={{fontSize:22,fontWeight:900}}>📈 Forecast Stok</h1>
         <p style={{color:C.muted,fontSize:13}}>Perbandingan 2 metode: heuristik pemakaian historis vs ML Prophet • {WAREHOUSE}</p>
@@ -7629,6 +8045,7 @@ function ForecastStokPage({ katalogList, stocks, txns, forecastDetail, setForeca
           <div style={{fontSize:14,fontWeight:700}}>Tidak ada material dengan status "{statusFilter}"</div>
         </div>
       )}
+      </div>} {/* end forecastView==="forecast" */}
     </div>
   );
 }
@@ -8878,6 +9295,554 @@ function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasi
 }
 
 // ─── PETA GUDANG TAB ─────────────────────────────────────────────────────
+function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, savePhoto, createLoan, approveLoan, rejectLoan, completeLoan }) {
+  const [activeTab, setActiveTab] = useState("list");
+  // myUpt: UPT user sendiri. Coba dari currentUser, fallback ke UPT konstanta app (strip prefix "UPT ").
+  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i, "").trim();
+  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
+  const [myUptSelected, setMyUptSelected] = useState(myUpt || "");
+  const [uptFilter, setUptFilter] = useState(myUpt || "ALL");
+  const [categoryFilter, setCategoryFilter] = useState("ALL"); // "ALL"|"crane"|"forklift"|"manlift"|"pendukung"
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [loanForm, setLoanForm] = useState({equipmentId:"", requesterUpt:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  const [historyFilter, setHistoryFilter] = useState({ownerUpt:"ALL", requesterUpt:"ALL", equipmentId:"ALL", status:"ALL", from:"", to:""});
+  const [rejectingId, setRejectingId] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const normalizedLoans = loans.map(l=>({
+    ...l,
+    ownerUpt:getHeavyEquipmentLoanOwnerUpt(l),
+    requesterUpt:getHeavyEquipmentLoanRequesterUpt(l),
+    tanggalAmbil:getHeavyEquipmentLoanStartDate(l),
+    tanggalKembali:getHeavyEquipmentLoanReturnDate(l),
+    namaPekerjaan:getHeavyEquipmentLoanJobName(l),
+    runtimeStatus:getHeavyEquipmentLoanRuntimeStatus(l),
+  })).sort((a,b)=>(b.requestedAt||0)-(a.requestedAt||0));
+  const uptOptions = Array.from(new Set([
+    ...equipmentList.map(e=>e.upt),
+    ...normalizedLoans.map(l=>l.ownerUpt),
+    ...normalizedLoans.map(l=>l.requesterUpt),
+  ].filter(Boolean))).sort();
+  const canManage = ["ADMIN","TL"].includes(currentUser.role);
+  const selectedEquipment = equipmentList.find(e=>e.id===loanForm.equipmentId);
+  const requesterOptions = selectedEquipment ? uptOptions.filter(u=>u!==selectedEquipment.upt) : uptOptions;
+  const pendingCount = normalizedLoans.filter(isPendingHeavyEquipmentLoan).length;
+  const dipinjamCount = normalizedLoans.filter(l=>l.runtimeStatus==="DIPINJAM").length;
+  const overdueCount = normalizedLoans.filter(l=>l.runtimeStatus==="OVERDUE").length;
+  const issueCount = equipmentList.filter(e=>["PERLU_SERVICE","BUTUH_PERBAIKAN","BUTUH_PEREMAJAAN"].includes(e.statusAlat)).length;
+  const availableCount = equipmentList.filter(e=>e.availabilityStatus!=="DIPINJAM").length;
+
+  const statusMeta = {
+    LAYAK:{label:"Layak", bg:"#dcfce7", fg:C.green},
+    PERLU_SERVICE:{label:"Perlu Service", bg:"#fef3c7", fg:"#92400e"},
+    BUTUH_PERBAIKAN:{label:"Butuh Perbaikan", bg:"#fee2e2", fg:C.red},
+    BUTUH_PEREMAJAAN:{label:"Butuh Peremajaan", bg:"#f3e8ff", fg:"#7c3aed"},
+    TERSEDIA:{label:"Tersedia", bg:"#e0f2fe", fg:"#0369a1"},
+    DIPINJAM:{label:"Dipinjam", bg:"#ffedd5", fg:"#c2410c"},
+    PENDING_OWNER_ASMAN:{label:"Menunggu Asman Pemilik", bg:"#fef3c7", fg:"#92400e"},
+    OVERDUE:{label:"Overdue", bg:"#fee2e2", fg:C.red},
+    REJECTED:{label:"Ditolak", bg:"#fee2e2", fg:C.red},
+    SELESAI:{label:"Selesai", bg:"#e0f2fe", fg:"#0369a1"},
+  };
+  const Badge = ({metaKey}) => {
+    const key = normalizeHeavyEquipmentLoanStatus(metaKey);
+    const m = statusMeta[key] || {label:key, bg:"#f3f4f6", fg:C.muted};
+    return <span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
+  };
+  const loanBorderColor = status => status==="OVERDUE" ? C.red : status==="PENDING_OWNER_ASMAN" ? C.yellow : status==="DIPINJAM" ? "#c2410c" : status==="REJECTED" ? C.red : "#0369a1";
+  const loanUserName = userId => users.find(u=>u.id===userId)?.name || "-";
+  const latestLoanForEquipment = equipmentId => normalizedLoans.find(l=>l.equipmentId===equipmentId);
+  const activeLoanForEquipment = equipmentId => normalizedLoans.find(l=>l.equipmentId===equipmentId && ["DIPINJAM","OVERDUE"].includes(l.runtimeStatus));
+  function getEquipmentCategory(e) {
+    const n = String(e.nama||"").toUpperCase().replace(/\s+/g," ").trim();
+    if (n.includes("CRANE")) return "crane";
+    if (n.includes("FORKLIFT")) return "forklift";
+    if (n.includes("MANLIFT")) return "manlift";
+    return "pendukung";
+  }
+
+  const EQUIPMENT_CATEGORIES = [
+    { id:"ALL", label:"Semua", icon:(
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="2" y="2" width="10" height="10" rx="2" fill="currentColor" opacity=".7"/><rect x="16" y="2" width="10" height="10" rx="2" fill="currentColor" opacity=".5"/><rect x="2" y="16" width="10" height="10" rx="2" fill="currentColor" opacity=".5"/><rect x="16" y="16" width="10" height="10" rx="2" fill="currentColor" opacity=".3"/></svg>
+    )},
+    { id:"crane", label:"Crane", icon:(
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        {/* Truck body */}
+        <rect x="2" y="17" width="16" height="7" rx="1.5" fill="currentColor" opacity=".85"/>
+        {/* Cab */}
+        <rect x="14" y="14" width="7" height="10" rx="1" fill="currentColor" opacity=".7"/>
+        {/* Wheels */}
+        <circle cx="6" cy="25" r="2.5" fill="currentColor"/>
+        <circle cx="17" cy="25" r="2.5" fill="currentColor"/>
+        {/* Crane arm */}
+        <line x1="8" y1="17" x2="8" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="8" y1="4" x2="22" y2="8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        <line x1="22" y1="8" x2="22" y2="14" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 1"/>
+        {/* Hook */}
+        <circle cx="22" cy="15" r="1.5" fill="currentColor" opacity=".6"/>
+      </svg>
+    )},
+    { id:"forklift", label:"Forklift", icon:(
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        {/* Body */}
+        <rect x="7" y="11" width="14" height="11" rx="2" fill="currentColor" opacity=".85"/>
+        {/* Mast */}
+        <rect x="4" y="4" width="3" height="18" rx="1" fill="currentColor" opacity=".7"/>
+        {/* Forks */}
+        <rect x="1" y="19" width="6" height="2" rx="0.5" fill="currentColor"/>
+        <rect x="1" y="22" width="6" height="2" rx="0.5" fill="currentColor"/>
+        {/* Wheels */}
+        <circle cx="10" cy="24" r="2.5" fill="currentColor"/>
+        <circle cx="20" cy="24" r="2.5" fill="currentColor"/>
+        {/* Cab detail */}
+        <rect x="14" y="13" width="5" height="5" rx="1" fill="white" opacity=".3"/>
+      </svg>
+    )},
+    { id:"manlift", label:"Manlift", icon:(
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        {/* Base / truck */}
+        <rect x="2" y="18" width="18" height="7" rx="1.5" fill="currentColor" opacity=".85"/>
+        {/* Wheels */}
+        <circle cx="6" cy="26" r="2" fill="currentColor"/>
+        <circle cx="16" cy="26" r="2" fill="currentColor"/>
+        {/* Boom arm (telescopic) */}
+        <line x1="10" y1="18" x2="10" y2="8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/>
+        <line x1="10" y1="8" x2="20" y2="4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+        {/* Basket */}
+        <rect x="18" y="1" width="8" height="6" rx="1" fill="currentColor" opacity=".7"/>
+        {/* Person */}
+        <circle cx="22" cy="3" r="1.2" fill="white" opacity=".8"/>
+      </svg>
+    )},
+    { id:"pendukung", label:"Alat Pendukung", icon:(
+      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+        {/* Hand pallet silhouette */}
+        {/* Platform */}
+        <rect x="2" y="12" width="18" height="4" rx="1" fill="currentColor" opacity=".85"/>
+        {/* Handle */}
+        <path d="M18 14 Q22 14 22 8 L24 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+        {/* Forks */}
+        <rect x="3" y="16" width="6" height="8" rx="0.5" fill="currentColor" opacity=".7"/>
+        <rect x="11" y="16" width="6" height="8" rx="0.5" fill="currentColor" opacity=".7"/>
+        {/* Wheels */}
+        <circle cx="5" cy="25" r="2" fill="currentColor"/>
+        <circle cx="14" cy="25" r="2" fill="currentColor"/>
+        <circle cx="22" cy="7" r="1.5" fill="currentColor" opacity=".5"/>
+      </svg>
+    )},
+  ];
+
+  const categoryCounts = EQUIPMENT_CATEGORIES.reduce((acc, cat) => {
+    acc[cat.id] = cat.id==="ALL" ? equipmentList.length : equipmentList.filter(e=>getEquipmentCategory(e)===cat.id).length;
+    return acc;
+  }, {});
+
+  const filteredEquipment = equipmentList.filter(e =>
+    (uptFilter==="ALL" || e.upt===uptFilter) &&
+    (categoryFilter==="ALL" || getEquipmentCategory(e)===categoryFilter) &&
+    (statusFilter==="ALL" || e.statusAlat===statusFilter || e.availabilityStatus===statusFilter || normalizedLoans.some(l=>l.equipmentId===e.id && l.runtimeStatus===statusFilter))
+  );
+  const historyRows = normalizedLoans.filter(l=>{
+    const requestMs = l.tanggalAmbil ? new Date(`${l.tanggalAmbil}T00:00:00`).getTime() : (l.requestedAt||0);
+    const fromOk = !historyFilter.from || requestMs >= new Date(`${historyFilter.from}T00:00:00`).getTime();
+    const toOk = !historyFilter.to || requestMs <= new Date(`${historyFilter.to}T23:59:59`).getTime();
+    return (historyFilter.ownerUpt==="ALL" || l.ownerUpt===historyFilter.ownerUpt) &&
+      (historyFilter.requesterUpt==="ALL" || l.requesterUpt===historyFilter.requesterUpt) &&
+      (historyFilter.equipmentId==="ALL" || l.equipmentId===historyFilter.equipmentId) &&
+      (historyFilter.status==="ALL" || l.runtimeStatus===historyFilter.status) &&
+      fromOk && toOk;
+  });
+
+  async function submitLoan() {
+    await createLoan(loanForm);
+    setLoanForm({equipmentId:"", requesterUpt:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:900}}>🚜 Alat Berat & Peminjaman UPT</h1>
+          <p style={{color:C.muted,fontSize:13}}>Monitoring alat per UPT, approval Asman pemilik, reminder overdue, dan histori peminjaman.</p>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:12,marginBottom:16}}>
+        {[
+          {label:"Total Alat", val:equipmentList.length, color:C.accent},
+          {label:"Tersedia", val:availableCount, color:C.green},
+          {label:"Dipinjam", val:dipinjamCount, color:"#c2410c"},
+          {label:"Overdue", val:overdueCount, color:overdueCount?C.red:C.green},
+          {label:"Pending Approval", val:pendingCount, color:pendingCount?C.yellow:C.green},
+          {label:"Perlu Tindakan", val:issueCount, color:issueCount?C.red:C.green},
+        ].map(k=>(
+          <div key={k.label} style={{...sty.card,padding:14}}>
+            <div style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.label}</div>
+            <div style={{fontSize:26,fontWeight:900,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+        {[{id:"list",label:"List Alat"},{id:"loans",label:"Peminjaman"},{id:"history",label:"Histori"}].map(t=>(
+          <button key={t.id} style={{padding:"7px 14px",borderRadius:20,border:`1px solid ${activeTab===t.id?C.accent:C.border}`,background:activeTab===t.id?C.accent:"white",color:activeTab===t.id?"white":C.muted,fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>{
+            setActiveTab(t.id);
+            // Tab Peminjaman: tampilkan semua UPT agar bisa pinjam dari UPT lain
+            if (t.id==="loans") setUptFilter("ALL");
+            // Tab List: kembali ke UPT sendiri
+            if (t.id==="list") setUptFilter(myUptSelected||"ALL");
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {activeTab==="list" && (
+        <>
+          {/* Filter Kategori Alat */}
+          <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap"}}>
+            {EQUIPMENT_CATEGORIES.map(cat=>{
+              const active = categoryFilter===cat.id;
+              const count = categoryCounts[cat.id]||0;
+              return (
+                <button key={cat.id} onClick={()=>setCategoryFilter(cat.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 16px",minWidth:80,borderRadius:12,border:`2px solid ${active?C.accent:C.border}`,background:active?"#eff6ff":"white",color:active?C.accent:C.muted,cursor:"pointer",boxShadow:active?"0 2px 8px rgba(0,152,218,.15)":"none"}}>
+                  <span style={{color:active?C.accent:"#9ca3af",display:"flex"}}>{cat.icon}</span>
+                  <span style={{fontSize:11,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:active?C.accent:C.muted}}>{count}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{...sty.card,marginBottom:14,padding:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+              <div>
+                <label style={sty.label}>
+                  UPT Saya
+                  {myUptSelected && uptFilter===myUptSelected && <span style={{color:C.green,fontSize:10,marginLeft:6}}>✓ filter aktif</span>}
+                </label>
+                <select style={sty.select} value={myUptSelected}
+                  onChange={e=>{setMyUptSelected(e.target.value); setUptFilter(e.target.value||"ALL");}}>
+                  <option value="">-- Pilih UPT Saya --</option>
+                  {uptOptions.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={sty.label}>Filter Tampilkan</label>
+                <select style={sty.select} value={uptFilter} onChange={e=>setUptFilter(e.target.value)}>
+                  {myUptSelected && <option value={myUptSelected}>🏠 Hanya {myUptSelected} (UPT Saya)</option>}
+                  <option value="ALL">Semua UPT</option>
+                  {uptOptions.filter(u=>u!==myUptSelected).map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div><label style={sty.label}>Filter Status</label><select style={sty.select} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="ALL">Semua Status</option><option value="LAYAK">Layak</option><option value="PERLU_SERVICE">Perlu Service</option><option value="BUTUH_PERBAIKAN">Butuh Perbaikan</option><option value="BUTUH_PEREMAJAAN">Butuh Peremajaan</option><option value="TERSEDIA">Tersedia</option><option value="DIPINJAM">Dipinjam</option><option value="OVERDUE">Overdue</option></select></div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:12}}>
+            {filteredEquipment.map(eq=>{
+              const activeLoan = activeLoanForEquipment(eq.id);
+              const lastLoan = latestLoanForEquipment(eq.id);
+              return (
+                <div key={eq.id} style={{...sty.card,padding:14,display:"flex",flexDirection:"column",gap:10,borderLeft:activeLoan?`4px solid ${loanBorderColor(activeLoan.runtimeStatus)}`:undefined}}>
+                  <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    {eq.foto ? <img src={eq.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:38,color:"#9ca3af"}}>🚜</div>}
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+                    <div><div style={{fontSize:14,fontWeight:900}}>{eq.nama}</div><div style={{fontSize:11,color:C.muted}}>{eq.upt} • {eq.lokasi}</div></div>
+                    <Badge metaKey={activeLoan?.runtimeStatus || eq.availabilityStatus || "TERSEDIA"}/>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
+                  <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>Merk/Type: <b>{eq.merkType||"-"}</b><br/>Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>No Seri: <b>{eq.nomorSeri||"-"}</b><br/>Kondisi: <b>{eq.kondisi||"-"}</b><br/>Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b></div>
+                  {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius:8,padding:10,fontSize:11,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
+                  {lastLoan && <div style={{fontSize:11,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
+                  {canManage && <label style={{...sty.btn("ghost","sm"),textAlign:"center"}}>📷 Upload Foto<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>savePhoto(eq.id, img))}/></label>}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {activeTab==="loans" && (
+        <div style={{display:"grid",gridTemplateColumns:canManage?"minmax(280px,380px) 1fr":"1fr",gap:16,alignItems:"start"}}>
+          {canManage && (
+            <div style={sty.card}>
+              <div style={{fontSize:15,fontWeight:900,marginBottom:12}}>Ajukan Peminjaman Alat</div>
+              <div style={{marginBottom:10}}><label style={sty.label}>Alat</label><select style={sty.select} value={loanForm.equipmentId} onChange={e=>setLoanForm(f=>({...f,equipmentId:e.target.value,requesterUpt:""}))}><option value="">-- Pilih alat tersedia --</option>{equipmentList.filter(e=>e.availabilityStatus!=="DIPINJAM").map(e=><option key={e.id} value={e.id}>{e.upt} - {e.nama} ({e.kapasitas||"-"}) @ {e.lokasi}</option>)}</select>{selectedEquipment && <div style={{fontSize:11,color:C.muted,marginTop:4}}>UPT pemilik alat: <b>{selectedEquipment.upt}</b></div>}</div>
+              <div style={{marginBottom:10}}><label style={sty.label}>UPT Peminjam</label><select style={sty.select} value={loanForm.requesterUpt} onChange={e=>setLoanForm(f=>({...f,requesterUpt:e.target.value}))}><option value="">-- Pilih UPT --</option>{requesterOptions.map(u=><option key={u} value={u}>{u}</option>)}</select></div>
+              <div style={{marginBottom:10}}><label style={sty.label}>Nama Pekerjaan</label><input style={sty.input} value={loanForm.namaPekerjaan} onChange={e=>setLoanForm(f=>({...f,namaPekerjaan:e.target.value}))} placeholder="Contoh: Penggantian PMT Bay Trafo 1"/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}><div><label style={sty.label}>Tanggal Ambil</label><input style={sty.input} type="date" value={loanForm.tanggalAmbil} onChange={e=>setLoanForm(f=>({...f,tanggalAmbil:e.target.value}))}/></div><div><label style={sty.label}>Tanggal Kembali</label><input style={sty.input} type="date" value={loanForm.tanggalKembali} onChange={e=>setLoanForm(f=>({...f,tanggalKembali:e.target.value}))}/></div></div>
+              <div style={{marginBottom:10}}><label style={sty.label}>Keperluan</label><textarea style={{...sty.input,minHeight:70}} value={loanForm.keperluan} onChange={e=>setLoanForm(f=>({...f,keperluan:e.target.value}))}/></div>
+              <div style={{marginBottom:12}}><label style={sty.label}>Catatan</label><input style={sty.input} value={loanForm.catatan} onChange={e=>setLoanForm(f=>({...f,catatan:e.target.value}))}/></div>
+              <button style={{...sty.btn("primary"),width:"100%"}} onClick={submitLoan}>Ajukan ke Asman Pemilik</button>
+            </div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {normalizedLoans.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted}}>Belum ada peminjaman alat.</div>}
+            {normalizedLoans.map(loan=>{
+              const eq = equipmentList.find(e=>e.id===loan.equipmentId);
+              return (
+                <div key={loan.id} style={{...sty.card,padding:14,borderLeft:`4px solid ${loanBorderColor(loan.runtimeStatus)}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:8}}><div><div style={{fontWeight:900,fontSize:14}}>{eq?.nama||loan.equipmentId}</div><div style={{fontSize:11,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt} • {loan.tanggalAmbil} s/d {loan.tanggalKembali}</div></div><Badge metaKey={loan.runtimeStatus}/></div>
+                  <div style={{fontSize:12,color:C.text,marginBottom:4,fontWeight:700}}>{loan.namaPekerjaan || "-"}</div>
+                  <div style={{fontSize:12,color:C.text,marginBottom:6}}>{loan.keperluan}</div>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Diajukan oleh {loanUserName(loan.requestedBy)} • {fmtDate(loan.requestedAt)}{loan.catatan ? ` • ${loan.catatan}` : ""}</div>
+                  {isPendingHeavyEquipmentLoan(loan) && canApproveHeavyEquipmentLoan(currentUser, loan) && <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>{rejectingId===loan.id ? <><input style={{...sty.input,flex:"1 1 220px"}} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Alasan penolakan"/><button style={sty.btn("danger","sm")} onClick={()=>{rejectLoan(loan.id, reason); setRejectingId(null); setReason("");}}>Konfirmasi Tolak</button><button style={sty.btn("ghost","sm")} onClick={()=>{setRejectingId(null); setReason("");}}>Batal</button></> : <><button style={sty.btn("success","sm")} onClick={()=>approveLoan(loan.id)}>Setujui</button><button style={sty.btn("danger","sm")} onClick={()=>setRejectingId(loan.id)}>Tolak</button></>}</div>}
+                  {["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus) && ["ADMIN","TL","ASMAN"].includes(currentUser.role) && <button style={sty.btn("ghost","sm")} onClick={()=>completeLoan(loan.id)}>Tandai Sudah Kembali</button>}
+                  {loan.runtimeStatus==="REJECTED" && <div style={{fontSize:11,color:C.red}}>Alasan: {loan.rejectReason}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {activeTab==="history" && (
+        <div>
+          <div style={{...sty.card,marginBottom:14,padding:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
+              <div><label style={sty.label}>UPT Pemilik</label><select style={sty.select} value={historyFilter.ownerUpt} onChange={e=>setHistoryFilter(f=>({...f,ownerUpt:e.target.value}))}><option value="ALL">Semua</option>{uptOptions.map(u=><option key={u} value={u}>{u}</option>)}</select></div>
+              <div><label style={sty.label}>UPT Peminjam</label><select style={sty.select} value={historyFilter.requesterUpt} onChange={e=>setHistoryFilter(f=>({...f,requesterUpt:e.target.value}))}><option value="ALL">Semua</option>{uptOptions.map(u=><option key={u} value={u}>{u}</option>)}</select></div>
+              <div><label style={sty.label}>Alat</label><select style={sty.select} value={historyFilter.equipmentId} onChange={e=>setHistoryFilter(f=>({...f,equipmentId:e.target.value}))}><option value="ALL">Semua Alat</option>{equipmentList.map(e=><option key={e.id} value={e.id}>{e.nama} - {e.upt}</option>)}</select></div>
+              <div><label style={sty.label}>Status</label><select style={sty.select} value={historyFilter.status} onChange={e=>setHistoryFilter(f=>({...f,status:e.target.value}))}><option value="ALL">Semua</option><option value="PENDING_OWNER_ASMAN">Pending</option><option value="DIPINJAM">Dipinjam</option><option value="OVERDUE">Overdue</option><option value="SELESAI">Selesai</option><option value="REJECTED">Ditolak</option></select></div>
+              <div><label style={sty.label}>Dari Tanggal Ambil</label><input style={sty.input} type="date" value={historyFilter.from} onChange={e=>setHistoryFilter(f=>({...f,from:e.target.value}))}/></div>
+              <div><label style={sty.label}>Sampai Tanggal Ambil</label><input style={sty.input} type="date" value={historyFilter.to} onChange={e=>setHistoryFilter(f=>({...f,to:e.target.value}))}/></div>
+            </div>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {historyRows.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted}}>Tidak ada histori sesuai filter.</div>}
+            {historyRows.map(loan=>{
+              const eq = equipmentList.find(e=>e.id===loan.equipmentId);
+              return (
+                <div key={loan.id} style={{...sty.card,padding:14,borderLeft:`4px solid ${loanBorderColor(loan.runtimeStatus)}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:8}}><div><div style={{fontSize:14,fontWeight:900}}>{eq?.nama || loan.equipmentId}</div><div style={{fontSize:11,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt}</div></div><Badge metaKey={loan.runtimeStatus}/></div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8,fontSize:11,lineHeight:1.5}}>
+                    <div><b>Tanggal pinjam:</b><br/>{loan.tanggalAmbil || "-"}</div>
+                    <div><b>Kembali rencana:</b><br/>{loan.tanggalKembali || "-"}</div>
+                    <div><b>Kembali aktual:</b><br/>{loan.returnedAt ? fmtDate(loan.returnedAt) : "-"}</div>
+                    <div><b>Pengaju:</b><br/>{loanUserName(loan.requestedBy)}</div>
+                    <div><b>Pekerjaan:</b><br/>{loan.namaPekerjaan || "-"}</div>
+                    <div><b>Catatan:</b><br/>{loan.rejectReason || loan.catatan || loan.catatanApproval || "-"}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Legacy implementasi awal. Menu aktif sekarang memakai HeavyEquipmentTabV2,
+// fungsi ini sengaja belum dihapus agar mudah dibandingkan saat migrasi ke Claude.
+function HeavyEquipmentTab({ equipmentList, loans, currentUser, users, sty, C, handleImg, savePhoto, createLoan, approveLoan, rejectLoan, completeLoan }) {
+  const [activeTab, setActiveTab] = useState("list");
+  const [uptFilter, setUptFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [loanForm, setLoanForm] = useState({equipmentId:"", toUpt:"", tanggalMulai:"", tanggalSelesai:"", keperluan:"", catatan:""});
+  const [rejectingId, setRejectingId] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const uptOptions = Array.from(new Set(equipmentList.map(e=>e.upt).filter(Boolean))).sort();
+  const filtered = equipmentList.filter(e =>
+    (uptFilter==="ALL" || e.upt===uptFilter) &&
+    (statusFilter==="ALL" || e.statusAlat===statusFilter || e.availabilityStatus===statusFilter)
+  );
+  const pendingCount = loans.filter(l=>l.status==="PENDING_ASMAN").length;
+  const borrowedCount = equipmentList.filter(e=>e.availabilityStatus==="DIPINJAM").length;
+  const issueCount = equipmentList.filter(e=>["PERLU_SERVICE","BUTUH_PERBAIKAN","BUTUH_PEREMAJAAN"].includes(e.statusAlat)).length;
+  const noPermitCount = equipmentList.filter(e=>!e.suratIzinAlat).length;
+  const canManage = ["ADMIN","TL"].includes(currentUser.role);
+
+  const statusMeta = {
+    LAYAK:{label:"Layak", bg:"#dcfce7", fg:C.green},
+    PERLU_SERVICE:{label:"Perlu Service", bg:"#fef3c7", fg:"#92400e"},
+    BUTUH_PERBAIKAN:{label:"Butuh Perbaikan", bg:"#fee2e2", fg:C.red},
+    BUTUH_PEREMAJAAN:{label:"Butuh Peremajaan", bg:"#f3e8ff", fg:"#7c3aed"},
+    TERSEDIA:{label:"Tersedia", bg:"#e0f2fe", fg:"#0369a1"},
+    DIPINJAM:{label:"Dipinjam", bg:"#ffedd5", fg:"#c2410c"},
+  };
+  const loanMeta = {
+    PENDING_ASMAN:{label:"Menunggu Asman", bg:"#fef3c7", fg:"#92400e"},
+    APPROVED:{label:"Disetujui", bg:"#dcfce7", fg:C.green},
+    REJECTED:{label:"Ditolak", bg:"#fee2e2", fg:C.red},
+    SELESAI:{label:"Selesai", bg:"#e0f2fe", fg:"#0369a1"},
+  };
+  const Badge = ({metaKey}) => {
+    const m = statusMeta[metaKey] || loanMeta[metaKey] || {label:metaKey, bg:"#f3f4f6", fg:C.muted};
+    return <span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
+  };
+
+  function resetLoanForm() {
+    setLoanForm({equipmentId:"", toUpt:"", tanggalMulai:"", tanggalSelesai:"", keperluan:"", catatan:""});
+  }
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:900}}>🚜 Alat Berat & Peminjaman UPT</h1>
+          <p style={{color:C.muted,fontSize:13}}>Monitoring alat angkat/angkut per UPT, status kelayakan, foto alat, dan peminjaman antar UPT dengan approval Asman.</p>
+        </div>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:16}}>
+        {[
+          {label:"Total Alat", val:equipmentList.length, color:C.accent},
+          {label:"Dipinjam", val:borrowedCount, color:"#c2410c"},
+          {label:"Perlu Tindakan", val:issueCount, color:C.red},
+          {label:"Izin Kosong", val:noPermitCount, color:C.yellow},
+          {label:"Pending Asman", val:pendingCount, color:"#92400e"},
+        ].map(k=>(
+          <div key={k.label} style={{...sty.card,padding:14}}>
+            <div style={{fontSize:11,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{k.label}</div>
+            <div style={{fontSize:26,fontWeight:900,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+        {[{id:"list",label:"List Alat"},{id:"loans",label:"Peminjaman"}].map(t=>(
+          <button key={t.id} style={{padding:"7px 14px",borderRadius:20,border:`1px solid ${activeTab===t.id?C.accent:C.border}`,background:activeTab===t.id?C.accent:"white",color:activeTab===t.id?"white":C.muted,fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={()=>setActiveTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      {activeTab==="list" && (
+        <>
+          <div style={{...sty.card,marginBottom:14,padding:14}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10}}>
+              <div>
+                <label style={sty.label}>Filter UPT</label>
+                <select style={sty.select} value={uptFilter} onChange={e=>setUptFilter(e.target.value)}>
+                  <option value="ALL">Semua UPT</option>
+                  {uptOptions.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={sty.label}>Filter Status</label>
+                <select style={sty.select} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+                  <option value="ALL">Semua Status</option>
+                  <option value="LAYAK">Layak</option>
+                  <option value="PERLU_SERVICE">Perlu Service</option>
+                  <option value="BUTUH_PERBAIKAN">Butuh Perbaikan</option>
+                  <option value="BUTUH_PEREMAJAAN">Butuh Peremajaan</option>
+                  <option value="TERSEDIA">Tersedia</option>
+                  <option value="DIPINJAM">Dipinjam</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:12}}>
+            {filtered.map(eq=>(
+              <div key={eq.id} style={{...sty.card,padding:14,display:"flex",flexDirection:"column",gap:10}}>
+                <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {eq.foto ? <img src={eq.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:38,color:"#9ca3af"}}>🚜</div>}
+                </div>
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:900}}>{eq.nama}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{eq.upt} • {eq.lokasi}</div>
+                    </div>
+                    <Badge metaKey={eq.availabilityStatus || "TERSEDIA"}/>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+                    <Badge metaKey={eq.statusAlat}/>
+                    <span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span>
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>
+                  Merk/Type: <b>{eq.merkType||"-"}</b><br/>
+                  Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>
+                  No Seri: <b>{eq.nomorSeri||"-"}</b><br/>
+                  Kondisi: <b>{eq.kondisi||"-"}</b><br/>
+                  Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b>
+                </div>
+                {canManage && (
+                  <label style={{...sty.btn("ghost","sm"),textAlign:"center"}}>
+                    📷 Upload Foto
+                    <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>savePhoto(eq.id, img))}/>
+                  </label>
+                )}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {activeTab==="loans" && (
+        <div style={{display:"grid",gridTemplateColumns:canManage?"minmax(280px,360px) 1fr":"1fr",gap:16,alignItems:"start"}}>
+          {canManage && (
+            <div style={sty.card}>
+              <div style={{fontSize:15,fontWeight:900,marginBottom:12}}>Ajukan Peminjaman Alat</div>
+              <div style={{marginBottom:10}}>
+                <label style={sty.label}>Alat</label>
+                <select style={sty.select} value={loanForm.equipmentId} onChange={e=>setLoanForm(f=>({...f,equipmentId:e.target.value}))}>
+                  <option value="">-- Pilih alat tersedia --</option>
+                  {equipmentList.filter(e=>e.availabilityStatus!=="DIPINJAM").map(e=><option key={e.id} value={e.id}>{e.upt} - {e.nama} ({e.kapasitas||"-"}) @ {e.lokasi}</option>)}
+                </select>
+              </div>
+              <div style={{marginBottom:10}}>
+                <label style={sty.label}>UPT Peminjam</label>
+                <select style={sty.select} value={loanForm.toUpt} onChange={e=>setLoanForm(f=>({...f,toUpt:e.target.value}))}>
+                  <option value="">-- Pilih UPT --</option>
+                  {uptOptions.map(u=><option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+                <div><label style={sty.label}>Mulai</label><input style={sty.input} type="date" value={loanForm.tanggalMulai} onChange={e=>setLoanForm(f=>({...f,tanggalMulai:e.target.value}))}/></div>
+                <div><label style={sty.label}>Selesai</label><input style={sty.input} type="date" value={loanForm.tanggalSelesai} onChange={e=>setLoanForm(f=>({...f,tanggalSelesai:e.target.value}))}/></div>
+              </div>
+              <div style={{marginBottom:10}}><label style={sty.label}>Keperluan</label><textarea style={{...sty.input,minHeight:70}} value={loanForm.keperluan} onChange={e=>setLoanForm(f=>({...f,keperluan:e.target.value}))}/></div>
+              <div style={{marginBottom:12}}><label style={sty.label}>Catatan</label><input style={sty.input} value={loanForm.catatan} onChange={e=>setLoanForm(f=>({...f,catatan:e.target.value}))}/></div>
+              <button style={{...sty.btn("primary"),width:"100%"}} onClick={async()=>{await createLoan(loanForm); resetLoanForm();}}>Ajukan ke Asman</button>
+            </div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {loans.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted}}>Belum ada peminjaman alat.</div>}
+            {loans.map(loan=>{
+              const eq = equipmentList.find(e=>e.id===loan.equipmentId);
+              const requester = users.find(u=>u.id===loan.requestedBy);
+              return (
+                <div key={loan.id} style={{...sty.card,padding:14,borderLeft:`4px solid ${loan.status==="PENDING_ASMAN"?C.yellow:loan.status==="APPROVED"?C.green:loan.status==="REJECTED"?C.red:"#0369a1"}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",gap:10,alignItems:"flex-start",marginBottom:8}}>
+                    <div>
+                      <div style={{fontWeight:900,fontSize:14}}>{eq?.nama||loan.equipmentId}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{loan.fromUpt} → {loan.toUpt} • {loan.tanggalMulai} s/d {loan.tanggalSelesai}</div>
+                    </div>
+                    <Badge metaKey={loan.status}/>
+                  </div>
+                  <div style={{fontSize:12,color:C.text,marginBottom:6}}>{loan.keperluan}</div>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Diajukan oleh {requester?.name||"-"} • {fmtDate(loan.requestedAt)}{loan.catatan ? ` • ${loan.catatan}` : ""}</div>
+                  {loan.status==="PENDING_ASMAN" && currentUser.role==="ASMAN" && (
+                    <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                      {rejectingId===loan.id ? (
+                        <>
+                          <input style={{...sty.input,flex:"1 1 220px"}} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Alasan penolakan"/>
+                          <button style={sty.btn("danger","sm")} onClick={()=>{rejectLoan(loan.id, reason); setRejectingId(null); setReason("");}}>Konfirmasi Tolak</button>
+                          <button style={sty.btn("ghost","sm")} onClick={()=>{setRejectingId(null); setReason("");}}>Batal</button>
+                        </>
+                      ) : (
+                        <>
+                          <button style={sty.btn("success","sm")} onClick={()=>approveLoan(loan.id)}>Setujui</button>
+                          <button style={sty.btn("danger","sm")} onClick={()=>setRejectingId(loan.id)}>Tolak</button>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {loan.status==="APPROVED" && ["ADMIN","TL","ASMAN"].includes(currentUser.role) && (
+                    <button style={sty.btn("ghost","sm")} onClick={()=>completeLoan(loan.id)}>Tandai Sudah Kembali</button>
+                  )}
+                  {loan.status==="REJECTED" && <div style={{fontSize:11,color:C.red}}>Alasan: {loan.rejectReason}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PetaGudangTab({ gudangList, lokasiList, stocks, sty, C, currentUser }) {
   const [selectedGudangId, setSelectedGudangId] = useState(gudangList[0]?.id||"");
   const [hoveredLokasi, setHoveredLokasi] = useState(null);
@@ -9057,6 +10022,1590 @@ function PetaGudangTab({ gudangList, lokasiList, stocks, sty, C, currentUser }) 
         </div>
         );
       })()}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MATERIAL CADANG TAB
+// ════════════════════════════════════════════════════════════════════
+
+// Helper: hitung Poisson CDF P(X <= s) untuk lambda tertentu
+function poissonCDF(lambda, s) {
+  if (lambda <= 0) return 1;
+  let sum = 0, term = Math.exp(-lambda);
+  for (let k = 0; k <= s; k++) {
+    sum += term;
+    term *= lambda / (k + 1);
+  }
+  return sum;
+}
+
+// Helper: cari qty terkecil yg memenuhi service level (Poisson)
+function poissonQtyForServiceLevel(lambda, serviceLevel) {
+  if (lambda <= 0) return 0;
+  for (let s = 0; s <= 50; s++) {
+    if (poissonCDF(lambda, s) >= serviceLevel) return s;
+  }
+  return 50;
+}
+
+// Normalisasi nomor katalog (hapus leading zero)
+function normalizeKatalog(k) { return String(k||"").trim().replace(/^0+/, "") || ""; }
+
+// Parse baris Material Cadang dari rows XLSX/CSV
+function parseMaterialCadangRows(rows, katalogList) {
+  const COL = {
+    noKatalog: ["No Katalog","NO KATALOG","no katalog"],
+    namaMaterial: ["Nama Material","NAMA MATERIAL"],
+    equipmentCluster: ["Equipment Cluster","EQUIPMENT CLUSTER"],
+    populasi: ["Populasi Cluster","POPULASI CLUSTER"],
+    failure5y: ["Failure 5 Tahun","FAILURE 5 TAHUN"],
+    penggantian5y: ["Penggantian 5 Tahun","PENGGANTIAN 5 TAHUN"],
+    emergency5y: ["Emergency Replacement 5 Tahun","EMERGENCY REPLACEMENT 5 TAHUN"],
+    leadTime: ["Lead Time Hari","LEAD TIME HARI"],
+    ttf: ["Time To Failure Hari","TIME TO FAILURE HARI"],
+    breakdown: ["Breakdown","BREAKDOWN"],
+    harga: ["Harga Satuan","HARGA SATUAN"],
+  };
+  function findCol(row, keys) {
+    for (const k of keys) { if (row[k] !== undefined) return row[k]; }
+    return undefined;
+  }
+  const parsed = rows.map((row, idx) => {
+    const noKat = normalizeKatalog(findCol(row, COL.noKatalog));
+    const namaMaterial = String(findCol(row, COL.namaMaterial)||"").trim();
+    const cluster = String(findCol(row, COL.equipmentCluster)||"").trim();
+    const populasi = parseFloat(String(findCol(row, COL.populasi)||"0").replace(",",".")) || 0;
+    const failure5y = parseFloat(String(findCol(row, COL.failure5y)||"0").replace(",",".")) || 0;
+    const penggantian5y = parseFloat(String(findCol(row, COL.penggantian5y)||"0").replace(",",".")) || 0;
+    const emergency5y = parseFloat(String(findCol(row, COL.emergency5y)||"0").replace(",",".")) || 0;
+    const leadTime = parseFloat(String(findCol(row, COL.leadTime)||"0").replace(",",".")) || 0;
+    const ttf = parseFloat(String(findCol(row, COL.ttf)||"0").replace(",",".")) || 0;
+    const breakdownRaw = String(findCol(row, COL.breakdown)||"TIDAK").trim().toUpperCase();
+    const breakdown = ["YA","Y","YES","TRUE","1"].includes(breakdownRaw);
+    const hargaInput = parseFloat(String(findCol(row, COL.harga)||"0").replace(/\./g,"").replace(",",".")) || 0;
+
+    if (!noKat) return { _idx:idx, status:"INVALID", error:"No Katalog kosong", noKat:"", namaMaterial, cluster, populasi, failure5y, penggantian5y, emergency5y, leadTime, ttf, breakdown, hargaInput };
+    if (populasi <= 0) return { _idx:idx, status:"INVALID", error:"Populasi harus > 0", noKat, namaMaterial, cluster, populasi, failure5y, penggantian5y, emergency5y, leadTime, ttf, breakdown, hargaInput };
+    if (leadTime <= 0) return { _idx:idx, status:"INVALID", error:"Lead Time harus > 0", noKat, namaMaterial, cluster, populasi, failure5y, penggantian5y, emergency5y, leadTime, ttf, breakdown, hargaInput };
+    if (ttf <= 0) return { _idx:idx, status:"INVALID", error:"Time To Failure harus > 0", noKat, namaMaterial, cluster, populasi, failure5y, penggantian5y, emergency5y, leadTime, ttf, breakdown, hargaInput };
+
+    const katalogMatch = katalogList.find(k => normalizeKatalog(k.katalog) === noKat);
+    let status = "UNMATCHED";
+    let warnings = [];
+    if (katalogMatch) {
+      status = "MATCH";
+      if (namaMaterial && katalogMatch.name && namaMaterial.toUpperCase() !== katalogMatch.name.toUpperCase()) {
+        status = "WARNING_NAME_DIFF";
+        warnings.push(`Nama beda: file="${namaMaterial}", sistem="${katalogMatch.name}"`);
+      }
+    }
+    return { _idx:idx, status, noKat, namaMaterial, cluster, populasi, failure5y, penggantian5y, emergency5y, leadTime, ttf, breakdown, hargaInput, katalogId: katalogMatch?.id, katalogName: katalogMatch?.name, katalogSatuan: katalogMatch?.satuan, katalogHarga: katalogMatch ? (hargaInput || 0) : 0, warnings };
+  });
+
+  // Dedup: gabung baris dengan No Katalog + Equipment Cluster yang sama
+  const merged = [];
+  const seen = {};
+  for (const r of parsed) {
+    if (r.status === "INVALID") { merged.push(r); continue; }
+    const key = `${r.noKat}||${r.cluster}`;
+    if (seen[key] !== undefined) {
+      const ex = merged[seen[key]];
+      ex.populasi = Math.max(ex.populasi, r.populasi);
+      ex.failure5y += r.failure5y;
+      ex.penggantian5y += r.penggantian5y;
+      ex.emergency5y += r.emergency5y;
+      ex.leadTime = Math.max(ex.leadTime, r.leadTime);
+      ex.ttf = Math.max(ex.ttf, r.ttf);
+      ex.hargaInput = Math.max(ex.hargaInput, r.hargaInput);
+      if (!ex.warnings) ex.warnings = [];
+      ex.warnings.push("DUPLICATE_MERGED");
+      if (ex.status === "MATCH") ex.status = "WARNING_NAME_DIFF";
+    } else {
+      seen[key] = merged.length;
+      merged.push({...r});
+    }
+  }
+  return merged;
+}
+
+// Hitung ABC analysis + policy + rekomendasi qty
+function hitungMaterialCadang(rows, stocks, katalogList, params = {}) {
+  const { periodYears=5, slMandatory=0.99, slOptimum=0.95, slEconomic=0.90, threshA1Val=50, threshA1Item=3, threshA2Val=75, threshA2Item=10, threshBVal=95 } = params;
+
+  // Hanya baris yang bisa dihitung
+  const valid = rows.filter(r => ["MATCH","WARNING_NAME_DIFF","DUPLICATE_MERGED"].includes(r.status) && r.katalogId);
+
+  // Harga dari stok jika tidak ada di file
+  function getHarga(r) {
+    if (r.hargaInput > 0) return r.hargaInput;
+    const s = stocks.find(s => s.katalogId === r.katalogId);
+    return s?.price || 0;
+  }
+
+  // Hitung riskUsageValue per baris
+  const withRisk = valid.map(r => ({
+    ...r,
+    harga: getHarga(r),
+    riskUsageValue: getHarga(r) * Math.max(r.failure5y, r.penggantian5y),
+  }));
+
+  // Sort descending riskUsageValue
+  withRisk.sort((a,b) => b.riskUsageValue - a.riskUsageValue);
+  const totalRisk = withRisk.reduce((s,r) => s + r.riskUsageValue, 0);
+
+  // Kumulatif dan kelas ABC
+  let cumulVal = 0, cumulItem = 0;
+  const totalItem = withRisk.length;
+  const results = withRisk.map((r, i) => {
+    cumulVal += totalRisk > 0 ? (r.riskUsageValue / totalRisk * 100) : 0;
+    cumulItem += totalItem > 0 ? (1 / totalItem * 100) : 0;
+
+    let abcClass;
+    if (cumulVal <= threshA1Val && cumulItem <= threshA1Item) abcClass = "A1";
+    else if (cumulVal <= threshA2Val && cumulItem <= threshA2Item) abcClass = "A2";
+    else if (cumulVal <= threshBVal) abcClass = "B1";
+    else if (i < totalItem * 0.85) abcClass = "B2";
+    else abcClass = "C";
+
+    // Policy dan treatment
+    let treatment, policy, mandatoryQty=null, poissonQty=null, economicQty=null, recommendedQty=0;
+    const serviceLevel = abcClass==="A1" ? slMandatory : abcClass==="A2" ? slOptimum : slEconomic;
+
+    if (abcClass === "C") {
+      treatment = "Persediaan/Rutin"; policy = "Persediaan";
+    } else if (abcClass === "A1") {
+      treatment = "Material Cadang"; policy = "Mandatory";
+      mandatoryQty = Math.max(1, Math.ceil(r.populasi * 0.02));
+      recommendedQty = mandatoryQty;
+    } else if (abcClass === "A2") {
+      const isPersediaan = r.ttf >= r.leadTime && !r.breakdown && r.emergency5y === 0;
+      if (isPersediaan) {
+        treatment = "Persediaan/Rutin"; policy = "Persediaan";
+      } else {
+        treatment = "Material Cadang"; policy = "Optimum";
+        const lambda = (r.failure5y / (periodYears * 365)) * r.leadTime;
+        poissonQty = poissonQtyForServiceLevel(lambda, serviceLevel);
+        recommendedQty = Math.max(poissonQty > 0 ? 1 : 0, poissonQty);
+      }
+    } else { // B1 / B2
+      treatment = "Material Cadang"; policy = "Optimum & Economic";
+      const lambda = (r.failure5y / (periodYears * 365)) * r.leadTime;
+      poissonQty = poissonQtyForServiceLevel(lambda, serviceLevel);
+      const rate = r.populasi > 0 ? r.penggantian5y / r.populasi : 0;
+      economicQty = Math.ceil(rate * r.populasi);
+      const finalQty = Math.max(poissonQty, economicQty);
+      recommendedQty = finalQty > 0 ? Math.max(1, Math.ceil(finalQty)) : 0;
+    }
+
+    // Stok saat ini
+    const currentQty = stocks.filter(s => s.katalogId === r.katalogId).reduce((a,s) => a + (s.qty||0), 0);
+    const gapQty = Math.max(0, recommendedQty - currentQty);
+
+    return {
+      ...r, abcClass, treatment, policy, serviceLevel,
+      mandatoryQty, poissonQty, economicQty, recommendedQty,
+      currentQty, gapQty,
+      cumulativeValuePct: parseFloat(cumulVal.toFixed(1)),
+      cumulativeItemPct: parseFloat(cumulItem.toFixed(1)),
+    };
+  });
+
+  return results;
+}
+
+function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraReference, setMaraReference, catalogMasterRef, setCatalogMasterRef, katalogList, stocks, currentUser, sty, C, saveToCloud, showToast }) {
+  const [subTab, setSubTab] = useState("dashboard");
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null); // { rows, stats, fileName }
+  const [analisisResult, setAnalisisResult] = useState(null); // hasil hitung terbaru
+  const [maraLoading, setMaraLoading] = useState(false);
+  const [maraSearch, setMaraSearch] = useState("");
+  const [applyConfirm, setApplyConfirm] = useState(null); // { item } yang akan di-apply ke minQty
+  const [applyNotes, setApplyNotes] = useState("");
+  const [detailItem, setDetailItem] = useState(null);
+
+  const canEdit = ["ADMIN","TL"].includes(currentUser.role);
+  const canApprove = currentUser.role === "ASMAN";
+
+  // Analisis terakhir dari data tersimpan
+  const latestAnalysis = materialCadangData.analyses.slice(-1)[0] || null;
+  const latestResults = latestAnalysis?.results || [];
+
+  // Summary dari hasil analisis
+  const summary = latestResults.reduce((acc, r) => {
+    acc.total++;
+    if (r.treatment !== "Material Cadang") { acc.persediaan++; return acc; }
+    if (r.currentQty >= r.recommendedQty && r.recommendedQty > 0) acc.aman++;
+    else if (r.currentQty > 0 && r.currentQty < r.recommendedQty) acc.kurang++;
+    else if (r.recommendedQty > 0 && r.currentQty === 0) acc.kosong++;
+    acc.gapQty += r.gapQty;
+    acc.gapNilai += r.gapQty * (r.harga || 0);
+    return acc;
+  }, { total:0, aman:0, kurang:0, kosong:0, persediaan:0, gapQty:0, gapNilai:0 });
+
+  // Pending apply (menunggu Asman)
+  const pendingApply = materialCadangData.applyHistory.filter(h => h.status === "PENDING_ASMAN");
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      let rows = [];
+      if (file.name.toLowerCase().endsWith(".csv")) {
+        const text = await file.text();
+        const lines = text.replace(/\r/g,"").split("\n").filter(Boolean);
+        // CSV: cari baris header (baris ke-1 atau yang mengandung "No Katalog")
+        let hIdx = 0;
+        for (let i=0; i<Math.min(5,lines.length); i++) {
+          if (lines[i].toLowerCase().includes("no katalog")) { hIdx = i; break; }
+        }
+        const headers = lines[hIdx].split(",").map(h => h.trim().replace(/^"|"$/g,""));
+        rows = lines.slice(hIdx+1).filter(l=>l.trim()).map(l => {
+          const vals = l.split(",").map(v => v.trim().replace(/^"|"$/g,""));
+          const obj = {};
+          headers.forEach((h,i) => { obj[h] = vals[i] || ""; });
+          return obj;
+        });
+      } else {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf);
+        // Cari sheet Import Material Cadang, atau sheet pertama
+        const sheetName = wb.SheetNames.find(s => s.toLowerCase().includes("import material cadang")) || wb.SheetNames[0];
+        const ws = wb.Sheets[sheetName];
+        // Header di baris ke-3 (index 2)
+        const raw = XLSX.utils.sheet_to_json(ws, { header:1 });
+        const hRowIdx = raw.findIndex((row,i) => i>=1 && Array.isArray(row) && row.some(c => String(c||"").toLowerCase().includes("no katalog")));
+        const hRow = raw[hRowIdx >= 0 ? hRowIdx : 0];
+        rows = raw.slice((hRowIdx >= 0 ? hRowIdx : 0) + 1).filter(r => r.some(Boolean)).map(r => {
+          const obj = {};
+          hRow.forEach((h,i) => { obj[String(h||"").trim()] = r[i] !== undefined ? r[i] : ""; });
+          return obj;
+        });
+      }
+      const parsed = parseMaterialCadangRows(rows, katalogList);
+      const stats = {
+        total: parsed.length,
+        match: parsed.filter(r=>r.status==="MATCH").length,
+        warning: parsed.filter(r=>r.status==="WARNING_NAME_DIFF"||r.status==="DUPLICATE_MERGED").length,
+        unmatched: parsed.filter(r=>r.status==="UNMATCHED").length,
+        invalid: parsed.filter(r=>r.status==="INVALID").length,
+      };
+      setImportPreview({ rows: parsed, stats, fileName: file.name });
+    } catch(err) {
+      showToast("Gagal baca file: " + err.message, "error");
+    }
+    setImporting(false);
+    e.target.value = "";
+  }
+
+  async function handleHitung() {
+    if (!importPreview) return;
+    const results = hitungMaterialCadang(importPreview.rows, stocks, katalogList);
+    const newAnalysis = {
+      id: "MCANA-" + Date.now(),
+      importFileName: importPreview.fileName,
+      createdBy: currentUser.id,
+      createdAt: Date.now(),
+      results,
+      params: { periodYears:5, slMandatory:0.99, slOptimum:0.95, slEconomic:0.90 },
+    };
+    const updated = { ...materialCadangData, analyses: [...materialCadangData.analyses, newAnalysis] };
+    setMaterialCadangData(updated);
+    await saveToCloud({ materialCadangData: updated });
+    setAnalisisResult(results);
+    setSubTab("hasil");
+    showToast("Rekomendasi Material Cadang berhasil dihitung!", "success");
+  }
+
+  async function handleAjukanApply(item) {
+    const existing = materialCadangData.applyHistory.find(h => h.katalogId === item.katalogId && h.status === "PENDING_ASMAN");
+    if (existing) { showToast("Pengajuan untuk material ini sudah ada, tunggu keputusan Asman.", "error"); return; }
+    const entry = {
+      id: "MCAPPLY-" + Date.now(),
+      katalogId: item.katalogId,
+      namaBarang: item.katalogName || item.namaMaterial,
+      noKatalog: item.noKat,
+      recommendedQty: item.recommendedQty,
+      abcClass: item.abcClass,
+      policy: item.policy,
+      status: "PENDING_ASMAN",
+      requestedBy: currentUser.id,
+      requestedAt: Date.now(),
+      notes: applyNotes.trim(),
+    };
+    const updated = { ...materialCadangData, applyHistory: [...materialCadangData.applyHistory, entry] };
+    setMaterialCadangData(updated);
+    await saveToCloud({ materialCadangData: updated });
+    setApplyConfirm(null); setApplyNotes("");
+    showToast("Pengajuan apply minQty dikirim ke Asman.", "success");
+  }
+
+  async function handleApproveApply(applyId) {
+    const entry = materialCadangData.applyHistory.find(h => h.id === applyId);
+    if (!entry) return;
+    // Update minQty di stok
+    const katalogStocks = stocks.filter(s => s.katalogId === entry.katalogId).sort((a,b) => (b.qty||0) - (a.qty||0));
+    // hanya update di luar — tidak ada setStocks langsung di sini, harus via saveToCloud
+    showToast("Fitur approve apply minQty memerlukan akses ke state stok. Gunakan menu Approval.", "error");
+  }
+
+  async function handleRejectApply(applyId, reason) {
+    const updated = {
+      ...materialCadangData,
+      applyHistory: materialCadangData.applyHistory.map(h => h.id===applyId ? {...h, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : h)
+    };
+    setMaterialCadangData(updated);
+    await saveToCloud({ materialCadangData: updated });
+    showToast("Pengajuan ditolak.", "success");
+  }
+
+  async function handleLoadMara(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMaraLoading(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const sheet1 = wb.Sheets["Sheet1"] || wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet1, { defval:"" });
+      const unblockSheet = wb.Sheets["Katalog Unblock"];
+      const unblockSet = new Set();
+      if (unblockSheet) {
+        XLSX.utils.sheet_to_json(unblockSheet, {defval:""}).forEach(r => {
+          const raw = String(r["Material"]||r[Object.keys(r)[0]]||"").trim();
+          unblockSet.add(normalizeKatalog(raw));
+        });
+      }
+      const ref = rows.map(r => {
+        const raw = String(r["Material"]||"").trim();
+        const kat = normalizeKatalog(raw);
+        return {
+          materialRaw: raw,
+          katalog: kat,
+          materialType: String(r["Material Type"]||"").trim(),
+          materialGroup: String(r["Material Group"]||"").trim(),
+          satuan: String(r["Base Unit of Measure"]||"").trim(),
+          status: String(r["X-plant matl status"]||"").trim(),
+          description: String(r["Material Description"]||"").trim(),
+          prefix: String(r["Material Description"]||"").split(";")[0].trim(),
+          isCadang: String(r["Material Type"]||"").trim()==="ZCAD" || kat.length===10,
+          isUnblocked: unblockSet.has(kat),
+        };
+      });
+      setMaraReference(ref);
+      showToast(`MARA reference berhasil dimuat: ${ref.length} material (session-only, tidak disimpan ke cloud).`, "success");
+    } catch(err) {
+      showToast("Gagal load MARA: " + err.message, "error");
+    }
+    setMaraLoading(false);
+    e.target.value = "";
+  }
+
+  const displayResults = analisisResult || latestResults;
+  const TABS = [
+    {id:"dashboard",label:"📊 Dashboard"},
+    {id:"import",label:"📥 Import & Hitung"},
+    {id:"hasil",label:"📋 Hasil Analisis"},
+    {id:"apply",label:"✅ Apply Min Qty",badge:pendingApply.length},
+    {id:"mara",label:"🔍 MARA Lookup"},
+  ];
+
+  return (
+    <div>
+      <div style={{marginBottom:16}}>
+        <h1 style={{fontSize:22,fontWeight:900,marginBottom:4}}>🔩 Material Cadang</h1>
+        <p style={{color:C.muted,fontSize:13}}>Analisis ABC, inventory policy, dan rekomendasi jumlah ideal material cadang</p>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {TABS.map(t=>(
+          <button key={t.id} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${subTab===t.id?C.accent:C.border}`,background:subTab===t.id?C.accent:"white",color:subTab===t.id?"white":C.muted,fontWeight:700,fontSize:12,cursor:"pointer",position:"relative"}}
+            onClick={()=>setSubTab(t.id)}>
+            {t.label}{t.badge>0 && <span style={{marginLeft:6,background:"#dc2626",color:"white",borderRadius:10,padding:"1px 6px",fontSize:10}}>{t.badge}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* DASHBOARD */}
+      {subTab==="dashboard" && (
+        <div>
+          {latestResults.length === 0 ? (
+            <div style={{...sty.card,textAlign:"center",padding:40,color:C.muted}}>
+              <div style={{fontSize:40,marginBottom:12}}>🔩</div>
+              <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>Material Cadang belum dianalisis</div>
+              <div style={{fontSize:13,marginBottom:20}}>Upload data populasi/failure terlebih dahulu di tab "Import & Hitung"</div>
+              {canEdit && <button style={sty.btn("primary")} onClick={()=>setSubTab("import")}>📥 Upload Data Populasi/Failure</button>}
+            </div>
+          ) : (
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+                {[
+                  {label:"Total Dianalisis",val:summary.total,color:C.accent},
+                  {label:"Aman ✅",val:summary.aman,color:C.green},
+                  {label:"Kurang ⚠️",val:summary.kurang,color:"#f59e0b"},
+                  {label:"Kosong/Kritis 🔴",val:summary.kosong,color:C.red},
+                  {label:"Gap Qty",val:summary.gapQty,color:"#7c3aed"},
+                  {label:"Estimasi Nilai Gap",val:"Rp "+fmtNum(summary.gapNilai),color:"#dc2626",small:true},
+                ].map(kpi=>(
+                  <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
+                    <div style={{fontSize:kpi.small?14:22,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{...sty.card,marginBottom:16}}>
+                <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🏆 Prioritas Tindakan (Top 10)</div>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                    <thead>
+                      <tr style={{background:"#f9fafb"}}>
+                        {["No Katalog","Nama","Kelas","Policy","Stok","Ideal","Gap","Status","Nilai Gap"].map(h=>(
+                          <th key={h} style={{padding:"7px 8px",textAlign:"left",fontWeight:700,whiteSpace:"nowrap",borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...displayResults]
+                        .filter(r=>r.treatment==="Material Cadang")
+                        .sort((a,b)=>{
+                          if (a.abcClass!==b.abcClass) return a.abcClass.localeCompare(b.abcClass);
+                          return b.gapQty - a.gapQty;
+                        })
+                        .slice(0,10)
+                        .map((r,i)=>{
+                          const status = r.currentQty===0?"Kosong/Kritis":r.currentQty<r.recommendedQty?"Kurang":"Aman";
+                          const statusColor = r.currentQty===0?C.red:r.currentQty<r.recommendedQty?"#f59e0b":C.green;
+                          return (
+                            <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                              <td style={{padding:"6px 8px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
+                              <td style={{padding:"6px 8px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
+                              <td style={{padding:"6px 8px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{r.abcClass}</span></td>
+                              <td style={{padding:"6px 8px",fontSize:10,color:C.muted}}>{r.policy}</td>
+                              <td style={{padding:"6px 8px",fontWeight:700}}>{r.currentQty}</td>
+                              <td style={{padding:"6px 8px",fontWeight:700}}>{r.recommendedQty}</td>
+                              <td style={{padding:"6px 8px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
+                              <td style={{padding:"6px 8px"}}><span style={{color:statusColor,fontWeight:700,fontSize:10}}>{status}</span></td>
+                              <td style={{padding:"6px 8px",color:r.gapQty>0?"#7c3aed":C.muted}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{marginTop:10,textAlign:"right"}}>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>setSubTab("hasil")}>Lihat semua hasil →</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* IMPORT & HITUNG */}
+      {subTab==="import" && (
+        <div>
+          <div style={{...sty.card,marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:10}}>📥 Upload Data Populasi/Failure Material Cadang</div>
+            <p style={{fontSize:12,color:C.muted,marginBottom:12}}>Format: CSV atau XLSX dengan header sesuai <code>TEMPLATE_IMPORT_MATERIAL_CADANG.xlsx</code>. Header XLSX di baris ke-3.</p>
+            {canEdit && (
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                <label style={{...sty.btn("primary"),cursor:"pointer"}}>
+                  {importing?"⏳ Memproses...":"📂 Upload File CSV/XLSX"}
+                  <input type="file" accept=".csv,.xlsx" style={{display:"none"}} onChange={handleImportFile} disabled={importing}/>
+                </label>
+                <a href={`data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,`} download="TEMPLATE_IMPORT_MATERIAL_CADANG.xlsx" style={{display:"none"}}></a>
+              </div>
+            )}
+          </div>
+
+          {importPreview && (
+            <div style={{...sty.card,marginBottom:16}}>
+              <div style={{fontWeight:700,marginBottom:10}}>Preview: {importPreview.fileName}</div>
+              <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:14}}>
+                {[
+                  {label:"Total Baris",val:importPreview.stats.total,color:C.accent},
+                  {label:"Match",val:importPreview.stats.match,color:C.green},
+                  {label:"Warning",val:importPreview.stats.warning,color:"#f59e0b"},
+                  {label:"Unmatched",val:importPreview.stats.unmatched,color:"#f59e0b"},
+                  {label:"Invalid",val:importPreview.stats.invalid,color:C.red},
+                ].map(s=>(
+                  <div key={s.label} style={{padding:"8px 14px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:C.muted}}>{s.label}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{overflowX:"auto",marginBottom:14,maxHeight:300,overflowY:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <thead style={{position:"sticky",top:0,background:"#003087",color:"white"}}>
+                    <tr>
+                      {["No Katalog","Nama Material","Cluster","Populasi","Failure","Penggantian","Lead Time","Status","Warning"].map(h=>(
+                        <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.rows.map((r,i)=>(
+                      <tr key={i} style={{background:r.status==="INVALID"?"#fef2f2":r.status==="UNMATCHED"?"#fefce8":"white",borderBottom:`1px solid ${C.border}`}}>
+                        <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat||"-"}</td>
+                        <td style={{padding:"5px 8px",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}>{r.namaMaterial||"-"}</td>
+                        <td style={{padding:"5px 8px"}}>{r.cluster||"-"}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{r.populasi||0}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{r.failure5y||0}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{r.penggantian5y||0}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{r.leadTime||0}h</td>
+                        <td style={{padding:"5px 8px"}}>
+                          <span style={{padding:"2px 6px",borderRadius:4,fontSize:10,fontWeight:700,background:r.status==="MATCH"?"#dcfce7":r.status==="INVALID"?"#fef2f2":"#fef9c3",color:r.status==="MATCH"?C.green:r.status==="INVALID"?C.red:"#92400e"}}>{r.status}</span>
+                        </td>
+                        <td style={{padding:"5px 8px",fontSize:10,color:C.muted,maxWidth:180}}>{r.error||(r.warnings||[]).join(", ")||"-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {canEdit && importPreview.stats.match + importPreview.stats.warning > 0 && (
+                <button style={sty.btn("primary")} onClick={handleHitung}>🔢 Hitung Rekomendasi Material Cadang</button>
+              )}
+              {importPreview.stats.match + importPreview.stats.warning === 0 && (
+                <div style={{color:C.red,fontWeight:700,fontSize:13}}>⚠️ Tidak ada baris yang bisa dihitung (semua UNMATCHED/INVALID). Periksa No Katalog di file.</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HASIL ANALISIS */}
+      {subTab==="hasil" && (
+        <div>
+          {displayResults.length === 0 ? (
+            <div style={{...sty.card,textAlign:"center",padding:30,color:C.muted}}>Belum ada hasil analisis. Upload dan hitung di tab "Import & Hitung".</div>
+          ) : (
+            <div style={{...sty.card,padding:0,overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+                <thead style={{background:"#003087",color:"white"}}>
+                  <tr>
+                    {["No Katalog","Nama Material","Cluster","Kelas","Policy","Stok Saat Ini","Ideal","Gap","Status","Nilai Gap","Aksi"].map(h=>(
+                      <th key={h} style={{padding:"8px 10px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayResults.map((r,i)=>{
+                    const status = r.treatment!=="Material Cadang"?"Persediaan/Rutin":r.currentQty===0&&r.recommendedQty>0?"Kosong/Kritis":r.currentQty<r.recommendedQty?"Kurang":"Aman";
+                    const statusColor = status==="Kosong/Kritis"?C.red:status==="Kurang"?"#f59e0b":status==="Aman"?C.green:C.muted;
+                    const hasPending = materialCadangData.applyHistory.find(h=>h.katalogId===r.katalogId&&h.status==="PENDING_ASMAN");
+                    return (
+                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}} onClick={()=>setDetailItem(r)}>
+                        <td style={{padding:"6px 10px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
+                        <td style={{padding:"6px 10px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
+                        <td style={{padding:"6px 10px",fontSize:10}}>{r.cluster}</td>
+                        <td style={{padding:"6px 10px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{r.abcClass}</span></td>
+                        <td style={{padding:"6px 10px",fontSize:10,color:C.muted}}>{r.policy}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700}}>{r.currentQty}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700}}>{r.recommendedQty}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
+                        <td style={{padding:"6px 10px"}}><span style={{color:statusColor,fontWeight:700,fontSize:10}}>{status}</span></td>
+                        <td style={{padding:"6px 10px",color:"#7c3aed"}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
+                        <td style={{padding:"6px 10px"}} onClick={e=>e.stopPropagation()}>
+                          {canEdit && r.treatment==="Material Cadang" && r.recommendedQty>0 && !hasPending && (
+                            <button style={{...sty.btn("primary","sm"),fontSize:10}} onClick={()=>setApplyConfirm(r)}>Apply Min Qty</button>
+                          )}
+                          {hasPending && <span style={{fontSize:10,color:"#f59e0b",fontWeight:700}}>⏳ Pending</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* APPLY MIN QTY */}
+      {subTab==="apply" && (
+        <div>
+          {pendingApply.length === 0 && !canApprove ? (
+            <div style={{...sty.card,textAlign:"center",padding:30,color:C.muted}}>Tidak ada pengajuan apply minQty yang menunggu.</div>
+          ) : null}
+          {pendingApply.length > 0 && (
+            <div style={{...sty.card}}>
+              <div style={{fontWeight:700,marginBottom:12}}>⏳ Menunggu Approval Asman ({pendingApply.length})</div>
+              {pendingApply.map(h=>(
+                <div key={h.id} style={{padding:12,borderRadius:8,border:`1px solid ${C.border}`,marginBottom:10}}>
+                  <div style={{fontWeight:700}}>{h.namaBarang} — No. Katalog: {h.noKatalog}</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:4}}>Kelas: {h.abcClass} | Policy: {h.policy} | Recommended minQty: <strong>{h.recommendedQty}</strong></div>
+                  {h.notes && <div style={{fontSize:11,color:C.muted,marginTop:4}}>Catatan: {h.notes}</div>}
+                  <div style={{fontSize:11,color:C.muted,marginTop:4}}>Diajukan: {new Date(h.requestedAt).toLocaleDateString("id")}</div>
+                  {canApprove && (
+                    <div style={{display:"flex",gap:8,marginTop:10}}>
+                      <button style={sty.btn("primary","sm")} onClick={async ()=>{
+                        const updated = {...materialCadangData, applyHistory: materialCadangData.applyHistory.map(x=>x.id===h.id?{...x,status:"APPROVED_APPLIED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
+                        setMaterialCadangData(updated);
+                        await saveToCloud({materialCadangData:updated});
+                        showToast("Apply minQty disetujui.", "success");
+                      }}>✅ Setuju</button>
+                      <button style={sty.btn("danger","sm")} onClick={async ()=>{
+                        const updated = {...materialCadangData, applyHistory: materialCadangData.applyHistory.map(x=>x.id===h.id?{...x,status:"REJECTED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
+                        setMaterialCadangData(updated);
+                        await saveToCloud({materialCadangData:updated});
+                        showToast("Pengajuan ditolak.", "success");
+                      }}>❌ Tolak</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MARA LOOKUP */}
+      {subTab==="mara" && (
+        <div>
+          <div style={{...sty.card,marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>🔍 Hidden SAP MARA Reference</div>
+            <p style={{fontSize:12,color:C.muted,marginBottom:10}}>Upload file <code>Katalog MARA (01-2026).xlsx</code>. Data hanya tersimpan di session (tidak masuk browser storage) sebagai referensi lookup.</p>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+              <label style={{...sty.btn(maraReference?"ghost":"primary"),cursor:"pointer"}}>
+                {maraLoading?"⏳ Memuat...":maraReference?`✅ MARA Dimuat (${maraReference.length} material)`:"📂 Load File MARA (.xlsx)"}
+                <input type="file" accept=".xlsx" style={{display:"none"}} onChange={handleLoadMara} disabled={maraLoading}/>
+              </label>
+              {maraReference && <button style={sty.btn("danger","sm")} onClick={()=>{setMaraReference(null); showToast("MARA reference dihapus dari session.", "success");}}>Hapus dari Session</button>}
+            </div>
+          </div>
+          {maraReference && (
+            <div style={{...sty.card}}>
+              <input style={{...sty.input,marginBottom:12}} placeholder="🔍 Cari nomor katalog, deskripsi, prefix..." value={maraSearch} onChange={e=>setMaraSearch(e.target.value)}/>
+              <div style={{overflowX:"auto",maxHeight:500,overflowY:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <thead style={{background:"#003087",color:"white",position:"sticky",top:0}}>
+                    <tr>
+                      {["No Katalog","Deskripsi","Prefix","Tipe","Satuan","SAP Cadang","Unblock"].map(h=>(
+                        <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {maraReference
+                      .filter(r => !maraSearch || r.katalog.includes(maraSearch) || r.description.toLowerCase().includes(maraSearch.toLowerCase()) || r.prefix.toLowerCase().includes(maraSearch.toLowerCase()))
+                      .slice(0,200)
+                      .map((r,i)=>(
+                        <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                          <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.katalog}</td>
+                          <td style={{padding:"5px 8px",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.description}</td>
+                          <td style={{padding:"5px 8px"}}>{r.prefix}</td>
+                          <td style={{padding:"5px 8px",fontSize:10}}>{r.materialType}</td>
+                          <td style={{padding:"5px 8px"}}>{r.satuan}</td>
+                          <td style={{padding:"5px 8px",textAlign:"center"}}>{r.isCadang?"✅":""}</td>
+                          <td style={{padding:"5px 8px",textAlign:"center"}}>{r.isUnblocked?"✅":""}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {maraSearch && maraReference.filter(r=>r.katalog.includes(maraSearch)||r.description.toLowerCase().includes(maraSearch.toLowerCase())).length > 200 && (
+                  <div style={{padding:8,textAlign:"center",color:C.muted,fontSize:11}}>Tampil 200 teratas. Perjelas pencarian untuk hasil lebih spesifik.</div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal detail item */}
+      {detailItem && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20}} onClick={()=>setDetailItem(null)}>
+          <div style={{...sty.card,maxWidth:520,width:"100%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+              <h3 style={{fontWeight:800,fontSize:16}}>{detailItem.katalogName||detailItem.namaMaterial}</h3>
+              <button style={sty.btn("ghost","sm")} onClick={()=>setDetailItem(null)}>✕</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12}}>
+              {[
+                ["No Katalog",detailItem.noKat],["Equipment Cluster",detailItem.cluster],
+                ["Kelas ABC",detailItem.abcClass],["Policy",detailItem.policy],
+                ["Populasi",detailItem.populasi],["Failure 5th",detailItem.failure5y],
+                ["Penggantian 5th",detailItem.penggantian5y],["Emergency 5th",detailItem.emergency5y],
+                ["Lead Time",detailItem.leadTime+" hari"],["TTF",detailItem.ttf+" hari"],
+                ["Breakdown",detailItem.breakdown?"YA":"TIDAK"],["Harga",detailItem.harga?"Rp "+fmtNum(detailItem.harga):"-"],
+                ["Stok Saat Ini",detailItem.currentQty+" "+detailItem.katalogSatuan],["Rekomendasi Qty",detailItem.recommendedQty],
+                ["Gap",detailItem.gapQty>0?"−"+detailItem.gapQty:"0 (cukup)"],["Cumul Value %",detailItem.cumulativeValuePct+"%"],
+              ].map(([k,v])=>(
+                <div key={k} style={{padding:"6px 8px",background:"#f9fafb",borderRadius:6}}>
+                  <div style={{fontSize:10,color:C.muted}}>{k}</div>
+                  <div style={{fontWeight:700,marginTop:2}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {(detailItem.warnings||[]).length > 0 && (
+              <div style={{marginTop:12,padding:8,background:"#fef9c3",borderRadius:6,fontSize:11,color:"#92400e"}}>
+                ⚠️ {detailItem.warnings.join(" | ")}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal konfirmasi apply minQty */}
+      {applyConfirm && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20}} onClick={()=>setApplyConfirm(null)}>
+          <div style={{...sty.card,maxWidth:420,width:"100%"}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{fontWeight:800,marginBottom:12}}>Ajukan Apply Min Qty ke Asman</h3>
+            <div style={{fontSize:13,marginBottom:12}}>
+              <strong>{applyConfirm.katalogName||applyConfirm.namaMaterial}</strong> ({applyConfirm.noKat})<br/>
+              Recommended minQty: <strong style={{color:C.accent}}>{applyConfirm.recommendedQty}</strong> (Kelas {applyConfirm.abcClass}, {applyConfirm.policy})
+            </div>
+            <textarea style={{...sty.input,height:70,resize:"vertical",marginBottom:12}} placeholder="Catatan untuk Asman (opsional)..." value={applyNotes} onChange={e=>setApplyNotes(e.target.value)}/>
+            <div style={{display:"flex",gap:8}}>
+              <button style={sty.btn("primary")} onClick={()=>handleAjukanApply(applyConfirm)}>📤 Kirim Pengajuan</button>
+              <button style={sty.btn("ghost")} onClick={()=>setApplyConfirm(null)}>Batal</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// KAPASITAS GUDANG TAB
+// ════════════════════════════════════════════════════════════════════
+
+// Convert Excel serial date → string YYYY-MM-DD
+function excelSerialToDate(serial) {
+  if (!serial || isNaN(serial)) return String(serial||"");
+  if (typeof serial === "string" && serial.includes("-")) return serial;
+  const d = new Date((serial - 25569) * 86400 * 1000);
+  return d.toISOString().split("T")[0];
+}
+
+// Parse sheet KAPASITAS GUDANG dari XLSX
+function parseKapasitasGudangSheet(rows) {
+  // Normalisasi persen: nilai bisa 0.95 (ratio) atau 95 (persen)
+  function normPct(v) {
+    const n = parseFloat(String(v||"0").replace(",","."));
+    if (isNaN(n)) return 0;
+    return n > 1 ? n / 100 : n; // store as 0-1
+  }
+  function normNum(v) { return parseFloat(String(v||"0").replace(",",".")) || 0; }
+
+  const COL_MAP = {
+    upt: ["UPT"], gudang: ["GUDANG"], subGudang: ["SUB GUDANG"],
+    typeGudang: ["SUB/TYPE GUDANG","TYPE GUDANG"], alamat: ["ALAMAT"],
+    latitude: ["KOORDINAT LATITUDE","LATITUDE"], longitude: ["KOORDINAT LONGITUDE","LONGITUDE"],
+    luasLahan: ["LUAS LAHAN (M2)","LUAS LAHAN"], luasTerpakai: ["LUAS TERPAKAI (M2)","LUAS TERPAKAI"],
+    sisaLuas: ["SISA LUAS LAHAN (M2)","SISA LUAS"], pctTerpakai: ["PERSENTASE TERPAKAI (%)","PERSENTASE TERPAKAI"],
+    persediaanPct: ["PERSEDIAAN (%)","PERSEDIAAN"], cadangPct: ["CADANG (%)","CADANG"],
+    preMemoryPct: ["PRE-MEMORY (%)","PRE-MEMORY"], attbPct: ["ATTB (%)","ATTB"],
+    lainnyaPct: ["LAINNYA (LIMBAH NON B3, ALAT ANGKUT, DLL) (%)","LAINNYA"],
+    contactPerson: ["CONTACT PERSON"], waktuUpdate: ["WAKTU UPDATE"],
+    keterangan: ["KETERANGAN"], linkGudang: ["LINK GUDANG"],
+  };
+
+  function getVal(row, aliases) {
+    for (const a of aliases) {
+      const k = Object.keys(row).find(k => k.trim().toUpperCase() === a.toUpperCase());
+      if (k !== undefined && row[k] !== undefined && row[k] !== "") return row[k];
+    }
+    return "";
+  }
+
+  const results = [];
+  for (const row of rows) {
+    const upt = String(getVal(row, COL_MAP.upt)||"").trim();
+    const gudang = String(getVal(row, COL_MAP.gudang)||"").trim();
+    const subGudang = String(getVal(row, COL_MAP.subGudang)||"").trim();
+    if (!upt && !gudang && !subGudang) continue; // skip empty rows
+
+    const luasLahan = normNum(getVal(row, COL_MAP.luasLahan));
+    const luasTerpakai = normNum(getVal(row, COL_MAP.luasTerpakai));
+    const sisaLuas = luasLahan > 0 ? luasLahan - luasTerpakai : normNum(getVal(row, COL_MAP.sisaLuas));
+    const pctTerpakai = luasLahan > 0 ? luasTerpakai / luasLahan : normPct(getVal(row, COL_MAP.pctTerpakai));
+
+    let statusKapasitas = "AMAN";
+    if (pctTerpakai >= 0.90) statusKapasitas = "KRITIS";
+    else if (pctTerpakai >= 0.75) statusKapasitas = "WASPADA";
+
+    const errors = [];
+    const warnings = [];
+    if (!upt || !gudang || !subGudang) errors.push("UPT/GUDANG/SUB GUDANG wajib ada");
+    if (luasLahan <= 0) errors.push("Luas lahan tidak valid");
+    if (luasTerpakai < 0) errors.push("Luas terpakai negatif");
+
+    const lat = parseFloat(getVal(row, COL_MAP.latitude)) || null;
+    const lng = parseFloat(getVal(row, COL_MAP.longitude)) || null;
+    if (!lat || !lng) warnings.push("Koordinat kosong");
+
+    const waktuRaw = getVal(row, COL_MAP.waktuUpdate);
+    const waktuUpdate = typeof waktuRaw === "number" ? excelSerialToDate(waktuRaw) : String(waktuRaw||"").trim();
+
+    results.push({
+      id: `CAP-${upt}-${gudang}-${subGudang}`.replace(/\s+/g,"-").toUpperCase(),
+      upt: upt.toUpperCase(),
+      gudang, subGudang,
+      typeGudang: String(getVal(row, COL_MAP.typeGudang)||"").trim(),
+      alamat: String(getVal(row, COL_MAP.alamat)||"").trim(),
+      latitude: lat, longitude: lng,
+      luasLahanM2: luasLahan, luasTerpakaiM2: luasTerpakai, sisaLuasM2: sisaLuas,
+      persentaseTerpakai: pctTerpakai,
+      persediaanPct: normPct(getVal(row, COL_MAP.persediaanPct)),
+      cadangPct: normPct(getVal(row, COL_MAP.cadangPct)),
+      preMemoryPct: normPct(getVal(row, COL_MAP.preMemoryPct)),
+      attbPct: normPct(getVal(row, COL_MAP.attbPct)),
+      lainnyaPct: normPct(getVal(row, COL_MAP.lainnyaPct)),
+      statusKapasitas,
+      contactPerson: String(getVal(row, COL_MAP.contactPerson)||"").trim(),
+      waktuUpdate,
+      keterangan: String(getVal(row, COL_MAP.keterangan)||"").trim(),
+      linkGudang: String(getVal(row, COL_MAP.linkGudang)||"").trim(),
+      matchedGudangId: null, matchedLokasiId: null, mappingStatus: "UNMATCHED",
+      _errors: errors, _warnings: warnings, _valid: errors.length === 0,
+    });
+  }
+  return results;
+}
+
+function KapasitasGudangTab({ gudangCapacityList, setGudangCapacityList, gudangCapacityImports, setGudangCapacityImports, gudangList, lokasiList, stocks, currentUser, sty, C, saveToCloud, showToast }) {
+  const [subTab, setSubTab] = useState("dashboard");
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [filterUPT, setFilterUPT] = useState("ALL");
+  const [filterStatus, setFilterStatus] = useState("ALL");
+  const [detailRecord, setDetailRecord] = useState(null);
+
+  const canEdit = ["ADMIN","TL"].includes(currentUser.role);
+
+  // Daftar UPT unik dari data
+  const uptList = [...new Set(gudangCapacityList.map(r=>r.upt))].sort();
+
+  const filtered = gudangCapacityList.filter(r =>
+    (filterUPT==="ALL" || r.upt===filterUPT) &&
+    (filterStatus==="ALL" || r.statusKapasitas===filterStatus)
+  );
+
+  // KPI aggregat
+  const totalLahan = gudangCapacityList.reduce((s,r)=>s+r.luasLahanM2,0);
+  const totalTerpakai = gudangCapacityList.reduce((s,r)=>s+r.luasTerpakaiM2,0);
+  const totalSisa = totalLahan - totalTerpakai;
+  const utilTotal = totalLahan > 0 ? totalTerpakai / totalLahan : 0;
+  const kritis = gudangCapacityList.filter(r=>r.statusKapasitas==="KRITIS").length;
+  const waspada = gudangCapacityList.filter(r=>r.statusKapasitas==="WASPADA").length;
+  const aman = gudangCapacityList.filter(r=>r.statusKapasitas==="AMAN").length;
+
+  // Ranking UPT (weighted utilization)
+  const uptRanking = Object.entries(
+    gudangCapacityList.reduce((acc,r) => {
+      if (!acc[r.upt]) acc[r.upt] = {lahan:0,terpakai:0};
+      acc[r.upt].lahan += r.luasLahanM2;
+      acc[r.upt].terpakai += r.luasTerpakaiM2;
+      return acc;
+    }, {})
+  ).map(([upt,v])=>({upt, util: v.lahan>0?v.terpakai/v.lahan:0, lahan:v.lahan, terpakai:v.terpakai}))
+   .sort((a,b)=>b.util-a.util);
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const sheetName = wb.SheetNames.find(s=>s.toUpperCase().includes("KAPASITAS GUDANG")) || wb.SheetNames[0];
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, { defval:"" });
+      const parsed = parseKapasitasGudangSheet(rows);
+      const valid = parsed.filter(r=>r._valid);
+      const invalid = parsed.filter(r=>!r._valid);
+      const warnings = parsed.filter(r=>r._valid && r._warnings.length>0);
+      setImportPreview({ records: parsed, valid, invalid, warnings, fileName: file.name, sheetName });
+    } catch(err) {
+      showToast("Gagal baca file: " + err.message, "error");
+    }
+    setImporting(false);
+    e.target.value = "";
+  }
+
+  async function handlePublish() {
+    if (!importPreview) return;
+    const toPublish = importPreview.valid;
+    const batchId = "CAPIMP-"+Date.now();
+    const importRecord = {
+      id: batchId, sourceFile: importPreview.fileName, sheetName: importPreview.sheetName,
+      importedBy: currentUser.id, importedAt: Date.now(),
+      totalRows: importPreview.records.length, validRows: importPreview.valid.length,
+      invalidRows: importPreview.invalid.length, warningRows: importPreview.warnings.length,
+    };
+    const newList = toPublish.map(r => ({...r, importBatchId: batchId, _errors:undefined, _warnings:undefined, _valid:undefined}));
+    const newImports = [...gudangCapacityImports, importRecord];
+    setGudangCapacityList(newList);
+    setGudangCapacityImports(newImports);
+    await saveToCloud({ gudangCapacityList: newList, gudangCapacityImports: newImports });
+    setImportPreview(null);
+    setSubTab("dashboard");
+    showToast(`Berhasil publish ${newList.length} record kapasitas gudang.`, "success");
+  }
+
+  const TABS = [
+    {id:"dashboard",label:"📊 Dashboard"},
+    {id:"data",label:"📋 Data Kapasitas"},
+    {id:"import",label:"📥 Import & Review"},
+    {id:"mapping",label:"🔗 Mapping"},
+    {id:"peta",label:"🗺️ Peta Gudang"},
+  ];
+
+  return (
+    <div>
+      <div style={{marginBottom:16}}>
+        <h1 style={{fontSize:22,fontWeight:900,marginBottom:4}}>📐 Monitoring Kapasitas Gudang</h1>
+        <p style={{color:C.muted,fontSize:13}}>Laporan utilization luas gudang berbasis m2 — UIT JBM</p>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {TABS.map(t=>(
+          <button key={t.id} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${subTab===t.id?C.accent:C.border}`,background:subTab===t.id?C.accent:"white",color:subTab===t.id?"white":C.muted,fontWeight:700,fontSize:12,cursor:"pointer"}}
+            onClick={()=>setSubTab(t.id)}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* DASHBOARD */}
+      {subTab==="dashboard" && (
+        <div>
+          {gudangCapacityList.length === 0 ? (
+            <div style={{...sty.card,textAlign:"center",padding:40,color:C.muted}}>
+              <div style={{fontSize:40,marginBottom:12}}>📐</div>
+              <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>Data kapasitas gudang belum tersedia</div>
+              <div style={{fontSize:13,marginBottom:20}}>Import file KAPASITAS GUDANG UIT JBM.xlsx di tab "Import & Review"</div>
+              {canEdit && <button style={sty.btn("primary")} onClick={()=>setSubTab("import")}>📥 Import Laporan Kapasitas</button>}
+            </div>
+          ) : (
+            <div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+                {[
+                  {label:"Total Luas Lahan",val:fmtNum(Math.round(totalLahan))+" m²",color:C.accent},
+                  {label:"Total Terpakai",val:fmtNum(Math.round(totalTerpakai))+" m²",color:"#7c3aed"},
+                  {label:"Sisa Luas",val:fmtNum(Math.round(totalSisa))+" m²",color:C.green},
+                  {label:"Utilization Total",val:(utilTotal*100).toFixed(1)+"%",color:utilTotal>=0.9?C.red:utilTotal>=0.75?"#f59e0b":C.green},
+                  {label:"🔴 Kritis (≥90%)",val:kritis,color:C.red},
+                  {label:"🟡 Waspada (75-89%)",val:waspada,color:"#f59e0b"},
+                  {label:"🟢 Aman (<75%)",val:aman,color:C.green},
+                ].map(kpi=>(
+                  <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
+                    <div style={{fontSize:16,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+                <div style={{...sty.card}}>
+                  <div style={{fontWeight:700,marginBottom:10}}>🏆 Ranking UPT (Utilization)</div>
+                  {uptRanking.map((u,i)=>(
+                    <div key={u.upt} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:12}}>#{i+1} {u.upt}</div>
+                        <div style={{fontSize:10,color:C.muted}}>{fmtNum(Math.round(u.terpakai))} / {fmtNum(Math.round(u.lahan))} m²</div>
+                      </div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontWeight:800,color:u.util>=0.9?C.red:u.util>=0.75?"#f59e0b":C.green}}>{(u.util*100).toFixed(1)}%</div>
+                        <div style={{width:80,height:6,background:"#e5e7eb",borderRadius:3,marginTop:3}}>
+                          <div style={{width:(u.util*100)+"%",height:"100%",background:u.util>=0.9?C.red:u.util>=0.75?"#f59e0b":C.green,borderRadius:3}}/>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{...sty.card}}>
+                  <div style={{fontWeight:700,marginBottom:10}}>🔴 Sub-Gudang Paling Kritis</div>
+                  {gudangCapacityList.filter(r=>r.statusKapasitas==="KRITIS").sort((a,b)=>b.persentaseTerpakai-a.persentaseTerpakai).slice(0,8).map((r,i)=>(
+                    <div key={i} style={{padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between"}}>
+                        <div style={{fontSize:12,fontWeight:600}}>{r.subGudang}</div>
+                        <span style={{color:C.red,fontWeight:800,fontSize:12}}>{(r.persentaseTerpakai*100).toFixed(1)}%</span>
+                      </div>
+                      <div style={{fontSize:10,color:C.muted}}>{r.upt} — {r.gudang}</div>
+                    </div>
+                  ))}
+                  {gudangCapacityList.filter(r=>r.statusKapasitas==="KRITIS").length===0 && <div style={{color:C.muted,fontSize:12}}>Tidak ada sub-gudang kritis saat ini.</div>}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DATA KAPASITAS */}
+      {subTab==="data" && (
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+            <select style={{...sty.select,maxWidth:180}} value={filterUPT} onChange={e=>setFilterUPT(e.target.value)}>
+              <option value="ALL">Semua UPT</option>
+              {uptList.map(u=><option key={u}>{u}</option>)}
+            </select>
+            <select style={{...sty.select,maxWidth:180}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
+              <option value="ALL">Semua Status</option>
+              <option value="KRITIS">🔴 Kritis</option>
+              <option value="WASPADA">🟡 Waspada</option>
+              <option value="AMAN">🟢 Aman</option>
+            </select>
+            <span style={{color:C.muted,fontSize:12,alignSelf:"center"}}>{filtered.length} record</span>
+          </div>
+          <div style={{...sty.card,padding:0,overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+              <thead style={{background:"#003087",color:"white"}}>
+                <tr>
+                  {["UPT","Gudang","Sub Gudang","Luas Lahan (m²)","Terpakai (m²)","Sisa (m²)","Utilization","Status","Update","Detail"].map(h=>(
+                    <th key={h} style={{padding:"8px 10px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((r,i)=>(
+                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r.statusKapasitas==="KRITIS"?"#fef2f2":r.statusKapasitas==="WASPADA"?"#fefce8":"white"}}>
+                    <td style={{padding:"6px 10px",fontWeight:700}}>{r.upt}</td>
+                    <td style={{padding:"6px 10px"}}>{r.gudang}</td>
+                    <td style={{padding:"6px 10px",fontWeight:600}}>{r.subGudang}</td>
+                    <td style={{padding:"6px 10px",textAlign:"right"}}>{fmtNum(Math.round(r.luasLahanM2))}</td>
+                    <td style={{padding:"6px 10px",textAlign:"right"}}>{fmtNum(Math.round(r.luasTerpakaiM2))}</td>
+                    <td style={{padding:"6px 10px",textAlign:"right"}}>{fmtNum(Math.round(r.sisaLuasM2))}</td>
+                    <td style={{padding:"6px 10px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{width:60,height:6,background:"#e5e7eb",borderRadius:3}}>
+                          <div style={{width:Math.min(100,(r.persentaseTerpakai*100))+"%",height:"100%",background:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green,borderRadius:3}}/>
+                        </div>
+                        <span style={{fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{(r.persentaseTerpakai*100).toFixed(1)}%</span>
+                      </div>
+                    </td>
+                    <td style={{padding:"6px 10px"}}>
+                      <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,background:r.statusKapasitas==="KRITIS"?"#fef2f2":r.statusKapasitas==="WASPADA"?"#fefce8":"#f0fdf4",color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#92400e":C.green}}>{r.statusKapasitas}</span>
+                    </td>
+                    <td style={{padding:"6px 10px",fontSize:10,color:C.muted}}>{r.waktuUpdate||"-"}</td>
+                    <td style={{padding:"6px 10px"}}>
+                      <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(r)}>Detail</button>
+                    </td>
+                  </tr>
+                ))}
+                {filtered.length===0 && <tr><td colSpan={10} style={{padding:20,textAlign:"center",color:C.muted}}>Tidak ada data</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* IMPORT & REVIEW */}
+      {subTab==="import" && (
+        <div>
+          <div style={{...sty.card,marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>📥 Import Laporan Kapasitas Gudang (XLSX)</div>
+            <p style={{fontSize:12,color:C.muted,marginBottom:12}}>Upload file KAPASITAS GUDANG UIT JBM.xlsx. Sheet yang dibaca: <strong>KAPASITAS GUDANG</strong>.</p>
+            {canEdit && (
+              <label style={{...sty.btn("primary"),cursor:"pointer"}}>
+                {importing?"⏳ Memproses...":"📂 Upload XLSX Kapasitas Gudang"}
+                <input type="file" accept=".xlsx" style={{display:"none"}} onChange={handleImportFile} disabled={importing}/>
+              </label>
+            )}
+          </div>
+
+          {importPreview && (
+            <div style={{...sty.card}}>
+              <div style={{fontWeight:700,marginBottom:10}}>Preview: {importPreview.fileName} (Sheet: {importPreview.sheetName})</div>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
+                {[
+                  {label:"Total",val:importPreview.records.length,color:C.accent},
+                  {label:"Valid",val:importPreview.valid.length,color:C.green},
+                  {label:"Warning",val:importPreview.warnings.length,color:"#f59e0b"},
+                  {label:"Invalid",val:importPreview.invalid.length,color:C.red},
+                ].map(s=>(
+                  <div key={s.label} style={{padding:"8px 14px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:11,color:C.muted}}>{s.label}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{overflowX:"auto",maxHeight:400,overflowY:"auto",marginBottom:14}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+                  <thead style={{background:"#003087",color:"white",position:"sticky",top:0}}>
+                    <tr>
+                      {["UPT","Gudang","Sub Gudang","Luas Lahan","Terpakai","Utilization","Status","Warning"].map(h=>(
+                        <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {importPreview.records.map((r,i)=>(
+                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:!r._valid?"#fef2f2":r._warnings.length>0?"#fefce8":"white"}}>
+                        <td style={{padding:"5px 8px"}}>{r.upt}</td>
+                        <td style={{padding:"5px 8px"}}>{r.gudang}</td>
+                        <td style={{padding:"5px 8px",fontWeight:600}}>{r.subGudang}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasLahanM2))}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasTerpakaiM2))}</td>
+                        <td style={{padding:"5px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{(r.persentaseTerpakai*100).toFixed(1)}%</td>
+                        <td style={{padding:"5px 8px"}}><span style={{fontSize:10,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{r.statusKapasitas}</span></td>
+                        <td style={{padding:"5px 8px",fontSize:10,color:C.muted,maxWidth:200}}>{[...r._errors,...r._warnings].join(", ")||"-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {canEdit && importPreview.invalid.length === 0 && (
+                <button style={sty.btn("primary")} onClick={handlePublish}>✅ Publish Baseline ({importPreview.valid.length} record)</button>
+              )}
+              {importPreview.invalid.length > 0 && (
+                <div style={{color:C.red,fontWeight:700,fontSize:13}}>⚠️ Ada {importPreview.invalid.length} baris invalid — perbaiki file terlebih dahulu. Warning (baris kuning) tidak memblokir publish.</div>
+              )}
+            </div>
+          )}
+
+          {gudangCapacityImports.length > 0 && (
+            <div style={{...sty.card,marginTop:16}}>
+              <div style={{fontWeight:700,marginBottom:8}}>Riwayat Import</div>
+              {[...gudangCapacityImports].reverse().map(imp=>(
+                <div key={imp.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
+                  <div style={{fontWeight:700}}>{imp.sourceFile}</div>
+                  <div style={{color:C.muted,fontSize:11}}>{new Date(imp.importedAt).toLocaleString("id")} — {imp.validRows} valid / {imp.invalidRows} invalid</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* MAPPING */}
+      {subTab==="mapping" && (
+        <div style={{...sty.card}}>
+          <div style={{fontWeight:700,marginBottom:10}}>🔗 Mapping ke Master Gudang WARNOTO</div>
+          {gudangCapacityList.filter(r=>r.mappingStatus!=="CONFIRMED").length === 0 ? (
+            <div style={{color:C.muted,fontSize:13}}>Semua record sudah di-mapping atau belum ada data.</div>
+          ) : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead style={{background:"#f9fafb"}}>
+                  <tr>
+                    {["UPT","Gudang (Laporan)","Sub Gudang","Map ke Gudang WARNOTO","Status","Aksi"].map(h=>(
+                      <th key={h} style={{padding:"7px 8px",textAlign:"left",borderBottom:`1px solid ${C.border}`}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {gudangCapacityList.filter(r=>r.mappingStatus!=="CONFIRMED").map((r,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                      <td style={{padding:"6px 8px"}}>{r.upt}</td>
+                      <td style={{padding:"6px 8px"}}>{r.gudang}</td>
+                      <td style={{padding:"6px 8px",fontWeight:600}}>{r.subGudang}</td>
+                      <td style={{padding:"6px 8px"}}>
+                        <select style={{...sty.select,fontSize:11,padding:"4px 8px"}} value={r.matchedGudangId||""} onChange={async e=>{
+                          const newList = gudangCapacityList.map(x=>x.id===r.id?{...x,matchedGudangId:e.target.value||null,mappingStatus:e.target.value?"AUTO_SUGGESTED":"UNMATCHED"}:x);
+                          setGudangCapacityList(newList);
+                          await saveToCloud({gudangCapacityList:newList});
+                        }}>
+                          <option value="">-- Pilih Gudang --</option>
+                          {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+                        </select>
+                      </td>
+                      <td style={{padding:"6px 8px"}}>
+                        <span style={{fontSize:10,fontWeight:700,color:r.mappingStatus==="CONFIRMED"?C.green:r.mappingStatus==="AUTO_SUGGESTED"?"#f59e0b":C.muted}}>{r.mappingStatus}</span>
+                      </td>
+                      <td style={{padding:"6px 8px"}}>
+                        {r.matchedGudangId && r.mappingStatus!=="CONFIRMED" && canEdit && (
+                          <button style={sty.btn("primary","sm")} onClick={async()=>{
+                            const newList = gudangCapacityList.map(x=>x.id===r.id?{...x,mappingStatus:"CONFIRMED"}:x);
+                            setGudangCapacityList(newList);
+                            await saveToCloud({gudangCapacityList:newList});
+                          }}>✅ Konfirmasi</button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Detail modal */}
+      {/* SUB-TAB PETA GUDANG */}
+      {subTab==="peta" && (
+        <PetaGudangTab
+          gudangList={gudangList}
+          lokasiList={lokasiList}
+          stocks={stocks||[]}
+          sty={sty} C={C}
+          currentUser={currentUser}
+        />
+      )}
+
+      {detailRecord && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20}} onClick={()=>setDetailRecord(null)}>
+          <div style={{...sty.card,maxWidth:480,width:"100%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+              <h3 style={{fontWeight:800}}>{detailRecord.subGudang}</h3>
+              <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(null)}>✕</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12,marginBottom:12}}>
+              {[["UPT",detailRecord.upt],["Gudang",detailRecord.gudang],["Type",detailRecord.typeGudang||"-"],["Alamat",detailRecord.alamat||"-"],
+                ["Luas Lahan",fmtNum(Math.round(detailRecord.luasLahanM2))+" m²"],["Terpakai",fmtNum(Math.round(detailRecord.luasTerpakaiM2))+" m²"],
+                ["Sisa",fmtNum(Math.round(detailRecord.sisaLuasM2))+" m²"],["Utilization",(detailRecord.persentaseTerpakai*100).toFixed(1)+"%"],
+                ["Komposisi Persediaan",(detailRecord.persediaanPct*100).toFixed(0)+"%"],["Komposisi Cadang",(detailRecord.cadangPct*100).toFixed(0)+"%"],
+                ["Contact Person",detailRecord.contactPerson||"-"],["Waktu Update",detailRecord.waktuUpdate||"-"],
+              ].map(([k,v])=>(
+                <div key={k} style={{padding:"6px 8px",background:"#f9fafb",borderRadius:6}}>
+                  <div style={{fontSize:10,color:C.muted}}>{k}</div>
+                  <div style={{fontWeight:700,marginTop:2}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {detailRecord.keterangan && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>📝 {detailRecord.keterangan}</div>}
+            {detailRecord.linkGudang && <a href={detailRecord.linkGudang} target="_blank" rel="noreferrer" style={{fontSize:12,color:C.accent}}>🔗 Link Gudang</a>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════
+// MIGRASI DATA TAB
+// ════════════════════════════════════════════════════════════════════
+function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15History, setMigratedTug15History, maraReference, setMaraReference, currentUser, sty, C, saveToCloud, setStocks, setKatalogList, setTxns, showToast }) {
+  const [step, setStep] = useState("upload"); // "upload" | "preview" | "backup" | "done"
+  const [sapFile, setSapFile] = useState(null);
+  const [sapRows, setSapRows] = useState([]);
+  const [nonSapRows, setNonSapRows] = useState([]);
+  const [parsedSAP, setParsedSAP] = useState([]);
+  const [parsedNonSAP, setParsedNonSAP] = useState([]);
+  const [previewStats, setPreviewStats] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [maraLoading, setMaraLoading] = useState(false);
+
+  // Parse CSV SAP format PEMAT
+  function parseSAPMigration(rows) {
+    return rows.map(row => {
+      const material = String(row["Material"]||row["material"]||"").trim();
+      const noKat = normalizeKatalog(material);
+      const desc = String(row["Material Description"]||row["material description"]||"").trim();
+      const satuan = String(row["Base Unit of Measure"]||"").trim() || "BH";
+      const qtyRaw = String(row["Unrestricted Use Stock"]||row["unrestricted use stock"]||"0").replace(/\./g,"").replace(",",".");
+      const qty = parseFloat(qtyRaw) || 0;
+      const valType = String(row["Valuation Type"]||"").trim().toUpperCase();
+      const harga = parseFloat(String(row["Harga Satuan"]||"0").replace(/\./g,"").replace(",",".")) || 0;
+
+      let jenisBarang = "Persediaan";
+      if (noKat.length === 10) jenisBarang = "Cadang";
+      else if (valType === "BURSA") jenisBarang = "Persediaan Bursa";
+      else if (valType === "PRE-MEMORY") jenisBarang = "Pre Memory";
+
+      return { noKat, material, desc, satuan, qty, jenisBarang, harga, valType, _valid: noKat.length > 0 && qty >= 0 };
+    }).filter(r => r.noKat);
+  }
+
+  async function handleSAPFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBusy(true);
+    try {
+      let rows = [];
+      if (file.name.toLowerCase().endsWith(".csv")) {
+        const text = await file.text();
+        const clean = text.replace(/^﻿/, ""); // strip BOM
+        const lines = clean.replace(/\r/g,"").split("\n").filter(Boolean);
+        const sep = lines[0].includes(";") ? ";" : ",";
+        const headers = lines[0].split(sep).map(h=>h.trim().replace(/^"|"$/g,""));
+        rows = lines.slice(1).map(l => {
+          const vals = l.split(sep).map(v=>v.trim().replace(/^"|"$/g,""));
+          const obj = {}; headers.forEach((h,i)=>{ obj[h]=vals[i]||""; }); return obj;
+        });
+      } else {
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf);
+        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
+      }
+      const parsed = parseSAPMigration(rows);
+      setSapRows(parsed);
+      setSapFile(file.name);
+      showToast(`SAP: ${parsed.length} baris berhasil diparse.`, "success");
+    } catch(err) { showToast("Gagal parse SAP: " + err.message, "error"); }
+    setBusy(false);
+    e.target.value = "";
+  }
+
+  async function handleLoadMara(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMaraLoading(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const sheet1 = wb.Sheets["Sheet1"] || wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet1, {defval:""});
+      const ref = rows.map(r => ({
+        katalog: normalizeKatalog(String(r["Material"]||"").trim()),
+        description: String(r["Material Description"]||"").trim(),
+        satuan: String(r["Base Unit of Measure"]||"").trim(),
+        materialType: String(r["Material Type"]||"").trim(),
+      }));
+      setMaraReference(ref);
+      showToast(`MARA dimuat: ${ref.length} material (session-only).`, "success");
+    } catch(err) { showToast("Gagal load MARA: " + err.message, "error"); }
+    setMaraLoading(false);
+    e.target.value = "";
+  }
+
+  function buildPreview() {
+    const maraSet = new Set((maraReference||[]).map(r=>r.katalog));
+    const warnotoSet = new Set(katalogList.map(k=>normalizeKatalog(k.katalog)));
+
+    const sapResult = sapRows.map(r => ({
+      ...r,
+      matchWarnoto: warnotoSet.has(r.noKat),
+      matchMara: maraSet.has(r.noKat),
+    }));
+
+    const byJenis = {};
+    sapResult.forEach(r => { byJenis[r.jenisBarang] = (byJenis[r.jenisBarang]||0) + 1; });
+
+    const totalQty = sapResult.reduce((s,r)=>s+r.qty,0);
+    const totalNilai = sapResult.reduce((s,r)=>s+(r.qty*r.harga),0);
+
+    setPreviewStats({ sapResult, byJenis, totalQty, totalNilai });
+    setStep("preview");
+  }
+
+  async function handleBackupAndApply() {
+    if (!previewStats) return;
+    setBusy(true);
+    try {
+      // 1. Backup data sebelum cutover
+      const backup = {
+        stocks, katalogList, lokasiList, txns,
+        backupAt: Date.now(), by: currentUser.id,
+        note: "Pre-migration backup sebelum cutover SAP " + (sapFile||""),
+      };
+      const backupStr = JSON.stringify(backup, null, 2);
+      const blobBackup = new Blob([backupStr], {type:"application/json"});
+      const aBackup = document.createElement("a");
+      aBackup.href = URL.createObjectURL(blobBackup);
+      aBackup.download = `warnoto_backup_pre_migrasi_${new Date().toISOString().slice(0,10)}.json`;
+      aBackup.click();
+
+      // 2. Build katalog baru dari SAP
+      const now = Date.now();
+      const newKatalog = previewStats.sapResult.map(r => {
+        const existing = katalogList.find(k=>normalizeKatalog(k.katalog)===r.noKat);
+        if (existing) return { ...existing, jenisBarang: r.jenisBarang, satuan: r.satuan || existing.satuan };
+        return {
+          id: "KAT-MIG-"+r.noKat,
+          katalog: r.noKat,
+          name: r.desc,
+          category: r.desc.split(";")[0].trim() || "Material",
+          jenisBarang: r.jenisBarang,
+          satuan: r.satuan,
+          keterangan: "Import migrasi SAP " + (sapFile||""),
+          createdAt: now,
+        };
+      });
+
+      // 3. Build stocks baru (satu lokasi default per item)
+      const defaultLokasi = lokasiList[0];
+      const newStocks = previewStats.sapResult.filter(r=>r.qty>0).map(r => {
+        const kat = newKatalog.find(k=>k.katalog===r.noKat);
+        const existing = stocks.find(s=>{
+          const k = katalogList.find(kk=>kk.id===s.katalogId);
+          return k && normalizeKatalog(k.katalog)===r.noKat;
+        });
+        return {
+          id: existing?.id || ("STK-MIG-"+r.noKat+"-"+now),
+          katalogId: kat?.id || ("KAT-MIG-"+r.noKat),
+          lokasiId: existing?.lokasiId || defaultLokasi?.id || null,
+          qty: r.qty,
+          price: r.harga || existing?.price || 0,
+          minQty: existing?.minQty || 0,
+          unit: r.satuan,
+          jenisBarang: r.jenisBarang,
+          name: r.desc,
+          katalog: r.noKat,
+          category: r.desc.split(";")[0].trim()||"Material",
+          sapBaselineQty: r.qty,
+          sapBaselineAt: now,
+          createdAt: existing?.createdAt || now,
+          updatedAt: now,
+        };
+      });
+
+      // 4. Simpan histori TUG-15 lama sebagai migrasi
+      const migHistory = txns.map(t => ({...t, _migrasiSource:"WARNOTO_TEST"}));
+      setMigratedTug15History(migHistory);
+
+      // 5. Apply cutover
+      setKatalogList(newKatalog);
+      setStocks(newStocks);
+      setTxns([]);
+      await saveToCloud({
+        katalogList: newKatalog,
+        stocks: newStocks,
+        txns: [],
+        migratedTug15History: migHistory,
+      });
+
+      setStep("done");
+      showToast(`Cutover berhasil! ${newKatalog.length} katalog, ${newStocks.length} baris stok.`, "success");
+    } catch(err) {
+      showToast("Cutover gagal: " + err.message, "error");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div>
+      <div style={{marginBottom:16}}>
+        <h1 style={{fontSize:22,fontWeight:900,marginBottom:4}}>🔄 Migrasi Data SAP/Non-SAP</h1>
+        <p style={{color:C.muted,fontSize:13}}>Cutover terkontrol data stok dari SAP ke WARNOTO. <strong style={{color:C.red}}>⚠️ Hanya untuk ADMIN — backup wajib sebelum apply!</strong></p>
+      </div>
+
+      {/* Step indicator */}
+      <div style={{display:"flex",gap:4,marginBottom:20,flexWrap:"wrap"}}>
+        {["upload","preview","backup","done"].map((s,i)=>(
+          <div key={s} style={{display:"flex",alignItems:"center",gap:4}}>
+            <div style={{width:28,height:28,borderRadius:"50%",background:step===s?C.accent:["upload","preview","backup","done"].indexOf(step)>i?"#16a34a":"#e5e7eb",color:step===s?"white":["upload","preview","backup","done"].indexOf(step)>i?"white":"#9ca3af",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{i+1}</div>
+            <span style={{fontSize:11,fontWeight:step===s?700:400,color:step===s?C.accent:C.muted,textTransform:"capitalize"}}>{s==="backup"?"Backup & Apply":s}</span>
+            {i<3 && <span style={{color:C.border,marginLeft:4}}>→</span>}
+          </div>
+        ))}
+      </div>
+
+      {step==="upload" && (
+        <div>
+          <div style={{...sty.card,marginBottom:12}}>
+            <div style={{fontWeight:700,marginBottom:8}}>1. Upload File SAP (PEMAT format)</div>
+            <p style={{fontSize:12,color:C.muted,marginBottom:10}}>Format CSV atau XLSX dengan kolom: Material, Material Description, Base Unit of Measure, Unrestricted Use Stock, Valuation Type, Harga Satuan.</p>
+            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
+              <label style={{...sty.btn("primary"),cursor:"pointer"}}>
+                {busy?"⏳ Memproses...":"📂 Upload File SAP (CSV/XLSX)"}
+                <input type="file" accept=".csv,.xlsx" style={{display:"none"}} onChange={handleSAPFile} disabled={busy}/>
+              </label>
+              {sapFile && <span style={{fontSize:12,color:C.green,fontWeight:700}}>✅ {sapFile} ({sapRows.length} baris)</span>}
+            </div>
+          </div>
+          <div style={{...sty.card,marginBottom:12}}>
+            <div style={{fontWeight:700,marginBottom:8}}>2. Load MARA Reference (opsional)</div>
+            <p style={{fontSize:12,color:C.muted,marginBottom:10}}>Upload Katalog MARA untuk validasi nomor SAP. Session-only.</p>
+            <label style={{...sty.btn(maraReference?"ghost":"ghost"),cursor:"pointer"}}>
+              {maraLoading?"⏳ Memuat...":maraReference?`✅ MARA (${maraReference.length} material)`:"📂 Load MARA (.xlsx) — Opsional"}
+              <input type="file" accept=".xlsx" style={{display:"none"}} onChange={handleLoadMara} disabled={maraLoading}/>
+            </label>
+          </div>
+          <button style={sty.btn("primary")} disabled={sapRows.length===0||busy} onClick={buildPreview}>
+            Lanjut → Preview Rekonsiliasi
+          </button>
+        </div>
+      )}
+
+      {step==="preview" && previewStats && (
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
+            {[
+              {label:"Total Baris SAP",val:previewStats.sapResult.length,color:C.accent},
+              {label:"Total Qty",val:fmtNum(Math.round(previewStats.totalQty)),color:"#7c3aed"},
+              {label:"Total Nilai",val:"Rp "+fmtNum(previewStats.totalNilai),color:C.green,small:true},
+              {label:"Match WARNOTO",val:previewStats.sapResult.filter(r=>r.matchWarnoto).length,color:C.green},
+              {label:"Baru (tidak di WARNOTO)",val:previewStats.sapResult.filter(r=>!r.matchWarnoto).length,color:"#f59e0b"},
+            ].map(kpi=>(
+              <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
+                <div style={{fontSize:kpi.small?13:20,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{...sty.card,marginBottom:12}}>
+            <div style={{fontWeight:700,marginBottom:8}}>Distribusi Jenis Barang</div>
+            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+              {Object.entries(previewStats.byJenis).map(([j,n])=>(
+                <div key={j} style={{padding:"6px 12px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,fontSize:12}}>
+                  <strong>{j}:</strong> {n} item
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:16,maxHeight:350,overflowY:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:700}}>
+              <thead style={{background:"#003087",color:"white",position:"sticky",top:0}}>
+                <tr>
+                  {["No Katalog","Deskripsi","Jenis","Qty","Harga","Match WARNOTO","Match MARA"].map(h=>(
+                    <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {previewStats.sapResult.slice(0,200).map((r,i)=>(
+                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:!r.matchWarnoto?"#fefce8":"white"}}>
+                    <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat}</td>
+                    <td style={{padding:"5px 8px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.desc}</td>
+                    <td style={{padding:"5px 8px",fontSize:10}}>{r.jenisBarang}</td>
+                    <td style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
+                    <td style={{padding:"5px 8px",textAlign:"right"}}>{r.harga?fmtNum(r.harga):"-"}</td>
+                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchWarnoto?"✅":"🆕"}</td>
+                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchMara?"✅":"-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button style={sty.btn("ghost")} onClick={()=>setStep("upload")}>← Kembali</button>
+            <button style={sty.btn("primary")} onClick={()=>setStep("backup")}>Lanjut → Backup & Apply</button>
+          </div>
+        </div>
+      )}
+
+      {step==="backup" && (
+        <div style={{...sty.card}}>
+          <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>⚠️ Konfirmasi Backup & Apply Cutover</div>
+          <div style={{background:"#fef9c3",border:"1px solid #fbbf24",borderRadius:8,padding:14,marginBottom:16,fontSize:13}}>
+            <strong>Tindakan ini akan:</strong>
+            <ul style={{marginTop:8,paddingLeft:20,lineHeight:1.8}}>
+              <li>Mendownload backup JSON lengkap data sebelum cutover</li>
+              <li>Mengganti Master Katalog ({katalogList.length} → {sapRows.length} katalog)</li>
+              <li>Mengganti Data Stok dengan data dari SAP</li>
+              <li>Mengosongkan transaksi TUG test lama (disimpan ke histori migrasi)</li>
+              <li>Data yang di-replace <strong>tidak bisa di-undo</strong> kecuali restore dari backup</li>
+            </ul>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <button style={{...sty.btn("danger"),opacity:busy?0.6:1}} onClick={handleBackupAndApply} disabled={busy}>
+              {busy?"⏳ Memproses...":"📥 Download Backup & Apply Cutover"}
+            </button>
+            <button style={sty.btn("ghost")} onClick={()=>setStep("preview")} disabled={busy}>← Batal</button>
+          </div>
+        </div>
+      )}
+
+      {step==="done" && (
+        <div style={{...sty.card,textAlign:"center",padding:40}}>
+          <div style={{fontSize:40,marginBottom:12}}>✅</div>
+          <div style={{fontWeight:800,fontSize:18,marginBottom:8,color:C.green}}>Cutover Berhasil!</div>
+          <div style={{fontSize:13,color:C.muted,marginBottom:20}}>Data stok dan katalog sudah diganti dengan data SAP. Histori TUG lama tersimpan di "Migrasi TUG-15".</div>
+          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+            <button style={sty.btn("primary")} onClick={()=>setStep("upload")}>Lakukan Migrasi Lagi</button>
+          </div>
+        </div>
+      )}
+
+      {/* Riwayat migrasi TUG-15 */}
+      {migratedTug15History.length > 0 && (
+        <div style={{...sty.card,marginTop:16}}>
+          <div style={{fontWeight:700,marginBottom:8}}>📋 Histori TUG-15 Migrasi ({migratedTug15History.length} transaksi)</div>
+          <p style={{fontSize:12,color:C.muted,marginBottom:8}}>Data histori dari sebelum cutover — tampil di TUG-15 dengan badge "MIGRASI", tidak mempengaruhi stok aktif.</p>
+          <div style={{maxHeight:200,overflowY:"auto"}}>
+            {migratedTug15History.slice(0,20).map((t,i)=>(
+              <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:11,display:"flex",gap:12}}>
+                <span style={{fontWeight:700,color:C.accent}}>{t.id}</span>
+                <span style={{color:C.muted}}>{t.docType} — {fmtDateOnly(t.createdAt)}</span>
+                <span style={{padding:"1px 6px",borderRadius:4,background:"#f3f4f6",fontSize:10}}>MIGRASI</span>
+              </div>
+            ))}
+            {migratedTug15History.length > 20 && <div style={{padding:8,color:C.muted,fontSize:11,textAlign:"center"}}>...dan {migratedTug15History.length-20} transaksi lainnya</div>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

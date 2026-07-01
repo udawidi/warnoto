@@ -341,3 +341,154 @@ as $$
   order by embedding <=> query_embedding
   limit match_count;
 $$;
+
+-- ────────────────────────────────────────────────────────────
+-- 10. WAREHOUSE_CAPACITY — kapasitas gudang per sub-gudang (m2).
+--     Grain: UPT x Gudang x Sub Gudang. Sumber: Laporan KAPASITAS GUDANG UIT JBM.xlsx.
+--     Diimport lewat UI (KapasitasGudangTab) bukan hardcoded.
+-- ────────────────────────────────────────────────────────────
+create table if not exists warehouse_capacity (
+  id text primary key,                  -- "CAP-{UPT}-{GUDANG}-{SUB}" uppercase
+  upt text not null,
+  gudang text not null,
+  sub_gudang text not null,
+  type_gudang text,
+  alamat text,
+  latitude numeric,
+  longitude numeric,
+  luas_lahan_m2 numeric not null default 0,
+  luas_terpakai_m2 numeric not null default 0,
+  sisa_luas_m2 numeric not null default 0,
+  persentase_terpakai numeric not null default 0,   -- 0.0 – 1.0
+  persediaan_pct numeric default 0,
+  cadang_pct numeric default 0,
+  pre_memory_pct numeric default 0,
+  attb_pct numeric default 0,
+  lainnya_pct numeric default 0,
+  status_kapasitas text not null default 'AMAN' check (status_kapasitas in ('KRITIS','WASPADA','AMAN')),
+  contact_person text,
+  waktu_update text,
+  keterangan text,
+  link_gudang text,
+  matched_gudang_id text,               -- FK ke gudang.id (nullable, di-isi setelah mapping)
+  mapping_status text not null default 'UNMATCHED' check (mapping_status in ('UNMATCHED','AUTO_SUGGESTED','CONFIRMED')),
+  import_batch_id text,
+  updated_at timestamptz default now()
+);
+create index if not exists idx_wh_cap_upt on warehouse_capacity(upt);
+create index if not exists idx_wh_cap_status on warehouse_capacity(status_kapasitas);
+
+alter table warehouse_capacity enable row level security;
+drop policy if exists "Authenticated read warehouse_capacity" on warehouse_capacity;
+drop policy if exists "Authenticated write warehouse_capacity" on warehouse_capacity;
+create policy "Authenticated read warehouse_capacity" on warehouse_capacity for select using (auth.role() = 'authenticated');
+create policy "Authenticated write warehouse_capacity" on warehouse_capacity for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 11. WAREHOUSE_CAPACITY_IMPORTS — riwayat batch import kapasitas gudang
+-- ────────────────────────────────────────────────────────────
+create table if not exists warehouse_capacity_imports (
+  id text primary key,
+  source_file text not null,
+  sheet_name text,
+  imported_by text,                     -- username / user id
+  imported_at timestamptz default now(),
+  total_rows integer not null default 0,
+  valid_rows integer not null default 0,
+  invalid_rows integer not null default 0,
+  warning_rows integer not null default 0
+);
+
+alter table warehouse_capacity_imports enable row level security;
+drop policy if exists "Authenticated read wh_cap_imports" on warehouse_capacity_imports;
+drop policy if exists "Authenticated write wh_cap_imports" on warehouse_capacity_imports;
+create policy "Authenticated read wh_cap_imports" on warehouse_capacity_imports for select using (auth.role() = 'authenticated');
+create policy "Authenticated write wh_cap_imports" on warehouse_capacity_imports for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 12. WA_ALLOWED_USERS — whitelist nomor WA yang boleh tanya ke AI Agent.
+--     Dikelola Admin lewat panel WA Agent di App.jsx.
+-- ────────────────────────────────────────────────────────────
+create table if not exists wa_allowed_users (
+  id bigint generated always as identity primary key,
+  phone_number text not null unique,    -- format internasional tanpa "+" cth "628123456789"
+  display_name text,
+  notes text,
+  added_by text,                        -- username admin yang menambahkan
+  added_at timestamptz default now(),
+  is_active boolean not null default true
+);
+
+alter table wa_allowed_users enable row level security;
+-- Read: Edge Function memakai service_role (tidak kena RLS), App.jsx perlu baca untuk tampilkan daftar
+drop policy if exists "Authenticated read wa_allowed_users" on wa_allowed_users;
+drop policy if exists "Authenticated write wa_allowed_users" on wa_allowed_users;
+create policy "Authenticated read wa_allowed_users" on wa_allowed_users for select using (auth.role() = 'authenticated');
+create policy "Authenticated write wa_allowed_users" on wa_allowed_users for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 13. WARNOTO_STATE — snapshot state gudang untuk AI Agent.
+--     Di-update tiap saveToCloud berhasil. Edge Function membaca baris
+--     terbaru (order by updated_at desc limit 1) sebagai konteks.
+--     Hanya menyimpan data ringkasan, bukan seluruh CLOUD blob.
+-- ────────────────────────────────────────────────────────────
+create table if not exists warnoto_state (
+  id bigint generated always as identity primary key,
+  state_data jsonb not null,            -- ringkasan: stok kritis, tug pending, kapasitas, dll
+  version text,                         -- "v1", untuk migrasi skema state ke depan
+  updated_at timestamptz default now()
+);
+create index if not exists idx_warnoto_state_updated on warnoto_state(updated_at desc);
+
+alter table warnoto_state enable row level security;
+-- App.jsx (anon key) perlu insert/update; Edge Function memakai service_role
+drop policy if exists "Public read warnoto_state" on warnoto_state;
+drop policy if exists "Public insert warnoto_state" on warnoto_state;
+create policy "Public read warnoto_state" on warnoto_state for select using (true);
+create policy "Public insert warnoto_state" on warnoto_state for insert with check (true);
+
+-- ────────────────────────────────────────────────────────────
+-- 14. WA_AGENT_LOGS — audit log setiap pesan masuk ke AI Agent WA.
+--     Menyimpan metadata + ringkasan jawaban (bukan teks penuh untuk hemat space).
+-- ────────────────────────────────────────────────────────────
+create table if not exists wa_agent_logs (
+  id bigint generated always as identity primary key,
+  phone_number text not null,
+  display_name text,
+  message_in text not null,             -- pesan asli dari pengirim
+  intent text,                          -- "help" | "menu" | "status_sinkron" | "rag_query" | dst
+  answer_summary text,                  -- ringkasan jawaban yang dikirim (maks ~500 char)
+  rag_chunks_used integer default 0,
+  is_whitelisted boolean not null default false,
+  response_ms integer,                  -- latency total dalam milidetik
+  error_message text,                   -- isi error jika gagal (null = sukses)
+  created_at timestamptz default now()
+);
+create index if not exists idx_wa_logs_phone on wa_agent_logs(phone_number);
+create index if not exists idx_wa_logs_created on wa_agent_logs(created_at desc);
+
+alter table wa_agent_logs enable row level security;
+-- Edge Function menulis dengan service_role (tidak kena RLS).
+-- App.jsx (App Panel Admin) baca untuk tampilkan log — require authenticated.
+drop policy if exists "Authenticated read wa_agent_logs" on wa_agent_logs;
+create policy "Authenticated read wa_agent_logs" on wa_agent_logs for select using (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 15. WA_SYNC_STATUS — status terakhir sinkronisasi RAG/state dari App.jsx.
+--     1 baris per sync_type (upsert by sync_type).
+-- ────────────────────────────────────────────────────────────
+create table if not exists wa_sync_status (
+  sync_type text primary key,           -- "rag_knowledge_base" | "warnoto_state"
+  last_synced_at timestamptz,
+  synced_by text,
+  record_count integer default 0,
+  status text default 'OK' check (status in ('OK','ERROR','RUNNING')),
+  error_message text,
+  updated_at timestamptz default now()
+);
+
+alter table wa_sync_status enable row level security;
+drop policy if exists "Public read wa_sync_status" on wa_sync_status;
+drop policy if exists "Public write wa_sync_status" on wa_sync_status;
+create policy "Public read wa_sync_status" on wa_sync_status for select using (true);
+create policy "Public write wa_sync_status" on wa_sync_status for all using (true) with check (true);
