@@ -5205,6 +5205,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode}
             C={C} sty={sty} setTab={setTab}
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
+            currentUser={currentUser}
           />
         )}
         {tab==="dashboard" && !["MANAGER","ASMAN"].includes(currentUser.role) && (
@@ -8638,7 +8639,7 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
 }
 
 // ─── DASHBOARD ASMAN (Operasional UPT Surabaya) ──────────────────────────
-function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans }) {
+function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const stokKritis = stocks.filter(s=>s.minQty>0 && s.qty<=s.minQty);
   const akanHabis = getMaterialAkanHabis(stocks, katalogList, txns, 5);
