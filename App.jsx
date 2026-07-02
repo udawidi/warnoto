@@ -52,8 +52,12 @@ async function cohereEmbed(texts, inputType) {
   return data.embeddings; // array of vectors, sejajar urutan dengan `texts`
 }
 // Teks deskriptif 1 katalog — dipakai sebagai 1 "chunk" RAG.
-function buildKatalogRagContent(k) {
-  return `Material: ${k.name}. Nomor Katalog: ${k.katalog||"-"}. Kategori: ${k.category||"-"}. Jenis Barang: ${k.jenisBarang||"-"}. Satuan: ${k.satuan||"-"}. Keterangan: ${k.keterangan||"-"}.`;
+// stockInfo (opsional): {qty, price} hasil agregasi enrichedStocks per katalogId — supaya
+// chunk RAG ikut bawa angka real-time (qty/harga/nilai Rupiah), bukan cuma teks deskriptif.
+// Tanpa ini bot WA/Telegram cuma bisa jawab nama/satuan untuk material di luar top-20/kritis.
+function buildKatalogRagContent(k, stockInfo) {
+  const angka = stockInfo ? ` Qty saat ini: ${fmtNum(stockInfo.qty)} ${k.satuan||"-"}. Harga satuan: Rp ${fmtNum(Math.round(stockInfo.price))}. Nilai total: Rp ${fmtNum(Math.round(stockInfo.qty*stockInfo.price))}.` : " Belum ada data stok untuk material ini.";
+  return `Material: ${k.name}. Nomor Katalog: ${k.katalog||"-"}. Kategori: ${k.category||"-"}. Jenis Barang: ${k.jenisBarang||"-"}. Satuan: ${k.satuan||"-"}. Keterangan: ${k.keterangan||"-"}.${angka}`;
 }
 // Ringkasan 1 transaksi TUG (approved) — dipakai sebagai 1 "chunk" RAG.
 function buildTxnRagContent(t) {
@@ -2338,6 +2342,11 @@ export default function PLNWarehouse() {
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
   stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, gudangCapacityList, gudangCapacityImports, migratedTug15History };
+  // Debounce auto-sync warnoto_state + RAG (bot WA/Telegram) — dipicu tiap ada perubahan
+  // stocks/txns lewat saveToCloud, tapi ditunda sampai 90 detik tidak ada perubahan baru
+  // lagi (quiet period), supaya sesi edit beruntun (banyak saveToCloud berturut-turut)
+  // cuma memicu 1x sync di akhir, bukan spam panggilan Cohere embed API tiap perubahan.
+  const autoSyncTimerRef = useRef(null);
   // Catatan: satpamList/timMutuList/uitList/uptList/gudangList/lokasiList TIDAK
   // lagi ditulis di sini — sumber utamanya sekarang Supabase (tabel satpam/
   // tim_mutu/uit/upt/gudang/lokasi), ditulis langsung oleh masing-masing
@@ -2379,6 +2388,20 @@ export default function PLNWarehouse() {
     ]);
     setLastSaved(Date.now());
     setCloudSaving(false);
+
+    // Auto-sync warnoto_state + RAG (bot WA/Telegram) kalau ada perubahan stocks/txns —
+    // debounced 90 detik supaya tidak spam Cohere embed API tiap 1 saveToCloud.
+    if ((overrides.stocks !== undefined || overrides.txns !== undefined) && supabase) {
+      if (autoSyncTimerRef.current) clearTimeout(autoSyncTimerRef.current);
+      autoSyncTimerRef.current = setTimeout(async () => {
+        try {
+          await syncRagChunks(true);
+          await syncWarnotoState(true);
+        } catch (e) {
+          console.error("Auto-sync bot WA/Telegram gagal:", e);
+        }
+      }, 90000);
+    }
   }, []);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatHistory]);
@@ -4540,17 +4563,25 @@ export default function PLNWarehouse() {
   // di AI Agent (bukan otomatis tiap save) supaya tidak boros panggilan API
   // embedding Cohere. Batasi transaksi ke 6 bulan terakhir supaya knowledge
   // base tidak membengkak tanpa batas dari histori lama.
-  async function syncRagChunks() {
-    if (!supabase) { showToast("Supabase belum terkonfigurasi.", "error"); return; }
-    setRagSyncing(true);
+  async function syncRagChunks(silent = false) {
+    if (!supabase) { if (!silent) showToast("Supabase belum terkonfigurasi.", "error"); return; }
+    if (!silent) setRagSyncing(true);
     try {
       const enam_bulan_lalu = Date.now() - 180*24*60*60*1000;
       const txnRelevant = txns.filter(t=>t.status==="APPROVED" && t.createdAt>=enam_bulan_lalu);
+      // Agregasi qty+harga per katalogId (jumlah semua lokasi/blok untuk katalog yang sama)
+      // supaya chunk RAG-nya bawa angka real-time, bukan cuma deskripsi statis.
+      const stockByKatalog = {};
+      enrichedStocks.forEach(s=>{
+        if (!s.katalogId) return;
+        if (!stockByKatalog[s.katalogId]) stockByKatalog[s.katalogId] = { qty:0, price:s.price||0 };
+        stockByKatalog[s.katalogId].qty += s.qty||0;
+      });
       const chunks = [
-        ...katalogList.map(k=>({ id:`katalog_${k.id}`, source_type:"katalog", source_id:k.id, content:buildKatalogRagContent(k) })),
+        ...katalogList.map(k=>({ id:`katalog_${k.id}`, source_type:"katalog", source_id:k.id, content:buildKatalogRagContent(k, stockByKatalog[k.id]) })),
         ...txnRelevant.map(t=>({ id:`txn_${t.id}`, source_type:"txn", source_id:t.id, content:buildTxnRagContent(t) })),
       ];
-      if (chunks.length===0) { showToast("Tidak ada data untuk di-index.", "error"); setRagSyncing(false); return; }
+      if (chunks.length===0) { if (!silent) showToast("Tidak ada data untuk di-index.", "error"); if (!silent) setRagSyncing(false); return; }
       // Cohere embed API maks ~96 teks per request — kirim per batch.
       const BATCH = 90;
       for (let i=0; i<chunks.length; i+=BATCH) {
@@ -4566,11 +4597,12 @@ export default function PLNWarehouse() {
       const toDelete = (existing||[]).filter(r=>!currentIds.has(r.id)).map(r=>r.id);
       if (toDelete.length) await supabase.from("rag_chunks").delete().in("id", toDelete);
       setRagLastSync(Date.now());
-      showToast(`✅ Knowledge Base RAG disinkron: ${chunks.length} item (${katalogList.length} katalog, ${txnRelevant.length} transaksi).`);
+      if (!silent) showToast(`✅ Knowledge Base RAG disinkron: ${chunks.length} item (${katalogList.length} katalog, ${txnRelevant.length} transaksi).`);
     } catch (err) {
-      showToast("Gagal sinkron Knowledge Base: " + err.message, "error");
+      if (!silent) showToast("Gagal sinkron Knowledge Base: " + err.message, "error");
+      else console.error("Auto-sync RAG gagal:", err.message);
     }
-    setRagSyncing(false);
+    if (!silent) setRagSyncing(false);
   }
 
   // Snapshot data ringkas (qty, harga/Rupiah, stok kritis, pending approval, rencana
@@ -4615,14 +4647,15 @@ export default function PLNWarehouse() {
     };
   }
 
-  async function syncWarnotoState() {
+  async function syncWarnotoState(silent = false) {
     if (!supabase) return;
     try {
       const state_data = buildWarnotoStateSnapshot();
       const { error } = await supabase.from("warnoto_state").insert({ state_data, version: "v1" });
       if (error) throw error;
     } catch (err) {
-      showToast("Gagal sinkron State Gudang (untuk bot WA/Telegram): " + err.message, "error");
+      if (!silent) showToast("Gagal sinkron State Gudang (untuk bot WA/Telegram): " + err.message, "error");
+      else console.error("Auto-sync warnoto_state gagal:", err.message);
     }
   }
 
