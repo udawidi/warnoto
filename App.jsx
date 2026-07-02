@@ -205,16 +205,20 @@ function getHeavyEquipmentLoanRuntimeStatus(loan, now = Date.now()) {
 }
 
 function getUserUptScope(user) {
-  return user?.upt || user?.uptName || user?.uptKode || user?.uptId || "";
+  // currentUser.upt/uptName/uptKode/uptId nyaris selalu kosong untuk akun biasa (belum di-assign
+  // per-user) — fallback ke const UPT global (deployment ini = 1 UPT), pola sama seperti `myUpt`
+  // di HeavyEquipmentTabV2 dan AI Agent, supaya scoping tidak diam-diam lolos jadi "boleh semua".
+  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i, "").trim();
+  return user?.upt || user?.uptName || user?.uptKode || user?.uptId || appUptShort || "";
 }
 
 function canApproveHeavyEquipmentLoan(user, loan) {
   if (user?.role !== "ASMAN") return false;
   const userUpt = getUserUptScope(user);
-  const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
-  // Data user existing belum punya UPT binding. Jika kosong, Asman tetap bisa approve
-  // agar fitur usable sampai profil UPT ditambahkan.
-  return !userUpt || !ownerUpt || userUpt === ownerUpt;
+  // Approval discope ke UNIT PEMINJAM (requesterUpt) — Asman UPT sendiri hanya boleh approve
+  // pengajuan peminjaman YANG DIAJUKAN OLEH UPT-nya sendiri, bukan berdasar pemilik alat.
+  const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
+  return !requesterUpt || userUpt === requesterUpt;
 }
 
 const CLOUD = {
@@ -1759,6 +1763,62 @@ function downloadTUG5HTML(txn, katalogList, uitList, users, showToast, ultgList)
   showToast && showToast("📄 File diunduh! Buka di browser lalu Print → Save as PDF.", "success");
 }
 
+// ─── PEMINJAMAN ALAT BERAT DOCUMENT BUILDER ─────────────────────────────
+function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
+  const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
+  const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
+  const pemohon = (users||[]).find(u=>u.id===loan.requestedBy) || {};
+  const asmanUser = (users||[]).find(u=>u.id===loan.approvedBy) || {};
+  const isApproved = !!loan.approvedBy;
+  const tanggalApprove = loan.approvedAt ? fmtDate(loan.approvedAt) : "";
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Peminjaman Alat Berat ${loan.id}</title>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:14px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:14px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:4px 6px;font-size:10.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.sig-row{display:flex;justify-content:space-around;margin-top:30px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:50px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}}</style></head><body>
+<div class="print-bar">📄 Dokumen Peminjaman Alat Berat siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="page">
+<div class="topbar"></div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+  <div><b>PT PLN (PERSERO)</b><br/>UPT ${ownerUpt||"-"}</div>
+  <div style="font-weight:800;font-size:13px">SURAT PEMINJAMAN<br/>ALAT BERAT</div>
+</div>
+<div class="doctitle"><h2>BERITA ACARA PEMINJAMAN ALAT BERAT / ANGKAT-ANGKUT</h2><div class="docno">${loan.id}</div></div>
+<table class="meta">
+  <tr><td class="label">Nama Alat</td><td class="colon">:</td><td>${equipment?.nama||"-"} (${equipment?.merkType||"-"}, ${equipment?.kapasitas||"-"})</td></tr>
+  <tr><td class="label">Nomor Seri / Aset</td><td class="colon">:</td><td>${equipment?.nomorSeri||loan.equipmentId||"-"}</td></tr>
+  <tr><td class="label">UPT Pemilik Alat</td><td class="colon">:</td><td>UPT ${ownerUpt||"-"} — ${equipment?.lokasi||"-"}</td></tr>
+  <tr><td class="label">UPT Peminjam</td><td class="colon">:</td><td>UPT ${requesterUpt||"-"}</td></tr>
+  <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${loan.namaPekerjaan||"-"}</td></tr>
+  <tr><td class="label">Keperluan</td><td class="colon">:</td><td>${loan.keperluan||"-"}</td></tr>
+  <tr><td class="label">Tanggal Peminjaman</td><td class="colon">:</td><td>${loan.tanggalAmbil||"-"} s/d ${loan.tanggalKembali||"-"}</td></tr>
+  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${pemohon.name||"-"}${loan.catatan?` • Catatan: ${loan.catatan}`:""}</td></tr>
+</table>
+<p style="font-size:10px;margin-bottom:20px">Dokumen ini menjadi bukti persetujuan peminjaman alat berat/angkat-angkut antar UPT sebagaimana rincian di atas. Alat wajib dikembalikan dalam kondisi baik selambat-lambatnya pada tanggal yang tercantum.</p>
+<div class="sig-row">
+  <div class="sig-col">
+    <b>ASMAN KONSTRUKSI<br/>UPT ${ownerUpt||"-"} (Pemilik Alat)</b>
+    <div class="sig-space">${isApproved?`<div class="digital-stamp">✓ DISETUJUI SECARA DIGITAL<br/>${tanggalApprove}</div>`:""}</div>
+    <div class="sig-name">${asmanUser.name||"....................."}</div>
+  </div>
+  <div class="sig-col">
+    <b>PEMOHON<br/>UPT ${requesterUpt||"-"}</b>
+    <div class="sig-space"></div>
+    <div class="sig-name">${pemohon.name||"....................."}</div>
+  </div>
+</div>
+</div></body></html>`;
+}
+
+function downloadHeavyEquipmentLoanHTML(loan, equipment, users, showToast) {
+  const html = buildHeavyEquipmentLoanHTML(loan, equipment, users);
+  const blob = new Blob([html], {type:"text/html"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `PeminjamanAlat_${loan.id}.html`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  showToast && showToast("📄 File diunduh! Buka di browser lalu Print → Save as PDF.", "success");
+}
+
 function downloadTUG7HTML(txn, katalogList, uitList, uptList, users, showToast) {
   const html = buildTUG7HTML(txn, katalogList, uitList, uptList, users);
   const blob = new Blob([html], {type:"text/html"});
@@ -2819,7 +2879,7 @@ export default function PLNWarehouse() {
 
   // ── Master ULTG CRUD (unit di bawah UPT) ──
   function syncUltg(nu) { return syncMasterTable("ultg", nu, u => ({ upt_id: u.parentUptId || null })); }
-  function openAddULTG() { setUltgForm({id:"ULTG-"+uid().slice(-6).toUpperCase(), nama:"", kode:"", parentUptId: uptList[0]?.id||"", createdAt:Date.now()}); setUltgModal("add"); }
+  function openAddULTG(presetUptId) { setUltgForm({id:"ULTG-"+uid().slice(-6).toUpperCase(), nama:"", kode:"", parentUptId: presetUptId || uptList[0]?.id||"", createdAt:Date.now()}); setUltgModal("add"); }
   function openEditULTG(u) { setUltgForm({...u}); setUltgModal("edit"); }
   async function saveULTG() {
     if (!ultgForm.nama?.trim()||!ultgForm.kode?.trim()) { showToast("Nama dan Kode ULTG wajib diisi!","error"); return; }
@@ -2836,7 +2896,7 @@ export default function PLNWarehouse() {
   }
 
   // ── Master UPT CRUD ──
-  function openAddUPT() { setUptForm({id:"UPT-"+uid().slice(-6).toUpperCase(), nama:"", kode:"", alamat:"", uitId: uitList[0]?.id||"", createdAt:Date.now()}); setUptModal("add"); }
+  function openAddUPT(presetUitId) { setUptForm({id:"UPT-"+uid().slice(-6).toUpperCase(), nama:"", kode:"", alamat:"", uitId: presetUitId || uitList[0]?.id||"", createdAt:Date.now()}); setUptModal("add"); }
   function openEditUPT(u) { setUptForm({...u}); setUptModal("edit"); }
   function syncUpt(nu) { return syncMasterTable("upt", nu, u => ({ uit_id: u.uitId || null })); }
   async function saveUPT() {
@@ -4868,7 +4928,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"stock",icon:"📦",label:"Data Stok"},
     {id:"master",icon:"🗂️",label:"Master Data"},
     {id:"transaction",icon:"🔄",label:"TUG"},
-    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0) + (["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0)}] : []),
+    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0) + (["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (["ADMIN","TL"].includes(currentUser.role) ? ultgPengajuanUntukAdopt.length : 0)}] : []),
     {id:"heavyEquipment",icon:"🚜",label:"Alat Berat",badge:(currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"opname",icon:"📋",label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"rencana",icon:"📅",label:"Rencana Kedatangan"},
@@ -4971,9 +5031,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         {id:"katalog",icon:"📑",label:"Master Katalog"},
                         {id:"satpam",icon:"🛡️",label:"Satpam"},
                         {id:"timmutu",icon:"👥",label:"Tim Mutu"},
-                        {id:"uit",icon:"🏢",label:"Master UIT"},
-                        {id:"upt",icon:"📍",label:"Master UPT"},
-                        {id:"ultg",icon:"🏘️",label:"Master ULTG"},
+                        {id:"organisasi",icon:"🏢",label:"Struktur Organisasi"},
                         {id:"gudang",icon:"🏭",label:"Master Gudang"},
         ...(currentUser.role==="ADMIN" ? [{id:"migrasi",icon:"🔄",label:"Migrasi Data"}] : []),
                       ].map(sub=>{
@@ -5465,10 +5523,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             )}
                             <button title="Kartu Gantung TUG-2" style={{...sty.btn("ghost","sm"),padding:"6px 8px",borderColor:"#e0f2fe",color:"#0369a1"}}
                               onClick={()=>{const k=katalogList.find(x=>x.id===st.katalogId); if(k) setKartuGantungDetail(k);}}>🏷️</button>
-                            {canLihatPeta && (
-                              <button title="Lihat di Peta Gudang" style={{...sty.btn("ghost","sm"),padding:"6px 8px",borderColor:"#fca5a5",color:"#dc2626"}}
-                                onClick={()=>setPetaMiniDetail({stock:st, lokasi:lok, gudang:gdg})}>📍</button>
-                            )}
+                            <button
+                              title={canLihatPeta ? "Lihat di Peta Gudang" : !lok ? "Blok belum diisi" : !gdg?.denahImageData ? "Denah Gudang belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
+                              style={{...sty.btn("ghost","sm"),padding:"6px 8px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
+                              onClick={()=>{
+                                if (canLihatPeta) { setPetaMiniDetail({stock:st, lokasi:lok, gudang:gdg}); return; }
+                                if (!lok) { showToast("Blok/Lokasi belum diisi untuk material ini.","error"); return; }
+                                if (!gdg?.denahImageData) { showToast(`Denah Gudang "${gdg?.nama||lok?.kode||"-"}" belum diupload. Upload di Master Data → Master Gudang.`,"error"); return; }
+                                showToast(`Blok ${lok?.kode||"-"} belum diplot koordinatnya di denah. Atur di Master Data → Master Gudang.`,"error");
+                              }}>📍</button>
                           </div>
                         </td>
                       </tr>
@@ -5505,17 +5568,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div>
                 <h1 style={{fontSize:22,fontWeight:900}}>
-                  {stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="uit"?"Master UIT (Unit Induk)":stockSubTab==="upt"?"Master UPT (Unit Pelaksana)":stockSubTab==="ultg"?"Master ULTG (Unit di bawah UPT)":stockSubTab==="migrasi"?"🔄 Migrasi Data SAP/Non-SAP":"Master Gudang"}
+                  {stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi (UIT / UPT / ULTG)":stockSubTab==="migrasi"?"🔄 Migrasi Data SAP/Non-SAP":"Master Gudang"}
                 </h1>
                 <p style={{color:C.muted,fontSize:13}}>
-                  {stockSubTab==="katalog"?`${katalogList.length} jenis barang terdaftar`:stockSubTab==="satpam"?`${satpamList.length} satpam terdaftar`:stockSubTab==="timmutu"?`${timMutuList.length} paket tim mutu`:stockSubTab==="uit"?`${uitList.length} UIT terdaftar`:stockSubTab==="upt"?`${uptList.length} UPT terdaftar`:stockSubTab==="ultg"?`${ultgList.length} ULTG terdaftar`:stockSubTab==="migrasi"?"Cutover terkontrol data stok dari SAP — wajib backup sebelum apply":stockSubTab==="usulanKatalog"?"Cari di referensi MARA, usulkan penambahan katalog baru, persetujuan Asman/TL":`${gudangList.length} gudang • ${lokasiList.length} blok lokasi terdaftar`}
+                  {stockSubTab==="katalog"?`${katalogList.length} jenis barang terdaftar`:stockSubTab==="satpam"?`${satpamList.length} satpam terdaftar`:stockSubTab==="timmutu"?`${timMutuList.length} paket tim mutu`:stockSubTab==="organisasi"?`${uitList.length} UIT • ${uptList.length} UPT • ${ultgList.length} ULTG`:stockSubTab==="migrasi"?"Cutover terkontrol data stok dari SAP — wajib backup sebelum apply":stockSubTab==="usulanKatalog"?"Cari di referensi MARA, usulkan penambahan katalog baru, persetujuan Asman/TL":`${gudangList.length} gudang • ${lokasiList.length} blok lokasi terdaftar`}
                 </p>
               </div>
               {currentUser.role==="ADMIN" && stockSubTab==="katalog" && <button style={sty.btn("primary")} onClick={openAddKatalog}>+ Tambah Katalog Barang</button>}
               {currentUser.role==="ADMIN" && stockSubTab==="satpam" && <button style={sty.btn("primary")} onClick={openAddSatpam}>+ Tambah Satpam</button>}
-              {currentUser.role==="ADMIN" && stockSubTab==="uit" && <button style={sty.btn("primary")} onClick={openAddUIT}>+ Tambah UIT</button>}
-              {currentUser.role==="ADMIN" && stockSubTab==="upt" && <button style={sty.btn("primary")} onClick={openAddUPT}>+ Tambah UPT</button>}
-              {currentUser.role==="ADMIN" && stockSubTab==="ultg" && <button style={sty.btn("primary")} onClick={openAddULTG}>+ Tambah ULTG</button>}
+              {currentUser.role==="ADMIN" && stockSubTab==="organisasi" && <button style={sty.btn("primary")} onClick={openAddUIT}>+ Tambah UIT</button>}
             </div>
             {stockSubTab==="gudang" && (
               <div style={{...sty.card,marginBottom:12,background:"#eff6ff",borderLeft:"4px solid #0369a1",padding:"10px 14px",fontSize:12,color:"#0369a1"}}>
@@ -5682,67 +5743,67 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
             )}
 
-            {/* ── SUB-TAB: MASTER UIT ── */}
-            {stockSubTab==="uit" && (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:14}}>
-                {uitList.length===0 && <div style={{...sty.card,gridColumn:"1/-1",textAlign:"center",color:C.muted,padding:30}}>Belum ada Master UIT.</div>}
-                {uitList.map(u=>(
-                  <div key={u.id} style={{...sty.card,borderTop:`3px solid #003087`}}>
-                    <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>🏢 {u.kode}</div>
-                    <div style={{fontSize:12,marginBottom:4}}>{u.nama}</div>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:10}}>📍 {u.alamat||"-"}</div>
-                    {currentUser.role==="ADMIN" && (
-                      <div style={{display:"flex",gap:6}}>
-                        <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditUIT(u)}>✏️ Edit</button>
-                        <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>deleteUIT(u.id)}>🗑️ Hapus</button>
+            {/* ── SUB-TAB: STRUKTUR ORGANISASI (UIT → UPT → ULTG, satu kesatuan) ── */}
+            {stockSubTab==="organisasi" && (
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                {uitList.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada Master UIT.</div>}
+                {uitList.map(uit=>{
+                  const uptOfUit = uptList.filter(u=>u.uitId===uit.id);
+                  return (
+                    <div key={uit.id} style={{...sty.card,borderLeft:"4px solid #003087"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+                        <div>
+                          <div style={{fontWeight:800,fontSize:14}}>🏢 {uit.kode} — {uit.nama}</div>
+                          <div style={{fontSize:11,color:C.muted}}>📍 {uit.alamat||"-"} • {uptOfUit.length} UPT</div>
+                        </div>
+                        {currentUser.role==="ADMIN" && (
+                          <div style={{display:"flex",gap:6,flexShrink:0}}>
+                            <button style={sty.btn("ghost","sm")} onClick={()=>openAddUPT(uit.id)}>+ UPT</button>
+                            <button style={sty.btn("ghost","sm")} onClick={()=>openEditUIT(uit)}>✏️</button>
+                            <button style={sty.btn("danger","sm")} onClick={()=>deleteUIT(uit.id)}>🗑️</button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* ── SUB-TAB: MASTER UPT ── */}
-            {stockSubTab==="upt" && (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-                {uptList.length===0 && <div style={{...sty.card,gridColumn:"1/-1",textAlign:"center",color:C.muted,padding:30}}>Belum ada Master UPT.</div>}
-                {uptList.map(u=>{
-                  const uit = uitList.find(x=>x.id===u.uitId);
-                  return (
-                    <div key={u.id} style={{...sty.card,borderTop:`3px solid ${C.accent}`}}>
-                      <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>📍 {u.kode}</div>
-                      <div style={{fontSize:12,marginBottom:4}}>{u.nama}</div>
-                      <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{u.alamat||"-"}</div>
-                      <div style={{fontSize:11,color:"#0098da",marginBottom:10}}>UIT: {uit?.kode||u.uitId}</div>
-                      {currentUser.role==="ADMIN" && (
-                        <div style={{display:"flex",gap:6}}>
-                          <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditUPT(u)}>✏️ Edit</button>
-                          <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>deleteUPT(u.id)}>🗑️ Hapus</button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── SUB-TAB: MASTER ULTG ── */}
-            {stockSubTab==="ultg" && (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-                {ultgList.length===0 && <div style={{...sty.card,gridColumn:"1/-1",textAlign:"center",color:C.muted,padding:30}}>Belum ada Master ULTG.</div>}
-                {ultgList.map(u=>{
-                  const upt = uptList.find(x=>x.id===u.parentUptId);
-                  return (
-                    <div key={u.id} style={{...sty.card,borderTop:`3px solid ${C.accent}`}}>
-                      <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>🏘️ {u.kode}</div>
-                      <div style={{fontSize:12,marginBottom:4}}>{u.nama}</div>
-                      <div style={{fontSize:11,color:"#0098da",marginBottom:10}}>UPT Induk: {upt?.nama||u.parentUptId||"-"}</div>
-                      {currentUser.role==="ADMIN" && (
-                        <div style={{display:"flex",gap:6}}>
-                          <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditULTG(u)}>✏️ Edit</button>
-                          <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>deleteULTG(u.id)}>🗑️ Hapus</button>
-                        </div>
-                      )}
+                      {uptOfUit.length===0
+                        ? <div style={{fontSize:12,color:C.muted,fontStyle:"italic",paddingLeft:14}}>Belum ada UPT di bawah UIT ini.</div>
+                        : <div style={{display:"flex",flexDirection:"column",gap:8,paddingLeft:14,borderLeft:`2px solid ${C.border}`}}>
+                            {uptOfUit.map(upt=>{
+                              const ultgOfUpt = ultgList.filter(x=>x.parentUptId===upt.id);
+                              return (
+                                <div key={upt.id} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+                                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                                    <div>
+                                      <div style={{fontWeight:700,fontSize:13}}>📍 {upt.kode} — {upt.nama}</div>
+                                      <div style={{fontSize:11,color:C.muted}}>{upt.alamat||"-"} • {ultgOfUpt.length} ULTG</div>
+                                    </div>
+                                    {currentUser.role==="ADMIN" && (
+                                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                                        <button style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>openAddULTG(upt.id)}>+ ULTG</button>
+                                        <button style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>openEditUPT(upt)}>✏️</button>
+                                        <button style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={()=>deleteUPT(upt.id)}>🗑️</button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  {ultgOfUpt.length>0 && (
+                                    <div style={{display:"flex",flexDirection:"column",gap:4,paddingLeft:14,borderLeft:`2px solid ${C.border}`}}>
+                                      {ultgOfUpt.map(ultg=>(
+                                        <div key={ultg.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:"white",border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 8px",fontSize:12}}>
+                                          <span>🏘️ <b>{ultg.kode}</b> — {ultg.nama}</span>
+                                          {currentUser.role==="ADMIN" && (
+                                            <div style={{display:"flex",gap:4}}>
+                                              <button style={{...sty.btn("ghost","sm"),padding:"2px 6px"}} onClick={()=>openEditULTG(ultg)}>✏️</button>
+                                              <button style={{...sty.btn("danger","sm"),padding:"2px 6px"}} onClick={()=>deleteULTG(ultg.id)}>🗑️</button>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                      }
                     </div>
                   );
                 })}
@@ -5905,7 +5966,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             const belumPunyaKoordinatSub = grp.sg ? grp.blok.filter(l=>l.status!=="PENDING" && l.subMapX==null) : [];
                             return (
                             <div key={grp.id||"umum"} style={{marginBottom:18,paddingLeft:10,borderLeft:`3px solid ${C.border}`}}>
-                              <div style={{fontSize:13,fontWeight:800,marginBottom:2}}>🏢 Sub Gudang: {grp.nama}</div>
+                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:2}}>🏢 Sub Gudang: {grp.nama}</div>}
 
                               {/* Opsi 2: Upload Denah per Sub Gudang (hanya untuk grup real, bukan "Umum") */}
                               {grp.sg && currentUser.role==="ADMIN" && (
@@ -5994,6 +6055,21 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                     </div>
                                   )}
                                 </div>
+                              )}
+
+                              {/* Blok "Umum" pakai koordinat level Gudang (mapX/mapY) — tombol konfigurasi
+                                  aslinya cuma ada di panel atas (di luar loop grup), jadi tidak terlihat dari
+                                  sini. Tambahkan pintasan langsung ke mode konfigurasi yang sama. */}
+                              {!grp.sg && currentUser.role==="ADMIN" && g.denahImageData && (
+                                <div style={{marginBottom:10}}>
+                                  <button style={sty.btn(mapConfigGudangId===g.id?"danger":"primary","sm")} onClick={()=>{setMapConfigGudangId(mapConfigGudangId===g.id?null:g.id);setPendingMapLokasi(null);setManualAddMode(false);}}>
+                                    {mapConfigGudangId===g.id?"✕ Tutup Mode Konfigurasi":"⚙️ Konfigurasi Koordinat Blok (pakai denah Gudang)"}
+                                  </button>
+                                  {mapConfigGudangId!==g.id && <div style={{fontSize:10,color:C.muted,marginTop:4}}>💡 Blok di grup "Umum" diplot di denah utama Gudang (bukan denah Sub Gudang) — klik tombol di atas untuk mengatur koordinatnya.</div>}
+                                </div>
+                              )}
+                              {!grp.sg && currentUser.role==="ADMIN" && !g.denahImageData && (
+                                <div style={{fontSize:10,color:"#92400e",background:"#fef3c7",borderRadius:6,padding:"6px 10px",marginBottom:10}}>⚠️ Upload Denah Gudang dulu (panel di atas) sebelum bisa mengatur koordinat blok di grup "Umum".</div>
                               )}
 
                               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -6192,6 +6268,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             approveLoan={approveHeavyEquipmentLoan}
             rejectLoan={rejectHeavyEquipmentLoan}
             completeLoan={completeHeavyEquipmentLoan}
+            showToast={showToast}
           />
         )}
 
@@ -6318,6 +6395,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               ultgPengajuanUntukAdopt={ultgPengajuanUntukAdopt}
               adoptTUG5ULTG={adoptTUG5ULTG}
               openDraftTug9={openDraftTug9}
+              heavyEquipmentPendingCount={currentUser.role==="ASMAN" ? heavyEquipmentPendingCount : 0}
             />
 
             {/* ── BAGIAN: Riwayat Approval (gabungan semua jenis, terbaru di atas) ── */}
@@ -6328,27 +6406,38 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 decidedBy: t.status==="REJECTED" ? t.rejectedBy : t.approvedBy,
                 decidedAt: t.status==="REJECTED" ? t.rejectedAt : t.approvedAt,
               }));
-              const combined = [...approvalHistoryList, ...histTUG].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt).slice(0,40);
+              const combined = [...approvalHistoryList, ...histTUG].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt).slice(0,80);
               const typeLabel = {LOKASI:"📍 Lokasi/Blok", STOCK_MOVE:"📦 Pemindahan Stok", STOCK_EDIT:"✏️ Edit Stok", STOCK_DELETE:"🗑️ Hapus Stok", HEAVY_EQUIPMENT_LOAN:"🚜 Peminjaman Alat", TUG:"🔄 TUG"};
+              const typeOrder = ["TUG","HEAVY_EQUIPMENT_LOAN","LOKASI","STOCK_MOVE","STOCK_EDIT","STOCK_DELETE"];
+              const groupsByType = typeOrder
+                .map(type=>({ type, items: combined.filter(h=>h.type===type) }))
+                .filter(g=>g.items.length>0);
+              // Jenis lain yang mungkin muncul di masa depan tapi belum ada di typeOrder — tetap ditampilkan.
+              const knownTypes = new Set(typeOrder);
+              combined.forEach(h=>{ if(!knownTypes.has(h.type)){ knownTypes.add(h.type); groupsByType.push({type:h.type, items:combined.filter(x=>x.type===h.type)}); } });
               return (
                 <div style={{...sty.card,marginTop:16}}>
                   <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📜 Riwayat Approval</div>
                   {combined.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
-                  {combined.map(h=>{
-                    const decider = users.find(u=>u.id===h.decidedBy);
-                    return (
-                      <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                        <div>
-                          <div style={{fontSize:11,fontWeight:700,color:"#0098da"}}>{typeLabel[h.type]||h.type}</div>
-                          <div style={{fontSize:12,fontWeight:700}}>{h.title}</div>
-                          <div style={{fontSize:11,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
-                        </div>
-                        <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
-                          {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
-                        </span>
-                      </div>
-                    );
-                  })}
+                  {groupsByType.map(g=>(
+                    <div key={g.type} style={{marginBottom:14}}>
+                      <div style={{fontSize:12,fontWeight:800,color:"#0098da",marginBottom:4}}>{typeLabel[g.type]||g.type} ({g.items.length})</div>
+                      {g.items.map(h=>{
+                        const decider = users.find(u=>u.id===h.decidedBy);
+                        return (
+                          <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                            <div>
+                              <div style={{fontSize:12,fontWeight:700}}>{h.title}</div>
+                              <div style={{fontSize:11,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
+                            </div>
+                            <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
+                              {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               );
             })()}
@@ -10353,7 +10442,7 @@ function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasi
 }
 
 // ─── PETA GUDANG TAB ─────────────────────────────────────────────────────
-function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, savePhoto, createLoan, approveLoan, rejectLoan, completeLoan }) {
+function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, savePhoto, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
   const [activeTab, setActiveTab] = useState("list");
   const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i, "").trim();
   const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
@@ -10369,7 +10458,7 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
   const [kondisiFilter, setKondisiFilter] = useState("ALL");
   const [loanCategoryFilter, setLoanCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
-  const [loanForm, setLoanForm] = useState({equipmentId:"", requesterUpt:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  const [loanForm, setLoanForm] = useState({equipmentId:"", requesterUpt:myUpt||"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   const [historyFilter, setHistoryFilter] = useState({ownerUpt:"ALL", requesterUpt:"ALL", equipmentId:"ALL", status:"ALL", from:"", to:""});
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
@@ -10507,7 +10596,7 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
 
   async function submitLoan() {
     await createLoan(loanForm);
-    setLoanForm({equipmentId:"", requesterUpt:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+    setLoanForm({equipmentId:"", requesterUpt:myUpt||"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   }
 
   // Kondisi overview data
@@ -10713,6 +10802,9 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
                       )}
                       {isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&["ADMIN","TL","ASMAN"].includes(currentUser.role)&&(
                         <button style={{...sty.btn("ghost","sm"),marginTop:6}} onClick={()=>completeLoan(loan.id)}>Tandai Kembali</button>
+                      )}
+                      {["DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
+                        <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&["ADMIN","TL","ASMAN"].includes(currentUser.role)?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, eq, users, showToast)}>📄 Cetak Dokumen</button>
                       )}
                     </div>
                   );
@@ -13594,7 +13686,7 @@ function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, 
   );
 }
 
-function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG }) {
+function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Form, setTug7Form] = useState({});
@@ -13656,10 +13748,10 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
     <div>
       <div style={{marginBottom:16}}>
         <h1 style={{fontSize:22,fontWeight:900}}>Approval</h1>
-        <p style={{color:C.muted,fontSize:13}}>{pendingTxns.length + pendingCapacityImports.length + pendingLokasiChanges.length} item menunggu persetujuan atau tindakan kamu ({ROLES[currentUser.role]})</p>
+        <p style={{color:C.muted,fontSize:13}}>{pendingTxns.length + pendingCapacityImports.length + pendingLokasiChanges.length + (heavyEquipmentPendingCount||0)} item menunggu persetujuan atau tindakan kamu ({ROLES[currentUser.role]})</p>
       </div>
 
-      {pendingTxns.length===0 && pendingCapacityImports.length===0 && pendingLokasiChanges.length===0 ? (
+      {pendingTxns.length===0 && pendingCapacityImports.length===0 && pendingLokasiChanges.length===0 && !(heavyEquipmentPendingCount>0) ? (
         <div style={{...sty.card,textAlign:"center",padding:40}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
           <div style={{fontSize:16,fontWeight:700}}>Semua sudah diproses</div>
