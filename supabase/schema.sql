@@ -522,3 +522,49 @@ drop policy if exists "Public read wa_sync_status" on wa_sync_status;
 drop policy if exists "Public write wa_sync_status" on wa_sync_status;
 create policy "Public read wa_sync_status" on wa_sync_status for select using (true);
 create policy "Public write wa_sync_status" on wa_sync_status for all using (true) with check (true);
+
+-- ────────────────────────────────────────────────────────────
+-- 16. TELEGRAM BOT — alternatif WA Bot (dipilih user setelah WA kena restriksi
+--     "Business account is restricted from messaging users in this country"
+--     akibat Business Verification Meta belum selesai). Setup Telegram jauh
+--     lebih ringan: tidak ada App Review, tidak ada verifikasi bisnis, tidak
+--     ada pembatasan negara. Struktur tabel & logic Edge Function sengaja
+--     dibuat paralel dengan wa_allowed_users/wa_agent_logs supaya mudah
+--     dibandingkan/dipelihara bersamaan (WA bisa diaktifkan lagi nanti kalau
+--     verifikasi PLN sudah selesai, tanpa saling mengganggu).
+-- ────────────────────────────────────────────────────────────
+create table if not exists tg_allowed_users (
+  id bigint generated always as identity primary key,
+  telegram_user_id text not null unique,  -- numeric Telegram user id (string, dari update.message.from.id)
+  telegram_username text,                 -- @username, opsional (tidak semua user Telegram punya)
+  display_name text,
+  notes text,
+  added_by text,
+  added_at timestamptz default now(),
+  is_active boolean not null default true
+);
+alter table tg_allowed_users enable row level security;
+drop policy if exists "Authenticated read tg_allowed_users" on tg_allowed_users;
+drop policy if exists "Authenticated write tg_allowed_users" on tg_allowed_users;
+create policy "Authenticated read tg_allowed_users" on tg_allowed_users for select using (auth.role() = 'authenticated');
+create policy "Authenticated write tg_allowed_users" on tg_allowed_users for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+create table if not exists tg_agent_logs (
+  id bigint generated always as identity primary key,
+  telegram_user_id text not null,
+  telegram_username text,
+  display_name text,
+  message_in text not null,
+  intent text,
+  answer_summary text,
+  rag_chunks_used integer default 0,
+  is_whitelisted boolean not null default false,
+  response_ms integer,
+  error_message text,
+  created_at timestamptz default now()
+);
+create index if not exists idx_tg_logs_user on tg_agent_logs(telegram_user_id);
+create index if not exists idx_tg_logs_created on tg_agent_logs(created_at desc);
+alter table tg_agent_logs enable row level security;
+drop policy if exists "Authenticated read tg_agent_logs" on tg_agent_logs;
+create policy "Authenticated read tg_agent_logs" on tg_agent_logs for select using (auth.role() = 'authenticated');
