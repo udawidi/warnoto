@@ -13127,6 +13127,14 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
   const [maraLoading, setMaraLoading] = useState(false);
 
   // Parse CSV SAP format PEMAT
+  // Referensi format export SAP (diajarkan user 2026-07-02, lihat memory
+  // warnoto_sap_export_format.md): Plant=kode UPT (3611=UPT Surabaya),
+  // Material Type ZST1=Persediaan/ZCAD=Cadang (lebih reliable daripada tebak
+  // dari panjang kode katalog — dipakai sebagai sumber utama, panjang kode
+  // cuma fallback kalau Material Type tidak dikenali). Quality Inspection/
+  // Blocked/In Transit Stock TIDAK auto-include maupun auto-exclude ke qty
+  // utama — cuma di-flag `needsStockReview` supaya Admin yang putuskan
+  // manual di preview, sesuai instruksi eksplisit user.
   function parseSAPMigration(rows) {
     return rows.map(row => {
       const material = String(row["Material"]||row["material"]||"").trim();
@@ -13137,13 +13145,23 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
       const qty = parseFloat(qtyRaw) || 0;
       const valType = String(row["Valuation Type"]||"").trim().toUpperCase();
       const harga = parseFloat(String(row["Harga Satuan"]||"0").replace(/\./g,"").replace(",",".")) || 0;
+      const materialType = String(row["Material Type"]||"").trim().toUpperCase();
+      const plant = String(row["Plant"]||"").trim();
+      const qiStock = parseFloat(String(row["Quality Inspection Stock"]||"0").replace(/\./g,"").replace(",",".")) || 0;
+      const blockedStock = parseFloat(String(row["Blocked Stock"]||"0").replace(/\./g,"").replace(",",".")) || 0;
+      const transitStock = parseFloat(String(row["In Transit Stock"]||"0").replace(/\./g,"").replace(",",".")) || 0;
 
-      let jenisBarang = "Persediaan";
-      if (noKat.length === 10) jenisBarang = "Cadang";
-      else if (valType === "BURSA") jenisBarang = "Persediaan Bursa";
+      let jenisBarang;
+      if (materialType === "ZCAD") jenisBarang = "Cadang";
+      else if (materialType === "ZST1") jenisBarang = "Persediaan";
+      else jenisBarang = noKat.length === 10 ? "Cadang" : "Persediaan"; // fallback lama, Material Type tidak dikenali
+      if (valType === "BURSA") jenisBarang = "Persediaan Bursa";
       else if (valType === "PRE-MEMORY") jenisBarang = "Pre Memory";
 
-      return { noKat, material, desc, satuan, qty, jenisBarang, harga, valType, _valid: noKat.length > 0 && qty >= 0 };
+      const plantMismatch = !!(plant && plant !== "3611");
+      const needsStockReview = qiStock>0 || blockedStock>0 || transitStock>0;
+
+      return { noKat, material, desc, satuan, qty, jenisBarang, harga, valType, materialType, plant, qiStock, blockedStock, transitStock, plantMismatch, needsStockReview, _valid: noKat.length > 0 && qty >= 0 };
     }).filter(r => r.noKat);
   }
 
@@ -13355,6 +13373,8 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
               {label:"Total Nilai",val:"Rp "+fmtNum(previewStats.totalNilai),color:C.green,small:true},
               {label:"Match WARNOTO",val:previewStats.sapResult.filter(r=>r.matchWarnoto).length,color:C.green},
               {label:"Baru (tidak di WARNOTO)",val:previewStats.sapResult.filter(r=>!r.matchWarnoto).length,color:"#f59e0b"},
+              {label:"⚠️ Perlu Review Stok",val:previewStats.sapResult.filter(r=>r.needsStockReview).length,color:C.red},
+              {label:"⚠️ Plant ≠ 3611",val:previewStats.sapResult.filter(r=>r.plantMismatch).length,color:C.red},
             ].map(kpi=>(
               <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
                 <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
@@ -13372,18 +13392,47 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
               ))}
             </div>
           </div>
+          {previewStats.sapResult.some(r=>r.needsStockReview) && (
+            <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
+              <div style={{fontWeight:700,marginBottom:4,color:C.red}}>⚠️ Perlu Review Manual — Qty di luar "Unrestricted Use Stock"</div>
+              <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Baris ini punya qty di Quality Inspection/Blocked/In Transit Stock — TIDAK otomatis ditambahkan ke Data Stok. Putuskan manual per baris apakah qty ini perlu diikutkan (misal via penyesuaian stok terpisah setelah import) atau diabaikan.</div>
+              <div style={{maxHeight:180,overflowY:"auto"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <thead><tr style={{background:"#fef2f2"}}>{["No Katalog","Deskripsi","Unrestricted","Quality Insp.","Blocked","In Transit"].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left"}}>{h}</th>)}</tr></thead>
+                  <tbody>
+                    {previewStats.sapResult.filter(r=>r.needsStockReview).map((r,i)=>(
+                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                        <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat}</td>
+                        <td style={{padding:"5px 8px"}}>{r.desc}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right",color:r.qiStock>0?C.red:C.muted}}>{r.qiStock||"-"}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right",color:r.blockedStock>0?C.red:C.muted}}>{r.blockedStock||"-"}</td>
+                        <td style={{padding:"5px 8px",textAlign:"right",color:r.transitStock>0?C.red:C.muted}}>{r.transitStock||"-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {previewStats.sapResult.some(r=>r.plantMismatch) && (
+            <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
+              <div style={{fontWeight:700,color:C.red}}>⚠️ {previewStats.sapResult.filter(r=>r.plantMismatch).length} baris punya kode Plant selain 3611 (UPT Surabaya)</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:4}}>Data ini tetap ikut diproses sebagai UPT Surabaya — kalau ini sebenarnya milik UPT lain, hapus dulu barisnya dari file sebelum upload ulang.</div>
+            </div>
+          )}
           <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:16,maxHeight:350,overflowY:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:700}}>
               <thead style={{background:"#003087",color:"white",position:"sticky",top:0}}>
                 <tr>
-                  {["No Katalog","Deskripsi","Jenis","Qty","Harga","Match WARNOTO","Match MARA"].map(h=>(
+                  {["No Katalog","Deskripsi","Jenis","Qty","Harga","Match WARNOTO","Match MARA","Review"].map(h=>(
                     <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {previewStats.sapResult.slice(0,200).map((r,i)=>(
-                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:!r.matchWarnoto?"#fefce8":"white"}}>
+                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r.needsStockReview||r.plantMismatch?"#fef2f2":!r.matchWarnoto?"#fefce8":"white"}}>
                     <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat}</td>
                     <td style={{padding:"5px 8px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.desc}</td>
                     <td style={{padding:"5px 8px",fontSize:10}}>{r.jenisBarang}</td>
@@ -13391,6 +13440,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
                     <td style={{padding:"5px 8px",textAlign:"right"}}>{r.harga?fmtNum(r.harga):"-"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchWarnoto?"✅":"🆕"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchMara?"✅":"-"}</td>
+                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.needsStockReview?"⚠️ Stok":r.plantMismatch?"⚠️ Plant":""}</td>
                   </tr>
                 ))}
               </tbody>
