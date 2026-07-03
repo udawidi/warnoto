@@ -303,6 +303,20 @@ async function seedMasterTableIfEmpty(table, defaults, extraCols) {
   return defaults;
 }
 
+// Upsert APPEND-ONLY (tidak pernah delete baris lain) — dipakai untuk domain
+// audit-log seperti Health Index Material Cadang (imports/runs/health_results/
+// ai_insights/apply_audit) yang tumbuh terus, bukan "daftar aktif" seperti
+// katalog/stocks. localStorage/CLOUD tetap sumber utama UI (dibaca saat load),
+// Supabase di sini murni backup/audit-trail — jadi tidak perlu delete-sync
+// simetris seperti syncMasterTable, cukup upsert baris baru saja.
+async function syncMaterialCadangRows(table, rows, mapFn) {
+  if (!supabase || !rows?.length) return false;
+  const mapped = rows.map(mapFn);
+  const { error } = await supabase.from(table).upsert(mapped, { onConflict: "id" });
+  if (error) { console.error(`syncMaterialCadangRows upsert(${table})`, error); return false; }
+  return true;
+}
+
 // ─── DEFAULT DATA ────────────────────────────────────────────────────
 // User & password TIDAK lagi disimpan di source code (lihat Supabase Auth +
 // tabel "profiles" di supabase/schema.sql) — daftar user kini di-fetch dari
@@ -11526,6 +11540,15 @@ async function generateMaterialCadangAiInsights(run, results, stocks, katalogLis
   }
 }
 
+function mapApplyAuditRow(r) {
+  return {
+    id: r.auditId, apply_id: r.id, run_id: r.runId||null, katalog_id: r.katalogId||null,
+    no_katalog: r.noKatalog||null, requested_min_qty: r.recommendedQty ?? null,
+    previous_min_qty: null, approved_min_qty: r.appliedMinQty ?? null, action: r.action,
+    actor: r.actor, acted_at: r.actedAt, note: r.notes || r.rejectReason || null, audit_payload: r,
+  };
+}
+
 function UsulanKatalogTab({ maraReference, setMaraReference, katalogList, setKatalogList, currentUser, sty, C, saveToCloud, showToast }) {
   const [maraLoading, setMaraLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -11852,6 +11875,26 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
     setSubTab("health");
     showToast("Health Index Material Cadang berhasil dihitung.", "success");
 
+    // Backup ke Supabase (audit trail) — append-only, tidak mengubah angka
+    // deterministic di atas, murni menyimpan apa yang sudah dihitung lokal.
+    syncMaterialCadangRows("material_cadang_imports", [importRecord], r => ({
+      id: r.id, file_name: r.fileName, imported_by: r.importedBy, imported_at: r.importedAt,
+      total_rows: r.stats?.total||0, valid_rows: r.stats?.match||0, warning_rows: r.stats?.warning||0,
+      invalid_rows: (r.stats?.invalid||0)+(r.stats?.unmatched||0), data_quality: r.stats||{}, raw_meta: {},
+    }));
+    syncMaterialCadangRows("material_cadang_analysis_runs", [healthRun], r => ({
+      id: r.id, import_id: r.importId, legacy_analysis_id: r.legacyAnalysisId, created_by: r.createdBy,
+      created_at: r.createdAt, model_ai: r.modelAi, params: r.params||{}, summary: {},
+    }));
+    syncMaterialCadangRows("material_cadang_health_results", healthRows, r => ({
+      id: r.resultId, run_id: r.runId, katalog_id: r.katalogId||null, no_katalog: r.noKat||null,
+      nama_material: r.katalogName||r.namaMaterial||null, health_index: r.healthIndex, health_status: r.healthStatus,
+      risk_score: r.riskScore, data_confidence: r.dataConfidence, abc_class: r.abcClass, policy: r.policy,
+      current_qty: r.currentQty, recommended_qty: r.recommendedQty, gap_qty: r.gapQty,
+      gap_value: (r.gapQty||0)*(r.harga||0), deterministic_breakdown: r.healthBreakdown||{},
+      data_quality_flags: r.dataQualityFlags||[], result_payload: r,
+    }));
+
     setAiInsightLoading(true);
     const aiRun = await generateMaterialCadangAiInsights(healthRun, healthRows, stocks, katalogList, txns);
     const materialInsights = (aiRun.materialInsights||[]).map((m, idx)=>({ ...m, id:`${aiRun.id}-MI-${idx}`, runId }));
@@ -11864,6 +11907,30 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
     setAiInsightLoading(false);
     if (aiRun.status === "ANSWERED") showToast("AI Management Insight berhasil dibuat.", "success");
     else showToast("Health Index selesai. AI insight belum tersedia, data lokal tetap aman.", "error");
+
+    // Backup insight ke Supabase — 1 baris scope RUN (ringkasan) + N baris scope
+    // MATERIAL (per item). AI cuma menulis kolom insight/diagnosis/rekomendasi,
+    // tidak ada kolom angka resmi (healthIndex dst) di tabel ini sama sekali.
+    const runInsightRow = {
+      id: aiRun.id, runId: aiRun.runId, insight_scope: "RUN", model: aiRun.model, status: aiRun.status,
+      confidence: null, executive_summary: aiRun.executiveSummary||null, diagnosis: null, recommendation: null,
+      flags: aiRun.dataQualityFindings||[], created_at: aiRun.createdAt,
+      insight_payload: { topRisks: aiRun.topRisks, recommendedActions: aiRun.recommendedActions, procurementPriority: aiRun.procurementPriority, validationNeeded: aiRun.validationNeeded },
+    };
+    syncMaterialCadangRows("material_cadang_ai_insights", [runInsightRow], r => ({
+      id: r.id, run_id: r.runId, no_katalog: null, insight_scope: r.insight_scope, model: r.model,
+      status: r.status, confidence: r.confidence, executive_summary: r.executive_summary,
+      diagnosis: r.diagnosis, recommendation: r.recommendation, flags: r.flags, insight_payload: r.insight_payload,
+      created_at: r.created_at,
+    }));
+    if (materialInsights.length) {
+      syncMaterialCadangRows("material_cadang_ai_insights", materialInsights, r => ({
+        id: r.id, run_id: r.runId, no_katalog: r.noKatalog||null, insight_scope: "MATERIAL", model: aiRun.model,
+        status: aiRun.status, confidence: r.confidence ?? null, executive_summary: null,
+        diagnosis: r.diagnosis||null, recommendation: r.recommendation||null, flags: [], insight_payload: r,
+        created_at: aiRun.createdAt,
+      }));
+    }
   }
 
   async function handleAjukanApply(item) {
@@ -11894,6 +11961,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
     setMaterialCadangData(updated);
     setMaterialCadangHealthData(updatedHealth);
     await saveToCloud({ materialCadangData: updated, materialCadangHealthData: updatedHealth });
+    syncMaterialCadangRows("material_cadang_apply_audit", [auditEntry], mapApplyAuditRow);
     setApplyConfirm(null); setApplyNotes("");
     showToast("Pengajuan apply minQty dikirim ke Asman.", "success");
   }
@@ -11913,13 +11981,15 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
         h.id===applyId ? {...h, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now()} : h
       )
     };
+    const approveAuditEntry = { ...entry, auditId:`${applyId}-APPROVE-${Date.now()}`, action:"APPROVE_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), appliedMinQty:entry.recommendedQty };
     const updatedHealth = {
       ...materialCadangHealthData,
-      applyAudit: [...(materialCadangHealthData.applyAudit||[]), { ...entry, auditId:`${applyId}-APPROVE-${Date.now()}`, action:"APPROVE_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), appliedMinQty:entry.recommendedQty }],
+      applyAudit: [...(materialCadangHealthData.applyAudit||[]), approveAuditEntry],
     };
     setMaterialCadangData(updatedMC);
     setMaterialCadangHealthData(updatedHealth);
     await saveToCloud({ katalogList: updated, materialCadangData: updatedMC, materialCadangHealthData: updatedHealth });
+    syncMaterialCadangRows("material_cadang_apply_audit", [approveAuditEntry], mapApplyAuditRow);
     showToast(`Min Qty ${entry.namaBarang} berhasil diperbarui ke ${entry.recommendedQty}.`, "success");
   }
 
@@ -11929,13 +11999,15 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
       ...materialCadangData,
       applyHistory: materialCadangData.applyHistory.map(h => h.id===applyId ? {...h, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : h)
     };
+    const rejectAuditEntry = { ...(entry||{}), auditId:`${applyId}-REJECT-${Date.now()}`, action:"REJECT_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), rejectReason:reason };
     const updatedHealth = {
       ...materialCadangHealthData,
-      applyAudit: [...(materialCadangHealthData.applyAudit||[]), { ...(entry||{}), auditId:`${applyId}-REJECT-${Date.now()}`, action:"REJECT_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), rejectReason:reason }],
+      applyAudit: [...(materialCadangHealthData.applyAudit||[]), rejectAuditEntry],
     };
     setMaterialCadangData(updated);
     setMaterialCadangHealthData(updatedHealth);
     await saveToCloud({ materialCadangData: updated, materialCadangHealthData: updatedHealth });
+    syncMaterialCadangRows("material_cadang_apply_audit", [rejectAuditEntry], mapApplyAuditRow);
     showToast("Pengajuan ditolak.", "success");
   }
 
