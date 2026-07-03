@@ -33,6 +33,19 @@ alter table katalog drop column if exists jenis_barang;
 alter table katalog drop column if exists foto_keseluruhan_url;
 alter table katalog add column if not exists data jsonb not null default '{}'::jsonb;
 alter table katalog add column if not exists created_at bigint;
+-- PENTING: kalau tabel katalog sudah ada dari SEBELUM migrasi ini, kolom created_at
+-- lama bertipe `timestamptz` (bukan bigint) -- `add column if not exists` TIDAK
+-- mengubah tipe kolom yang sudah ada, jadi upsert dari syncMasterTable (yang kirim
+-- created_at sebagai bigint epoch-ms) akan gagal diam-diam sampai tipe kolomnya
+-- dipaksa dikonversi begini (ditemukan & fixed 2026-07-02 saat migrasi data massal).
+-- DO block: cuma jalankan ALTER TYPE kalau kolomnya MASIH timestamptz (aman diulang).
+do $$
+begin
+  if (select data_type from information_schema.columns where table_name='katalog' and column_name='created_at') = 'timestamp with time zone' then
+    alter table katalog alter column created_at drop default;
+    alter table katalog alter column created_at type bigint using (extract(epoch from created_at)*1000)::bigint;
+  end if;
+end $$;
 
 -- ────────────────────────────────────────────────────────────
 -- 1b. STOCKS — Data Stok aktif (qty per item per lokasi), pola jsonb sama.
