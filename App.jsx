@@ -2134,6 +2134,8 @@ export default function PLNWarehouse() {
   const [heavyEquipmentList, setHeavyEquipmentList] = useState([]);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState([]);
   const [materialCadangData, setMaterialCadangData] = useState({ imports:[], analyses:[], applyHistory:[] });
+  const [materialCadangHealthData, setMaterialCadangHealthData] = useState({ imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
+  const [materialCadangAiInsights, setMaterialCadangAiInsights] = useState({ runs:[], materialInsights:[] });
   const [maraReference, setMaraReference] = useState(null); // legacy — dipertahankan untuk MigrasiDataTab & MaterialCadangTab
   const [maraSearch, setMaraSearch] = useState("");
   const [maraSearchResults, setMaraSearchResults] = useState([]);
@@ -2282,6 +2284,8 @@ export default function PLNWarehouse() {
       const che = await CLOUD.get("pln_heavy_equipment_v1");
       const chel = await CLOUD.get("pln_heavy_equipment_loans_v1");
       const cmcd = await CLOUD.get("pln_material_cadang_v1");
+      const cmch = await CLOUD.get("pln_material_cadang_health_v1");
+      const cmcai = await CLOUD.get("pln_material_cadang_ai_insights_v1");
       const cgcap = await CLOUD.get("pln_gudang_capacity_v1");
       const cgcapi = await CLOUD.get("pln_gudang_capacity_imports_v1");
       const cmig = await CLOUD.get("pln_migrated_tug15_v1");
@@ -2289,7 +2293,7 @@ export default function PLNWarehouse() {
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote] = await Promise.all([
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote] = await Promise.all([
         seedMasterTableIfEmpty("uit", DEFAULT_UIT),
         seedMasterTableIfEmpty("upt", DEFAULT_UPT_LIST, u => ({ uit_id: u.uitId || null })),
         loadMasterTable("ultg").then(r => r || []),
@@ -2300,6 +2304,8 @@ export default function PLNWarehouse() {
         seedMasterTableIfEmpty("tim_mutu", DEFAULT_TIM_MUTU),
         loadMasterTable("katalog"),
         loadMasterTable("stocks"),
+        loadMasterTable("warehouse_capacity"),
+        loadMasterTable("warehouse_capacity_imports"),
       ]);
       const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
@@ -2369,8 +2375,26 @@ export default function PLNWarehouse() {
       setHeavyEquipmentList(che || DEFAULT_HEAVY_EQUIPMENT);
       setHeavyEquipmentLoans(chel || []);
       setMaterialCadangData(cmcd || { imports:[], analyses:[], applyHistory:[] });
-      setGudangCapacityList(cgcap || []);
-      setGudangCapacityImports(cgcapi || []);
+      setMaterialCadangHealthData(cmch || { imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
+      setMaterialCadangAiInsights(cmcai || { runs:[], materialInsights:[] });
+      // Kapasitas Gudang — Supabase (warehouse_capacity/_imports) sekarang sumber
+      // utama kalau sudah ada isinya; kalau masih kosong (instalasi lama yang baru
+      // upgrade ke skema jsonb ini), dorong sekali data localStorage yang ada ke
+      // Supabase supaya tidak hilang lagi (pola sama seperti katalog/stocks di atas).
+      const gcapLocal = cgcap || [];
+      const gcapiLocal = cgcapi || [];
+      if (cgcapRemote && cgcapRemote.length > 0) {
+        setGudangCapacityList(cgcapRemote);
+      } else {
+        setGudangCapacityList(gcapLocal);
+        if (gcapLocal.length > 0) syncMasterTable("warehouse_capacity", gcapLocal);
+      }
+      if (cgcapiRemote && cgcapiRemote.length > 0) {
+        setGudangCapacityImports(cgcapiRemote);
+      } else {
+        setGudangCapacityImports(gcapiLocal);
+        if (gcapiLocal.length > 0) syncMasterTable("warehouse_capacity_imports", gcapiLocal);
+      }
       setMigratedTug15History(cmig || []);
       setLoading(false);
     }
@@ -2381,7 +2405,7 @@ export default function PLNWarehouse() {
   // to the latest React state via stateRef (always up to date, avoids stale
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
-  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, gudangCapacityList, gudangCapacityImports, migratedTug15History };
+  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History };
   // Debounce auto-sync warnoto_state + RAG (bot WA/Telegram) — dipicu tiap ada perubahan
   // stocks/txns lewat saveToCloud, tapi ditunda sampai 90 detik tidak ada perubahan baru
   // lagi (quiet period), supaya sesi edit beruntun (banyak saveToCloud berturut-turut)
@@ -2405,6 +2429,8 @@ export default function PLNWarehouse() {
     const he = overrides.heavyEquipmentList ?? stateRef.current.heavyEquipmentList;
     const hel = overrides.heavyEquipmentLoans ?? stateRef.current.heavyEquipmentLoans;
     const mcd = overrides.materialCadangData ?? stateRef.current.materialCadangData;
+    const mch = overrides.materialCadangHealthData ?? stateRef.current.materialCadangHealthData;
+    const mcai = overrides.materialCadangAiInsights ?? stateRef.current.materialCadangAiInsights;
     const gcap = overrides.gudangCapacityList ?? stateRef.current.gudangCapacityList;
     const gcapi = overrides.gudangCapacityImports ?? stateRef.current.gudangCapacityImports;
     const mig = overrides.migratedTug15History ?? stateRef.current.migratedTug15History;
@@ -2422,6 +2448,8 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_heavy_equipment_v1", he),
       CLOUD.set("pln_heavy_equipment_loans_v1", hel),
       CLOUD.set("pln_material_cadang_v1", mcd),
+      CLOUD.set("pln_material_cadang_health_v1", mch),
+      CLOUD.set("pln_material_cadang_ai_insights_v1", mcai),
       CLOUD.set("pln_gudang_capacity_v1", gcap),
       CLOUD.set("pln_gudang_capacity_imports_v1", gcapi),
       CLOUD.set("pln_migrated_tug15_v1", mig),
@@ -2435,6 +2463,10 @@ export default function PLNWarehouse() {
     // kebutuhan bot chat seperti stocks_snapshot/warnoto_state di bawah.
     if (overrides.katalogList !== undefined) syncMasterTable("katalog", kat);
     if (overrides.stocks !== undefined) syncMasterTable("stocks", s, item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null }));
+    // Kapasitas Gudang — sebelumnya localStorage/CLOUD-only, sekarang auto-backup
+    // ke Supabase tiap kali berubah (lihat schema.sql section 10-11).
+    if (overrides.gudangCapacityList !== undefined) syncMasterTable("warehouse_capacity", gcap);
+    if (overrides.gudangCapacityImports !== undefined) syncMasterTable("warehouse_capacity_imports", gcapi);
 
     // Auto-sync warnoto_state + RAG (bot WA/Telegram) kalau ada perubahan stocks/txns —
     // debounced 90 detik supaya tidak spam Cohere embed API tiap 1 saveToCloud.
@@ -3160,7 +3192,14 @@ export default function PLNWarehouse() {
   async function approveCapacityImport(importId) {
     const imp = gudangCapacityImports.find(i=>i.id===importId);
     if (!imp) return;
-    const batchRecords = imp.records.map(r => ({...r, importBatchId: imp.id}));
+    // id stabil per baris (UPT+Gudang+SubGudang) supaya upsert Supabase konsisten
+    // antar batch — kalau baris yang sama diimport ulang di batch berikutnya,
+    // dia menimpa dirinya sendiri (bukan duplikat), bukan menimpa baris lain.
+    const batchRecords = imp.records.map(r => ({
+      ...r,
+      id: r.id || `CAP-${r.upt}-${r.gudang}-${r.subGudang}`.replace(/\s+/g,"-").toUpperCase(),
+      importBatchId: imp.id,
+    }));
     const newList = [...gudangCapacityList.filter(r => r.importBatchId !== imp.id), ...batchRecords];
     const newImports = gudangCapacityImports.map(i => i.id===importId
       ? {...i, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now()} : i);
@@ -6621,6 +6660,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             sendChat={sendChat}
             materialCadangData={materialCadangData}
             setMaterialCadangData={setMaterialCadangData}
+            materialCadangHealthData={materialCadangHealthData}
+            setMaterialCadangHealthData={setMaterialCadangHealthData}
+            materialCadangAiInsights={materialCadangAiInsights}
+            setMaterialCadangAiInsights={setMaterialCadangAiInsights}
             maraReference={maraReference}
             setMaraReference={setMaraReference}
             catalogMasterRef={catalogMasterRef}
@@ -8224,6 +8267,24 @@ function ScanPublicView({ katalogId }) {
         const katRow = katArr[0];
         const katFlat = { ...(katRow.data||{}), id: katRow.id };
         setState({ loading:false, error:"", katalog:katFlat, qty:currentQty, history:historyWithSisa });
+
+        // Log scan ke stock_scan_log — fire-and-forget, tidak menunggu/menghalangi
+        // tampilan (kalau gagal, cukup diam, jangan ganggu pengalaman user yang
+        // cuma mau lihat stok). Mendukung banyak orang scan barcode berbeda-beda
+        // secara bersamaan di gudang (2026-07-03) — device_id membedakan tiap HP
+        // karena halaman ini sengaja tanpa login.
+        try {
+          let deviceId = localStorage.getItem("warnoto_scan_device_id");
+          if (!deviceId) {
+            deviceId = "DEV-" + Math.random().toString(36).slice(2, 10).toUpperCase();
+            localStorage.setItem("warnoto_scan_device_id", deviceId);
+          }
+          fetch(`${SUPABASE_URL}/rest/v1/stock_scan_log`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify([{ katalog_id: katalogId, device_id: deviceId }]),
+          }).catch(() => {});
+        } catch {}
       } catch (err) {
         if (!cancelled) setState({ loading:false, error:err.message, katalog:null, qty:0, history:[] });
       }
@@ -9221,6 +9282,8 @@ function ForecastStokPage({ katalogList, stocks, txns, forecastDetail, setForeca
   forecastDetailResult, setForecastDetailResult, forecastDetailLoading, forecastDrillDown,
   setTab, sendChat,
   materialCadangData, setMaterialCadangData, maraReference, setMaraReference,
+  materialCadangHealthData, setMaterialCadangHealthData,
+  materialCadangAiInsights, setMaterialCadangAiInsights,
   catalogMasterRef, setCatalogMasterRef, saveToCloud, showToast, currentUser,
   C, sty }) {
   const [forecastView, setForecastView] = useState("forecast"); // "forecast" | "material_cadang"
@@ -9376,6 +9439,10 @@ function ForecastStokPage({ katalogList, stocks, txns, forecastDetail, setForeca
         <MaterialCadangTab
           materialCadangData={materialCadangData}
           setMaterialCadangData={setMaterialCadangData}
+          materialCadangHealthData={materialCadangHealthData}
+          setMaterialCadangHealthData={setMaterialCadangHealthData}
+          materialCadangAiInsights={materialCadangAiInsights}
+          setMaterialCadangAiInsights={setMaterialCadangAiInsights}
           maraReference={maraReference}
           setMaraReference={setMaraReference}
           catalogMasterRef={catalogMasterRef}
@@ -9383,6 +9450,7 @@ function ForecastStokPage({ katalogList, stocks, txns, forecastDetail, setForeca
           katalogList={katalogList}
           setKatalogList={setKatalogList}
           stocks={stocks}
+          txns={txns}
           currentUser={currentUser}
           sty={sty} C={C}
           saveToCloud={saveToCloud}
@@ -11318,6 +11386,146 @@ function hitungMaterialCadang(rows, stocks, katalogList, params = {}) {
   return results;
 }
 
+function getMaterialCadangHealthStatus(score) {
+  if (score <= 30) return { label:"Critical", color:"#dc2626", bg:"#fef2f2" };
+  if (score <= 55) return { label:"High Risk", color:"#ea580c", bg:"#fff7ed" };
+  if (score <= 75) return { label:"Watch", color:"#f59e0b", bg:"#fefce8" };
+  return { label:"Healthy", color:"#16a34a", bg:"#dcfce7" };
+}
+
+function getMaterialCadangAction(r) {
+  if (r.treatment !== "Material Cadang") return "Monitor Saja";
+  if ((r.dataConfidence||100) < 65) return "Validasi Data Failure";
+  if ((r.healthIndex||100) <= 30) return r.gapQty > 0 ? "Prioritaskan Pengadaan" : "Review Lead Time";
+  if ((r.healthIndex||100) <= 55) return r.gapQty > 0 ? "Ajukan Apply Min Qty" : "Review Lead Time";
+  if ((r.healthIndex||100) <= 75) return "Monitor Saja";
+  return "Monitor Saja";
+}
+
+function calculateMaterialCadangHealthIndex(result, context = {}) {
+  const maxLeadTime = context.maxLeadTime || 1;
+  const maxGapValue = context.maxGapValue || 1;
+  const stockCoverage = result.recommendedQty > 0 ? Math.min(1, (result.currentQty||0) / result.recommendedQty) : 1;
+  const stockRisk = result.treatment === "Material Cadang" ? (1 - stockCoverage) * 35 : 0;
+  const classRisk = { A1:20, A2:15, B1:10, B2:7, C:2 }[result.abcClass] || 5;
+  const leadRisk = Math.min(1, (result.leadTime||0) / maxLeadTime) * 15;
+  const failureBase = Math.max(result.failure5y||0, result.penggantian5y||0, result.emergency5y||0);
+  const failureRisk = Math.min(15, failureBase * 3 + (result.breakdown ? 4 : 0) + ((result.emergency5y||0) > 0 ? 4 : 0));
+  const valueRisk = Math.min(10, ((result.gapQty||0) * (result.harga||0) / maxGapValue) * 10);
+  let confidence = 100;
+  const flags = [];
+  if (!result.harga || result.harga <= 0) { confidence -= 12; flags.push("Harga kosong"); }
+  if ((result.warnings||[]).length) { confidence -= Math.min(18, result.warnings.length * 8); flags.push(...result.warnings); }
+  if (!result.cluster) { confidence -= 10; flags.push("Equipment cluster kosong"); }
+  if ((result.failure5y||0) === 0 && ((result.penggantian5y||0) > 0 || (result.emergency5y||0) > 0)) {
+    confidence -= 15; flags.push("Failure 0 tetapi ada penggantian/emergency");
+  }
+  if ((result.leadTime||0) <= 0 || (result.ttf||0) <= 0) { confidence -= 20; flags.push("Lead time/TTF tidak valid"); }
+  confidence = Math.max(20, Math.min(100, Math.round(confidence)));
+  const confidencePenalty = (100 - confidence) * 0.15;
+  const riskScore = Math.min(100, Math.round(stockRisk + classRisk + leadRisk + failureRisk + valueRisk + confidencePenalty));
+  const healthIndex = Math.max(0, Math.min(100, 100 - riskScore));
+  const status = getMaterialCadangHealthStatus(healthIndex);
+  return {
+    healthIndex,
+    healthStatus: status.label,
+    healthColor: status.color,
+    healthBg: status.bg,
+    riskScore,
+    dataConfidence: confidence,
+    aiRecommendation: getMaterialCadangAction({ ...result, healthIndex, dataConfidence: confidence }),
+    healthBreakdown: {
+      stockRisk: Math.round(stockRisk),
+      classRisk: Math.round(classRisk),
+      leadTimeRisk: Math.round(leadRisk),
+      failureRisk: Math.round(failureRisk),
+      valueRisk: Math.round(valueRisk),
+      confidencePenalty: Math.round(confidencePenalty),
+    },
+    dataQualityFlags: flags,
+  };
+}
+
+function enrichMaterialCadangHealthResults(results) {
+  const materialResults = (results||[]).filter(r => r.treatment === "Material Cadang");
+  const maxLeadTime = Math.max(1, ...materialResults.map(r => r.leadTime||0));
+  const maxGapValue = Math.max(1, ...materialResults.map(r => (r.gapQty||0) * (r.harga||0)));
+  return (results||[]).map(r => {
+    const health = calculateMaterialCadangHealthIndex(r, { maxLeadTime, maxGapValue });
+    return { ...r, ...health };
+  });
+}
+
+function buildMaterialCadangAiContext(run, results, stocks, katalogList, txns) {
+  const material = (results||[]).filter(r => r.treatment === "Material Cadang");
+  const topRisks = [...material].sort((a,b) => (a.healthIndex||100) - (b.healthIndex||100)).slice(0,12);
+  const counts = results.reduce((acc,r)=>{
+    const st = r.healthStatus || "Unclassified";
+    acc[st] = (acc[st]||0)+1;
+    return acc;
+  }, {});
+  return {
+    runId: run?.id,
+    createdAt: run?.createdAt,
+    totalItems: results.length,
+    statusCounts: counts,
+    avgHealthIndex: results.length ? Math.round(results.reduce((a,r)=>a+(r.healthIndex||0),0)/results.length) : 0,
+    avgDataConfidence: results.length ? Math.round(results.reduce((a,r)=>a+(r.dataConfidence||0),0)/results.length) : 0,
+    totalGapQty: material.reduce((a,r)=>a+(r.gapQty||0),0),
+    totalGapValue: material.reduce((a,r)=>a+((r.gapQty||0)*(r.harga||0)),0),
+    topRisks: topRisks.map(r=>({
+      katalogId:r.katalogId, noKatalog:r.noKat, nama:r.katalogName||r.namaMaterial, cluster:r.cluster,
+      healthIndex:r.healthIndex, healthStatus:r.healthStatus, dataConfidence:r.dataConfidence,
+      abcClass:r.abcClass, policy:r.policy, currentQty:r.currentQty, recommendedQty:r.recommendedQty,
+      gapQty:r.gapQty, gapValue:(r.gapQty||0)*(r.harga||0), leadTime:r.leadTime,
+      failure5y:r.failure5y, penggantian5y:r.penggantian5y, emergency5y:r.emergency5y,
+      dataQualityFlags:r.dataQualityFlags||[], aiRecommendation:r.aiRecommendation,
+    })),
+  };
+}
+
+async function generateMaterialCadangAiInsights(run, results, stocks, katalogList, txns) {
+  const context = buildMaterialCadangAiContext(run, results, stocks, katalogList, txns);
+  const fallback = {
+    id: "MCAI-" + Date.now(),
+    runId: run.id,
+    status: import.meta.env.VITE_GROQ_API_KEY ? "UNAVAILABLE" : "NO_API_KEY",
+    model: "llama-3.3-70b-versatile",
+    createdAt: Date.now(),
+    executiveSummary: import.meta.env.VITE_GROQ_API_KEY ? "AI insight belum tersedia. Perhitungan Health Index lokal tetap dapat digunakan." : "AI insight belum tersedia karena VITE_GROQ_API_KEY belum diisi. Perhitungan Health Index lokal tetap dapat digunakan.",
+    topRisks: context.topRisks.slice(0,5).map(r => `${r.nama} (${r.noKatalog}) - ${r.healthStatus}, HI ${r.healthIndex}`),
+    dataQualityFindings: ["Gunakan tabel Health Index untuk melihat flag kualitas data per material."],
+    recommendedActions: ["Review material Critical/High Risk dan ajukan apply minQty melalui approval Asman."],
+    procurementPriority: context.topRisks.slice(0,5).map(r => r.noKatalog),
+    validationNeeded: context.topRisks.filter(r => (r.dataConfidence||100) < 70).map(r => r.noKatalog),
+    materialInsights: [],
+  };
+  if (!import.meta.env.VITE_GROQ_API_KEY) return fallback;
+  try {
+    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
+      body:JSON.stringify({
+        model:"llama-3.3-70b-versatile",
+        temperature:0.2,
+        max_tokens:1800,
+        messages:[
+          { role:"system", content:`Kamu adalah AI analis manajemen Material Cadang WARNOTO PLN. Jawab hanya JSON valid. Jangan mengubah angka resmi. Beri insight manajemen singkat, audit-friendly, dan rekomendasi read-only.` },
+          { role:"user", content:`Buat AI insight Health Index Material Cadang dari konteks berikut. Output JSON dengan key: executiveSummary, topRisks, dataQualityFindings, recommendedActions, procurementPriority, validationNeeded, materialInsights. materialInsights item: {noKatalog,nama,diagnosis,recommendation,confidence}. Konteks:\n${JSON.stringify(context).slice(0,14000)}` }
+        ]
+      })
+    });
+    if (!resp.ok) throw new Error(`Groq ${resp.status}`);
+    const data = await resp.json();
+    const text = data.choices?.[0]?.message?.content || "";
+    const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || text;
+    const parsed = JSON.parse(jsonText);
+    return { ...fallback, ...parsed, status:"ANSWERED", createdAt:Date.now(), runId:run.id };
+  } catch (err) {
+    return { ...fallback, status:"ERROR", errorMessage:err.message, createdAt:Date.now() };
+  }
+}
+
 function UsulanKatalogTab({ maraReference, setMaraReference, katalogList, setKatalogList, currentUser, sty, C, saveToCloud, showToast }) {
   const [maraLoading, setMaraLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -11500,7 +11708,7 @@ function UsulanKatalogTab({ maraReference, setMaraReference, katalogList, setKat
   );
 }
 
-function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraReference, setMaraReference, catalogMasterRef, setCatalogMasterRef, katalogList, setKatalogList, stocks, currentUser, sty, C, saveToCloud, showToast }) {
+function MaterialCadangTab({ materialCadangData, setMaterialCadangData, materialCadangHealthData, setMaterialCadangHealthData, materialCadangAiInsights, setMaterialCadangAiInsights, maraReference, setMaraReference, catalogMasterRef, setCatalogMasterRef, katalogList, setKatalogList, stocks, txns, currentUser, sty, C, saveToCloud, showToast }) {
   const [subTab, setSubTab] = useState("dashboard");
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState(null); // { rows, stats, fileName }
@@ -11510,17 +11718,28 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
   const [applyConfirm, setApplyConfirm] = useState(null); // { item } yang akan di-apply ke minQty
   const [applyNotes, setApplyNotes] = useState("");
   const [detailItem, setDetailItem] = useState(null);
+  const [aiInsightLoading, setAiInsightLoading] = useState(false);
 
   const canEdit = ["ADMIN","TL"].includes(currentUser.role);
   const canApprove = currentUser.role === "ASMAN";
 
   // Analisis terakhir dari data tersimpan
   const latestAnalysis = materialCadangData.analyses.slice(-1)[0] || null;
-  const latestResults = latestAnalysis?.results || [];
+  const latestHealthRun = materialCadangHealthData.analysisRuns.slice(-1)[0] || null;
+  const latestHealthResults = latestHealthRun
+    ? materialCadangHealthData.healthResults.filter(r => r.runId === latestHealthRun.id)
+    : [];
+  const latestResults = latestHealthResults.length ? latestHealthResults : enrichMaterialCadangHealthResults(latestAnalysis?.results || []);
+  const latestAiInsight = latestHealthRun
+    ? materialCadangAiInsights.runs.find(r => r.runId === latestHealthRun.id)
+    : null;
 
   // Summary dari hasil analisis
   const summary = latestResults.reduce((acc, r) => {
     acc.total++;
+    if (r.healthStatus) acc.healthCounts[r.healthStatus] = (acc.healthCounts[r.healthStatus]||0) + 1;
+    acc.healthSum += r.healthIndex || 0;
+    acc.confidenceSum += r.dataConfidence || 0;
     if (r.treatment !== "Material Cadang") { acc.persediaan++; return acc; }
     if (r.currentQty >= r.recommendedQty && r.recommendedQty > 0) acc.aman++;
     else if (r.currentQty > 0 && r.currentQty < r.recommendedQty) acc.kurang++;
@@ -11528,7 +11747,9 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
     acc.gapQty += r.gapQty;
     acc.gapNilai += r.gapQty * (r.harga || 0);
     return acc;
-  }, { total:0, aman:0, kurang:0, kosong:0, persediaan:0, gapQty:0, gapNilai:0 });
+  }, { total:0, aman:0, kurang:0, kosong:0, persediaan:0, gapQty:0, gapNilai:0, healthSum:0, confidenceSum:0, healthCounts:{} });
+  summary.avgHealth = summary.total ? Math.round(summary.healthSum / summary.total) : 0;
+  summary.avgConfidence = summary.total ? Math.round(summary.confidenceSum / summary.total) : 0;
 
   // Pending apply (menunggu Asman)
   const pendingApply = materialCadangData.applyHistory.filter(h => h.status === "PENDING_ASMAN");
@@ -11588,7 +11809,9 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
 
   async function handleHitung() {
     if (!importPreview) return;
-    const results = hitungMaterialCadang(importPreview.rows, stocks, katalogList);
+    const baseResults = hitungMaterialCadang(importPreview.rows, stocks, katalogList);
+    const results = enrichMaterialCadangHealthResults(baseResults);
+    const runId = "MCHI-" + Date.now();
     const newAnalysis = {
       id: "MCANA-" + Date.now(),
       importFileName: importPreview.fileName,
@@ -11597,12 +11820,50 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
       results,
       params: { periodYears:5, slMandatory:0.99, slOptimum:0.95, slEconomic:0.90 },
     };
+    const importRecord = {
+      id: "MCIMP-" + Date.now(),
+      fileName: importPreview.fileName,
+      importedBy: currentUser.id,
+      importedAt: Date.now(),
+      stats: importPreview.stats,
+    };
+    const healthRun = {
+      id: runId,
+      legacyAnalysisId: newAnalysis.id,
+      importId: importRecord.id,
+      importFileName: importPreview.fileName,
+      createdBy: currentUser.id,
+      createdAt: Date.now(),
+      modelAi: "llama-3.3-70b-versatile",
+      params: newAnalysis.params,
+    };
+    const healthRows = results.map(r => ({ ...r, runId, resultId:`${runId}-${r.katalogId||r.noKat}-${String(r.cluster||"").replace(/\s+/g,"_")}` }));
     const updated = { ...materialCadangData, analyses: [...materialCadangData.analyses, newAnalysis] };
+    const updatedHealth = {
+      ...materialCadangHealthData,
+      imports: [...(materialCadangHealthData.imports||[]), importRecord],
+      analysisRuns: [...(materialCadangHealthData.analysisRuns||[]), healthRun],
+      healthResults: [...(materialCadangHealthData.healthResults||[]), ...healthRows],
+    };
     setMaterialCadangData(updated);
-    await saveToCloud({ materialCadangData: updated });
-    setAnalisisResult(results);
-    setSubTab("hasil");
-    showToast("Rekomendasi Material Cadang berhasil dihitung!", "success");
+    setMaterialCadangHealthData(updatedHealth);
+    await saveToCloud({ materialCadangData: updated, materialCadangHealthData: updatedHealth });
+    setAnalisisResult(healthRows);
+    setSubTab("health");
+    showToast("Health Index Material Cadang berhasil dihitung.", "success");
+
+    setAiInsightLoading(true);
+    const aiRun = await generateMaterialCadangAiInsights(healthRun, healthRows, stocks, katalogList, txns);
+    const materialInsights = (aiRun.materialInsights||[]).map((m, idx)=>({ ...m, id:`${aiRun.id}-MI-${idx}`, runId }));
+    const updatedAi = {
+      runs: [...(materialCadangAiInsights.runs||[]), { ...aiRun, materialInsights: undefined }],
+      materialInsights: [...(materialCadangAiInsights.materialInsights||[]), ...materialInsights],
+    };
+    setMaterialCadangAiInsights(updatedAi);
+    await saveToCloud({ materialCadangAiInsights: updatedAi });
+    setAiInsightLoading(false);
+    if (aiRun.status === "ANSWERED") showToast("AI Management Insight berhasil dibuat.", "success");
+    else showToast("Health Index selesai. AI insight belum tersedia, data lokal tetap aman.", "error");
   }
 
   async function handleAjukanApply(item) {
@@ -11616,14 +11877,23 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
       recommendedQty: item.recommendedQty,
       abcClass: item.abcClass,
       policy: item.policy,
+      runId: item.runId,
+      healthIndex: item.healthIndex,
+      healthStatus: item.healthStatus,
       status: "PENDING_ASMAN",
       requestedBy: currentUser.id,
       requestedAt: Date.now(),
       notes: applyNotes.trim(),
     };
     const updated = { ...materialCadangData, applyHistory: [...materialCadangData.applyHistory, entry] };
+    const auditEntry = { ...entry, auditId:`${entry.id}-REQ`, action:"REQUEST_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now() };
+    const updatedHealth = {
+      ...materialCadangHealthData,
+      applyAudit: [...(materialCadangHealthData.applyAudit||[]), auditEntry],
+    };
     setMaterialCadangData(updated);
-    await saveToCloud({ materialCadangData: updated });
+    setMaterialCadangHealthData(updatedHealth);
+    await saveToCloud({ materialCadangData: updated, materialCadangHealthData: updatedHealth });
     setApplyConfirm(null); setApplyNotes("");
     showToast("Pengajuan apply minQty dikirim ke Asman.", "success");
   }
@@ -11643,18 +11913,29 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
         h.id===applyId ? {...h, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now()} : h
       )
     };
+    const updatedHealth = {
+      ...materialCadangHealthData,
+      applyAudit: [...(materialCadangHealthData.applyAudit||[]), { ...entry, auditId:`${applyId}-APPROVE-${Date.now()}`, action:"APPROVE_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), appliedMinQty:entry.recommendedQty }],
+    };
     setMaterialCadangData(updatedMC);
-    await saveToCloud({ katalogList: updated, materialCadangData: updatedMC });
+    setMaterialCadangHealthData(updatedHealth);
+    await saveToCloud({ katalogList: updated, materialCadangData: updatedMC, materialCadangHealthData: updatedHealth });
     showToast(`Min Qty ${entry.namaBarang} berhasil diperbarui ke ${entry.recommendedQty}.`, "success");
   }
 
   async function handleRejectApply(applyId, reason) {
+    const entry = materialCadangData.applyHistory.find(h => h.id === applyId);
     const updated = {
       ...materialCadangData,
       applyHistory: materialCadangData.applyHistory.map(h => h.id===applyId ? {...h, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : h)
     };
+    const updatedHealth = {
+      ...materialCadangHealthData,
+      applyAudit: [...(materialCadangHealthData.applyAudit||[]), { ...(entry||{}), auditId:`${applyId}-REJECT-${Date.now()}`, action:"REJECT_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), rejectReason:reason }],
+    };
     setMaterialCadangData(updated);
-    await saveToCloud({ materialCadangData: updated });
+    setMaterialCadangHealthData(updatedHealth);
+    await saveToCloud({ materialCadangData: updated, materialCadangHealthData: updatedHealth });
     showToast("Pengajuan ditolak.", "success");
   }
 
@@ -11701,7 +11982,14 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
   }
 
   const displayResults = analisisResult || latestResults;
+  const latestMaterialInsights = latestHealthRun
+    ? materialCadangAiInsights.materialInsights.filter(m => m.runId === latestHealthRun.id)
+    : [];
+  const aiByNoKatalog = {};
+  latestMaterialInsights.forEach(m => { if (m.noKatalog) aiByNoKatalog[normalizeKatalog(m.noKatalog)] = m; });
   const TABS = [
+    {id:"health",label:"Health Index"},
+    {id:"ai",label:"AI Insight"},
     {id:"dashboard",label:"📊 Dashboard"},
     {id:"import",label:"📥 Import & Hitung"},
     {id:"hasil",label:"📋 Hasil Analisis"},
@@ -11750,6 +12038,21 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
                   </div>
                 ))}
               </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:16}}>
+                {[
+                  {label:"Critical",val:summary.healthCounts.Critical||0,color:"#dc2626"},
+                  {label:"High Risk",val:summary.healthCounts["High Risk"]||0,color:"#ea580c"},
+                  {label:"Watch",val:summary.healthCounts.Watch||0,color:"#f59e0b"},
+                  {label:"Healthy",val:summary.healthCounts.Healthy||0,color:"#16a34a"},
+                  {label:"Avg Health",val:summary.avgHealth+"/100",color:C.accent},
+                  {label:"Data Confidence",val:summary.avgConfidence+"%",color:"#0f766e"},
+                ].map(kpi=>(
+                  <div key={kpi.label} style={{...sty.card,borderLeft:`4px solid ${kpi.color}`,padding:12}}>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:4,fontWeight:700}}>{kpi.label}</div>
+                    <div style={{fontSize:20,fontWeight:900,color:kpi.color}}>{kpi.val}</div>
+                  </div>
+                ))}
+              </div>
               <div style={{...sty.card,marginBottom:16}}>
                 <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🏆 Prioritas Tindakan (Top 10)</div>
                 <div style={{overflowX:"auto"}}>
@@ -11792,6 +12095,84 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
                 <div style={{marginTop:10,textAlign:"right"}}>
                   <button style={sty.btn("ghost","sm")} onClick={()=>setSubTab("hasil")}>Lihat semua hasil →</button>
                 </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HEALTH INDEX */}
+      {subTab==="health" && (
+        <div>
+          {displayResults.length === 0 ? (
+            <div style={{...sty.card,textAlign:"center",padding:30,color:C.muted}}>Belum ada Health Index. Upload dan hitung data Material Cadang terlebih dahulu.</div>
+          ) : (
+            <div style={{...sty.card,padding:0,overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:1100}}>
+                <thead style={{background:"#003087",color:"white"}}>
+                  <tr>
+                    {["No Katalog","Nama Material","Health Index","Status","Confidence","Kelas","Policy","Stok","Ideal","Gap","Nilai Gap","AI Recommendation"].map(h=>(
+                      <th key={h} style={{padding:"8px 10px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...displayResults].sort((a,b)=>(a.healthIndex||100)-(b.healthIndex||100)).map((r,i)=>{
+                    const ai = aiByNoKatalog[normalizeKatalog(r.noKat)];
+                    const rec = ai?.recommendation || r.aiRecommendation || "Monitor Saja";
+                    return (
+                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}} onClick={()=>setDetailItem(r)}>
+                        <td style={{padding:"6px 10px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
+                        <td style={{padding:"6px 10px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
+                        <td style={{padding:"6px 10px",fontWeight:900,color:r.healthColor}}>{r.healthIndex}</td>
+                        <td style={{padding:"6px 10px"}}><span style={{padding:"2px 8px",borderRadius:999,background:r.healthBg,color:r.healthColor,fontWeight:800,fontSize:10}}>{r.healthStatus}</span></td>
+                        <td style={{padding:"6px 10px",fontWeight:700,color:(r.dataConfidence||0)<70?C.red:C.green}}>{r.dataConfidence}%</td>
+                        <td style={{padding:"6px 10px",fontWeight:700}}>{r.abcClass}</td>
+                        <td style={{padding:"6px 10px",fontSize:10,color:C.muted}}>{r.policy}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700}}>{r.currentQty}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700}}>{r.recommendedQty}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
+                        <td style={{padding:"6px 10px",color:r.gapQty>0?"#7c3aed":C.muted}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
+                        <td style={{padding:"6px 10px",fontWeight:700,color:rec==="Prioritaskan Pengadaan"?C.red:rec==="Ajukan Apply Min Qty"?"#f59e0b":C.muted}}>{rec}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI INSIGHT */}
+      {subTab==="ai" && (
+        <div>
+          {!latestAiInsight ? (
+            <div style={{...sty.card,textAlign:"center",padding:30,color:C.muted}}>
+              {aiInsightLoading ? "AI sedang menyusun insight manajemen..." : "AI insight belum tersedia. Jalankan Import & Hitung untuk membuat insight."}
+            </div>
+          ) : (
+            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.2fr) minmax(280px,.8fr)",gap:14}}>
+              <div style={{...sty.card}}>
+                <div style={{fontSize:11,color:C.muted,fontWeight:800,textTransform:"uppercase",marginBottom:6}}>Executive Summary</div>
+                <div style={{fontSize:14,lineHeight:1.6,fontWeight:600,marginBottom:16}}>{latestAiInsight.executiveSummary}</div>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:13,marginBottom:8,color:C.red}}>Top Risks</div>
+                    {(latestAiInsight.topRisks||[]).slice(0,8).map((x,i)=><div key={i} style={{fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>{typeof x==="string"?x:(x.nama||x.noKatalog||JSON.stringify(x))}</div>)}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:13,marginBottom:8,color:"#f59e0b"}}>Data Quality Findings</div>
+                    {(latestAiInsight.dataQualityFindings||[]).slice(0,8).map((x,i)=><div key={i} style={{fontSize:12,padding:"5px 0",borderBottom:`1px solid ${C.border}`}}>{typeof x==="string"?x:JSON.stringify(x)}</div>)}
+                  </div>
+                </div>
+              </div>
+              <div style={{...sty.card}}>
+                <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>Recommended Actions</div>
+                {(latestAiInsight.recommendedActions||[]).slice(0,10).map((x,i)=><div key={i} style={{fontSize:12,padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>{typeof x==="string"?x:JSON.stringify(x)}</div>)}
+                <div style={{fontWeight:800,fontSize:13,marginTop:16,marginBottom:8}}>Validation Needed</div>
+                {(latestAiInsight.validationNeeded||[]).length===0 ? <div style={{fontSize:12,color:C.muted}}>Tidak ada material yang ditandai wajib validasi.</div> : (latestAiInsight.validationNeeded||[]).slice(0,12).map((x,i)=><span key={i} style={{display:"inline-block",fontSize:11,fontWeight:700,color:"#92400e",background:"#fef3c7",borderRadius:999,padding:"3px 8px",margin:"0 5px 5px 0"}}>{typeof x==="string"?x:(x.noKatalog||JSON.stringify(x))}</span>)}
+                <div style={{fontSize:10,color:C.muted,marginTop:12}}>Status: {latestAiInsight.status || "-"} {latestAiInsight.errorMessage ? `- ${latestAiInsight.errorMessage}` : ""}</div>
               </div>
             </div>
           )}
@@ -11977,6 +12358,12 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
                   <div style={{fontSize:11,color:C.muted,marginTop:4}}>Diajukan: {new Date(h.requestedAt).toLocaleDateString("id")}</div>
                   {canApprove && (
                     <div style={{display:"flex",gap:8,marginTop:10}}>
+                      <button style={sty.btn("primary","sm")} onClick={()=>handleApproveApply(h.id)}>Setuju & Apply Min Qty</button>
+                      <button style={sty.btn("danger","sm")} onClick={()=>handleRejectApply(h.id, "Ditolak Asman")}>Tolak</button>
+                    </div>
+                  )}
+                  {false && canApprove && (
+                    <div style={{display:"flex",gap:8,marginTop:10}}>
                       <button style={sty.btn("primary","sm")} onClick={async ()=>{
                         const updated = {...materialCadangData, applyHistory: materialCadangData.applyHistory.map(x=>x.id===h.id?{...x,status:"APPROVED_APPLIED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
                         setMaterialCadangData(updated);
@@ -12024,6 +12411,42 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, maraRefe
                 </div>
               ))}
             </div>
+            <div style={{marginTop:12,padding:10,background:detailItem.healthBg||"#f8fafc",border:`1px solid ${detailItem.healthColor||C.border}`,borderRadius:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>Health Index</div>
+                  <div style={{fontSize:24,fontWeight:900,color:detailItem.healthColor||C.text}}>{detailItem.healthIndex ?? "-"} / 100</div>
+                </div>
+                <span style={{padding:"4px 10px",borderRadius:999,background:"white",color:detailItem.healthColor||C.text,fontWeight:900,fontSize:11}}>{detailItem.healthStatus||"-"}</span>
+              </div>
+              {detailItem.healthBreakdown && (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8,fontSize:11}}>
+                  {Object.entries(detailItem.healthBreakdown).map(([k,v])=>(
+                    <div key={k}><span style={{color:C.muted}}>{k}</span><div style={{fontWeight:800}}>{v}</div></div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {aiByNoKatalog[normalizeKatalog(detailItem.noKat)] && (
+              <div style={{marginTop:12,padding:10,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,fontSize:12}}>
+                <div style={{fontWeight:800,color:"#1d4ed8",marginBottom:6}}>AI Insight</div>
+                <div><b>Diagnosis:</b> {aiByNoKatalog[normalizeKatalog(detailItem.noKat)].diagnosis || "-"}</div>
+                <div style={{marginTop:4}}><b>Rekomendasi:</b> {aiByNoKatalog[normalizeKatalog(detailItem.noKat)].recommendation || detailItem.aiRecommendation || "-"}</div>
+              </div>
+            )}
+            {(detailItem.dataQualityFlags||[]).length > 0 && (
+              <div style={{marginTop:8,padding:8,background:"#fff7ed",borderRadius:6,fontSize:11,color:"#9a3412"}}>
+                Data flags: {detailItem.dataQualityFlags.join(" | ")}
+              </div>
+            )}
+            {canEdit && detailItem.treatment==="Material Cadang" && detailItem.recommendedQty>0 && (
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}>
+                {materialCadangData.applyHistory.find(h=>h.katalogId===detailItem.katalogId&&h.status==="PENDING_ASMAN")
+                  ? <span style={{fontSize:11,color:"#f59e0b",fontWeight:800}}>Pengajuan apply minQty sedang menunggu Asman</span>
+                  : <button style={sty.btn("primary","sm")} onClick={()=>{ setApplyConfirm(detailItem); setDetailItem(null); }}>Ajukan Apply Min Qty</button>
+                }
+              </div>
+            )}
             {(detailItem.warnings||[]).length > 0 && (
               <div style={{marginTop:12,padding:8,background:"#fef9c3",borderRadius:6,fontSize:11,color:"#92400e"}}>
                 ⚠️ {detailItem.warnings.join(" | ")}

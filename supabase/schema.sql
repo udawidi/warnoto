@@ -129,7 +129,11 @@ create table if not exists forecast_predictions (
 create index if not exists idx_forecast_katalog on forecast_predictions(katalog_id);
 
 -- ────────────────────────────────────────────────────────────
--- 4. STOCK_SCAN_LOG — log scan barcode dari HP (fitur sinkron multi-device, menyusul)
+-- 4. STOCK_SCAN_LOG — log tiap kali barcode/QR material di-scan lewat halaman
+--    publik ScanPublicView (App.jsx, "?scan=<katalogId>", TIDAK perlu login).
+--    device_id = id acak per-browser (localStorage) supaya bisa bedakan siapa
+--    scan dari HP mana meski tidak ada akun — dipakai kalau banyak orang scan
+--    barcode yang sama/berbeda bersamaan di gudang (2026-07-03).
 -- ────────────────────────────────────────────────────────────
 create table if not exists stock_scan_log (
   id bigint generated always as identity primary key,
@@ -186,12 +190,17 @@ drop policy if exists "Public update katalog" on katalog;
 drop policy if exists "Public insert tug15_history" on tug15_history;
 drop policy if exists "Public insert stock_current" on stock_current;
 drop policy if exists "Public update stock_current" on stock_current;
+drop policy if exists "Public insert stock_scan_log" on stock_scan_log;
 
 create policy "Public insert katalog" on katalog for insert with check (true);
 create policy "Public update katalog" on katalog for update using (true);
 create policy "Public insert tug15_history" on tug15_history for insert with check (true);
 create policy "Public insert stock_current" on stock_current for insert with check (true);
 create policy "Public update stock_current" on stock_current for update using (true);
+-- stock_scan_log ditulis dari ScanPublicView (halaman scan QR/barcode publik,
+-- tanpa login) — insert-only dari anon key, tidak ada update/delete publik
+-- supaya log tidak bisa dipalsukan ulang/dihapus dari browser siapapun.
+create policy "Public insert stock_scan_log" on stock_scan_log for insert with check (true);
 
 -- ────────────────────────────────────────────────────────────
 -- 6. STORAGE BUCKET — "material-photos", untuk Foto Material Keseluruhan
@@ -421,40 +430,50 @@ as $$
 $$;
 
 -- ────────────────────────────────────────────────────────────
--- 10. WAREHOUSE_CAPACITY — kapasitas gudang per sub-gudang (m2).
---     Grain: UPT x Gudang x Sub Gudang. Sumber: Laporan KAPASITAS GUDANG UIT JBM.xlsx.
---     Diimport lewat UI (KapasitasGudangTab) bukan hardcoded.
+-- 10. WAREHOUSE_CAPACITY — kapasitas gudang per sub-gudang (m2), baris LIVE
+--     (setelah di-approve). Grain: UPT x Gudang x Sub Gudang. Sumber:
+--     Laporan KAPASITAS GUDANG UIT JBM.xlsx, diimport lewat UI
+--     (KapasitasGudangImportTab → approveCapacityImport di App.jsx).
+--
+--     RIWAYAT: skema ini sebelumnya kolom typed (upt/gudang/sub_gudang/dst)
+--     tapi TIDAK PERNAH benar-benar disinkron App.jsx — fitur Kapasitas
+--     Gudang cuma tersimpan localStorage/CLOUD sampai ditemukan saat audit
+--     2026-07-03. Diganti ke pola jsonb (sama seperti katalog/stocks) supaya
+--     bisa pakai syncMasterTable generik & tidak salah-mapping kolom lagi.
 -- ────────────────────────────────────────────────────────────
 create table if not exists warehouse_capacity (
-  id text primary key,                  -- "CAP-{UPT}-{GUDANG}-{SUB}" uppercase
-  upt text not null,
-  gudang text not null,
-  sub_gudang text not null,
-  type_gudang text,
-  alamat text,
-  latitude numeric,
-  longitude numeric,
-  luas_lahan_m2 numeric not null default 0,
-  luas_terpakai_m2 numeric not null default 0,
-  sisa_luas_m2 numeric not null default 0,
-  persentase_terpakai numeric not null default 0,   -- 0.0 – 1.0
-  persediaan_pct numeric default 0,
-  cadang_pct numeric default 0,
-  pre_memory_pct numeric default 0,
-  attb_pct numeric default 0,
-  lainnya_pct numeric default 0,
-  status_kapasitas text not null default 'AMAN' check (status_kapasitas in ('KRITIS','WASPADA','AMAN')),
-  contact_person text,
-  waktu_update text,
-  keterangan text,
-  link_gudang text,
-  matched_gudang_id text,               -- FK ke gudang.id (nullable, di-isi setelah mapping)
-  mapping_status text not null default 'UNMATCHED' check (mapping_status in ('UNMATCHED','AUTO_SUGGESTED','CONFIRMED')),
-  import_batch_id text,
-  updated_at timestamptz default now()
+  id text primary key,              -- "CAP-{UPT}-{GUDANG}-{SUB}" uppercase, dibuat App.jsx
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint
 );
-create index if not exists idx_wh_cap_upt on warehouse_capacity(upt);
-create index if not exists idx_wh_cap_status on warehouse_capacity(status_kapasitas);
+-- Migrasi installasi lama (skema typed-column, orphan/basi -- lihat catatan di atas):
+alter table warehouse_capacity drop column if exists upt;
+alter table warehouse_capacity drop column if exists gudang;
+alter table warehouse_capacity drop column if exists sub_gudang;
+alter table warehouse_capacity drop column if exists type_gudang;
+alter table warehouse_capacity drop column if exists alamat;
+alter table warehouse_capacity drop column if exists latitude;
+alter table warehouse_capacity drop column if exists longitude;
+alter table warehouse_capacity drop column if exists luas_lahan_m2;
+alter table warehouse_capacity drop column if exists luas_terpakai_m2;
+alter table warehouse_capacity drop column if exists sisa_luas_m2;
+alter table warehouse_capacity drop column if exists persentase_terpakai;
+alter table warehouse_capacity drop column if exists persediaan_pct;
+alter table warehouse_capacity drop column if exists cadang_pct;
+alter table warehouse_capacity drop column if exists pre_memory_pct;
+alter table warehouse_capacity drop column if exists attb_pct;
+alter table warehouse_capacity drop column if exists lainnya_pct;
+alter table warehouse_capacity drop column if exists status_kapasitas;
+alter table warehouse_capacity drop column if exists contact_person;
+alter table warehouse_capacity drop column if exists waktu_update;
+alter table warehouse_capacity drop column if exists keterangan;
+alter table warehouse_capacity drop column if exists link_gudang;
+alter table warehouse_capacity drop column if exists matched_gudang_id;
+alter table warehouse_capacity drop column if exists mapping_status;
+alter table warehouse_capacity drop column if exists import_batch_id;
+alter table warehouse_capacity drop column if exists updated_at;
+alter table warehouse_capacity add column if not exists data jsonb not null default '{}'::jsonb;
+alter table warehouse_capacity add column if not exists created_at bigint;
 
 alter table warehouse_capacity enable row level security;
 drop policy if exists "Authenticated read warehouse_capacity" on warehouse_capacity;
@@ -464,18 +483,25 @@ create policy "Authenticated write warehouse_capacity" on warehouse_capacity for
 
 -- ────────────────────────────────────────────────────────────
 -- 11. WAREHOUSE_CAPACITY_IMPORTS — riwayat batch import kapasitas gudang
+--     (1 baris = 1 file diupload, `data.records` berisi semua baris di batch
+--     itu — sama seperti App.jsx gudangCapacityImports, disimpan apa adanya
+--     sebagai jsonb supaya tidak perlu mapping kolom manual).
 -- ────────────────────────────────────────────────────────────
 create table if not exists warehouse_capacity_imports (
-  id text primary key,
-  source_file text not null,
-  sheet_name text,
-  imported_by text,                     -- username / user id
-  imported_at timestamptz default now(),
-  total_rows integer not null default 0,
-  valid_rows integer not null default 0,
-  invalid_rows integer not null default 0,
-  warning_rows integer not null default 0
+  id text primary key,              -- batchId, sama dengan id di App.jsx
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint
 );
+alter table warehouse_capacity_imports drop column if exists source_file;
+alter table warehouse_capacity_imports drop column if exists sheet_name;
+alter table warehouse_capacity_imports drop column if exists imported_by;
+alter table warehouse_capacity_imports drop column if exists imported_at;
+alter table warehouse_capacity_imports drop column if exists total_rows;
+alter table warehouse_capacity_imports drop column if exists valid_rows;
+alter table warehouse_capacity_imports drop column if exists invalid_rows;
+alter table warehouse_capacity_imports drop column if exists warning_rows;
+alter table warehouse_capacity_imports add column if not exists data jsonb not null default '{}'::jsonb;
+alter table warehouse_capacity_imports add column if not exists created_at bigint;
 
 alter table warehouse_capacity_imports enable row level security;
 drop policy if exists "Authenticated read wh_cap_imports" on warehouse_capacity_imports;
@@ -722,3 +748,124 @@ drop policy if exists "Authenticated read mara_catalog" on mara_catalog;
 drop policy if exists "Authenticated write mara_catalog" on mara_catalog;
 create policy "Authenticated read mara_catalog" on mara_catalog for select using (auth.role() = 'authenticated');
 create policy "Authenticated write mara_catalog" on mara_catalog for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- -----------------------------------------------------------------------------
+-- 20. MATERIAL_CADANG_HEALTH_INDEX
+--     Domain terpisah untuk fitur Health Index Material Cadang + AI Insight.
+--     Angka resmi dihitung lokal/audit-able di App.jsx. AI hanya menyimpan
+--     insight, diagnosis, rekomendasi, dan validasi data; tidak mengubah stok,
+--     min_qty, approval, atau hasil deterministic.
+-- -----------------------------------------------------------------------------
+create table if not exists material_cadang_imports (
+  id text primary key,
+  file_name text,
+  imported_by text,
+  imported_at bigint,
+  total_rows integer default 0,
+  valid_rows integer default 0,
+  warning_rows integer default 0,
+  invalid_rows integer default 0,
+  data_quality jsonb not null default '{}'::jsonb,
+  raw_meta jsonb not null default '{}'::jsonb
+);
+create index if not exists idx_mc_imports_imported_at on material_cadang_imports(imported_at desc);
+
+create table if not exists material_cadang_analysis_runs (
+  id text primary key,
+  import_id text references material_cadang_imports(id) on delete set null,
+  legacy_analysis_id text,
+  created_by text,
+  created_at bigint,
+  model_ai text,
+  params jsonb not null default '{}'::jsonb,
+  summary jsonb not null default '{}'::jsonb
+);
+create index if not exists idx_mc_runs_created_at on material_cadang_analysis_runs(created_at desc);
+
+create table if not exists material_cadang_health_results (
+  id text primary key,
+  run_id text references material_cadang_analysis_runs(id) on delete cascade,
+  katalog_id text,
+  no_katalog text,
+  nama_material text,
+  health_index numeric,
+  health_status text,
+  risk_score numeric,
+  data_confidence numeric,
+  abc_class text,
+  policy text,
+  current_qty numeric,
+  recommended_qty numeric,
+  gap_qty numeric,
+  gap_value numeric,
+  deterministic_breakdown jsonb not null default '{}'::jsonb,
+  data_quality_flags jsonb not null default '[]'::jsonb,
+  result_payload jsonb not null default '{}'::jsonb
+);
+create index if not exists idx_mc_health_results_run on material_cadang_health_results(run_id);
+create index if not exists idx_mc_health_results_status on material_cadang_health_results(health_status);
+create index if not exists idx_mc_health_results_katalog on material_cadang_health_results(no_katalog);
+
+create table if not exists material_cadang_ai_insights (
+  id text primary key,
+  run_id text references material_cadang_analysis_runs(id) on delete cascade,
+  no_katalog text,
+  insight_scope text not null default 'RUN', -- RUN | MATERIAL
+  model text,
+  status text,
+  confidence numeric,
+  executive_summary text,
+  diagnosis text,
+  recommendation text,
+  flags jsonb not null default '[]'::jsonb,
+  insight_payload jsonb not null default '{}'::jsonb,
+  created_at bigint
+);
+create index if not exists idx_mc_ai_insights_run on material_cadang_ai_insights(run_id);
+create index if not exists idx_mc_ai_insights_katalog on material_cadang_ai_insights(no_katalog);
+
+create table if not exists material_cadang_apply_audit (
+  id text primary key,
+  apply_id text,
+  run_id text,
+  katalog_id text,
+  no_katalog text,
+  requested_min_qty numeric,
+  previous_min_qty numeric,
+  approved_min_qty numeric,
+  action text not null,
+  actor text,
+  acted_at bigint,
+  note text,
+  audit_payload jsonb not null default '{}'::jsonb
+);
+create index if not exists idx_mc_apply_audit_apply on material_cadang_apply_audit(apply_id);
+create index if not exists idx_mc_apply_audit_run on material_cadang_apply_audit(run_id);
+
+alter table material_cadang_imports enable row level security;
+alter table material_cadang_analysis_runs enable row level security;
+alter table material_cadang_health_results enable row level security;
+alter table material_cadang_ai_insights enable row level security;
+alter table material_cadang_apply_audit enable row level security;
+
+drop policy if exists "Authenticated read mc_imports" on material_cadang_imports;
+drop policy if exists "Authenticated write mc_imports" on material_cadang_imports;
+drop policy if exists "Authenticated read mc_runs" on material_cadang_analysis_runs;
+drop policy if exists "Authenticated write mc_runs" on material_cadang_analysis_runs;
+drop policy if exists "Authenticated read mc_health_results" on material_cadang_health_results;
+drop policy if exists "Authenticated write mc_health_results" on material_cadang_health_results;
+drop policy if exists "Authenticated read mc_ai_insights" on material_cadang_ai_insights;
+drop policy if exists "Authenticated write mc_ai_insights" on material_cadang_ai_insights;
+drop policy if exists "Authenticated read mc_apply_audit" on material_cadang_apply_audit;
+drop policy if exists "Authenticated write mc_apply_audit" on material_cadang_apply_audit;
+
+create policy "Authenticated read mc_imports" on material_cadang_imports for select using (auth.role() = 'authenticated');
+create policy "Authenticated write mc_imports" on material_cadang_imports for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "Authenticated read mc_runs" on material_cadang_analysis_runs for select using (auth.role() = 'authenticated');
+create policy "Authenticated write mc_runs" on material_cadang_analysis_runs for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "Authenticated read mc_health_results" on material_cadang_health_results for select using (auth.role() = 'authenticated');
+create policy "Authenticated write mc_health_results" on material_cadang_health_results for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "Authenticated read mc_ai_insights" on material_cadang_ai_insights for select using (auth.role() = 'authenticated');
+create policy "Authenticated write mc_ai_insights" on material_cadang_ai_insights for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "Authenticated read mc_apply_audit" on material_cadang_apply_audit for select using (auth.role() = 'authenticated');
+create policy "Authenticated write mc_apply_audit" on material_cadang_apply_audit for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
