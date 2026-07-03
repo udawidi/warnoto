@@ -3484,56 +3484,62 @@ export default function PLNWarehouse() {
   const [importSAPModal, setImportSAPModal] = useState(false);
 
   // ── Import SAP (PEMAT CSV) → Master Katalog + Data Stok ──
+  // FIX 2026-07-02: dulu newStocks selalu direset total (let newStocks=[]) lalu cuma diisi
+  // dari baris di-import sekarang — jadi upload kedua kalinya (mis. batch berbeda) MENIMPA
+  // TOTAL data stok existing, bukan menggabung (bug yang sama persis ditemukan & difix di
+  // handleBackupAndApply/wizard Migrasi Data). Juga category tidak pernah diisi saat bikin
+  // katalog baru (selalu fallback tampil "Lainnya"). Kedua ini sekarang diperbaiki: merge ke
+  // katalogList/stocks existing, category diisi dari segmen pertama nama (format "X;Y;Z...").
   async function importFromSAP(sapRows) {
-    let newKatalogList = [...katalogList];
-    let newStocks = [];
+    const now = Date.now();
+    const katalogById = new Map(katalogList.map(k=>[k.katalog, k]));
+    const stocksById = new Map(stocks.map(s=>[s.katalog, s])); // key by kode SAP, bukan id — konsisten sama pola lama fitur ini
 
     sapRows.forEach(row => {
       if (!row.katalog) return;
-      let kat = newKatalogList.find(k=>k.katalog===row.katalog);
-      if (!kat) {
-        kat = {
-          id: "KAT-"+row.katalog,
-          name: row.nama,
-          katalog: row.katalog,
-          satuan: row.satuan,
-          jenisBarang: row.jenisBarang,
-          merk: "",
-          type: "",
-          keterangan: row.valuationDesc,
-          createdAt: Date.now(),
-          sapBaselineQty: row.qty, sapBaselineAt: Date.now(),
-        };
-        newKatalogList.push(kat);
-      } else {
-        // Update jenisBarang dan nama dari data SAP terbaru + catat snapshot baseline saldo SAP terbaru (utk Akurasi Material)
-        newKatalogList = newKatalogList.map(k=>k.id===kat.id
-          ? {...k, jenisBarang: row.jenisBarang, name: row.nama, satuan: row.satuan, sapBaselineQty: row.qty, sapBaselineAt: Date.now()}
-          : k
-        );
-        kat = newKatalogList.find(k=>k.katalog===row.katalog);
-      }
-      newStocks.push({
-        id: "STK-SAP-"+row.katalog,
+      const existingKat = katalogById.get(row.katalog);
+      const kat = existingKat
+        ? { ...existingKat, jenisBarang: row.jenisBarang, name: row.nama, satuan: row.satuan, sapBaselineQty: row.qty, sapBaselineAt: now }
+        : {
+            id: "KAT-"+row.katalog,
+            name: row.nama,
+            katalog: row.katalog,
+            category: (row.nama||"").split(";")[0].trim() || "Material",
+            satuan: row.satuan,
+            jenisBarang: row.jenisBarang,
+            merk: "",
+            type: "",
+            keterangan: row.valuationDesc,
+            createdAt: now,
+            sapBaselineQty: row.qty, sapBaselineAt: now,
+          };
+      katalogById.set(row.katalog, kat);
+
+      const existingStock = stocksById.get(row.katalog);
+      stocksById.set(row.katalog, {
+        id: existingStock?.id || ("STK-SAP-"+row.katalog),
         katalogId: kat.id,
-        lokasiId: "",
+        lokasiId: existingStock?.lokasiId || "",
         name: row.nama,
         katalog: row.katalog,
         satuan: row.satuan,
         unit: row.satuan,
         qty: row.qty,
         price: row.harga,
-        minQty: 0,
+        minQty: existingStock?.minQty || 0,
         jenisBarang: row.jenisBarang,
-        lokasi: "— Belum diisi —",
-        createdAt: Date.now(),
+        lokasi: existingStock?.lokasi || "— Belum diisi —",
+        createdAt: existingStock?.createdAt || now,
       });
     });
+
+    const newKatalogList = Array.from(katalogById.values());
+    const newStocks = Array.from(stocksById.values());
 
     setKatalogList(newKatalogList);
     setStocks(newStocks);
     await saveToCloud({ katalogList: newKatalogList, stocks: newStocks });
-    showToast(`✅ Import selesai! ${sapRows.length} material berhasil dimuat.`);
+    showToast(`✅ Import selesai! ${sapRows.length} material berhasil dimuat (digabung dengan data existing).`);
     return { katalogCount: newKatalogList.length, stockCount: newStocks.length, sapRows };
   }
   async function saveOpname(opn) {
