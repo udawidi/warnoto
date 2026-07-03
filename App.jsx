@@ -2562,9 +2562,11 @@ export default function PLNWarehouse() {
     if (kodeDup) { showToast(`Nomor Katalog "${katalogForm.katalog}" sudah dipakai oleh "${kodeDup.name}"!`, "error"); return; }
     const namaDup = katalogList.find(k => k.id!==katalogForm.id && (k.name||"").trim().toLowerCase()===katalogForm.name.trim().toLowerCase());
     if (namaDup) { showToast(`Nama barang "${katalogForm.name}" sudah ada (kode ${namaDup.katalog||"-"}). Kalau ini barang yang sama, edit yang sudah ada — jangan buat baru.`, "error"); return; }
+    // _maraLocked cuma flag UI (kunci form), bukan bagian data katalog — jangan ikut tersimpan.
+    const { _maraLocked, ...katalogClean } = katalogForm;
     let nk;
-    if (katalogModal==="edit") nk = katalogList.map(k=>k.id===katalogForm.id?{...katalogForm}:k);
-    else nk = [...katalogList, {...katalogForm, createdAt:Date.now()}];
+    if (katalogModal==="edit") nk = katalogList.map(k=>k.id===katalogForm.id?{...katalogClean}:k);
+    else nk = [...katalogList, {...katalogClean, createdAt:Date.now()}];
     setKatalogList(nk); setKatalogModal(null);
     await saveToCloud({katalogList: nk});
     showToast(katalogModal==="edit" ? "Master Katalog diupdate!" : "Katalog barang baru ditambahkan!");
@@ -2588,7 +2590,9 @@ export default function PLNWarehouse() {
     setMaraSearchResults(data || []);
   }
   function applyMaraToKatalog(item) {
-    setKatalogForm(kf=>({...kf, katalog: item.kode_material||kf.katalog, name: item.nama||kf.name, satuan: item.satuan||kf.satuan, category: item.material_group||kf.category }));
+    // _maraLocked: kunci Nomor Katalog/Nama/Kategori/Satuan supaya tidak diketik ulang manual
+    // dan jadi tidak konsisten dengan sumber MARA — bisa dibuka lagi lewat tombol "Lepas kunci".
+    setKatalogForm(kf=>({...kf, katalog: item.kode_material||kf.katalog, name: item.nama||kf.name, satuan: item.satuan||kf.satuan, category: item.material_group||kf.category, _maraLocked: true }));
     setMaraSearchResults([]);
     setMaraSearch("");
   }
@@ -6781,17 +6785,30 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               )}
               <div style={{fontSize:10,color:"#94a3b8",marginTop:6}}>Klik item untuk auto-fill form. MARA tersimpan di database.</div>
             </div>
+            {katalogForm._maraLocked && (
+              <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px"}}>
+                <span style={{fontSize:11,color:"#166534"}}>🔒 Terkunci dari referensi MARA — Nomor Katalog, Nama, Kategori, Satuan tidak bisa diketik manual.</span>
+                <button type="button" style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>setKatalogForm(kf=>({...kf,_maraLocked:false}))}>🔓 Lepas Kunci</button>
+              </div>
+            )}
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Nomor Katalog PLN</label>
               <div style={{display:"flex",gap:6}}>
-                <input style={sty.input} value={katalogForm.katalog||""} placeholder="cth: 84618768" onChange={e=>setKatalogForm(kf=>({...kf,katalog:e.target.value}))}/>
-                <button type="button" style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>openScanner("katalogForm")}>📷</button>
+                <input style={{...sty.input,...(katalogForm._maraLocked?{background:"#f3f4f6",color:C.muted}:{})}} disabled={!!katalogForm._maraLocked} value={katalogForm.katalog||""} placeholder="cth: 84618768" onChange={e=>setKatalogForm(kf=>({...kf,katalog:e.target.value}))}/>
+                <button type="button" style={{...sty.btn("ghost","sm"),flexShrink:0}} disabled={!!katalogForm._maraLocked} onClick={()=>openScanner("katalogForm")}>📷</button>
               </div>
             </div>
-            <div style={{marginBottom:12}}><label style={sty.label}>Nama Barang</label><input style={sty.input} value={katalogForm.name||""} onChange={e=>setKatalogForm(kf=>({...kf,name:e.target.value}))}/></div>
+            <div style={{marginBottom:12}}><label style={sty.label}>Nama Barang</label><input style={{...sty.input,...(katalogForm._maraLocked?{background:"#f3f4f6",color:C.muted}:{})}} disabled={!!katalogForm._maraLocked} value={katalogForm.name||""} onChange={e=>setKatalogForm(kf=>({...kf,name:e.target.value}))}/></div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <div><label style={sty.label}>Kategori</label><select style={sty.select} value={katalogForm.category||"Lainnya"} onChange={e=>setKatalogForm(kf=>({...kf,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
-              <div><label style={sty.label}>Satuan Default</label><input style={sty.input} value={katalogForm.satuan||""} placeholder="cth: unit, pcs, roll" onChange={e=>setKatalogForm(kf=>({...kf,satuan:e.target.value}))}/></div>
+              <div>
+                <label style={sty.label}>Kategori</label>
+                {katalogForm._maraLocked ? (
+                  <input style={{...sty.input,background:"#f3f4f6",color:C.muted}} disabled value={katalogForm.category||"-"} title="Material Group dari MARA — bukan kategori standar aplikasi"/>
+                ) : (
+                  <select style={sty.select} value={katalogForm.category||"Lainnya"} onChange={e=>setKatalogForm(kf=>({...kf,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
+                )}
+              </div>
+              <div><label style={sty.label}>Satuan Default</label><input style={{...sty.input,...(katalogForm._maraLocked?{background:"#f3f4f6",color:C.muted}:{})}} disabled={!!katalogForm._maraLocked} value={katalogForm.satuan||""} placeholder="cth: unit, pcs, roll" onChange={e=>setKatalogForm(kf=>({...kf,satuan:e.target.value}))}/></div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setKatalogModal(null)}>Batal</button>
