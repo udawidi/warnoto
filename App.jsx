@@ -13184,6 +13184,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
   // diam-diam).
   const [overwriteRows, setOverwriteRows] = useState(new Set());
   const [applyProgress, setApplyProgress] = useState(""); // teks progres tahap-per-tahap saat Apply Cutover, supaya kelihatan jalan/stuck
+  const [applyProgressPct, setApplyProgressPct] = useState(0); // 0-100, dipakai bareng applyProgress untuk progress bar bernomor
   const [nonSapRows, setNonSapRows] = useState([]);
   const [parsedSAP, setParsedSAP] = useState([]);
   const [parsedNonSAP, setParsedNonSAP] = useState([]);
@@ -13304,6 +13305,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
   async function buildPreview() {
     setBusy(true);
     setApplyProgress("🔄 Menyiapkan perbandingan data...");
+    setApplyProgressPct(2);
     const warnotoSet = new Set(katalogList.map(k=>normalizeKatalog(k.katalog)));
 
     // BUG DITEMUKAN 2026-07-04: query tanpa .range() cuma balikin ~1000 baris
@@ -13311,16 +13313,21 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
     // baris, jadi kode yang bukan di 1000 baris pertama SELALU "tidak match"
     // walau sebenarnya ada di referensi MARA (dikonfirmasi manual oleh user).
     // Fix: ambil semua baris per halaman 1000 sampai habis. Ini butuh puluhan
-    // request berurutan (~43 halaman untuk 42.703 baris) — kasih progress teks
-    // per halaman supaya kelihatan jalan, bukan stuck (permintaan user 2026-07-04).
+    // request berurutan (~43 halaman untuk 42.703 baris) — kasih progress
+    // bernomor 1-100% per halaman supaya kelihatan jalan, bukan stuck
+    // (permintaan user 2026-07-04).
     let maraSet = new Set();
     if (supabase) {
+      // Hitung dulu total baris supaya persentase progres akurat (bukan cuma teks).
+      const { count: maraTotal } = await supabase.from("mara_catalog").select("*", { count: "exact", head: true });
       let from = 0;
       const pageSize = 1000;
       let fetchError = null;
       let page = 1;
       while (true) {
-        setApplyProgress(`📥 Memuat referensi MARA (halaman ${page}, ${maraSet.size} kode terbaca)...`);
+        const pct = maraTotal ? Math.min(98, 5 + Math.round((from / maraTotal) * 85)) : Math.min(90, 5 + page * 5);
+        setApplyProgressPct(pct);
+        setApplyProgress(`📥 Memuat referensi MARA (${maraSet.size}${maraTotal?`/${maraTotal}`:""} kode terbaca)...`);
         const { data, error } = await supabase.from("mara_catalog").select("kode_material").range(from, from + pageSize - 1);
         if (error) { fetchError = error; break; }
         if (!data || data.length === 0) break;
@@ -13331,6 +13338,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
       }
       if (fetchError) showToast("Gagal cek referensi MARA: " + fetchError.message, "error");
     }
+    setApplyProgressPct(95);
     setApplyProgress("🧮 Menghitung status match & selisih qty...");
 
     // Qty existing di aplikasi per No Katalog (dijumlah semua lokasi) — dipakai
@@ -13369,9 +13377,11 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
     const totalNilai = sapResult.reduce((s,r)=>s+(r.qty*r.harga),0);
 
     setPreviewStats({ sapResult, byJenis, totalQty, totalNilai });
+    setApplyProgressPct(100);
     setStep("preview");
     setBusy(false);
     setApplyProgress("");
+    setApplyProgressPct(0);
   }
 
   // Recompute ringkasan (byJenis/totalQty/totalNilai) setelah sapResult diubah manual di preview.
@@ -13408,6 +13418,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
   async function handleBackupAndApply() {
     if (!previewStats) return;
     setBusy(true);
+    setApplyProgressPct(5);
     setApplyProgress("⏳ Menyiapkan backup JSON...");
     try {
       // 1. Backup data sebelum cutover
@@ -13423,6 +13434,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
       aBackup.download = `warnoto_backup_pre_migrasi_${new Date().toISOString().slice(0,10)}.json`;
       aBackup.click();
 
+      setApplyProgressPct(25);
       setApplyProgress("🔄 Menghitung baris yang perlu diperbarui...");
 
       // 2. Build katalog — MERGE ke katalogList existing, BUKAN timpa total. Bug lama: array
@@ -13509,6 +13521,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
       setStocks(newStocks);
       setTxns(newTxns);
       setMigrasiPendingReview(updatedPendingReview);
+      setApplyProgressPct(60);
       setApplyProgress("☁️ Menyimpan ke localStorage & Supabase (katalog, stok, antrian review)...");
       await saveToCloud({
         katalogList: newKatalog,
@@ -13518,6 +13531,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
         migrasiPendingReview: updatedPendingReview,
       });
 
+      setApplyProgressPct(100);
       setApplyProgress("✅ Selesai.");
       setStep("done");
       const overwriteCount = previewStats.sapResult.filter(r => katalogById.has(r.noKat) && overwriteRows.has(r.noKat)).length;
@@ -13529,8 +13543,27 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
     } catch(err) {
       showToast("Cutover gagal: " + err.message, "error");
       setApplyProgress("");
+      setApplyProgressPct(0);
     }
     setBusy(false);
+  }
+
+  // Progress bar bernomor 1-100% (bukan cuma teks "Memproses...") supaya
+  // Admin bisa lihat apakah proses jalan atau macet (permintaan user 2026-07-04).
+  function ProgressBar() {
+    if (!busy) return null;
+    const pct = Math.max(1, applyProgressPct);
+    return (
+      <div style={{width:"100%",maxWidth:420,marginTop:8}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.accent,fontWeight:700,marginBottom:3}}>
+          <span>{applyProgress || "Memproses..."}</span>
+          <span>{pct}%</span>
+        </div>
+        <div style={{width:"100%",height:8,background:"#e5e7eb",borderRadius:6,overflow:"hidden"}}>
+          <div style={{width:`${pct}%`,height:"100%",background:C.accent,borderRadius:6,transition:"width 0.2s"}}/>
+        </div>
+      </div>
+    );
   }
 
   function toggleOverwriteRow(noKat) {
@@ -13640,9 +13673,9 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
             <button style={sty.btn("primary")} disabled={sapRows.length===0||busy} onClick={buildPreview}>
               {busy ? "⏳ Memproses..." : "Lanjut → Preview Rekonsiliasi"}
             </button>
-            {busy && <button style={{...sty.btn("ghost","sm")}} onClick={()=>{setBusy(false);setApplyProgress("");}}>Reset (jika stuck)</button>}
-            {busy && applyProgress && <span style={{fontSize:12,color:C.accent,fontWeight:700}}>{applyProgress}</span>}
+            {busy && <button style={{...sty.btn("ghost","sm")}} onClick={()=>{setBusy(false);setApplyProgress("");setApplyProgressPct(0);}}>Reset (jika stuck)</button>}
           </div>
+          <ProgressBar/>
         </div>
       )}
 
@@ -13807,9 +13840,9 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
               {busy?"⏳ Memproses...":"📥 Download Backup & Apply Cutover"}
             </button>
             <button style={sty.btn("ghost")} onClick={()=>setStep("preview")} disabled={busy}>← Batal</button>
-            {busy && <button style={{...sty.btn("ghost","sm")}} onClick={()=>{setBusy(false);setApplyProgress("");}}>Reset (jika stuck)</button>}
-            {busy && applyProgress && <span style={{fontSize:12,color:C.accent,fontWeight:700}}>{applyProgress}</span>}
+            {busy && <button style={{...sty.btn("ghost","sm")}} onClick={()=>{setBusy(false);setApplyProgress("");setApplyProgressPct(0);}}>Reset (jika stuck)</button>}
           </div>
+          <ProgressBar/>
         </div>
         );
       })()}
