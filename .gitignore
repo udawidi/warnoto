@@ -5,3 +5,8 @@ dist/
 *.log
 .DS_Store
 supabase/.temp/
+
+# CSV user real (berisi password polos) untuk scripts/bulk_create_users.mjs —
+# jangan pernah commit, cuma template-nya (users.template.csv) yang boleh.
+scripts/users.csv
+scripts/*.users.csv
