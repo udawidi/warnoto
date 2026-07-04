@@ -5127,7 +5127,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"stock",icon:"📦",label:"Data Stok"},
     {id:"master",icon:"🗂️",label:"Master Data"},
     {id:"transaction",icon:"🔄",label:"TUG"},
-    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0) + (["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (["ADMIN","TL"].includes(currentUser.role) ? ultgPengajuanUntukAdopt.length : 0)}] : []),
+    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0) + (["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (["ADMIN","TL"].includes(currentUser.role) ? ultgPengajuanUntukAdopt.length : 0) + (currentUser.role==="TL" ? stocks.filter(s=>s.lokasiMovePending||s.editPending||s.deletePending).length : 0)}] : []),
     {id:"heavyEquipment",icon:"🚜",label:"Alat Berat",badge:(currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"opname",icon:"📋",label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"rencana",icon:"📅",label:"Rencana Kedatangan"},
@@ -14592,6 +14592,17 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
   const canApproveCap = ["TL","ASMAN"].includes(currentUser.role);
   const pendingCapacityImports = (gudangCapacityImports||[]).filter(i=>i.status==="PENDING_ASMAN");
   const pendingLokasiChanges = currentUser.role==="TL" ? (lokasiList||[]).filter(l=>l.status==="PENDING") : [];
+  // BUG DITEMUKAN 2026-07-04: panel "Pemindahan Blok Data Stok"/"Edit Data
+  // Stok"/"Hapus Data Stok" dirender inline SEBELUM <ApprovalTab> (lihat
+  // App.jsx ~line 6488-6520), tapi hitungan "X item menunggu persetujuan" dan
+  // status kosong "Semua sudah diproses" di ApprovalTab TIDAK tahu soal
+  // panel-panel itu — jadi kelihatan kontradiktif (badge bilang 0/"selesai"
+  // padahal ada 1 item nyata di atasnya) dan sidebar juga tidak ikut kasih
+  // notifikasi badge untuk ini. Tambahkan ke hitungan supaya konsisten.
+  const pendingStockMoves = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.lokasiMovePending) : [];
+  const pendingStockEdits = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.editPending) : [];
+  const pendingStockDeletes = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.deletePending) : [];
+  const pendingStockCount = pendingStockMoves.length + pendingStockEdits.length + pendingStockDeletes.length;
 
   function stageLabelOf(t) {
     if (t.docType==="TUG5") return t.stage==="PENDING_ASMAN"?"Menunggu Asman":"Menunggu Manager";
@@ -14644,10 +14655,10 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
     <div>
       <div style={{marginBottom:16}}>
         <h1 style={{fontSize:22,fontWeight:900}}>Approval</h1>
-        <p style={{color:C.muted,fontSize:13}}>{pendingTxns.length + pendingCapacityImports.length + pendingLokasiChanges.length + (heavyEquipmentPendingCount||0)} item menunggu persetujuan atau tindakan kamu ({ROLES[currentUser.role]})</p>
+        <p style={{color:C.muted,fontSize:13}}>{pendingTxns.length + pendingCapacityImports.length + pendingLokasiChanges.length + pendingStockCount + (heavyEquipmentPendingCount||0)} item menunggu persetujuan atau tindakan kamu ({ROLES[currentUser.role]})</p>
       </div>
 
-      {pendingTxns.length===0 && pendingCapacityImports.length===0 && pendingLokasiChanges.length===0 && !(heavyEquipmentPendingCount>0) ? (
+      {pendingTxns.length===0 && pendingCapacityImports.length===0 && pendingLokasiChanges.length===0 && pendingStockCount===0 && !(heavyEquipmentPendingCount>0) ? (
         <div style={{...sty.card,textAlign:"center",padding:40}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
           <div style={{fontSize:16,fontWeight:700}}>Semua sudah diproses</div>
