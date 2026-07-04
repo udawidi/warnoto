@@ -2161,6 +2161,11 @@ export default function PLNWarehouse() {
   const [gudangCapacityList, setGudangCapacityList] = useState([]);
   const [gudangCapacityImports, setGudangCapacityImports] = useState([]);
   const [migratedTug15History, setMigratedTug15History] = useState([]);
+  // Antrian item BARU (belum ada di Master Katalog) hasil Migrasi Data SAP —
+  // tidak langsung ditambahkan ke katalogList/stocks, menunggu Admin review
+  // satu-per-satu (2026-07-04, permintaan user: item matched TIDAK boleh
+  // ditimpa diam-diam, item baru WAJIB direview dulu).
+  const [migrasiPendingReview, setMigrasiPendingReview] = useState([]);
   const [docSeq, setDocSeq] = useState(196);
   const [loading, setLoading] = useState(true);
   const [cloudSaving, setCloudSaving] = useState(false);
@@ -2303,6 +2308,7 @@ export default function PLNWarehouse() {
       const cgcap = await CLOUD.get("pln_gudang_capacity_v1");
       const cgcapi = await CLOUD.get("pln_gudang_capacity_imports_v1");
       const cmig = await CLOUD.get("pln_migrated_tug15_v1");
+      const cmpr = await CLOUD.get("pln_migrasi_pending_review_v1");
 
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
@@ -2410,6 +2416,7 @@ export default function PLNWarehouse() {
         if (gcapiLocal.length > 0) syncMasterTable("warehouse_capacity_imports", gcapiLocal);
       }
       setMigratedTug15History(cmig || []);
+      setMigrasiPendingReview(cmpr || []);
       setLoading(false);
     }
     loadCloud();
@@ -2419,7 +2426,7 @@ export default function PLNWarehouse() {
   // to the latest React state via stateRef (always up to date, avoids stale
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
-  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History };
+  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview };
   // Debounce auto-sync warnoto_state + RAG (bot WA/Telegram) — dipicu tiap ada perubahan
   // stocks/txns lewat saveToCloud, tapi ditunda sampai 90 detik tidak ada perubahan baru
   // lagi (quiet period), supaya sesi edit beruntun (banyak saveToCloud berturut-turut)
@@ -2448,6 +2455,7 @@ export default function PLNWarehouse() {
     const gcap = overrides.gudangCapacityList ?? stateRef.current.gudangCapacityList;
     const gcapi = overrides.gudangCapacityImports ?? stateRef.current.gudangCapacityImports;
     const mig = overrides.migratedTug15History ?? stateRef.current.migratedTug15History;
+    const mpr = overrides.migrasiPendingReview ?? stateRef.current.migrasiPendingReview;
     setCloudSaving(true);
     await Promise.all([
       CLOUD.set("pln_stocks_v4", s),
@@ -2467,6 +2475,7 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_gudang_capacity_v1", gcap),
       CLOUD.set("pln_gudang_capacity_imports_v1", gcapi),
       CLOUD.set("pln_migrated_tug15_v1", mig),
+      CLOUD.set("pln_migrasi_pending_review_v1", mpr),
     ]);
     setLastSaved(Date.now());
     setCloudSaving(false);
@@ -6308,6 +6317,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 txns={txns}
                 migratedTug15History={migratedTug15History}
                 setMigratedTug15History={setMigratedTug15History}
+                migrasiPendingReview={migrasiPendingReview}
+                setMigrasiPendingReview={setMigrasiPendingReview}
                 maraReference={maraReference}
                 setMaraReference={setMaraReference}
                 maraUploadLoading={maraUploadLoading}
@@ -13163,10 +13174,15 @@ function KapasitasGudangTab({ gudangCapacityList, gudangList, subGudangList, lok
 // ════════════════════════════════════════════════════════════════════
 // MIGRASI DATA TAB
 // ════════════════════════════════════════════════════════════════════
-function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15History, setMigratedTug15History, maraReference, setMaraReference, maraUploadLoading, maraUploadProgress, uploadMaraToDB, currentUser, sty, C, saveToCloud, setStocks, setKatalogList, setTxns, showToast }) {
+function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, maraUploadLoading, maraUploadProgress, uploadMaraToDB, currentUser, sty, C, saveToCloud, setStocks, setKatalogList, setTxns, showToast }) {
   const [step, setStep] = useState("upload"); // "upload" | "preview" | "backup" | "done"
   const [sapFile, setSapFile] = useState(null);
   const [sapRows, setSapRows] = useState([]);
+  // Baris "Match WARNOTO" (sudah ada di katalog) TIDAK ditimpa secara default —
+  // Admin harus centang eksplisit per baris kalau memang mau timpa dengan data
+  // import ini (2026-07-04, permintaan user: jangan pernah timpa data existing
+  // diam-diam).
+  const [overwriteRows, setOverwriteRows] = useState(new Set());
   const [nonSapRows, setNonSapRows] = useState([]);
   const [parsedSAP, setParsedSAP] = useState([]);
   const [parsedNonSAP, setParsedNonSAP] = useState([]);
@@ -13288,14 +13304,25 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
     setBusy(true);
     const warnotoSet = new Set(katalogList.map(k=>normalizeKatalog(k.katalog)));
 
+    // BUG DITEMUKAN 2026-07-04: query tanpa .range() cuma balikin ~1000 baris
+    // pertama (default limit PostgREST/Supabase) — mara_catalog punya 42.703
+    // baris, jadi kode yang bukan di 1000 baris pertama SELALU "tidak match"
+    // walau sebenarnya ada di referensi MARA (dikonfirmasi manual oleh user).
+    // Fix: ambil semua baris per halaman 1000 sampai habis.
     let maraSet = new Set();
     if (supabase) {
-      const { data, error } = await supabase.from("mara_catalog").select("kode_material");
-      if (!error && data) {
-        maraSet = new Set(data.map(m => m.kode_material.replace(/^0+/, "")));
-      } else if (error) {
-        showToast("Gagal cek referensi MARA: " + error.message, "error");
+      let from = 0;
+      const pageSize = 1000;
+      let fetchError = null;
+      while (true) {
+        const { data, error } = await supabase.from("mara_catalog").select("kode_material").range(from, from + pageSize - 1);
+        if (error) { fetchError = error; break; }
+        if (!data || data.length === 0) break;
+        data.forEach(m => maraSet.add(m.kode_material.replace(/^0+/, "")));
+        if (data.length < pageSize) break;
+        from += pageSize;
       }
+      if (fetchError) showToast("Gagal cek referensi MARA: " + fetchError.message, "error");
     }
 
     const sapResult = sapRows.map(r => ({
@@ -13369,53 +13396,65 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
       // stok dari upload pertama yang tidak ada di file kedua. Sekarang mulai dari list
       // existing, cuma upsert baris yang ada di file ini — baris lain yang tidak disentuh
       // TETAP ada.
+      // Baris "Match WARNOTO" (sudah ada di katalog): DEFAULT dibiarkan apa adanya,
+      // hanya ditimpa kalau Admin eksplisit centang "Timpa" untuk baris itu
+      // (overwriteRows). Baris baru (tidak match) TIDAK langsung masuk ke
+      // katalogList/stocks — dikumpulkan ke antrian migrasiPendingReview,
+      // menunggu Admin approve satu-satu (2026-07-04).
       const now = Date.now();
       const katalogById = new Map(katalogList.map(k=>[normalizeKatalog(k.katalog), k]));
+      const newPendingReview = [];
       previewStats.sapResult.forEach(r => {
         const existing = katalogById.get(r.noKat);
         if (existing) {
-          katalogById.set(r.noKat, { ...existing, jenisBarang: r.jenisBarang, satuan: r.satuan || existing.satuan });
+          if (overwriteRows.has(r.noKat)) {
+            katalogById.set(r.noKat, { ...existing, jenisBarang: r.jenisBarang, satuan: r.satuan || existing.satuan });
+          }
+          // else: biarkan data existing apa adanya, tidak disentuh.
         } else {
-          katalogById.set(r.noKat, {
-            id: "KAT-MIG-"+r.noKat,
-            katalog: r.noKat,
-            name: r.desc,
-            category: r.desc.split(";")[0].trim() || "Material",
-            jenisBarang: r.jenisBarang,
+          newPendingReview.push({
+            id: "MIGREV-" + r.noKat + "-" + now,
+            noKat: r.noKat,
+            desc: r.desc,
             satuan: r.satuan,
-            keterangan: "Import migrasi SAP " + (sapFile||""),
-            createdAt: now,
+            jenisBarang: r.jenisBarang,
+            harga: r.harga,
+            qty: r.qty,
+            sourceFile: sapFile || "",
+            status: "PENDING",
+            requestedBy: currentUser.id,
+            requestedAt: now,
           });
         }
       });
       const newKatalog = Array.from(katalogById.values());
+      const updatedPendingReview = [...(migrasiPendingReview||[]), ...newPendingReview];
 
-      // 3. Build stocks — sama, MERGE ke stocks existing (satu lokasi default per item baru).
-      const defaultLokasi = lokasiList[0];
+      // 3. Build stocks — HANYA update qty/harga baris yang match DAN ditandai timpa.
+      // Baris baru TIDAK dibuat di sini (masuk migrasiPendingReview di atas, baru
+      // dibuat stok-nya kalau Admin approve).
       const stockByKode = new Map();
       stocks.forEach(s => {
         const k = katalogList.find(kk=>kk.id===s.katalogId);
         if (k) stockByKode.set(normalizeKatalog(k.katalog), s);
       });
       const stocksById = new Map(stocks.map(s=>[s.id, s]));
-      previewStats.sapResult.filter(r=>r.qty>0).forEach(r => {
+      previewStats.sapResult.filter(r=>r.qty>0 && overwriteRows.has(r.noKat)).forEach(r => {
         const kat = katalogById.get(r.noKat);
         const existing = stockByKode.get(r.noKat);
+        if (!existing || !kat) return; // baru/tidak match — ditangani lewat pending review
         const row = {
-          id: existing?.id || ("STK-MIG-"+r.noKat+"-"+now),
-          katalogId: kat?.id || ("KAT-MIG-"+r.noKat),
-          lokasiId: existing?.lokasiId || defaultLokasi?.id || null,
+          ...existing,
+          id: existing.id,
+          katalogId: kat.id,
           qty: r.qty,
-          price: r.harga || existing?.price || 0,
-          minQty: existing?.minQty || 0,
+          price: r.harga || existing.price || 0,
           unit: r.satuan,
           jenisBarang: r.jenisBarang,
           name: r.desc,
           katalog: r.noKat,
-          category: r.desc.split(";")[0].trim()||"Material",
           sapBaselineQty: r.qty,
           sapBaselineAt: now,
-          createdAt: existing?.createdAt || now,
           updatedAt: now,
         };
         stocksById.set(row.id, row);
@@ -13434,19 +13473,73 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
       setKatalogList(newKatalog);
       setStocks(newStocks);
       setTxns(newTxns);
+      setMigrasiPendingReview(updatedPendingReview);
       await saveToCloud({
         katalogList: newKatalog,
         stocks: newStocks,
         txns: newTxns,
         migratedTug15History: migHistory,
+        migrasiPendingReview: updatedPendingReview,
       });
 
       setStep("done");
-      showToast(`Cutover berhasil! ${newKatalog.length} katalog, ${newStocks.length} baris stok (digabung dengan data existing).`, "success");
+      const overwriteCount = previewStats.sapResult.filter(r => katalogById.has(r.noKat) && overwriteRows.has(r.noKat)).length;
+      showToast(
+        `Cutover selesai. ${overwriteCount} baris existing ditimpa (sesuai pilihan Anda), ` +
+        `${newPendingReview.length} item baru masuk antrian review Admin, sisanya data existing dibiarkan apa adanya.`,
+        "success"
+      );
     } catch(err) {
       showToast("Cutover gagal: " + err.message, "error");
     }
     setBusy(false);
+  }
+
+  function toggleOverwriteRow(noKat) {
+    setOverwriteRows(prev => {
+      const next = new Set(prev);
+      if (next.has(noKat)) next.delete(noKat); else next.add(noKat);
+      return next;
+    });
+  }
+
+  // Admin approve 1 item dari antrian review — baru di sini katalog+stok
+  // benar-benar dibuat (merge-safe, sama seperti pola cutover di atas).
+  async function approveMigrasiPending(itemId) {
+    const item = (migrasiPendingReview||[]).find(i => i.id === itemId);
+    if (!item) return;
+    const now = Date.now();
+    const katId = "KAT-MIG-" + item.noKat;
+    const existingKat = katalogList.find(k => normalizeKatalog(k.katalog) === item.noKat);
+    const newKatalogList = existingKat ? katalogList : [...katalogList, {
+      id: katId, katalog: item.noKat, name: item.desc,
+      category: item.desc.split(";")[0].trim() || "Material",
+      jenisBarang: item.jenisBarang, satuan: item.satuan,
+      keterangan: "Import migrasi SAP " + (item.sourceFile||"") + " (disetujui Admin)",
+      createdAt: now,
+    }];
+    const finalKatId = existingKat?.id || katId;
+    const newStocksList = item.qty > 0 ? [...stocks, {
+      id: "STK-MIG-" + item.noKat + "-" + now,
+      katalogId: finalKatId, lokasiId: lokasiList[0]?.id || null,
+      qty: item.qty, price: item.harga || 0, minQty: 0, unit: item.satuan,
+      jenisBarang: item.jenisBarang, name: item.desc, katalog: item.noKat,
+      category: item.desc.split(";")[0].trim() || "Material",
+      sapBaselineQty: item.qty, sapBaselineAt: now, createdAt: now, updatedAt: now,
+    }] : stocks;
+    const newPending = migrasiPendingReview.map(i => i.id===itemId ? {...i, status:"APPROVED", decidedBy:currentUser.id, decidedAt:now} : i);
+    setKatalogList(newKatalogList);
+    setStocks(newStocksList);
+    setMigrasiPendingReview(newPending);
+    await saveToCloud({ katalogList: newKatalogList, stocks: newStocksList, migrasiPendingReview: newPending });
+    showToast(`${item.desc} disetujui dan ditambahkan ke Master Katalog/Data Stok.`, "success");
+  }
+
+  async function rejectMigrasiPending(itemId) {
+    const newPending = migrasiPendingReview.map(i => i.id===itemId ? {...i, status:"REJECTED", decidedBy:currentUser.id, decidedAt:Date.now()} : i);
+    setMigrasiPendingReview(newPending);
+    await saveToCloud({ migrasiPendingReview: newPending });
+    showToast("Item ditolak, tidak ditambahkan ke Master Katalog.", "success");
   }
 
   return (
@@ -13455,6 +13548,26 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
         <h1 style={{fontSize:22,fontWeight:900,marginBottom:4}}>🔄 Migrasi Data SAP/Non-SAP</h1>
         <p style={{color:C.muted,fontSize:13}}>Cutover terkontrol data stok dari SAP ke WARNOTO. <strong style={{color:C.red}}>⚠️ Hanya untuk ADMIN — backup wajib sebelum apply!</strong></p>
       </div>
+
+      {(migrasiPendingReview||[]).some(i=>i.status==="PENDING") && (
+        <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid #f59e0b`}}>
+          <div style={{fontWeight:800,fontSize:14,marginBottom:10,color:"#92400e"}}>
+            📋 Menunggu Review Admin ({migrasiPendingReview.filter(i=>i.status==="PENDING").length} item baru dari Migrasi Data)
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:320,overflowY:"auto"}}>
+            {migrasiPendingReview.filter(i=>i.status==="PENDING").map(item=>(
+              <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",background:"white"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.desc}</div>
+                  <div style={{fontSize:10,color:C.muted}}>No. Katalog {item.noKat} • {item.jenisBarang} • Qty {item.qty} {item.satuan} • {item.harga?("Rp "+fmtNum(item.harga)):"-"} • dari {item.sourceFile}</div>
+                </div>
+                <button style={sty.btn("primary","sm")} onClick={()=>approveMigrasiPending(item.id)}>✅ Setujui</button>
+                <button style={sty.btn("danger","sm")} onClick={()=>rejectMigrasiPending(item.id)}>✕ Tolak</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Step indicator */}
       <div style={{display:"flex",gap:4,marginBottom:20,flexWrap:"wrap"}}>
@@ -13564,7 +13677,7 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:700}}>
               <thead style={{background:"#003087",color:"white",position:"sticky",top:0}}>
                 <tr>
-                  {["No Katalog","Deskripsi","Jenis","Qty","Harga","Match WARNOTO","Match MARA","Review"].map(h=>(
+                  {["No Katalog","Deskripsi","Jenis","Qty","Harga","Match WARNOTO","Match MARA","Timpa?","Review"].map(h=>(
                     <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
@@ -13579,11 +13692,27 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
                     <td style={{padding:"5px 8px",textAlign:"right"}}>{r.harga?fmtNum(r.harga):"-"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchWarnoto?"✅":"🆕"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchMara?"✅":"-"}</td>
+                    <td style={{padding:"5px 8px",textAlign:"center"}}>
+                      {r.matchWarnoto ? (
+                        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",fontSize:10,color:overwriteRows.has(r.noKat)?C.red:C.muted}}>
+                          <input type="checkbox" checked={overwriteRows.has(r.noKat)} onChange={()=>toggleOverwriteRow(r.noKat)} />
+                          Timpa
+                        </label>
+                      ) : (
+                        <span style={{fontSize:10,color:"#f59e0b",fontWeight:700}}>📋 Review Admin</span>
+                      )}
+                    </td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.needsStockReview?"⚠️ Stok":r.plantMismatch?"⚠️ Plant":r.materialTypeMismatch?"⚠️ Jenis":""}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+          <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.accent}`,fontSize:12}}>
+            <strong>ℹ️ Aturan Apply:</strong> baris <strong>Match WARNOTO ✅</strong> (sudah ada di katalog) akan <strong>DIBIARKAN apa adanya</strong> secara default —
+            kecuali Anda centang "Timpa" di baris itu ({overwriteRows.size} baris ditandai timpa saat ini).
+            Baris <strong>🆕 baru</strong> (belum ada di katalog) TIDAK langsung ditambahkan — masuk ke antrian "Menunggu Review Admin"
+            di bawah, baru dibuat setelah di-approve satu-per-satu.
           </div>
           <div style={{display:"flex",gap:8}}>
             <button style={sty.btn("ghost")} onClick={()=>setStep("upload")}>← Kembali</button>
@@ -13599,10 +13728,11 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
             <strong>Tindakan ini akan:</strong>
             <ul style={{marginTop:8,paddingLeft:20,lineHeight:1.8}}>
               <li>Mendownload backup JSON lengkap data sebelum cutover</li>
-              <li>Mengganti Master Katalog ({katalogList.length} → {sapRows.length} katalog)</li>
-              <li>Mengganti Data Stok dengan data dari SAP</li>
-              <li>Mengosongkan transaksi TUG test lama (disimpan ke histori migrasi)</li>
-              <li>Data yang di-replace <strong>tidak bisa di-undo</strong> kecuali restore dari backup</li>
+              <li>Baris <strong>Match WARNOTO</strong> yang TIDAK dicentang "Timpa" akan dibiarkan apa adanya (aman)</li>
+              <li>Baris <strong>Match WARNOTO</strong> yang dicentang "Timpa" ({overwriteRows.size} baris) akan diperbarui dengan data dari file ini</li>
+              <li>Baris <strong>baru</strong> ({previewStats?.sapResult?.filter(r=>!r.matchWarnoto).length||0} item) masuk antrian "Menunggu Review Admin" — belum masuk Master Katalog/Data Stok</li>
+              <li>Mengosongkan transaksi TUG test lama (disimpan ke histori migrasi, hanya sekali di run pertama)</li>
+              <li>Data yang ditimpa <strong>tidak bisa di-undo</strong> kecuali restore dari backup</li>
             </ul>
           </div>
           <div style={{display:"flex",gap:10}}>
