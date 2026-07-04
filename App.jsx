@@ -11746,15 +11746,23 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
   const canEdit = ["ADMIN","TL"].includes(currentUser.role);
   const canApprove = currentUser.role === "ASMAN";
 
+  // Guard defensif terhadap shape data lama/tidak lengkap dari localStorage/CLOUD
+  // (mis. tersimpan sebelum field ini ada) — tanpa ini, akses .slice/.filter
+  // langsung ke field undefined bikin seluruh halaman blank putih (belum ada
+  // Error Boundary di app ini untuk menangkap crash render seperti ini).
+  const mcData = { imports: materialCadangData?.imports||[], analyses: materialCadangData?.analyses||[], applyHistory: materialCadangData?.applyHistory||[] };
+  const mcHealth = { imports: materialCadangHealthData?.imports||[], analysisRuns: materialCadangHealthData?.analysisRuns||[], healthResults: materialCadangHealthData?.healthResults||[], applyAudit: materialCadangHealthData?.applyAudit||[] };
+  const mcAi = { runs: materialCadangAiInsights?.runs||[], materialInsights: materialCadangAiInsights?.materialInsights||[] };
+
   // Analisis terakhir dari data tersimpan
-  const latestAnalysis = materialCadangData.analyses.slice(-1)[0] || null;
-  const latestHealthRun = materialCadangHealthData.analysisRuns.slice(-1)[0] || null;
+  const latestAnalysis = mcData.analyses.slice(-1)[0] || null;
+  const latestHealthRun = mcHealth.analysisRuns.slice(-1)[0] || null;
   const latestHealthResults = latestHealthRun
-    ? materialCadangHealthData.healthResults.filter(r => r.runId === latestHealthRun.id)
+    ? mcHealth.healthResults.filter(r => r.runId === latestHealthRun.id)
     : [];
   const latestResults = latestHealthResults.length ? latestHealthResults : enrichMaterialCadangHealthResults(latestAnalysis?.results || []);
   const latestAiInsight = latestHealthRun
-    ? materialCadangAiInsights.runs.find(r => r.runId === latestHealthRun.id)
+    ? mcAi.runs.find(r => r.runId === latestHealthRun.id)
     : null;
 
   // Summary dari hasil analisis
@@ -11775,7 +11783,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
   summary.avgConfidence = summary.total ? Math.round(summary.confidenceSum / summary.total) : 0;
 
   // Pending apply (menunggu Asman)
-  const pendingApply = materialCadangData.applyHistory.filter(h => h.status === "PENDING_ASMAN");
+  const pendingApply = mcData.applyHistory.filter(h => h.status === "PENDING_ASMAN");
 
   async function handleImportFile(e) {
     const file = e.target.files?.[0];
@@ -11861,12 +11869,12 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
       params: newAnalysis.params,
     };
     const healthRows = results.map(r => ({ ...r, runId, resultId:`${runId}-${r.katalogId||r.noKat}-${String(r.cluster||"").replace(/\s+/g,"_")}` }));
-    const updated = { ...materialCadangData, analyses: [...materialCadangData.analyses, newAnalysis] };
+    const updated = { ...mcData, analyses: [...mcData.analyses, newAnalysis] };
     const updatedHealth = {
-      ...materialCadangHealthData,
-      imports: [...(materialCadangHealthData.imports||[]), importRecord],
-      analysisRuns: [...(materialCadangHealthData.analysisRuns||[]), healthRun],
-      healthResults: [...(materialCadangHealthData.healthResults||[]), ...healthRows],
+      ...mcHealth,
+      imports: [...(mcHealth.imports||[]), importRecord],
+      analysisRuns: [...(mcHealth.analysisRuns||[]), healthRun],
+      healthResults: [...(mcHealth.healthResults||[]), ...healthRows],
     };
     setMaterialCadangData(updated);
     setMaterialCadangHealthData(updatedHealth);
@@ -11899,8 +11907,8 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
     const aiRun = await generateMaterialCadangAiInsights(healthRun, healthRows, stocks, katalogList, txns);
     const materialInsights = (aiRun.materialInsights||[]).map((m, idx)=>({ ...m, id:`${aiRun.id}-MI-${idx}`, runId }));
     const updatedAi = {
-      runs: [...(materialCadangAiInsights.runs||[]), { ...aiRun, materialInsights: undefined }],
-      materialInsights: [...(materialCadangAiInsights.materialInsights||[]), ...materialInsights],
+      runs: [...(mcAi.runs||[]), { ...aiRun, materialInsights: undefined }],
+      materialInsights: [...(mcAi.materialInsights||[]), ...materialInsights],
     };
     setMaterialCadangAiInsights(updatedAi);
     await saveToCloud({ materialCadangAiInsights: updatedAi });
@@ -11934,7 +11942,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
   }
 
   async function handleAjukanApply(item) {
-    const existing = materialCadangData.applyHistory.find(h => h.katalogId === item.katalogId && h.status === "PENDING_ASMAN");
+    const existing = mcData.applyHistory.find(h => h.katalogId === item.katalogId && h.status === "PENDING_ASMAN");
     if (existing) { showToast("Pengajuan untuk material ini sudah ada, tunggu keputusan Asman.", "error"); return; }
     const entry = {
       id: "MCAPPLY-" + Date.now(),
@@ -11952,11 +11960,11 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
       requestedAt: Date.now(),
       notes: applyNotes.trim(),
     };
-    const updated = { ...materialCadangData, applyHistory: [...materialCadangData.applyHistory, entry] };
+    const updated = { ...mcData, applyHistory: [...mcData.applyHistory, entry] };
     const auditEntry = { ...entry, auditId:`${entry.id}-REQ`, action:"REQUEST_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now() };
     const updatedHealth = {
-      ...materialCadangHealthData,
-      applyAudit: [...(materialCadangHealthData.applyAudit||[]), auditEntry],
+      ...mcHealth,
+      applyAudit: [...(mcHealth.applyAudit||[]), auditEntry],
     };
     setMaterialCadangData(updated);
     setMaterialCadangHealthData(updatedHealth);
@@ -11967,7 +11975,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
   }
 
   async function handleApproveApply(applyId) {
-    const entry = materialCadangData.applyHistory.find(h => h.id === applyId);
+    const entry = mcData.applyHistory.find(h => h.id === applyId);
     if (!entry) return;
     // Update minQty di katalogList
     const updated = katalogList.map(k =>
@@ -11976,15 +11984,15 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
     setKatalogList(updated);
     // Tandai apply sebagai APPROVED
     const updatedMC = {
-      ...materialCadangData,
-      applyHistory: materialCadangData.applyHistory.map(h =>
+      ...mcData,
+      applyHistory: mcData.applyHistory.map(h =>
         h.id===applyId ? {...h, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now()} : h
       )
     };
     const approveAuditEntry = { ...entry, auditId:`${applyId}-APPROVE-${Date.now()}`, action:"APPROVE_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), appliedMinQty:entry.recommendedQty };
     const updatedHealth = {
-      ...materialCadangHealthData,
-      applyAudit: [...(materialCadangHealthData.applyAudit||[]), approveAuditEntry],
+      ...mcHealth,
+      applyAudit: [...(mcHealth.applyAudit||[]), approveAuditEntry],
     };
     setMaterialCadangData(updatedMC);
     setMaterialCadangHealthData(updatedHealth);
@@ -11994,15 +12002,15 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
   }
 
   async function handleRejectApply(applyId, reason) {
-    const entry = materialCadangData.applyHistory.find(h => h.id === applyId);
+    const entry = mcData.applyHistory.find(h => h.id === applyId);
     const updated = {
-      ...materialCadangData,
-      applyHistory: materialCadangData.applyHistory.map(h => h.id===applyId ? {...h, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : h)
+      ...mcData,
+      applyHistory: mcData.applyHistory.map(h => h.id===applyId ? {...h, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : h)
     };
     const rejectAuditEntry = { ...(entry||{}), auditId:`${applyId}-REJECT-${Date.now()}`, action:"REJECT_APPLY_MIN_QTY", actor:currentUser.id, actedAt:Date.now(), rejectReason:reason };
     const updatedHealth = {
-      ...materialCadangHealthData,
-      applyAudit: [...(materialCadangHealthData.applyAudit||[]), rejectAuditEntry],
+      ...mcHealth,
+      applyAudit: [...(mcHealth.applyAudit||[]), rejectAuditEntry],
     };
     setMaterialCadangData(updated);
     setMaterialCadangHealthData(updatedHealth);
@@ -12055,7 +12063,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
 
   const displayResults = analisisResult || latestResults;
   const latestMaterialInsights = latestHealthRun
-    ? materialCadangAiInsights.materialInsights.filter(m => m.runId === latestHealthRun.id)
+    ? mcAi.materialInsights.filter(m => m.runId === latestHealthRun.id)
     : [];
   const aiByNoKatalog = {};
   latestMaterialInsights.forEach(m => { if (m.noKatalog) aiByNoKatalog[normalizeKatalog(m.noKatalog)] = m; });
@@ -12384,7 +12392,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
                   {displayResults.map((r,i)=>{
                     const status = r.treatment!=="Material Cadang"?"Persediaan/Rutin":r.currentQty===0&&r.recommendedQty>0?"Kosong/Kritis":r.currentQty<r.recommendedQty?"Kurang":"Aman";
                     const statusColor = status==="Kosong/Kritis"?C.red:status==="Kurang"?"#f59e0b":status==="Aman"?C.green:C.muted;
-                    const hasPending = materialCadangData.applyHistory.find(h=>h.katalogId===r.katalogId&&h.status==="PENDING_ASMAN");
+                    const hasPending = mcData.applyHistory.find(h=>h.katalogId===r.katalogId&&h.status==="PENDING_ASMAN");
                     return (
                       <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}} onClick={()=>setDetailItem(r)}>
                         <td style={{padding:"6px 10px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
@@ -12437,13 +12445,13 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
                   {false && canApprove && (
                     <div style={{display:"flex",gap:8,marginTop:10}}>
                       <button style={sty.btn("primary","sm")} onClick={async ()=>{
-                        const updated = {...materialCadangData, applyHistory: materialCadangData.applyHistory.map(x=>x.id===h.id?{...x,status:"APPROVED_APPLIED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
+                        const updated = {...mcData, applyHistory: mcData.applyHistory.map(x=>x.id===h.id?{...x,status:"APPROVED_APPLIED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
                         setMaterialCadangData(updated);
                         await saveToCloud({materialCadangData:updated});
                         showToast("Apply minQty disetujui.", "success");
                       }}>✅ Setuju</button>
                       <button style={sty.btn("danger","sm")} onClick={async ()=>{
-                        const updated = {...materialCadangData, applyHistory: materialCadangData.applyHistory.map(x=>x.id===h.id?{...x,status:"REJECTED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
+                        const updated = {...mcData, applyHistory: mcData.applyHistory.map(x=>x.id===h.id?{...x,status:"REJECTED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
                         setMaterialCadangData(updated);
                         await saveToCloud({materialCadangData:updated});
                         showToast("Pengajuan ditolak.", "success");
@@ -12513,7 +12521,7 @@ function MaterialCadangTab({ materialCadangData, setMaterialCadangData, material
             )}
             {canEdit && detailItem.treatment==="Material Cadang" && detailItem.recommendedQty>0 && (
               <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}>
-                {materialCadangData.applyHistory.find(h=>h.katalogId===detailItem.katalogId&&h.status==="PENDING_ASMAN")
+                {mcData.applyHistory.find(h=>h.katalogId===detailItem.katalogId&&h.status==="PENDING_ASMAN")
                   ? <span style={{fontSize:11,color:"#f59e0b",fontWeight:800}}>Pengajuan apply minQty sedang menunggu Asman</span>
                   : <button style={sty.btn("primary","sm")} onClick={()=>{ setApplyConfirm(detailItem); setDetailItem(null); }}>Ajukan Apply Min Qty</button>
                 }
