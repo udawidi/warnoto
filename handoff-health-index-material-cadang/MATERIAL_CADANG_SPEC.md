@@ -4,7 +4,9 @@
 
 Dokumen ini adalah spesifikasi mandiri untuk pengembangan fitur **Material Cadang** di WARNOTO. Tujuannya agar konsep, format import, rumus, dan rencana implementasi bisa dipindahkan ke Claude atau environment lain tanpa harus membaca ulang seluruh `WARNOTO_DOCS.md`.
 
-Status dokumen: draft final-ish hasil diskusi awal. Belum ada implementasi kode.
+Status dokumen (2026-07-05): **sudah diimplementasikan di kode** (ABC/policy v1 + Health Index +
+AI Insight, tersambung ke 5 tabel Supabase). Bagian 1-18 di bawah adalah spesifikasi/rumus resmi
+yang jadi acuan implementasi; bagian 19 (addendum) menjelaskan detail implementasi Health Index + AI.
 
 Update 2026-07-03: modul Material Cadang sudah dikembangkan dengan tambahan Health Index Material Cadang dan AI Management Insight. Bagian awal dokumen ini tetap menjelaskan fondasi ABC/policy v1; addendum di bagian akhir menjelaskan implementasi Health Index + AI.
 

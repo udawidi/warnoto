@@ -16,17 +16,14 @@ npm run dev
 # 3. Buka browser → http://localhost:3000
 ```
 
-## Login Demo
+## Login
 
-| Role | Username | Password |
-|:---|:---|:---|
-| Admin Gudang | admin.ketintang | pln2024 |
-| TL Logistik | tl.ketintang | pln2024 |
-| Asman | asman.ketintang | pln2024 |
-| Manager | manager.ketintang | pln2024 |
-| Admin UIT | admin.uit | pln2024 |
-| Mgr Logistik UIT | mgrlog.uit | pln2024 |
-| Pengadaan | pengadaan.ketintang | pln2024 |
+Login sudah pindah dari password hardcoded ke **Supabase Auth** (`auth.users` + tabel `profiles`).
+Username disintesis jadi email lewat `usernameToAuthEmail()` (domain `@warnoto.pln.local`).
+Akun aktual (username, role, password) dikelola Admin lewat `scripts/bulk_create_users.mjs`
+atau Supabase Dashboard — tidak ada lagi password default yang berlaku untuk semua environment.
+
+Role yang dikenal: `ADMIN, TL, ASMAN, MANAGER, ADMIN_UIT, MGR_LOGISTIK_UIT, ADMIN_ULTG, MGR_ULTG, PENGADAAN, VIEWER`.
 
 ---
 
@@ -34,23 +31,26 @@ npm run dev
 
 ```
 warnoto-project/
-├── App.jsx              ← Aplikasi utama (single file, ~7000 baris)
+├── App.jsx              ← Aplikasi utama (single file, ~14.500 baris)
 ├── index.html           ← Entry HTML
 ├── vite.config.js       ← Vite config
 ├── package.json         ← Dependencies
 ├── src/
 │   ├── main.jsx         ← React entry point
 │   └── storage.js       ← Storage adapter (Artifact ↔ localStorage)
-└── WARNOTO_DOCS.md      ← Dokumentasi lengkap & planning
+├── supabase/
+│   ├── schema.sql       ← Skema Supabase lengkap (master data, forecast, RAG, bot, dst)
+│   └── functions/       ← Edge Functions: telegram-webhook (aktif), whatsapp-webhook (blocked Meta)
+├── scripts/             ← bulk_create_users.mjs, nightly_sync.mjs, gen_form_telegram.py, dll
+└── WARNOTO_DOCS.md      ← Dokumentasi lengkap & planning (historis, section-based)
 ```
 
 Catatan dokumen tambahan:
-- `CLAUDE_HANDOFF.md` adalah pintu masuk singkat saat project dipindahkan/dilanjutkan di Claude.
-- `MATERIAL_CADANG_SPEC.md` berisi spesifikasi fitur Material Cadang, format import CSV/XLSX, dashboard manajemen, approval Asman untuk apply `minQty`, hidden Catalog Master PLN, dan hidden SAP MARA reference.
-- `TEMPLATE_IMPORT_MATERIAL_CADANG.xlsx` adalah template upload XLSX resmi v1 untuk data populasi/failure Material Cadang; CSV harus mengikuti header yang sama.
-- `WA_AI_AGENT_SPEC.md` berisi spesifikasi integrasi AI Agent WARNOTO ke WhatsApp Cloud API via Supabase Edge Function, read-only, whitelist nomor, server-side state, RAG sync harian, dan audit log.
-- `GUDANG_CAPACITY_SPEC.md` berisi spesifikasi fitur Monitoring Kapasitas Gudang berbasis laporan UIT JBM, import XLSX review, dashboard manajemen, mapping ke peta gudang, dan storage Supabase.
-- Planning migrasi stok SAP/Non-SAP dan histori TUG-15 ada di `WARNOTO_DOCS.md` bagian 20.
+- `CLAUDE_HANDOFF.md` adalah pintu masuk singkat saat project dipindahkan/dilanjutkan di Claude — **baca ini duluan**, berisi status terkini dan aturan kerja wajib.
+- `handoff-health-index-material-cadang/MATERIAL_CADANG_SPEC.md` berisi spesifikasi fitur Material Cadang — **sudah diimplementasikan** (ABC/policy + Health Index + AI Insight, lihat addendum di bagian akhir dokumen), termasuk hidden Catalog Master PLN dan hidden SAP MARA reference.
+- `WA_AI_AGENT_SPEC.md` berisi spesifikasi integrasi AI Agent ke WhatsApp Cloud API — kode Edge Function **sudah selesai tapi terblokir Meta Business Verification**; channel bot AI yang aktif sekarang adalah **Telegram** (`supabase/functions/telegram-webhook`).
+- `GUDANG_CAPACITY_SPEC.md` berisi spesifikasi fitur Monitoring Kapasitas Gudang — **sudah diimplementasikan** dengan auto-backup ke Supabase (`warehouse_capacity`).
+- Planning migrasi stok SAP/Non-SAP dan histori TUG-15 ada di `WARNOTO_DOCS.md` bagian 20 — **sudah diimplementasikan** sebagai `MigrasiDataTab` dengan aturan keamanan review manual (lihat `CLAUDE_HANDOFF.md` bagian 4).
 
 ## Perbedaan Artifact vs Lokal
 
@@ -80,16 +80,16 @@ headers: {
 
 ## Versi
 
-- **v32** — Juni 2026
-- Single-file React architecture
-- 145 material SAP Persediaan UPT Surabaya hardcoded sebagai default data
-- Handoff Claude tersedia di `CLAUDE_HANDOFF.md`
-- Planning fitur Material Cadang tersedia di `MATERIAL_CADANG_SPEC.md`
-- Planning fitur WA AI Agent tersedia di `WA_AI_AGENT_SPEC.md`
-- Planning fitur Monitoring Kapasitas Gudang tersedia di `GUDANG_CAPACITY_SPEC.md`
-- Menu Alat Berat tersedia untuk monitoring alat angkat/angkut multi-UPT, foto alat, peminjaman antar UPT dengan approval Asman pemilik, reminder overdue, histori peminjaman, dan ringkasan dashboard.
-- Planning migrasi stok SAP/Non-SAP + TUG-15 tersedia di `WARNOTO_DOCS.md` bagian 20
-- Lihat WARNOTO_DOCS.md untuk roadmap lengkap
+- Status per **2026-07-05** — lihat `CLAUDE_HANDOFF.md` bagian 4 untuk detail terkini
+- Single-file React architecture, ~14.500 baris, storage Supabase (Postgres + Auth + Edge Functions) menggantikan localStorage-only
+- Login memakai Supabase Auth (bukan lagi password hardcoded)
+- Fitur Material Cadang (ABC/policy + Health Index + AI Insight) sudah diimplementasikan — spec di `handoff-health-index-material-cadang/MATERIAL_CADANG_SPEC.md`
+- Fitur Monitoring Kapasitas Gudang sudah diimplementasikan — spec di `GUDANG_CAPACITY_SPEC.md`
+- Migrasi stok SAP/Non-SAP + histori TUG-15 sudah diimplementasikan (`MigrasiDataTab`) — spec di `WARNOTO_DOCS.md` bagian 20
+- Menu Alat Berat tersedia untuk monitoring alat angkat/angkut multi-UPT, foto alat, peminjaman antar UPT dengan approval Asman pemilik, reminder overdue, histori peminjaman, dan ringkasan dashboard
+- Bot AI: **Telegram aktif** sebagai channel utama; WA Agent kodenya selesai (`WA_AI_AGENT_SPEC.md`) tapi terblokir Meta Business Verification
+- Scan Barcode multi-device (`ScanPublicView`) sudah bisa dipakai banyak orang bersamaan tanpa bentrok (`stock_scan_log`)
+- Lihat `CLAUDE_HANDOFF.md` untuk status terkini dan `WARNOTO_DOCS.md` untuk roadmap/histori lengkap
 
 ## Kontak
 Widi — Admin Gudang PT PLN UPT Surabaya (Gudang Ketintang)

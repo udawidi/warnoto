@@ -5645,7 +5645,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           {isLow && <div style={{fontSize:9,color:C.red,fontWeight:700,marginTop:2}}>⚠️ Stok kritis</div>}
                         </td>
                         <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:120}}>
-                          {currentUser.role==="ADMIN" ? (
+                          {["ADMIN","TL"].includes(currentUser.role) ? (
                             <select
                               value={stockGudangFilter[st.id] ?? gdg?.id ?? gudangList[0]?.id ?? ""}
                               style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8}}

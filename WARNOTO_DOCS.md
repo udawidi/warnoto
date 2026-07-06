@@ -2,8 +2,14 @@
 ## Dokumen Spesifikasi Teknis & Status Pengembangan
 
 *Last updated: June 28, 2026 (malam — sesi dilanjutkan)*
-*Active file: App.jsx (single-file, ~5000+ lines setelah sesi ini)*
+*Active file: App.jsx (single-file, ~14.500 baris per 2026-07-05)*
 *Working pattern: plan → confirm → execute → present*
+
+> **Dokumen ini historis/section-based dan sebagian sudah basi.** Untuk status
+> paling akurat, selalu baca `CLAUDE_HANDOFF.md` bagian 4 terlebih dahulu.
+> Bagian 1-19 dokumen ini tetap berguna sebagai referensi konsep/rumus/planning,
+> tetapi status "belum diimplementasikan" di bagian tersebut bisa sudah berubah
+> menjadi implemented — lihat bagian 21.3 dan 22.1 yang sudah diperbarui.
 
 ---
 
@@ -1993,11 +1999,14 @@ TL approve dari panel "🔔 Menunggu Approval Anda" (alur sama seperti 16.5)
   - `Buku Perhitungan Standard Jumlah Mat Cadang Trans.pdf`.
 
 #### 21.3 Status Terakhir
-- Material Cadang: planning/spec/template sudah siap, implementasi kode belum dimulai.
-- WA AI Agent: planning/spec sudah siap; Meta App sudah dibuat; Supabase Edge Function `whatsapp-webhook` belum deploy.
-- Migrasi Stok SAP/Non-SAP + TUG-15: planning final ada di bagian 20; implementasi kode belum dimulai.
-- Monitoring Kapasitas Gudang: planning/spec sudah siap di `GUDANG_CAPACITY_SPEC.md`; implementasi kode belum dimulai.
-- Alat Berat / Alat Angkat Angkut: implementasi kode sudah masuk di `App.jsx`; detail flow multi-UPT, approval Asman pemilik, overdue, dan histori ada di bagian 23.
+*(Catatan 2026-07-05: bagian ini sudah basi dari sesi 28 Juni 2026 — untuk status paling akurat selalu cek `CLAUDE_HANDOFF.md` bagian 4 dulu.)*
+
+- Material Cadang: **sudah diimplementasikan** di kode — ABC/policy + Health Index + AI Insight (lihat addendum bagian 19 di `MATERIAL_CADANG_SPEC.md`), tersambung ke 5 tabel Supabase.
+- WA AI Agent: kode Edge Function `whatsapp-webhook` **sudah selesai dan sempat di-deploy**, tetapi terblokir Meta Business Verification (error 130497) — jangan debug ulang sampai user selesaikan verifikasi bisnis di Meta. **Telegram Bot** (`telegram-webhook`) menjadi channel AI Agent utama yang aktif berfungsi.
+- Migrasi Stok SAP/Non-SAP + TUG-15: **sudah diimplementasikan** sebagai `MigrasiDataTab`, lengkap dengan aturan keamanan review manual untuk baris baru/Non-SAP (lihat `CLAUDE_HANDOFF.md` bagian 4 "Migrasi Data").
+- Monitoring Kapasitas Gudang: **sudah diimplementasikan**, auto-backup ke Supabase (`warehouse_capacity`/`warehouse_capacity_imports`), menggantikan localStorage-only.
+- Alat Berat / Alat Angkat Angkut: implementasi kode sudah masuk di `App.jsx` (komponen aktif `HeavyEquipmentTabV2`); detail flow multi-UPT, approval Asman pemilik, overdue, dan histori ada di bagian 23.
+- Login: sudah pindah dari password array polos ke Supabase Auth (`auth.users` + `profiles`).
 - Jangan memasukkan secret asli ke repo; `.env.example` hanya placeholder.
 
 #### 21.4 Prompt Pembuka Saat Migrasi ke Claude
@@ -2021,7 +2030,7 @@ Sebelum final, jalankan `npm run build`.
 
 #### 22.1 Status
 - Detail spesifikasi fitur Monitoring Kapasitas Gudang ada di `GUDANG_CAPACITY_SPEC.md`.
-- Status saat ini: **PLANNING / SPEC READY**, belum diimplementasikan ke kode.
+- Status saat ini (2026-07-05): **IMPLEMENTASI DI KODE**, auto-backup ke Supabase (`warehouse_capacity`/`warehouse_capacity_imports`).
 - Sumber awal: `KAPASITAS GUDANG UIT JBM.xlsx`.
 
 #### 22.2 Keputusan Utama

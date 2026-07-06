@@ -2,7 +2,11 @@
 
 Dokumen ini adalah spesifikasi mandiri untuk integrasi **AI Agent WARNOTO ke WhatsApp**. Tujuannya agar alur, batasan keamanan, kebutuhan Supabase, webhook, dan instruksi migrasi ke Claude dapat dipahami tanpa harus membaca seluruh `WARNOTO_DOCS.md`.
 
-Status dokumen: planning final-ish untuk implementasi v1.
+Status dokumen: kode Edge Function `whatsapp-webhook` **sudah selesai diimplementasikan sesuai spec di bawah**,
+tetapi **terblokir Meta Business Verification** (error 130497) sejak setup awal — lihat bagian 13.1.
+Jangan debug ulang error ini sampai user selesaikan verifikasi bisnis di Meta sendiri.
+Selama WA terblokir, **Telegram Bot** (`supabase/functions/telegram-webhook`) menjadi channel
+AI Agent utama yang aktif berfungsi untuk user.
 
 ---
 
@@ -555,9 +559,9 @@ STATUS=404
 BODY={"code":"NOT_FOUND","message":"Requested function was not found"}
 ```
 
-Artinya Supabase Edge Function `whatsapp-webhook` belum terdeploy di project `tadxodrzoquugnsyejld`. Jangan klik `Verify and save` di Meta sebelum deploy berhasil, karena Meta akan gagal memverifikasi endpoint.
+Artinya pada 30 Juni 2026 Supabase Edge Function `whatsapp-webhook` belum terdeploy di project `tadxodrzoquugnsyejld`. Jangan klik `Verify and save` di Meta sebelum deploy berhasil, karena Meta akan gagal memverifikasi endpoint.
 
-Langkah lanjutan besok:
+Langkah lanjutan besok (30 Juni 2026):
 
 1. Buka PowerShell di root project.
 2. Jalankan login dan link Supabase dengan `npx supabase`.
@@ -576,6 +580,19 @@ TEST_OK
 ```
 
 6. Jika hasilnya `TEST_OK`, isi form Meta dan klik `Verify and save`.
+
+### 13.2 Status Terkini (2026-07-05)
+
+Function `whatsapp-webhook` sudah berhasil dideploy dan kode selesai sesuai spec di atas.
+Namun integrasi tetap tidak bisa dipakai user karena **Meta Business Verification** untuk
+akun bisnis pemilik nomor WhatsApp belum disetujui (error `130497` saat kirim pesan ke nomor
+di luar test list). Ini murni proses verifikasi bisnis di sisi Meta, bukan bug kode —
+**jangan buang waktu debug ulang** sampai user menyelesaikan verifikasi bisnisnya sendiri.
+
+Selama itu, **Telegram Bot** (`supabase/functions/telegram-webhook`) adalah channel AI Agent
+yang aktif dan dipakai user, jauh lebih mudah setup daripada WhatsApp Cloud API. Whitelist WA
+sengaja dibiarkan kosong/apa adanya sampai verifikasi Meta selesai — jangan bangun UI whitelist
+WA baru sebelum itu.
 
 ---
 

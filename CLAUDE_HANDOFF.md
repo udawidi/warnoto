@@ -60,12 +60,17 @@ Data terkontrol (lihat section 4).
 
 ## 4. STATUS TERKINI (2026-07-05) — baca ini sebelum ubah apa pun
 
-### ⏳ PENDING — lanjutan dari sesi 2026-07-04 malam (belum dikerjakan hari ini)
+### ⏳ PENDING — update 2026-07-05 (lanjut nanti)
 - **Prioritas:** data history TUG UPT Surabaya sebagai basis forecasting.
-- File acuan: `outputs/warnoto-history-clean-upt-surabaya/WARNOTO_History_TUG_Clean_Import_UPT_Surabaya.xlsx` (701 baris `tug15_history_import`, baru 300 baris katalognya `MATCH_OK`, 399 masih `REVIEW_NON_SAP` dan butuh keputusan mapping).
-- **Belum ada apa pun yang dieksekusi ke Supabase** — masih tahap review data user, jangan asumsikan sudah masuk `tug15_history`.
-- Sheet lain di file yang sama untuk direview: `README`, `Ringkasan`, `mapping_material_review` (325 baris), `anomali_data`, `master_material_clean`.
+- File acuan: `outputs/warnoto-history-clean-upt-surabaya/WARNOTO_History_TUG_Clean_Import_UPT_Surabaya.xlsx` (701 baris `tug15_history_import`, sheet `mapping_material_review` 325 baris material: 147 `MATCH_OK`, 154 `REVIEW_NON_SAP`, 21 `HOLD_NON_SAP`, 3 `WARNING_REVIEW` — total 178 baris material butuh keputusan manual, mewakili 399 baris transaksi).
+- **Sudah dibuatkan alat bantu review:** `outputs/warnoto-history-clean-upt-surabaya/USULAN_PENCOCOKAN_MARA_UPT_SURABAYA.xlsx` — 178 nama material di atas sudah dicocokkan otomatis (token overlap nama) ke 42.703 baris `mara_catalog` di Supabase: 98 baris skor kuat (≥2 kata kunci sama, ditandai hijau), 72 baris skor lemah (1 kata kunci, putih), 8 baris tanpa kandidat sama sekali (ditandai merah, kemungkinan barang non-SAP asli). Kolom `keputusan_admin`/`keputusan_tl`/`catatan_review` masih kosong, menunggu direview manual satu-satu oleh Admin/TL.
+- **Belum ada apa pun yang dieksekusi ke Supabase** untuk data ini — masih tahap review, jangan asumsikan sudah masuk `tug15_history`.
 - **Pending terpisah:** folder `WARNOTOV2-2757983` (hasil ekstrak zip AppSheet di `D:\CLAUDE\WARNOTO data\Appsheet\_extracted`) belum diputuskan mau dihapus atau disimpan.
+
+### ⏳ PENDING — fix kolom Gudang untuk role TL (2026-07-05, belum di-commit)
+- Ditemukan: kolom "Gudang" di halaman Data Stok Gudang untuk role TL selalu tampil kosong ("—"), padahal ini bukan bug tampilan — 217 baris `stocks` di Supabase memang semuanya belum punya `lokasi_id` (sisa migrasi SAP yang sengaja dikosongkan, lihat aturan "Migrasi Data" di bawah).
+- Bug nyata yang ditemukan & sudah diperbaiki di `App.jsx` (~baris 5648): dropdown filter Gudang sebelumnya cuma muncul untuk role ADMIN, sekarang untuk `["ADMIN","TL"]` — supaya TL juga bisa pilih gudang mana yang mau diisi lokasinya (sebelumnya TL cuma bisa isi lokasi di gudang pertama dalam daftar).
+- **Sudah `npm run build` sukses, tapi belum di-commit ke git** (staged, `git status` masih menunjukkan `App.jsx` modified). Perlu ditest dulu sebagai login TL di browser sebelum commit.
 
 ### Login & User Management
 - Login sudah pindah dari array password polos ke **Supabase Auth** (`auth.users` + tabel `profiles`), username disintesis jadi email lewat `usernameToAuthEmail()` (domain `@warnoto.pln.local`).

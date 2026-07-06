@@ -2,8 +2,10 @@
 
 Dokumen ini adalah spesifikasi mandiri untuk implementasi fitur **Monitoring Kapasitas Gudang** di WARNOTO.
 
-Status: **PLANNING / SPEC READY**  
-Tanggal: 30 Juni 2026  
+Status: **IMPLEMENTED** (update 2026-07-05) — sudah jalan di `App.jsx` dengan auto-backup
+Supabase (`warehouse_capacity`/`warehouse_capacity_imports`), sesuai desain di bawah.
+Dokumen ini tetap jadi referensi kolom/kalkulasi/aturan resmi fitur ini.
+Status asli saat ditulis: **PLANNING / SPEC READY**, tanggal 30 Juni 2026.
 Sumber awal: `KAPASITAS GUDANG UIT JBM.xlsx`
 
 ---
