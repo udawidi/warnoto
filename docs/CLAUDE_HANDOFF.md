@@ -63,6 +63,40 @@ Data terkontrol (lihat section 4).
 
 ## 4. STATUS TERKINI (2026-07-05) — baca ini sebelum ubah apa pun
 
+### ✅ SELESAI — Bug KRITIS: submit Stock Opname ke Asman hilang diam-diam (race condition, 2026-07-07)
+Lanjutan investigasi "tidak masuk ke approval Asman" — setelah section Approval terpusat ditambah
+(lihat entri di bawah), user tetap lapor tidak muncul. Dicek langsung ke Supabase (`stock_opname`
+table via MCP): sesi yang ada statusnya **DRAFT** (`submittedAt: null`), padahal SEMUA 217 item
+qty fisik-nya sudah lengkap terisi (`belum_isi_qty: 0`) — jadi bukan soal validasi belum lengkap.
+- **Akar masalah sebenarnya**: tombol "Submit ke Asman" (App.jsx, `StockOpnameTab`) memanggil
+  `saveOpname(activeOpname)` lalu `submitOpname(activeOpname)` **beruntun tanpa `await`** di
+  antara keduanya. Dua-duanya fungsi async yang sync ke Supabase (`syncMasterTable("stock_opname",
+  ...)`) untuk baris DB yang SAMA — `saveOpname` menulis versi dengan status DRAFT, `submitOpname`
+  menulis versi dengan status PENDING_ASMAN. Karena keduanya jalan PARALEL (network request, bukan
+  lagi localStorage yang instan sejak fix sync Supabase sebelumnya), race condition: kalau upsert
+  DRAFT dari `saveOpname` selesai LEBIH BELAKANGAN daripada upsert PENDING_ASMAN dari
+  `submitOpname`, hasil akhir di database balik jadi DRAFT lagi — diam-diam, toast "Opname
+  disubmit!" tetap muncul (dari `submitOpname` yang sempat jalan), user pindah ke halaman list,
+  tidak sadar submit-nya "kalah" oleh race.
+- **Kenapa baru ketahuan sekarang**: sebelum Stock Opname disinkron ke Supabase (fix sesi ini
+  juga), `saveToCloud` cuma menulis ke `CLOUD.set` (localStorage, SINKRON/instan) — urutan
+  panggilan tidak masalah karena tidak ada jeda network yang bisa dibalik urutannya. Begitu
+  ditambah sync Supabase (network, async, waktu tempuh tidak pasti), race condition ini baru
+  benar-benar bisa muncul.
+- **Perbaikan**: hapus panggilan `saveOpname(activeOpname)` yang redundan di tombol Submit —
+  `submitOpname` sudah men-spread SELURUH object `opn` (semua edit qty/keterangan yang sudah ada
+  di `activeOpname`) + set status/submittedAt, jadi `saveOpname` sebelumnya memang tidak perlu
+  dipanggil terpisah. Sekarang cuma `await submitOpname(activeOpname)` lalu pindah halaman.
+- Sudah dicek: tidak ada pemanggilan `saveOpname`/fungsi approve lain yang punya pola race serupa
+  di tempat lain (`approveOpname_Asman`/`approveOpname_Manager`/`rejectOpname` masing-masing
+  dipanggil sendirian, tidak digabung dengan fungsi persist lain).
+- **⏳ PENDING — data yang sudah terlanjur nyangkut**: sesi `OPN-1783364605873` (217 item, semua
+  qty sudah terisi) masih berstatus DRAFT di Supabase. TIDAK diubah langsung lewat SQL (sengaja
+  dibiarkan lewat alur normal aplikasi) — user cukup buka lagi sesi itu di menu Stock Opname
+  (datanya utuh, semua qty masih tersimpan) dan klik "Submit ke Asman" sekali lagi, sekarang sudah
+  aman dari race condition.
+- Sudah `npm run build` sukses. Sudah di-push (`d5a9579`).
+
 ### ✅ SELESAI — Stock Opname tidak masuk ke halaman Approval terpusat Asman/Manager (2026-07-07)
 User lapor: submit Stock Opname ke Asman, tapi "tidak masuk ke approval Asman".
 - **Akar masalah**: sesi Opname yang di-submit MEMANG berhasil pindah status ke `PENDING_ASMAN`
