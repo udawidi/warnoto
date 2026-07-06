@@ -5127,7 +5127,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"stock",icon:"📦",label:"Data Stok"},
     {id:"master",icon:"🗂️",label:"Master Data"},
     {id:"transaction",icon:"🔄",label:"TUG"},
-    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0) + (["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (["ADMIN","TL"].includes(currentUser.role) ? ultgPengajuanUntukAdopt.length : 0) + (currentUser.role==="TL" ? stocks.filter(s=>s.lokasiMovePending||s.editPending||s.deletePending).length : 0)}] : []),
+    ...(["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN"].includes(currentUser.role) ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0) + (["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (["ADMIN","TL"].includes(currentUser.role) ? ultgPengajuanUntukAdopt.length : 0) + (currentUser.role==="TL" ? stocks.filter(s=>(s.lokasiMovePending&&s.lokasiMoveApprover==="TL")||s.editPending||s.deletePending).length : 0) + (currentUser.role==="ASMAN" ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0)}] : []),
     {id:"heavyEquipment",icon:"🚜",label:"Alat Berat",badge:(currentUser.role==="ASMAN"?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"opname",icon:"📋",label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"rencana",icon:"📅",label:"Rencana Kedatangan"},
@@ -5679,11 +5679,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                   let updated, msg;
                                   if (pindahGudang) {
                                     // Pindah ke Gudang lain wajib approval TL.
-                                    updated = {...st, lokasiMovePending:true, pendingLokasiId:newLokasiId, pendingLokasiKode:lokSel?.kode||"-", moveRequestedBy:currentUser.id, moveRequestedAt:Date.now()};
+                                    updated = {...st, lokasiMovePending:true, lokasiMoveApprover:"TL", pendingLokasiId:newLokasiId, pendingLokasiKode:lokSel?.kode||"-", moveRequestedBy:currentUser.id, moveRequestedAt:Date.now()};
                                     msg = `📨 Pemindahan ${st.name} ke Gudang lain (${lokSel?.kode||"-"}) diajukan! Menunggu approval TL.`;
                                   } else {
                                     // Pindah blok dalam Gudang yang sama: Admin langsung, tanpa approval.
-                                    updated = {...st, lokasiId:newLokasiId, lokasi:lokSel?.kode||"-", lokasiMovePending:false, pendingLokasiId:null, pendingLokasiKode:null};
+                                    updated = {...st, lokasiId:newLokasiId, lokasi:lokSel?.kode||"-", lokasiMovePending:false, lokasiMoveApprover:null, pendingLokasiId:null, pendingLokasiKode:null};
                                     msg = `📍 Blok ${st.name} → ${lokSel?.kode||"-"}`;
                                   }
                                   const ns = stocks.map(s=>s.id===st.id?updated:s);
@@ -5694,24 +5694,41 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                 <option value="">-- Pilih Blok --</option>
                                 {lokasiList.filter(l=>(l.gudangId ?? gudangList[0]?.id) === (stockGudangFilter[st.id] ?? gdg?.id ?? gudangList[0]?.id)).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                               </select>
-                              {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval TL → {st.pendingLokasiKode}</div>}
+                              {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"TL"} → {st.pendingLokasiKode}</div>}
                             </>
                           ) : currentUser.role==="TL" ? (
-                            <select
-                              value={st.lokasiId||""}
-                              style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8,border:`1px solid ${noLokasi?"#f59e0b":C.border}`,background:noLokasi?"#fffbeb":"#f9fafb"}}
-                              onChange={async e=>{
-                                const newLokasiId = e.target.value;
-                                const lokSel = lokasiList.find(l=>l.id===newLokasiId);
-                                const updated = {...st, lokasiId:newLokasiId, lokasi:lokSel?.kode||"-", lokasiMovePending:false, pendingLokasiId:null, pendingLokasiKode:null};
-                                const ns = stocks.map(s=>s.id===st.id?updated:s);
-                                setStocks(ns);
-                                await saveToCloud({stocks:ns});
-                                showToast(`📍 Blok ${st.name} → ${lokSel?.kode||"-"}`);
-                              }}>
-                              <option value="">-- Pilih Blok --</option>
-                              {lokasiList.filter(l=>(l.gudangId ?? gudangList[0]?.id) === (stockGudangFilter[st.id] ?? gdg?.id ?? gudangList[0]?.id)).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
-                            </select>
+                            <>
+                              <select
+                                value={st.lokasiId||""}
+                                disabled={st.lokasiMovePending}
+                                style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8,border:`1px solid ${noLokasi?"#f59e0b":C.border}`,background:st.lokasiMovePending?"#f3f4f6":noLokasi?"#fffbeb":"#f9fafb"}}
+                                onChange={async e=>{
+                                  const newLokasiId = e.target.value;
+                                  const lokSel = lokasiList.find(l=>l.id===newLokasiId);
+                                  // TL yang pindahkan stok yang SUDAH punya lokasi ke Gudang lain wajib
+                                  // approval Asman (TL sendiri yang biasanya approve pemindahan Admin,
+                                  // jadi pemindahan lintas Gudang oleh TL butuh persetujuan Asman UPT).
+                                  // Isi lokasi PERTAMA KALI (lok kosong) tetap langsung tanpa approval,
+                                  // sama seperti pindah blok dalam Gudang yang sama.
+                                  const pindahGudang = !!lok && (lokSel?.gudangId||null) !== (lok?.gudangId||null);
+                                  let updated, msg;
+                                  if (pindahGudang) {
+                                    updated = {...st, lokasiMovePending:true, lokasiMoveApprover:"ASMAN", pendingLokasiId:newLokasiId, pendingLokasiKode:lokSel?.kode||"-", moveRequestedBy:currentUser.id, moveRequestedAt:Date.now()};
+                                    msg = `📨 Pemindahan ${st.name} ke Gudang lain (${lokSel?.kode||"-"}) diajukan! Menunggu approval Asman.`;
+                                  } else {
+                                    updated = {...st, lokasiId:newLokasiId, lokasi:lokSel?.kode||"-", lokasiMovePending:false, lokasiMoveApprover:null, pendingLokasiId:null, pendingLokasiKode:null};
+                                    msg = `📍 Blok ${st.name} → ${lokSel?.kode||"-"}`;
+                                  }
+                                  const ns = stocks.map(s=>s.id===st.id?updated:s);
+                                  setStocks(ns);
+                                  await saveToCloud({stocks:ns});
+                                  showToast(msg);
+                                }}>
+                                <option value="">-- Pilih Blok --</option>
+                                {lokasiList.filter(l=>(l.gudangId ?? gudangList[0]?.id) === (stockGudangFilter[st.id] ?? gdg?.id ?? gudangList[0]?.id)).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                              </select>
+                              {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"Asman"} → {st.pendingLokasiKode}</div>}
+                            </>
                           ) : (
                             <span style={{color:noLokasi?"#f59e0b":C.text,fontWeight:noLokasi?700:400}}>{noLokasi?"⚠️ Belum diisi":st.lokasi||"—"}</span>
                           )}
@@ -6484,11 +6501,34 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         {/* APPROVAL — semua notifikasi approval (TUG, Lokasi/Blok, Pemindahan Stok, dkk) dikumpulkan di sini, dipisah per-bagian + riwayat di bawah */}
         {tab==="approval" && ["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG"].includes(currentUser.role) && (
           <div>
-            {/* ── BAGIAN: Pemindahan Blok Data Stok (khusus TL) ── */}
-            {currentUser.role==="TL" && stocks.some(s=>s.lokasiMovePending) && (
+            {/* ── BAGIAN: Pemindahan Blok Data Stok — pindah Gudang oleh ADMIN, wajib approval TL ── */}
+            {currentUser.role==="TL" && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL") && (
               <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Blok Data Stok ({stocks.filter(s=>s.lokasiMovePending).length})</div>
-                {stocks.filter(s=>s.lokasiMovePending).map(s=>{
+                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Blok Data Stok ({stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL").length})</div>
+                {stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL").map(s=>{
+                  const pemohon = users.find(u=>u.id===s.moveRequestedBy);
+                  const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
+                  return (
+                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
+                        <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
+                        <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* ── BAGIAN: Pemindahan Gudang Data Stok — pindah Gudang oleh TL, wajib approval Asman UPT ── */}
+            {currentUser.role==="ASMAN" && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") && (
+              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN").length})</div>
+                {stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN").map(s=>{
                   const pemohon = users.find(u=>u.id===s.moveRequestedBy);
                   const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
                   return (
@@ -14599,7 +14639,8 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
   // panel-panel itu — jadi kelihatan kontradiktif (badge bilang 0/"selesai"
   // padahal ada 1 item nyata di atasnya) dan sidebar juga tidak ikut kasih
   // notifikasi badge untuk ini. Tambahkan ke hitungan supaya konsisten.
-  const pendingStockMoves = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.lokasiMovePending) : [];
+  const pendingStockMoves = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL")
+    : currentUser.role==="ASMAN" ? (stocks||[]).filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") : [];
   const pendingStockEdits = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.editPending) : [];
   const pendingStockDeletes = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.deletePending) : [];
   const pendingStockCount = pendingStockMoves.length + pendingStockEdits.length + pendingStockDeletes.length;
