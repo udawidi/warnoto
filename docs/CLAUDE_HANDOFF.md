@@ -63,6 +63,160 @@ Data terkontrol (lihat section 4).
 
 ## 4. STATUS TERKINI (2026-07-05) — baca ini sebelum ubah apa pun
 
+### ✅ SELESAI — Standarisasi parser titik/koma di SEMUA import file (2026-07-07, bug KRITIS)
+User lapor: qty benar "103,5 meter" tercatat "1.035" di app (distorsi ~10x, data kuantitas fisik).
+- **Akar masalah ditemukan** di `parseSAPMigration` (Migrasi Data): SELALU menghapus semua titik
+  dulu sebelum konversi koma (`.replace(/\./g,"").replace(",",".")`) — kalau nilai asli pakai TITIK
+  sebagai desimal (mis. "103.5", bukan ribuan), titiknya ikut terhapus jadi "1035". Bug ini
+  memengaruhi qty, harga, Quality Inspection/Blocked/In Transit Stock di Migrasi Data.
+- **Inkonsistensi lain ditemukan sekaligus**: `mapSAPRow` (dipakai Stock Opname & Stock Count)
+  punya parser qty vs harga yang BEDA logika (qty polos tanpa penanganan ribuan sama sekali; harga
+  sudah ada heuristik tapi cuma di situ) — potensi bug serupa kalau ada titik-ribuan di qty.
+  Material Cadang AI import (populasi/failure/harga dll) juga masing-masing regex ad-hoc sendiri.
+- **Perbaikan**: satu fungsi bersama baru `parseIndoNumber` (App.jsx, dekat `mapSAPRow`), dipakai
+  SEKARANG di semua tempat: `mapSAPRow` (Stock Opname/Count), `parseSAPMigration` (Migrasi Data),
+  parser Material Cadang AI import, dan `parseKapasitasGudangSheet` (delegasi ke fungsi yang sama).
+- **Aturan SENGAJA tidak pernah menebak kalau ambigu** (revisi dari percobaan pertama yang sempat
+  pakai heuristik "titik tunggal + 3 digit di belakang = ribuan" — ternyata berisiko salah tebak
+  untuk qty/luas presisi bebas desimal): titik dianggap RIBUAN hanya kalau benar-benar tidak
+  ambigu (titik lebih dari 1x, ATAU koma juga ada sekaligus). Titik tunggal tanpa koma SELALU
+  dianggap desimal — never guess.
+- Diverifikasi lewat skrip Node terpisah, 11 skenario (termasuk persis kasus bug user "103,5" dan
+  "103.5" → keduanya 103.5, bukan 1035) — semua PASS.
+- Sudah `npm run build` sukses.
+- **⚠️ PENTING — ini cuma memperbaiki import BARU ke depan, TIDAK memperbaiki data yang SUDAH
+  terlanjur salah tersimpan dari import lama** (mis. qty material "meter" yang sudah kadung ke-input
+  10x lebih besar). Perlu AUDIT MANUAL terpisah: cek Data Stok untuk item bersatuan desimal (meter,
+  kg, dll — terutama hasil Migrasi Data lama) yang qty-nya kelihatan janggal/kelipatan 10-1000x dari
+  yang seharusnya, lalu koreksi manual satu-satu. Belum ada tools otomatis untuk audit ini.
+
+### ✅ SELESAI — Review Draft Stock Count: tabel + status "Tidak terdaftar" tegas (2026-07-07)
+- Konfirmasi fix multi-sheet sebelumnya berhasil (219 item terbaca, naik dari 151).
+- **Review Draft Stock Count** (`StockCountTab`) diubah dari daftar teks 1-baris-per-item jadi
+  **tabel** dengan kolom eksplisit: Nama Barang, No. Katalog, Qty SAP, Qty Aplikasi, Selisih,
+  Status, Rekomendasi — plus 4 KPI ringkasan di atas (Total/Akurat/Selisih/Belum Terdaftar).
+- **Material belum terdaftar di Master Katalog**: dulu qty aplikasinya tampil angka "0" yang
+  ambigu (kelihatan seperti "stoknya 0" padahal maksudnya "materialnya belum ada sama sekali").
+  Sekarang tampil teks tegas "Tidak terdaftar" (ungu, italic) menggantikan angka 0 — diterapkan di
+  tabel Review Draft maupun kartu approval sesi tersimpan (Asman), supaya konsisten di kedua
+  tempat.
+- Sudah `npm run build` sukses. Belum dites manual di browser.
+
+### ✅ SELESAI — Upload SAP: tombol seragam + baca semua sheet ber-kolom Material (2026-07-07)
+- **Tombol upload Stock Opname disamakan** dengan Stock Count (dulu `<input type="file">` polos
+  tanpa styling di Opname, sekarang tombol berstyle sama persis "📂 Upload CSV/XLSX SAP").
+- **`parseSAPRowsFromXLSX`** (dipakai bersama Stock Opname & Stock Count — cuma 2 pemakai ini di
+  seluruh project) dulu cuma baca `wb.Sheets[wb.SheetNames[0]]` (sheet pertama saja). Sekarang baca
+  SEMUA sheet — 2 sheet terbaca 2, 3 sheet terbaca 3, dst.
+- **Percobaan pertama** (exact-match SELURUH nama kolom antar sheet) **ternyata terlalu ketat** —
+  user lapor upload 2 sheet tapi hasil cuma 151 item (harusnya lebih kalau digabung). Kemungkinan
+  besar penyebabnya kolom tambahan/beda dikit di salah satu sheet (umum di file Excel nyata) bikin
+  exact-match gagal, sheet ke-2 ke-skip diam-diam. **Diperbaiki**: kriteria diperlonggar jadi cukup
+  ada kolom `Material` (kolom WAJIB — tanpa ini baris otomatis tidak valid lewat `mapSAPRow` juga),
+  tidak peduli kolom lain beda apa pun. Sheet non-SAP (mis. "Ringkasan" tanpa kolom Material) tetap
+  otomatis terlewati.
+- Diverifikasi 2x pakai skrip Node terpisah (library `xlsx` yang sama): (1) 2 sheet header identik
+  + 1 beda → baca 2, lewati yang beda; (2) skenario kolom ekstra/beda dikit di salah satu sheet
+  (mensimulasikan kasus nyata yang dilaporkan user) → tetap terbaca semua.
+- Sudah `npm run build` sukses. **Belum dites ulang dengan file asli user** yang tadinya cuma
+  kebaca 151 item — mohon dicoba lagi upload file yang sama, harusnya sekarang jumlahnya lebih dari
+  151 kalau kedua sheet memang beda datanya.
+
+### ✅ SELESAI — Stock Opname: material baru dari SAP ikut approval sesi + scan QR bantu navigasi (2026-07-07)
+Direncanakan lewat `/plan-warnoto` (plan-only, ada di `C:\Users\PLN\.claude\plans\cosmic-skipping-balloon.md`), user setuju sebelum eksekusi.
+- **Gap ditutup**: `approveOpname_Manager` (App.jsx) dulu diam-diam SKIP baris `TIDAK_ADA_DI_SISTEM`
+  (material ada di SAP, belum ada di Master Katalog) — opname bisa selesai penuh tanpa material
+  barunya pernah benar-benar masuk Data Stok. Sekarang: kalau qty fisik terisi (>0) saat Manager
+  approve, otomatis buat Master Katalog (no. katalog dari SAP, Jenis Barang dari
+  `getSAPStatus`-style deteksi 10/7-8 digit) + Data Stok baru (qty = hasil hitung fisik, lokasi
+  kosong — tidak ditebak). Qty fisik 0/kosong = diabaikan total (dianggap belum sempat dihitung).
+- **Tidak ada approval TL terpisah** (keputusan sengaja, supaya tidak 2 alur approval yang
+  membingungkan) — material baru ikut alur Asman→Manager yang sudah ada.
+- **Konflik no. katalog** (SAP kebetulan pakai nomor yang sudah dipakai katalog lain) — diblokir
+  per-baris (tidak menimpa diam-diam), Manager diberi toast peringatan jelas.
+- **Scan QR** (tombol "📷 Scan QR untuk cari baris", pakai `openScanner` yang sudah ada, sekarang
+  mendukung target generik `{onDetect: fn}` untuk komponen anak) — cuma bantu lompat & fokus ke
+  baris yang benar di tabel, TIDAK mengisi qty otomatis (qty fisik tetap wajib diketik manual).
+- **Stock Count** — ditinjau ulang lengkap, TIDAK ADA PERUBAHAN (sudah sesuai: banding-saja,
+  toleransi 5% tetap, tidak pernah mengubah data, dashboard akurasi % sudah ada).
+- **Bug pra-eksisting ditemukan (belum diperbaiki, di luar scope sesi ini)**: tombol "📄 Download
+  Berita Acara" (`downloadBeritaAcara`) memanggil `buildBeritaAcaraHTML` yang **tidak pernah
+  didefinisikan/di-import di mana pun** di project — akan error kalau diklik. Perlu sesi terpisah
+  untuk membangun fungsi ini dari nol (belum pernah ada, bukan regresi dari perubahan manapun).
+- Sudah `npm run build` sukses. **Belum dites manual di browser** — mohon dicek: buat sesi Opname
+  SAP dengan minimal 1 baris material baru, isi qty fisik, submit → Asman approve → Manager approve
+  → cek Master Katalog & Data Stok baru muncul benar; coba juga tombol scan QR (perlu kamera/HP).
+
+### ✅ SELESAI — Alat Berat & Peminjaman UPT: 1 halaman + scoping UPT Surabaya (2026-07-06)
+Direncanakan lewat plan mode (`C:\Users\PLN\.claude\plans\cosmic-skipping-balloon.md`), user setuju.
+- **`HeavyEquipmentTabV2`** digabung dari 2 sub-tab ("List Alat"/"Peminjaman & Histori") jadi
+  **1 halaman tunggal**: Ringkasan KPI → Overdue → Daftar Alat Berat → Ajukan Peminjaman →
+  Peminjaman & Histori, semua di 1 scroll.
+- **`canApproveHeavyEquipmentLoan`** (App.jsx ~225) diperketat — dulu `requesterUpt` kosong/rusak
+  otomatis dianggap "boleh siapa saja approve" (`!requesterUpt || ...`), sekarang WAJIB match UPT
+  user (`!!requesterUpt && userUpt===requesterUpt`, deny-by-default).
+- **Panel "Alat Berat Overdue"** dan **`unifiedLoans`** (Peminjaman & Histori) sekarang discope ke
+  `effectiveUptFilter` (owner ATAU requester match) — sebelumnya TIDAK difilter UPT sama sekali,
+  jadi peminjaman antar 2 UPT lain (sama sekali tidak melibatkan Surabaya) ikut tampil ke
+  Admin/TL/Asman Surabaya (termasuk tombol "Tandai Kembali" yang bisa dipakai untuk alat yang
+  bukan urusan Surabaya).
+- **Form Ajukan Peminjaman**: untuk role selain MSB/Manager UIT, dropdown alat sekarang cuma
+  menampilkan alat **di luar UPT sendiri** (`borrowableEquipment`, Surabaya selalu jadi peminjam,
+  tidak masuk akal "pinjam alat sendiri"), field "UPT Peminjam" jadi teks statis (bukan pilihan)
+  karena sudah pasti UPT sendiri.
+- **MSB/Manager UIT** (role yang mengelola banyak UPT) TETAP tidak dibatasi — dropdown "Filter UPT"
+  masih bisa pilih "Semua UPT" atau fokus ke 1 UPT tertentu, mempengaruhi semua section sekaligus.
+- Sudah `npm run build` sukses. **Belum dites manual di browser** (tidak ada tool browser di sesi
+  ini) — mohon dicek: (1) role non-MSB (ADMIN/TL/ASMAN Surabaya) cuma lihat alat & peminjaman
+  Surabaya di semua section; (2) kalau ada data peminjaman antar 2 UPT lain, pastikan benar-benar
+  tidak muncul di mana pun untuk role Surabaya; (3) MSB/Manager UIT tetap bisa lihat semua UPT.
+
+### ✅ SELESAI — Perbaikan logika Gudang/Sub Gudang/Blok + simplifikasi UI (2026-07-06)
+Direncanakan lewat plan mode (`C:\Users\PLN\.claude\plans\cosmic-skipping-balloon.md`), user setuju sebelum eksekusi.
+- **Aturan baru (inti perubahan)**: dot koordinat Blok baru HANYA boleh dikonfigurasi di peta
+  Gudang keseluruhan kalau Gudang itu **tidak** punya Sub Gudang. Kalau Gudang **punya** Sub
+  Gudang, tombol "⚙️ Konfigurasi Koordinat Blok" di level Gudang disembunyikan total — diganti
+  catatan yang mengarahkan ke peta Sub Gudang masing-masing. Sebelumnya bisa dikonfigurasi di
+  kedua level tanpa aturan ini.
+- **Komponen `GudangCoordConfigPanel`** (baru, dekat `SearchableSelect`) — menggabungkan 2 salinan
+  JSX yang tadinya nyaris identik (panel Gudang & Sub Gudang), dan kedua opsi ("assign koordinat
+  ke blok existing" vs "mode tambah blok baru") sekarang langsung kelihatan begitu panel dibuka
+  (dulu opsi kedua disembunyikan di balik toggle terpisah — "klik di dalam klik").
+- Tombol duplikat "⚙️ Konfigurasi Koordinat Blok (pakai denah Gudang)" di grup "Umum" **dihapus**.
+  Kalau Gudang punya Sub Gudang tapi ada blok legacy tanpa `subGudangId`, sekarang tampil sebagai
+  peringatan "⚠️ belum dikelompokkan" + arahan pakai ✏️ Edit (bukan tombol konfigurasi koordinat).
+- **Reorder halaman**: "📍 Daftar Blok Lokasi" sekarang tampil duluan (info utama) di tiap grup,
+  upload-denah + preview + panel koordinat dipindah ke toggle collapsed-by-default "🛠️ Kelola
+  Denah & Koordinat" (state `showGudangDenahTools` level Gudang, `expandedSubGudangToolsIds` Set
+  per Sub Gudang).
+- **Update lanjutan (sesi sama)**: klik Gudang yang punya Sub Gudang sekarang cuma menampilkan
+  MENU Sub Gudang (nama + jumlah blok), belum langsung Daftar Blok Lokasi — klik salah satu Sub
+  Gudang baru tampil detailnya (`selectedSubGudangId`, reset tiap ganti Gudang). Kalau Gudang tidak
+  punya Sub Gudang sama sekali, langsung tampil daftar blok tanpa menu (tidak ada yang perlu
+  dipilih). Blok "tidak terdaftar" (grup Umum, di Gudang yang punya Sub Gudang) sekarang tidak
+  dikasih tombol "+ Tambah Blok" — cuma bisa di-assign ke Sub Gudang lewat ✏️ Edit.
+- **Approval**: ditambah heading section ("📄 Transaksi TUG" / "📐 Kapasitas Gudang" / "📍 Lokasi
+  & Gudang") di `ApprovalTab` saat filter "Semua" dipilih — sebelumnya approval Tambah/Ubah/Hapus
+  Blok tercampur tanpa pemisah visual dengan approval transaksi TUG.
+- Sudah `npm run build` sukses. **Belum dites manual di browser** (perubahan besar, sentuh alur
+  Gudang KETINTANG sebagai contoh) — mohon dicek: (1) Gudang dengan Sub Gudang → level Gudang cuma
+  overview, tiap Sub Gudang punya panel sendiri; (2) Gudang tanpa Sub Gudang → konfigurasi
+  Gudang-level masih normal; (3) Approval filter "Semua" → heading section kelihatan jelas.
+- **Follow-up belum selesai**: verifikasi ke Supabase apakah blok Gudang KETINTANG sudah benar
+  `subGudangId`-nya atau ada yang legacy kosong — MCP Supabase sempat error 502 (Cloudflare,
+  transient) saat sesi ini, belum sempat dicek ulang.
+
+### ✅ SELESAI — Perbaikan UI Master Gudang & Struktur Organisasi + konfirmasi Gudang baru (2026-07-06)
+- **Migrasi Data**: tombol "Lanjut → Preview" dipindah ke dalam kotak upload, cuma muncul setelah file berhasil diupload (sebelumnya elemen terpisah, selalu tampil disabled).
+- **Struktur Organisasi**: ditambah KPI ringkasan (Total UIT/UPT/ULTG), kotak pencarian, badge level UIT/UPT, dan UIT bisa di-collapse per item.
+- **Master Gudang**: 
+  - Tombol "+ Tambah Gudang Baru" ditambahkan (wizard 3 langkah sudah ada di kode sejak lama tapi tidak pernah disambung ke tombol manapun — celah ditemukan user 2026-07-06).
+  - Banner info diperbaiki (sebelumnya kontradiktif: bilang "tidak ada input manual" tepat di atas tombol Import).
+  - 2 tombol alat perbaikan (Sinkron Koordinat, Gabungkan Duplikat) disembunyikan di balik toggle "🔧 Alat Perbaikan Data Lanjutan" + penjelasan kapan dipakai — sebelumnya sejajar dengan tombol Import utama tanpa konteks.
+  - **Pencocokan nama Gudang saat approve import Kapasitas Gudang diperketat** (`normalizeGudangName` — hilangkan tanda baca umum & spasi ganda, bukan cuma trim+uppercase persis) supaya variasi kecil penulisan tidak lagi bikin Gudang duplikat.
+  - **Panel konfirmasi Admin baru** (`capacityReviewImportId`/`previewCapacityGudangMatch`/`startCapacityApproval`): kalau approve import Kapasitas Gudang mendeteksi nama Gudang yang tidak cocok apa pun yang sudah ada, Admin diminta konfirmasi dulu per baris — "ini Gudang baru" atau "ini sebenarnya Gudang X yang sudah ada" (dengan saran token-overlap) — SEBELUM `syncGudangCapacityToMasterGudang` benar-benar membuat entri baru. Kalau tidak ada kandidat baru sama sekali, approve tetap langsung jalan tanpa friksi tambahan.
+- Semua sudah `npm run build` sukses. Item UI (Migrasi Data, Struktur Organisasi, banner/tombol Master Gudang) sudah dites manual di browser oleh user. **Panel konfirmasi Gudang baru belum sempat dites manual** (butuh skenario: import file Kapasitas Gudang dengan nama Gudang yang sedikit beda dari yang sudah ada) — coba dulu sebelum dianggap final.
+
 ### ✅ SELESAI — Pencarian material sinonim-aware PLN (2026-07-06)
 - **Kamus istilah** `CATEGORY_SYNONYMS`/`QUERY_SYNONYMS` (`App.jsx`, sekitar baris 972) diperkaya dari sheet `PLN-Terminology` di `D:\CLAUDE\WARNOTO data\tester\CATALOG MASTER.xlsx` (~45 singkatan baru, mis. LA=lightning arrester/penangkal petir, GIS, OH/UG, dll). Sengaja **tidak** memasukkan singkatan 1 huruf atau 2 huruf yang ambigu (K/M/N/P/ST/PR/PB) untuk hindari salah cocok.
 - Mesin pencarian (dulu `matchesStockSearch`, khusus Data Stok) digeneralisasi jadi `matchesMaterialSearch` + dipakai di beberapa tempat baru:
