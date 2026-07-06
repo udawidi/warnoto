@@ -10,12 +10,13 @@ sangat basi — banyak fitur besar berubah sejak itu, lihat bagian 4 di bawah).
 
 ## 1. Baca Berurutan
 
-1. Dokumen ini (`CLAUDE_HANDOFF.md`)
-2. `README.md`
-3. `WARNOTO_DOCS.md`
-4. `App.jsx` (single-file React, ~14.500 baris — jangan baca penuh sekaligus, cari section relevan)
-5. `supabase/schema.sql`
-6. Spec fitur yang sedang dikerjakan (lihat tabel section 2)
+1. `docs/SYSTEM_OVERVIEW.md` (peta besar: tujuan sistem, modul utama, hubungan antar fitur, aturan global)
+2. Dokumen ini (`docs/CLAUDE_HANDOFF.md`)
+3. `README.md`
+4. `docs/WARNOTO_DOCS.md`
+5. `App.jsx` (single-file React, ~14.500 baris — jangan baca penuh sekaligus, cari section relevan)
+6. `supabase/schema.sql`
+7. Spec fitur yang sedang dikerjakan (lihat tabel section 2)
 
 Kalau konteks terbatas, cukup baca section 4 di dokumen ini dulu (ringkasan status
 terkini) sebelum membuka `App.jsx`.
@@ -27,12 +28,14 @@ terkini) sebelum membuka `App.jsx`.
 | File | Fungsi |
 | --- | --- |
 | `App.jsx` | Aplikasi WARNOTO utama, single-file React (Vite). |
-| `WARNOTO_DOCS.md` | Dokumentasi status/roadmap/keputusan lintas sesi (historis, section-based). |
-| `supabase/schema.sql` | Skema Supabase lengkap — master data, katalog/stok, forecast ML, RAG, bot WA/Telegram, Material Cadang Health Index, Kapasitas Gudang. **Jalankan ulang file ini di Supabase SQL Editor setiap kali ada perubahan skema** (idempotent, aman diulang). |
-| `handoff-health-index-material-cadang/MATERIAL_CADANG_SPEC.md` | Spec fitur Material Cadang + addendum Health Index/AI Insight (**pindah lokasi** dari root sejak 2026-07-05). |
-| `handoff-health-index-material-cadang/TEMPLATE_IMPORT_MATERIAL_CADANG.xlsx` | Template upload Material Cadang. |
-| `WA_AI_AGENT_SPEC.md` | Spec awal integrasi AI Agent ke WhatsApp Cloud API (sebagian sudah tidak relevan — WA Bot terblokir Meta, lihat section 4). |
-| `GUDANG_CAPACITY_SPEC.md` | Spec fitur Kapasitas Gudang. |
+| `docs/SYSTEM_OVERVIEW.md` | Peta besar sistem: tujuan, modul utama, hubungan antar fitur, aturan global, link ke tiap spec fitur. |
+| `docs/WARNOTO_DOCS.md` | Dokumentasi status/roadmap/keputusan lintas sesi (historis, section-based). |
+| `supabase/schema.sql` | Skema Supabase lengkap — master data, katalog/stok, forecast ML, RAG, bot WA/Telegram, Material Cadang Health Index, Kapasitas Gudang, Alat Berat. **Jalankan ulang file ini di Supabase SQL Editor setiap kali ada perubahan skema** (idempotent, aman diulang). |
+| `docs/MATERIAL_CADANG_SPEC.md` | Spec fitur Material Cadang + addendum Health Index/AI Insight (**pindah ke `docs/`** sejak 2026-07-06, sebelumnya di `handoff-health-index-material-cadang/`). |
+| `docs/TEMPLATE_IMPORT_MATERIAL_CADANG.xlsx` | Template upload Material Cadang. |
+| `docs/WA_AI_AGENT_SPEC.md` | Spec awal integrasi AI Agent ke WhatsApp Cloud API (sebagian sudah tidak relevan — WA Bot terblokir Meta, lihat section 4). |
+| `docs/GUDANG_CAPACITY_SPEC.md` | Spec fitur Kapasitas Gudang. |
+| `docs/archive/` | Snapshot dokumentasi basi (2026-06-30) — cuma referensi historis, jangan dijadikan acuan status terkini. |
 | `scripts/bulk_create_users.mjs` + `scripts/users.template.csv` | Daftarkan banyak akun user sekaligus (Supabase Auth + profil) dari 1 CSV. |
 | `scripts/nightly_sync.mjs` | Cron malam hari, sync knowledge base bot WA/Telegram (GitHub Actions). |
 | `scripts/gen_form_telegram.py` | Generator PDF form pendaftaran whitelist Telegram Bot. |
@@ -147,9 +150,10 @@ Supabase SQL Editor (idempotent, aman diulang berkali-kali).
 ## 8. Prompt Pembuka untuk Sesi Claude Baru
 
 ```text
-Baca CLAUDE_HANDOFF.md dulu (section 4 = status terkini, section 5 = aturan kerja
-yang wajib diikuti). Project WARNOTO: single-file React app di App.jsx (~14.500
-baris), Vite + Supabase (Postgres + Auth + Edge Functions untuk bot Telegram/WA).
+Baca docs/SYSTEM_OVERVIEW.md dulu (peta besar sistem), lalu docs/CLAUDE_HANDOFF.md
+(section 4 = status terkini, section 5 = aturan kerja yang wajib diikuti). Project
+WARNOTO: single-file React app di App.jsx (~14.500 baris), Vite + Supabase
+(Postgres + Auth + Edge Functions untuk bot Telegram/WA).
 
 Jangan refactor besar tanpa diminta. Jangan overwrite katalog/stok/data existing
 tanpa merge-safe pattern (lihat section 4 "Migrasi Data" untuk aturan spesifik).

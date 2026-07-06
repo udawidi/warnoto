@@ -42,15 +42,22 @@ warnoto-project/
 │   ├── schema.sql       ← Skema Supabase lengkap (master data, forecast, RAG, bot, dst)
 │   └── functions/       ← Edge Functions: telegram-webhook (aktif), whatsapp-webhook (blocked Meta)
 ├── scripts/             ← bulk_create_users.mjs, nightly_sync.mjs, gen_form_telegram.py, dll
-└── WARNOTO_DOCS.md      ← Dokumentasi lengkap & planning (historis, section-based)
+└── docs/                ← Semua dokumentasi (handoff, spec fitur, arsip lama)
+    ├── CLAUDE_HANDOFF.md
+    ├── WARNOTO_DOCS.md
+    ├── MATERIAL_CADANG_SPEC.md
+    ├── WA_AI_AGENT_SPEC.md
+    ├── GUDANG_CAPACITY_SPEC.md
+    └── archive/         ← Snapshot dokumentasi basi (2026-06-30), cuma referensi historis
 ```
 
-Catatan dokumen tambahan:
-- `CLAUDE_HANDOFF.md` adalah pintu masuk singkat saat project dipindahkan/dilanjutkan di Claude — **baca ini duluan**, berisi status terkini dan aturan kerja wajib.
-- `handoff-health-index-material-cadang/MATERIAL_CADANG_SPEC.md` berisi spesifikasi fitur Material Cadang — **sudah diimplementasikan** (ABC/policy + Health Index + AI Insight, lihat addendum di bagian akhir dokumen), termasuk hidden Catalog Master PLN dan hidden SAP MARA reference.
-- `WA_AI_AGENT_SPEC.md` berisi spesifikasi integrasi AI Agent ke WhatsApp Cloud API — kode Edge Function **sudah selesai tapi terblokir Meta Business Verification**; channel bot AI yang aktif sekarang adalah **Telegram** (`supabase/functions/telegram-webhook`).
-- `GUDANG_CAPACITY_SPEC.md` berisi spesifikasi fitur Monitoring Kapasitas Gudang — **sudah diimplementasikan** dengan auto-backup ke Supabase (`warehouse_capacity`).
-- Planning migrasi stok SAP/Non-SAP dan histori TUG-15 ada di `WARNOTO_DOCS.md` bagian 20 — **sudah diimplementasikan** sebagai `MigrasiDataTab` dengan aturan keamanan review manual (lihat `CLAUDE_HANDOFF.md` bagian 4).
+Catatan dokumen tambahan (semua di folder `docs/`, kecuali README.md ini yang tetap di root):
+- `docs/SYSTEM_OVERVIEW.md` peta besar sistem — tujuan, modul utama, hubungan antar fitur, aturan global. **Baca ini duluan** untuk orientasi cepat.
+- `docs/CLAUDE_HANDOFF.md` adalah pintu masuk singkat saat project dipindahkan/dilanjutkan di Claude — baca setelah SYSTEM_OVERVIEW, berisi status terkini dan aturan kerja wajib.
+- `docs/MATERIAL_CADANG_SPEC.md` berisi spesifikasi fitur Material Cadang — **sudah diimplementasikan** (ABC/policy + Health Index + AI Insight, lihat addendum di bagian akhir dokumen), termasuk hidden Catalog Master PLN dan hidden SAP MARA reference.
+- `docs/WA_AI_AGENT_SPEC.md` berisi spesifikasi integrasi AI Agent ke WhatsApp Cloud API — kode Edge Function **sudah selesai tapi terblokir Meta Business Verification**; channel bot AI yang aktif sekarang adalah **Telegram** (`supabase/functions/telegram-webhook`).
+- `docs/GUDANG_CAPACITY_SPEC.md` berisi spesifikasi fitur Monitoring Kapasitas Gudang — **sudah diimplementasikan** dengan auto-backup ke Supabase (`warehouse_capacity`).
+- Planning migrasi stok SAP/Non-SAP dan histori TUG-15 ada di `docs/WARNOTO_DOCS.md` bagian 20 — **sudah diimplementasikan** sebagai `MigrasiDataTab` dengan aturan keamanan review manual (lihat `docs/CLAUDE_HANDOFF.md` bagian 4).
 
 ## Perbedaan Artifact vs Lokal
 
@@ -80,16 +87,16 @@ headers: {
 
 ## Versi
 
-- Status per **2026-07-05** — lihat `CLAUDE_HANDOFF.md` bagian 4 untuk detail terkini
+- Status per **2026-07-06** — lihat `docs/CLAUDE_HANDOFF.md` bagian 4 untuk detail terkini
 - Single-file React architecture, ~14.500 baris, storage Supabase (Postgres + Auth + Edge Functions) menggantikan localStorage-only
 - Login memakai Supabase Auth (bukan lagi password hardcoded)
-- Fitur Material Cadang (ABC/policy + Health Index + AI Insight) sudah diimplementasikan — spec di `handoff-health-index-material-cadang/MATERIAL_CADANG_SPEC.md`
-- Fitur Monitoring Kapasitas Gudang sudah diimplementasikan — spec di `GUDANG_CAPACITY_SPEC.md`
-- Migrasi stok SAP/Non-SAP + histori TUG-15 sudah diimplementasikan (`MigrasiDataTab`) — spec di `WARNOTO_DOCS.md` bagian 20
-- Menu Alat Berat tersedia untuk monitoring alat angkat/angkut multi-UPT, foto alat, peminjaman antar UPT dengan approval Asman pemilik, reminder overdue, histori peminjaman, dan ringkasan dashboard
-- Bot AI: **Telegram aktif** sebagai channel utama; WA Agent kodenya selesai (`WA_AI_AGENT_SPEC.md`) tapi terblokir Meta Business Verification
+- Fitur Material Cadang (ABC/policy + Health Index + AI Insight) sudah diimplementasikan — spec di `docs/MATERIAL_CADANG_SPEC.md`
+- Fitur Monitoring Kapasitas Gudang sudah diimplementasikan — spec di `docs/GUDANG_CAPACITY_SPEC.md`
+- Migrasi stok SAP/Non-SAP + histori TUG-15 sudah diimplementasikan (`MigrasiDataTab`) — spec di `docs/WARNOTO_DOCS.md` bagian 20
+- Menu Alat Berat tersedia untuk monitoring alat angkat/angkut multi-UPT, foto alat, peminjaman antar UPT dengan approval Asman pemilik, reminder overdue, histori peminjaman, dan ringkasan dashboard — sekarang auto-backup ke Supabase (`heavy_equipment`/`heavy_equipment_loans`)
+- Bot AI: **Telegram aktif** sebagai channel utama; WA Agent kodenya selesai (`docs/WA_AI_AGENT_SPEC.md`) tapi terblokir Meta Business Verification
 - Scan Barcode multi-device (`ScanPublicView`) sudah bisa dipakai banyak orang bersamaan tanpa bentrok (`stock_scan_log`)
-- Lihat `CLAUDE_HANDOFF.md` untuk status terkini dan `WARNOTO_DOCS.md` untuk roadmap/histori lengkap
+- Lihat `docs/CLAUDE_HANDOFF.md` untuk status terkini dan `docs/WARNOTO_DOCS.md` untuk roadmap/histori lengkap
 
 ## Kontak
 Widi — Admin Gudang PT PLN UPT Surabaya (Gudang Ketintang)

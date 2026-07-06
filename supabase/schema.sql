@@ -869,3 +869,46 @@ create policy "Authenticated read mc_ai_insights" on material_cadang_ai_insights
 create policy "Authenticated write mc_ai_insights" on material_cadang_ai_insights for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "Authenticated read mc_apply_audit" on material_cadang_apply_audit for select using (auth.role() = 'authenticated');
 create policy "Authenticated write mc_apply_audit" on material_cadang_apply_audit for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 21. HEAVY_EQUIPMENT / HEAVY_EQUIPMENT_LOANS — master alat berat + riwayat
+--     peminjaman antar-UPT (menu "Alat Berat & Peminjaman UPT" di App.jsx).
+--     Sebelumnya cuma localStorage/CLOUD (key pln_heavy_equipment_v1 /
+--     pln_heavy_equipment_loans_v1), ditemukan saat audit 2026-07-06 belum
+--     pernah disinkron ke Supabase sama sekali. Pola sama seperti katalog/
+--     stocks/warehouse_capacity: jsonb generik supaya bisa pakai
+--     syncMasterTable/loadMasterTable tanpa mapping kolom manual. Kolom
+--     tambahan di heavy_equipment_loans murni untuk filter/index (status,
+--     equipment_id, owner/requester UPT) — App.jsx tetap baca dari `data` jsonb.
+-- ────────────────────────────────────────────────────────────
+create table if not exists heavy_equipment (
+  id text primary key,              -- id alat, dibuat App.jsx
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint,
+  upt text
+);
+create index if not exists idx_heavy_equipment_upt on heavy_equipment(upt);
+
+alter table heavy_equipment enable row level security;
+drop policy if exists "Authenticated read heavy_equipment" on heavy_equipment;
+drop policy if exists "Authenticated write heavy_equipment" on heavy_equipment;
+create policy "Authenticated read heavy_equipment" on heavy_equipment for select using (auth.role() = 'authenticated');
+create policy "Authenticated write heavy_equipment" on heavy_equipment for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+create table if not exists heavy_equipment_loans (
+  id text primary key,              -- id loan, dibuat App.jsx
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint,
+  equipment_id text,
+  status text,
+  owner_upt text,
+  requester_upt text
+);
+create index if not exists idx_heavy_equipment_loans_equipment on heavy_equipment_loans(equipment_id);
+create index if not exists idx_heavy_equipment_loans_status on heavy_equipment_loans(status);
+
+alter table heavy_equipment_loans enable row level security;
+drop policy if exists "Authenticated read heavy_equipment_loans" on heavy_equipment_loans;
+drop policy if exists "Authenticated write heavy_equipment_loans" on heavy_equipment_loans;
+create policy "Authenticated read heavy_equipment_loans" on heavy_equipment_loans for select using (auth.role() = 'authenticated');
+create policy "Authenticated write heavy_equipment_loans" on heavy_equipment_loans for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

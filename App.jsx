@@ -2180,6 +2180,34 @@ export default function PLNWarehouse() {
   const [katalogPageSize, setKatalogPageSize] = useState(10);
   const [filterStatus, setFilterStatus] = useState("ALL");
 
+  // Filter jenis approval (TUG/Alat Berat/Stok/dst) + pagination tiap section —
+  // sebelumnya semua jenis approval digabung jadi 1 list panjang tanpa pemisah,
+  // susah dibaca kalau lagi banyak. 1 pageSize dropdown dipakai bareng semua
+  // section, tapi tiap section punya cursor halaman sendiri-sendiri.
+  const [approvalTypeFilter, setApprovalTypeFilter] = useState("ALL");
+  const [approvalPageSize, setApprovalPageSize] = useState(10);
+  const [approvalStokPage, setApprovalStokPage] = useState(1);
+  const [approvalStokGudangPage, setApprovalStokGudangPage] = useState(1);
+  const [approvalEditStokPage, setApprovalEditStokPage] = useState(1);
+  const [approvalHapusStokPage, setApprovalHapusStokPage] = useState(1);
+  const [approvalAlatBeratPage, setApprovalAlatBeratPage] = useState(1);
+  const [approvalHistoryPage, setApprovalHistoryPage] = useState(1);
+  useEffect(() => {
+    setApprovalStokPage(1); setApprovalStokGudangPage(1); setApprovalEditStokPage(1);
+    setApprovalHapusStokPage(1); setApprovalAlatBeratPage(1); setApprovalHistoryPage(1);
+  }, [approvalTypeFilter, approvalPageSize]);
+  function renderApprovalPager(page, setPage, totalItems) {
+    if (totalItems <= approvalPageSize) return null;
+    const totalPages = Math.max(1, Math.ceil(totalItems/approvalPageSize));
+    return (
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginTop:8}}>
+        <button style={{...sty.btn("ghost","sm")}} disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+        <span style={{fontSize:11,color:C.muted,padding:"0 4px"}}>Halaman {page} / {totalPages}</span>
+        <button style={{...sty.btn("ghost","sm")}} disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Berikutnya →</button>
+      </div>
+    );
+  }
+
   const [stockModal, setStockModal] = useState(null);
   const [txnModal, setTxnModal] = useState(false);
   const [editingDraftTxnId, setEditingDraftTxnId] = useState(null); // non-null = sedang edit draft TUG-9 hasil adopt ULTG
@@ -2313,7 +2341,7 @@ export default function PLNWarehouse() {
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote] = await Promise.all([
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote] = await Promise.all([
         seedMasterTableIfEmpty("uit", DEFAULT_UIT),
         seedMasterTableIfEmpty("upt", DEFAULT_UPT_LIST, u => ({ uit_id: u.uitId || null })),
         loadMasterTable("ultg").then(r => r || []),
@@ -2326,6 +2354,8 @@ export default function PLNWarehouse() {
         loadMasterTable("stocks"),
         loadMasterTable("warehouse_capacity"),
         loadMasterTable("warehouse_capacity_imports"),
+        loadMasterTable("heavy_equipment"),
+        loadMasterTable("heavy_equipment_loans"),
       ]);
       const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
@@ -2392,8 +2422,30 @@ export default function PLNWarehouse() {
       setStockCountList(csc || []);
       setApprovalHistoryList(cah || []);
       setMaturityAssessments(cma || []);
-      setHeavyEquipmentList(che || DEFAULT_HEAVY_EQUIPMENT);
-      setHeavyEquipmentLoans(chel || []);
+      // Alat Berat/Peminjaman UPT — Supabase (heavy_equipment/_loans) sekarang sumber
+      // utama kalau sudah ada isinya; kalau masih kosong (instalasi lama yang baru
+      // upgrade ke skema jsonb ini, atau baru pertama kali), dorong sekali data
+      // localStorage/DEFAULT yang ada ke Supabase supaya tidak hilang lagi (pola
+      // sama seperti katalog/stocks/warehouse_capacity di atas).
+      const heLocal = che || DEFAULT_HEAVY_EQUIPMENT;
+      const helLocal = chel || [];
+      if (cheRemote && cheRemote.length > 0) {
+        setHeavyEquipmentList(cheRemote);
+      } else {
+        setHeavyEquipmentList(heLocal);
+        if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null }));
+      }
+      if (chelRemote && chelRemote.length > 0) {
+        setHeavyEquipmentLoans(chelRemote);
+      } else {
+        setHeavyEquipmentLoans(helLocal);
+        if (helLocal.length > 0) syncMasterTable("heavy_equipment_loans", helLocal, l => ({
+          equipment_id: l.equipmentId || null,
+          status: l.status || null,
+          owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
+          requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
+        }));
+      }
       setMaterialCadangData(cmcd || { imports:[], analyses:[], applyHistory:[] });
       setMaterialCadangHealthData(cmch || { imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
       setMaterialCadangAiInsights(cmcai || { runs:[], materialInsights:[] });
@@ -2490,6 +2542,16 @@ export default function PLNWarehouse() {
     // ke Supabase tiap kali berubah (lihat schema.sql section 10-11).
     if (overrides.gudangCapacityList !== undefined) syncMasterTable("warehouse_capacity", gcap);
     if (overrides.gudangCapacityImports !== undefined) syncMasterTable("warehouse_capacity_imports", gcapi);
+    // Alat Berat/Peminjaman UPT — sebelumnya localStorage/CLOUD-only (ditemukan saat
+    // audit 2026-07-06), sekarang auto-backup ke Supabase tiap kali berubah (lihat
+    // schema.sql section 21).
+    if (overrides.heavyEquipmentList !== undefined) syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null }));
+    if (overrides.heavyEquipmentLoans !== undefined) syncMasterTable("heavy_equipment_loans", hel, l => ({
+      equipment_id: l.equipmentId || null,
+      status: l.status || null,
+      owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
+      requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
+    }));
 
     // Auto-sync warnoto_state + RAG (bot WA/Telegram) kalau ada perubahan stocks/txns —
     // debounced 90 detik supaya tidak spam Cohere embed API tiap 1 saveToCloud.
@@ -5017,7 +5079,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const pendingTxns = txns.filter(t=>t.status==="PENDING");
   const stockCountPendingCount = stockCountList.reduce((a,s)=>a+s.items.filter(i=>i.approval==="PENDING").length, 0);
   const heavyEquipmentPendingCount = heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)).length;
-  const heavyEquipmentOverdueCount = heavyEquipmentLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE").length;
+  // Overdue reminder discope ke UPT user sendiri (pemilik ATAU peminjam alat) — sebelumnya
+  // dihitung global tanpa filter sama sekali, jadi 1 alat overdue di UPT lain pun ikut muncul
+  // sebagai badge di menu Alat Berat untuk SEMUA login, termasuk yang tidak ada urusan sama sekali.
+  const myUptForHeavyEquipment = getUserUptScope(currentUser);
+  const heavyEquipmentOverdueCount = heavyEquipmentLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE" &&
+    (getHeavyEquipmentLoanOwnerUpt(l)===myUptForHeavyEquipment || getHeavyEquipmentLoanRequesterUpt(l)===myUptForHeavyEquipment)).length;
   const lowStocks = enrichedStocks.filter(s=>s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty);
   const totalVal = enrichedStocks.reduce((a,s)=>a+s.qty*s.price,0);
   const filteredStocks = enrichedStocks.filter(s=>{
@@ -6501,129 +6568,57 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         {/* APPROVAL — semua notifikasi approval (TUG, Lokasi/Blok, Pemindahan Stok, dkk) dikumpulkan di sini, dipisah per-bagian + riwayat di bawah */}
         {tab==="approval" && ["TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG"].includes(currentUser.role) && (
           <div>
-            {/* ── BAGIAN: Pemindahan Blok Data Stok — pindah Gudang oleh ADMIN, wajib approval TL ── */}
-            {currentUser.role==="TL" && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL") && (
-              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Blok Data Stok ({stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL").length})</div>
-                {stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL").map(s=>{
-                  const pemohon = users.find(u=>u.id===s.moveRequestedBy);
-                  const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
-                  return (
-                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                        <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
-                      </div>
-                      <div style={{display:"flex",gap:6}}>
-                        <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
-                        <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── BAGIAN: Pemindahan Gudang Data Stok — pindah Gudang oleh TL, wajib approval Asman UPT ── */}
-            {currentUser.role==="ASMAN" && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") && (
-              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN").length})</div>
-                {stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN").map(s=>{
-                  const pemohon = users.find(u=>u.id===s.moveRequestedBy);
-                  const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
-                  return (
-                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                        <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
-                      </div>
-                      <div style={{display:"flex",gap:6}}>
-                        <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
-                        <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* ── BAGIAN: Edit Data Stok (qty/harga/jenis) — khusus TL ── */}
-            {currentUser.role==="TL" && stocks.some(s=>s.editPending) && (
-              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>✏️ Edit Data Stok ({stocks.filter(s=>s.editPending).length})</div>
-                {stocks.filter(s=>s.editPending).map(s=>{
-                  const pemohon = users.find(u=>u.id===s.editRequestedBy);
-                  return (
-                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                        <div style={{fontSize:11,color:C.muted}}>
-                          Qty {fmtNum(s.qty)}→{fmtNum(s.pendingEditData.qty)} • Harga Rp{fmtNum(s.price)}→Rp{fmtNum(s.pendingEditData.price)} • Jenis {s.jenisBarang}→{s.pendingEditData.jenisBarang}<br/>
-                          Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.editRequestedAt)}
-                        </div>
-                      </div>
-                      <div style={{display:"flex",gap:6}}>
-                        <button style={sty.btn("primary","sm")} onClick={()=>approveStockEdit(s.id)}>✓ Setuju</button>
-                        <button style={sty.btn("danger","sm")} onClick={()=>rejectStockEdit(s.id)}>✕ Tolak</button>
+            {(()=>{
+              const tugCount = myPendingApprovals.length;
+              const capCount = ["TL","ASMAN"].includes(currentUser.role) ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0;
+              const lokasiCount = currentUser.role==="TL" ? lokasiList.filter(l=>l.status==="PENDING").length : 0;
+              const stokCount = currentUser.role==="TL"
+                ? stocks.filter(s=>(s.lokasiMovePending&&s.lokasiMoveApprover==="TL")||s.editPending||s.deletePending).length
+                : currentUser.role==="ASMAN" ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0;
+              const alatBeratCount = currentUser.role==="ASMAN" ? heavyEquipmentPendingCount : 0;
+              const total = tugCount+capCount+lokasiCount+stokCount+alatBeratCount;
+              const chips = [
+                {id:"ALL", label:"Semua", count:total},
+                {id:"TUG", label:"TUG", count:tugCount},
+                {id:"ALAT_BERAT", label:"Alat Berat", count:alatBeratCount},
+                {id:"STOK", label:"Pemindahan/Edit/Hapus Stok", count:stokCount},
+                {id:"LOKASI", label:"Lokasi/Blok", count:lokasiCount},
+                {id:"KAPASITAS", label:"Kapasitas Gudang", count:capCount},
+              ].filter(c=>c.id==="ALL"||c.count>0);
+              return (
+                <div style={{marginBottom:12}}>
+                  <h1 style={{fontSize:22,fontWeight:900}}>Approval</h1>
+                  <p style={{color:C.muted,fontSize:13,marginBottom:total>0?10:0}}>{total} item menunggu persetujuan atau tindakan kamu ({ROLES[currentUser.role]})</p>
+                  {/* Filter jenis approval + pageSize — tepat di bawah subtitle, langsung
+                      nyambung ke list di bawahnya (bukan 1 list panjang campur aduk semua jenis). */}
+                  {total>0 && (
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",paddingBottom:10,borderBottom:`1px solid ${C.border}`}}>
+                      {chips.map(c=>{
+                        const active = approvalTypeFilter===c.id;
+                        return (
+                          <button key={c.id} onClick={()=>setApprovalTypeFilter(c.id)}
+                            style={{display:"flex",alignItems:"center",gap:5,padding:"5px 12px",borderRadius:20,border:`1.5px solid ${active?C.accent:C.border}`,background:active?C.accent:"white",color:active?"white":C.muted,fontWeight:700,fontSize:11,cursor:"pointer"}}>
+                            <span>{c.label}</span>
+                            <span style={{fontWeight:900}}>({c.count})</span>
+                          </button>
+                        );
+                      })}
+                      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted,marginLeft:"auto"}}>
+                        Tampilkan
+                        <select style={{...sty.select,width:"auto",padding:"3px 6px",minHeight:"unset",fontSize:11}} value={approvalPageSize} onChange={e=>setApprovalPageSize(Number(e.target.value))}>
+                          {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+                        </select>
+                        item/halaman
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                  )}
+                </div>
+              );
+            })()}
 
-            {/* ── BAGIAN: Hapus Data Stok — khusus TL ── */}
-            {currentUser.role==="TL" && stocks.some(s=>s.deletePending) && (
-              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.red}`}}>
-                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🗑️ Hapus Data Stok ({stocks.filter(s=>s.deletePending).length})</div>
-                {stocks.filter(s=>s.deletePending).map(s=>{
-                  const pemohon = users.find(u=>u.id===s.deleteRequestedBy);
-                  return (
-                    <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                        <div style={{fontSize:11,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.deleteRequestedAt)}</div>
-                      </div>
-                      <div style={{display:"flex",gap:6}}>
-                        <button style={sty.btn("primary","sm")} onClick={()=>approveStockDelete(s.id)}>✓ Setuju</button>
-                        <button style={sty.btn("danger","sm")} onClick={()=>rejectStockDelete(s.id)}>✕ Tolak</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="TUG") && (
+              <div style={{fontWeight:800,fontSize:14,margin:"4px 0 10px"}}>🔄 Transaksi TUG</div>
             )}
-
-            {/* ── BAGIAN: Transaksi TUG (TUG-3/4/5/7/8/9/10, dkk) ── */}
-            {currentUser.role==="ASMAN" && heavyEquipmentLoans.some(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)) && (
-              <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-                <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🚜 Peminjaman Alat Berat ({heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)).length})</div>
-                {heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)).map(l=>{
-                  const alat = heavyEquipmentList.find(eq=>eq.id===l.equipmentId);
-                  const pemohon = users.find(u=>u.id===l.requestedBy);
-                  const ownerUpt = getHeavyEquipmentLoanOwnerUpt(l);
-                  const requesterUpt = getHeavyEquipmentLoanRequesterUpt(l);
-                  return (
-                    <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700}}>{alat?.nama||l.equipmentId} • {ownerUpt} → {requesterUpt}</div>
-                        <div style={{fontSize:11,color:C.muted}}>{getHeavyEquipmentLoanStartDate(l)} s/d {getHeavyEquipmentLoanReturnDate(l)} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
-                        <div style={{fontSize:11,color:C.text,marginTop:2}}>{getHeavyEquipmentLoanJobName(l)}{l.keperluan ? ` • ${l.keperluan}` : ""}</div>
-                      </div>
-                      <div style={{display:"flex",gap:6,flexShrink:0}}>
-                        <button style={sty.btn("primary","sm")} onClick={()=>approveHeavyEquipmentLoan(l.id)}>✓ Setuju</button>
-                        <button style={sty.btn("danger","sm")} onClick={()=>{
-                          const rejectReason = window.prompt("Alasan penolakan peminjaman alat?");
-                          if (rejectReason) rejectHeavyEquipmentLoan(l.id, rejectReason);
-                        }}>✕ Tolak</button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div style={{fontWeight:800,fontSize:14,margin:"4px 0 10px"}}>🔄 Transaksi TUG</div>
             <ApprovalTab
               pendingTxns={myPendingApprovals}
               stocks={enrichedStocks} katalogList={katalogList} lokasiList={lokasiList}
@@ -6645,7 +6640,156 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               adoptTUG5ULTG={adoptTUG5ULTG}
               openDraftTug9={openDraftTug9}
               heavyEquipmentPendingCount={currentUser.role==="ASMAN" ? heavyEquipmentPendingCount : 0}
+              approvalTypeFilter={approvalTypeFilter}
+              approvalPageSize={approvalPageSize}
             />
+
+            {/* ── BAGIAN: Pemindahan Blok Data Stok — pindah Gudang oleh ADMIN, wajib approval TL ── */}
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && currentUser.role==="TL" && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL") && (()=>{
+              const list = stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL");
+              const paged = list.slice((approvalStokPage-1)*approvalPageSize, approvalStokPage*approvalPageSize);
+              return (
+                <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Blok Data Stok ({list.length})</div>
+                  {paged.map(s=>{
+                    const pemohon = users.find(u=>u.id===s.moveRequestedBy);
+                    const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
+                    return (
+                      <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
+                          <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
+                        </div>
+                        <div style={{display:"flex",gap:6}}>
+                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
+                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {renderApprovalPager(approvalStokPage, setApprovalStokPage, list.length)}
+                </div>
+              );
+            })()}
+
+            {/* ── BAGIAN: Pemindahan Gudang Data Stok — pindah Gudang oleh TL, wajib approval Asman UPT ── */}
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && currentUser.role==="ASMAN" && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") && (()=>{
+              const list = stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN");
+              const paged = list.slice((approvalStokGudangPage-1)*approvalPageSize, approvalStokGudangPage*approvalPageSize);
+              return (
+                <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({list.length})</div>
+                  {paged.map(s=>{
+                    const pemohon = users.find(u=>u.id===s.moveRequestedBy);
+                    const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
+                    return (
+                      <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
+                          <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
+                        </div>
+                        <div style={{display:"flex",gap:6}}>
+                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
+                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {renderApprovalPager(approvalStokGudangPage, setApprovalStokGudangPage, list.length)}
+                </div>
+              );
+            })()}
+
+            {/* ── BAGIAN: Edit Data Stok (qty/harga/jenis) — khusus TL ── */}
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && currentUser.role==="TL" && stocks.some(s=>s.editPending) && (()=>{
+              const list = stocks.filter(s=>s.editPending);
+              const paged = list.slice((approvalEditStokPage-1)*approvalPageSize, approvalEditStokPage*approvalPageSize);
+              return (
+                <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>✏️ Edit Data Stok ({list.length})</div>
+                  {paged.map(s=>{
+                    const pemohon = users.find(u=>u.id===s.editRequestedBy);
+                    return (
+                      <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
+                          <div style={{fontSize:11,color:C.muted}}>
+                            Qty {fmtNum(s.qty)}→{fmtNum(s.pendingEditData.qty)} • Harga Rp{fmtNum(s.price)}→Rp{fmtNum(s.pendingEditData.price)} • Jenis {s.jenisBarang}→{s.pendingEditData.jenisBarang}<br/>
+                            Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.editRequestedAt)}
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:6}}>
+                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockEdit(s.id)}>✓ Setuju</button>
+                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockEdit(s.id)}>✕ Tolak</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {renderApprovalPager(approvalEditStokPage, setApprovalEditStokPage, list.length)}
+                </div>
+              );
+            })()}
+
+            {/* ── BAGIAN: Hapus Data Stok — khusus TL ── */}
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && currentUser.role==="TL" && stocks.some(s=>s.deletePending) && (()=>{
+              const list = stocks.filter(s=>s.deletePending);
+              const paged = list.slice((approvalHapusStokPage-1)*approvalPageSize, approvalHapusStokPage*approvalPageSize);
+              return (
+                <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.red}`}}>
+                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🗑️ Hapus Data Stok ({list.length})</div>
+                  {paged.map(s=>{
+                    const pemohon = users.find(u=>u.id===s.deleteRequestedBy);
+                    return (
+                      <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
+                          <div style={{fontSize:11,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.deleteRequestedAt)}</div>
+                        </div>
+                        <div style={{display:"flex",gap:6}}>
+                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockDelete(s.id)}>✓ Setuju</button>
+                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockDelete(s.id)}>✕ Tolak</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {renderApprovalPager(approvalHapusStokPage, setApprovalHapusStokPage, list.length)}
+                </div>
+              );
+            })()}
+
+            {/* ── BAGIAN: Peminjaman Alat Berat — khusus ASMAN ── */}
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="ALAT_BERAT") && currentUser.role==="ASMAN" && heavyEquipmentLoans.some(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l)) && (()=>{
+              const list = heavyEquipmentLoans.filter(l=>isPendingHeavyEquipmentLoan(l) && canApproveHeavyEquipmentLoan(currentUser, l));
+              const paged = list.slice((approvalAlatBeratPage-1)*approvalPageSize, approvalAlatBeratPage*approvalPageSize);
+              return (
+                <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🚜 Peminjaman Alat Berat ({list.length})</div>
+                  {paged.map(l=>{
+                    const alat = heavyEquipmentList.find(eq=>eq.id===l.equipmentId);
+                    const pemohon = users.find(u=>u.id===l.requestedBy);
+                    const ownerUpt = getHeavyEquipmentLoanOwnerUpt(l);
+                    const requesterUpt = getHeavyEquipmentLoanRequesterUpt(l);
+                    return (
+                      <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700}}>{alat?.nama||l.equipmentId} • {ownerUpt} → {requesterUpt}</div>
+                          <div style={{fontSize:11,color:C.muted}}>{getHeavyEquipmentLoanStartDate(l)} s/d {getHeavyEquipmentLoanReturnDate(l)} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
+                          <div style={{fontSize:11,color:C.text,marginTop:2}}>{getHeavyEquipmentLoanJobName(l)}{l.keperluan ? ` • ${l.keperluan}` : ""}</div>
+                        </div>
+                        <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          <button style={sty.btn("primary","sm")} onClick={()=>approveHeavyEquipmentLoan(l.id)}>✓ Setuju</button>
+                          <button style={sty.btn("danger","sm")} onClick={()=>{
+                            const rejectReason = window.prompt("Alasan penolakan peminjaman alat?");
+                            if (rejectReason) rejectHeavyEquipmentLoan(l.id, rejectReason);
+                          }}>✕ Tolak</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {renderApprovalPager(approvalAlatBeratPage, setApprovalAlatBeratPage, list.length)}
+                </div>
+              );
+            })()}
 
             {/* ── BAGIAN: Riwayat Approval (gabungan semua jenis, terbaru di atas) ── */}
             {(()=>{
@@ -6655,7 +6799,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 decidedBy: t.status==="REJECTED" ? t.rejectedBy : t.approvedBy,
                 decidedAt: t.status==="REJECTED" ? t.rejectedAt : t.approvedAt,
               }));
-              const combined = [...approvalHistoryList, ...histTUG].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt).slice(0,80);
+              const combinedAll = [...approvalHistoryList, ...histTUG].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt);
+              const combined = combinedAll.slice((approvalHistoryPage-1)*approvalPageSize, approvalHistoryPage*approvalPageSize);
               const typeLabel = {LOKASI:"📍 Lokasi/Blok", STOCK_MOVE:"📦 Pemindahan Stok", STOCK_EDIT:"✏️ Edit Stok", STOCK_DELETE:"🗑️ Hapus Stok", HEAVY_EQUIPMENT_LOAN:"🚜 Peminjaman Alat", TUG:"🔄 TUG"};
               const typeOrder = ["TUG","HEAVY_EQUIPMENT_LOAN","LOKASI","STOCK_MOVE","STOCK_EDIT","STOCK_DELETE"];
               const groupsByType = typeOrder
@@ -6666,8 +6811,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               combined.forEach(h=>{ if(!knownTypes.has(h.type)){ knownTypes.add(h.type); groupsByType.push({type:h.type, items:combined.filter(x=>x.type===h.type)}); } });
               return (
                 <div style={{...sty.card,marginTop:16}}>
-                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📜 Riwayat Approval</div>
-                  {combined.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
+                  <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📜 Riwayat Approval ({combinedAll.length})</div>
+                  {combinedAll.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
                   {groupsByType.map(g=>(
                     <div key={g.type} style={{marginBottom:14}}>
                       <div style={{fontSize:12,fontWeight:800,color:"#0098da",marginBottom:4}}>{typeLabel[g.type]||g.type} ({g.items.length})</div>
@@ -6687,6 +6832,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       })}
                     </div>
                   ))}
+                  {renderApprovalPager(approvalHistoryPage, setApprovalHistoryPage, combinedAll.length)}
                 </div>
               );
             })()}
@@ -10834,6 +10980,30 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
       {/* Header */}
       <h1 style={{fontSize:20,fontWeight:900,marginBottom:12}}>🚜 Alat Berat & Peminjaman UPT</h1>
 
+      {/* Blok khusus Overdue — selalu tampil di atas terlepas dari sub-tab/filter yang
+          sedang aktif, supaya alat yang telat dikembalikan tidak kelewat cuma jadi
+          angka badge di sidebar tanpa ada cara gampang buat langsung menindaklanjutinya. */}
+      {overdueCount > 0 && (
+        <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`,background:"#fef2f2"}}>
+          <div style={{fontWeight:800,fontSize:14,marginBottom:10,color:C.red}}>⚠️ Alat Berat Overdue ({overdueCount})</div>
+          {normalizedLoans.filter(l=>l.runtimeStatus==="OVERDUE").map(l=>{
+            const eq = equipmentList.find(e=>e.id===l.equipmentId);
+            const pemohon = users.find(u=>u.id===l.requestedBy);
+            return (
+              <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10,flexWrap:"wrap"}}>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700}}>{eq?.nama||l.equipmentId} • {l.ownerUpt} → {l.requesterUpt}</div>
+                  <div style={{fontSize:11,color:C.muted}}>Rencana kembali: {l.tanggalKembali||"-"} • {l.namaPekerjaan||"-"} • Diajukan oleh {pemohon?.name||"?"}</div>
+                </div>
+                {["ADMIN","TL","ASMAN"].includes(currentUser.role) && (
+                  <button style={sty.btn("success","sm")} onClick={()=>completeLoan(l.id)}>Tandai Kembali</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       {/* Filter UPT — hanya tampil di tab Peminjaman & Histori */}
       {activeTab === "loans" ? (
         <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap",marginBottom:12}}>
@@ -14622,23 +14792,47 @@ function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, 
   );
 }
 
-function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount }) {
+function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, approvalTypeFilter="ALL", approvalPageSize=10 }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Form, setTug7Form] = useState({});
   const [tug7Modal, setTug7Modal] = useState(null);
   const [rejectingCapId, setRejectingCapId] = useState(null);
   const [capReason, setCapReason] = useState("");
+  const [tugPage, setTugPage] = useState(1);
+  const [capPage, setCapPage] = useState(1);
+  const [lokasiPage, setLokasiPage] = useState(1);
+  useEffect(() => { setTugPage(1); setCapPage(1); setLokasiPage(1); }, [approvalTypeFilter, approvalPageSize]);
   const canApproveCap = ["TL","ASMAN"].includes(currentUser.role);
   const pendingCapacityImports = (gudangCapacityImports||[]).filter(i=>i.status==="PENDING_ASMAN");
   const pendingLokasiChanges = currentUser.role==="TL" ? (lokasiList||[]).filter(l=>l.status==="PENDING") : [];
-  // BUG DITEMUKAN 2026-07-04: panel "Pemindahan Blok Data Stok"/"Edit Data
-  // Stok"/"Hapus Data Stok" dirender inline SEBELUM <ApprovalTab> (lihat
-  // App.jsx ~line 6488-6520), tapi hitungan "X item menunggu persetujuan" dan
-  // status kosong "Semua sudah diproses" di ApprovalTab TIDAK tahu soal
-  // panel-panel itu — jadi kelihatan kontradiktif (badge bilang 0/"selesai"
-  // padahal ada 1 item nyata di atasnya) dan sidebar juga tidak ikut kasih
-  // notifikasi badge untuk ini. Tambahkan ke hitungan supaya konsisten.
+  const showTug = approvalTypeFilter==="ALL"||approvalTypeFilter==="TUG";
+  const showCap = approvalTypeFilter==="ALL"||approvalTypeFilter==="KAPASITAS";
+  const showLokasi = approvalTypeFilter==="ALL"||approvalTypeFilter==="LOKASI";
+  const pagedTxns = showTug ? pendingTxns.slice((tugPage-1)*approvalPageSize, tugPage*approvalPageSize) : [];
+  const pagedCapacityImports = showCap ? pendingCapacityImports.slice((capPage-1)*approvalPageSize, capPage*approvalPageSize) : [];
+  const pagedLokasiChanges = showLokasi ? pendingLokasiChanges.slice((lokasiPage-1)*approvalPageSize, lokasiPage*approvalPageSize) : [];
+  function renderPager(page, setPage, totalItems) {
+    if (totalItems <= approvalPageSize) return null;
+    const totalPages = Math.max(1, Math.ceil(totalItems/approvalPageSize));
+    return (
+      <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginTop:8,marginBottom:12}}>
+        <button style={{...sty.btn("ghost","sm")}} disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+        <span style={{fontSize:11,color:C.muted,padding:"0 4px"}}>Halaman {page} / {totalPages}</span>
+        <button style={{...sty.btn("ghost","sm")}} disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Berikutnya →</button>
+      </div>
+    );
+  }
+  // BUG DITEMUKAN 2026-07-04 (fix layout 2026-07-06): panel "Pemindahan Blok/
+  // Gudang Data Stok"/"Edit Data Stok"/"Hapus Data Stok"/"Peminjaman Alat
+  // Berat" dirender inline SESUDAH <ApprovalTab> (lihat App.jsx ~line 6510-
+  // 6650, ApprovalTab sengaja dipanggil PALING AWAL supaya judul "Approval"
+  // tidak tertimbun di bawah panel-panel itu), tapi hitungan "X item menunggu
+  // persetujuan" dan status kosong "Semua sudah diproses" di ApprovalTab
+  // TIDAK tahu soal panel-panel itu — jadi kelihatan kontradiktif (badge
+  // bilang 0/"selesai" padahal ada 1 item nyata di bawahnya) dan sidebar juga
+  // tidak ikut kasih notifikasi badge untuk ini. Tambahkan ke hitungan supaya
+  // konsisten.
   const pendingStockMoves = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL")
     : currentUser.role==="ASMAN" ? (stocks||[]).filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") : [];
   const pendingStockEdits = currentUser.role==="TL" ? (stocks||[]).filter(s=>s.editPending) : [];
@@ -14694,17 +14888,12 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
 
   return (
     <div>
-      <div style={{marginBottom:16}}>
-        <h1 style={{fontSize:22,fontWeight:900}}>Approval</h1>
-        <p style={{color:C.muted,fontSize:13}}>{pendingTxns.length + pendingCapacityImports.length + pendingLokasiChanges.length + pendingStockCount + (heavyEquipmentPendingCount||0)} item menunggu persetujuan atau tindakan kamu ({ROLES[currentUser.role]})</p>
-      </div>
-
       {pendingTxns.length===0 && pendingCapacityImports.length===0 && pendingLokasiChanges.length===0 && pendingStockCount===0 && !(heavyEquipmentPendingCount>0) ? (
         <div style={{...sty.card,textAlign:"center",padding:40}}>
           <div style={{fontSize:48,marginBottom:12}}>✅</div>
           <div style={{fontSize:16,fontWeight:700}}>Semua sudah diproses</div>
         </div>
-      ) : pendingTxns.map(t=>{
+      ) : !showTug ? null : pagedTxns.map(t=>{
         const creator = users.find(u=>u.id===t.createdBy)||{};
         const isTUG8Draft = t.docType==="TUG8" && t.stage==="DRAFT_TUG8";
         const isTUG7Draft = t.docType==="TUG7" && t.stage==="DRAFT_UIT";
@@ -14795,9 +14984,10 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
           </div>
         );
       })}
+      {showTug && renderPager(tugPage, setTugPage, pendingTxns.length)}
 
       {/* Approval Import Kapasitas Gudang — TL/Asman saja */}
-      {canApproveCap && pendingCapacityImports.map(imp=>(
+      {showCap && canApproveCap && pagedCapacityImports.map(imp=>(
         <div key={imp.id} style={{...sty.card,marginBottom:12,borderLeft:"4px solid #f59e0b"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
             <div>
@@ -14846,9 +15036,10 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
           )}
         </div>
       ))}
+      {showCap && canApproveCap && renderPager(capPage, setCapPage, pendingCapacityImports.length)}
 
       {/* Approval Perubahan Lokasi/Blok — TL saja */}
-      {pendingLokasiChanges.map(l=>{
+      {showLokasi && pagedLokasiChanges.map(l=>{
         const pemohon = users.find(u=>u.id===l.requestedBy);
         const aksiLabel = {ADD:"Tambah Blok Baru",EDIT:"Ubah Data Blok",DELETE:"Hapus Blok"}[l.pendingAction]||l.pendingAction;
         return (
@@ -14867,6 +15058,7 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
           </div>
         );
       })}
+      {showLokasi && renderPager(lokasiPage, setLokasiPage, pendingLokasiChanges.length)}
 
       {/* TUG-7 lengkapi modal */}
       {tug7Modal && (
