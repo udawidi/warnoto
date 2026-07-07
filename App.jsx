@@ -859,6 +859,41 @@ function parseSAPRowsFromCSV(text) {
 // mapSAPRow di bawah juga), TIDAK PEDULI ada kolom tambahan/beda apa pun selain itu. Sheet yang
 // sama sekali bukan format SAP (mis. sheet "Ringkasan"/catatan tanpa kolom Material) otomatis tetap
 // terlewati karena tidak punya kolom itu.
+// Baca file "USULAN_PENCOCOKAN_MARA..." (hasil kerja review MARA yang disiapkan di luar
+// aplikasi, lihat outputs/warnoto-nonstock-review/) — dipakai sebagai starting point antrian
+// "Tambah Material Ditemukan" di Opname Non-SAP, BUKAN jalur upload-langsung-masuk-sistem.
+// Qty di file ini SENGAJA tidak dipercaya mentah-mentah — tetap wajib dihitung fisik ulang
+// saat direview satu per satu di opname (lihat submitTambahMaterial), file cuma isi kandidat
+// nama + kode MARA supaya Admin tidak perlu ketik/cari ulang dari nol.
+function parseUsulanPencocokanXLSX(arrayBuffer) {
+  const wb = XLSX.read(arrayBuffer, { type: "array" });
+  const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes("usulan") || n.toLowerCase().includes("pencocokan")) || wb.SheetNames.find(n => n.toLowerCase() !== "readme") || wb.SheetNames[0];
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+  return raw.map((r, i) => {
+    const nama = String(r["Nama Material"] || "").trim();
+    if (!nama) return null;
+    const kandidatStr = String(r["Kandidat MARA (top 3)"] || "");
+    // PENTING: pisahkan antar-kandidat pakai "; " (titik-koma + SPASI), BUKAN ";" polos —
+    // nama MARA sendiri sering mengandung ";" tanpa spasi (mis. "CUB ACC;HEAT SHRINK TUBE"),
+    // kalau split(";") mentah nama itu ikut kepotong jadi cuma "CUB ACC" (bug ditemukan &
+    // diperbaiki 2026-07-08 setelah tes langsung ke file asli).
+    const firstCandidate = kandidatStr.split("; ")[0] || "";
+    const m = firstCandidate.match(/^\s*(\S+)\s*\|\s*([^(]+)/);
+    const skor = String(r["Skor vs MARA"] || "").trim().toUpperCase();
+    return {
+      id: `Q-${i}-${nama.slice(0, 10)}`,
+      nama,
+      satuanFile: String(r["Satuan"] || "").trim(),
+      katalogAsli: String(r["Katalog Asli (AppSheet)"] || "").trim(),
+      qtyFile: r["Qty (Jumlah Stok)"] ?? "",
+      skor: skor || "TIDAK_ADA_KANDIDAT",
+      maraCode: (skor === "KUAT" || skor === "LEMAH") && m ? m[1].trim() : null,
+      maraNama: (skor === "KUAT" || skor === "LEMAH") && m ? m[2].trim() : null,
+      status: "PENDING", // "PENDING" | "DONE" | "SKIP"
+    };
+  }).filter(Boolean);
+}
+
 function parseSAPRowsFromXLSX(arrayBuffer) {
   const wb = XLSX.read(arrayBuffer, { type: "array" });
   let allRaw = [];
@@ -10846,6 +10881,29 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
   const [tambahBusy, setTambahBusy] = useState(false);
   const [qrResult, setQrResult] = useState(null); // katalog object baru, tampilkan label QR setelah simpan
 
+  // Antrian dari file "Usulan Pencocokan MARA" yang di-upload — starting point untuk
+  // "Tambah Material Ditemukan", BUKAN jalur upload-langsung-masuk-sistem. Tiap baris tetap
+  // wajib direview satu per satu (qty fisik + lokasi diisi ulang saat itu), cuma nama/kandidat
+  // kode MARA-nya sudah keisi duluan supaya Admin tidak perlu cari dari nol.
+  const [tambahQueue, setTambahQueue] = useState([]);
+  const [queueUploadBusy, setQueueUploadBusy] = useState(false);
+  const [activeQueueId, setActiveQueueId] = useState(null); // baris antrian yang sedang diproses di modal
+
+  async function handleUploadUsulan(e) {
+    const f = e.target.files[0]; if (!f) return;
+    setQueueUploadBusy(true);
+    try {
+      const buf = await f.arrayBuffer();
+      const rows = parseUsulanPencocokanXLSX(buf);
+      if (!rows.length) { showToast("File tidak punya baris yang bisa dibaca (cek sheet 'usulan_pencocokan').","error"); }
+      else { setTambahQueue(rows); showToast(`✅ ${rows.length} baris usulan dimuat — proses satu per satu lewat daftar di bawah.`); }
+    } catch (err) {
+      showToast("Gagal membaca file: " + err.message, "error");
+    }
+    setQueueUploadBusy(false);
+    e.target.value = "";
+  }
+
   async function searchMaraForOpname(q) {
     setMaraQuery(q); setMaraPicked(null);
     if (!q || q.trim().length < 2) { setMaraResults([]); return; }
@@ -10859,9 +10917,13 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
     setMaraResults(error ? [] : (data || []));
   }
 
-  function openTambahModal() {
-    setTambahForm({ nama:"", satuan:"", qty:"", gudangId:"", lokasiId:"", foto:null });
-    setMaraQuery(""); setMaraResults([]); setMaraPicked(null); setMaraSkip(false);
+  function openTambahModal(queueItem) {
+    setTambahForm({ nama:queueItem?.nama||"", satuan:queueItem?.satuanFile||"", qty:"", gudangId:"", lokasiId:"", foto:null });
+    setMaraQuery(""); setMaraResults([]); setMaraSkip(false);
+    // Kalau baris antrian sudah punya kandidat MARA (skor KUAT/LEMAH), langsung pre-fill —
+    // Admin tetap bisa tap "Ganti" kalau ternyata salah/mau cari ulang.
+    setMaraPicked(queueItem?.maraCode ? { kode_material: queueItem.maraCode, nama: queueItem.maraNama, satuan: queueItem.satuanFile } : null);
+    setActiveQueueId(queueItem?.id || null);
     setQrResult(null);
     setTambahModal(true);
   }
@@ -10895,7 +10957,14 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
       }],
     }));
     setQrResult(newKatalog);
+    if (activeQueueId) {
+      setTambahQueue(q => q.map(item => item.id === activeQueueId ? { ...item, status: "DONE" } : item));
+    }
     showToast(`✅ "${newKatalog.name}" tersimpan (${newKatalog.katalog})`);
+  }
+
+  function skipQueueItem(id) {
+    setTambahQueue(q => q.map(item => item.id === id ? { ...item, status: "SKIP" } : item));
   }
 
   // Scan QR label material (Kartu Gantung TUG-2) untuk LOMPAT ke baris yang benar di tabel opname
@@ -11070,11 +11139,56 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
           )}
         </div>
 
-        {/* Tambah Material Ditemukan — cuma Opname Non-SAP, sambil opname jalan di lapangan */}
+        {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP */}
         {!isSAP && !isReadOnly && (
-          <button style={{...sty.btn("primary"),width:"100%",marginBottom:14,fontSize:14,padding:"12px 0"}} onClick={openTambahModal}>
-            ➕ Tambah Material Ditemukan
-          </button>
+          <>
+            <div style={{display:"flex",gap:8,marginBottom:tambahQueue.length?8:14}}>
+              <button style={{...sty.btn("primary"),flex:1,fontSize:14,padding:"12px 0"}} onClick={()=>openTambahModal()}>
+                ➕ Tambah Material Ditemukan
+              </button>
+              <label style={{...sty.btn("ghost"),flex:1,fontSize:14,padding:"12px 0",textAlign:"center",cursor:queueUploadBusy?"default":"pointer",opacity:queueUploadBusy?0.6:1}}>
+                {queueUploadBusy?"Memuat...":"📂 Upload Usulan Pencocokan"}
+                <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
+              </label>
+            </div>
+
+            {/* Antrian dari file usulan — tiap baris tetap wajib direview manual (qty+lokasi
+                diisi ulang saat itu), file cuma pre-fill nama & kandidat kode MARA-nya. */}
+            {tambahQueue.length>0 && (
+              <div style={{...sty.card,marginBottom:14,padding:12}}>
+                <div style={{fontSize:12,fontWeight:800,marginBottom:8}}>
+                  📋 Antrian dari File ({tambahQueue.filter(q=>q.status==="DONE").length}/{tambahQueue.length} diproses)
+                </div>
+                <div style={{fontSize:10,color:C.muted,marginBottom:10}}>
+                  Qty di file ini data lama (AppSheet) — bukan angka final. Tetap wajib dihitung fisik ulang & isi lokasi tiap kali diproses.
+                </div>
+                <div style={{maxHeight:280,overflowY:"auto"}}>
+                  {tambahQueue.map(q=>(
+                    <div key={q.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderBottom:`1px solid ${C.border}`,opacity:q.status!=="PENDING"?0.5:1}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.nama}</div>
+                        <div style={{fontSize:9,color:C.muted}}>
+                          Katalog asli: {q.katalogAsli||"-"} • Qty file: {q.qtyFile||"-"} •{" "}
+                          <span style={{fontWeight:700,color:q.skor==="KUAT"?"#166534":q.skor==="LEMAH"?"#92400e":"#991b1b"}}>{q.skor}</span>
+                          {q.maraCode && ` (${q.maraCode})`}
+                        </div>
+                      </div>
+                      {q.status==="PENDING" ? (
+                        <div style={{display:"flex",gap:4,flexShrink:0}}>
+                          <button style={sty.btn("primary","sm")} onClick={()=>openTambahModal(q)}>Proses</button>
+                          <button style={sty.btn("ghost","sm")} onClick={()=>skipQueueItem(q.id)}>Lewati</button>
+                        </div>
+                      ) : (
+                        <span style={{fontSize:10,fontWeight:700,color:q.status==="DONE"?C.green:C.muted,flexShrink:0}}>
+                          {q.status==="DONE"?"✅ Selesai":"⏭️ Dilewati"}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Upload CSV SAP */}
@@ -11360,7 +11474,7 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
                   <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:16}}>
                     Screenshot/print gambar QR di atas, tempel ke barang fisik sekarang juga.
                   </div>
-                  <button style={{...sty.btn("primary"),width:"100%",marginBottom:8}} onClick={()=>{ setTambahModal(false); setQrResult(null); }}>
+                  <button style={{...sty.btn("primary"),width:"100%",marginBottom:8}} onClick={()=>{ setTambahModal(false); setQrResult(null); setActiveQueueId(null); }}>
                     ➡️ Lanjut ke Material Berikutnya
                   </button>
                   <button style={{...sty.btn("ghost"),width:"100%"}} onClick={()=>setQrResult(null)}>← Lihat Ulang Form</button>
@@ -11368,6 +11482,14 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
               ) : (
                 <>
                   <h3 style={{fontSize:16,fontWeight:800,marginBottom:14}}>➕ Tambah Material Ditemukan</h3>
+                  {activeQueueId && (() => {
+                    const q = tambahQueue.find(x=>x.id===activeQueueId);
+                    return q ? (
+                      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:10,marginBottom:12,fontSize:11}}>
+                        📋 Dari file usulan — Katalog asli AppSheet: <b>{q.katalogAsli||"-"}</b>, Qty file (data lama, cek ulang fisik): <b>{q.qtyFile||"-"}</b>
+                      </div>
+                    ) : null;
+                  })()}
                   <div style={{marginBottom:10}}>
                     <label style={sty.label}>Nama Material *</label>
                     <input style={sty.input} value={tambahForm.nama} onChange={e=>{setTambahForm(f=>({...f,nama:e.target.value})); searchMaraForOpname(e.target.value);}} placeholder="Ketik nama, sistem cari otomatis ke MARA..."/>
@@ -11427,7 +11549,7 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
                     {tambahForm.foto && <img src={tambahForm.foto} alt="preview" style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius:8,marginTop:8}}/>}
                   </div>
                   <div style={{display:"flex",gap:10}}>
-                    <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTambahModal(false)} disabled={tambahBusy}>Batal</button>
+                    <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTambahModal(false);setActiveQueueId(null);}} disabled={tambahBusy}>Batal</button>
                     <button style={{...sty.btn("primary"),flex:2,opacity:tambahBusy?0.6:1}} onClick={submitTambahMaterial} disabled={tambahBusy}>{tambahBusy?"Menyimpan...":"💾 Simpan & Lihat QR"}</button>
                   </div>
                 </>
