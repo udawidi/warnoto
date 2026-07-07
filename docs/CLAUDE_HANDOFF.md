@@ -3,8 +3,9 @@
 Dokumen ini adalah pintu masuk singkat saat project WARNOTO dipindahkan/dilanjutkan
 di sesi Claude yang berbeda (termasuk Claude Code CLI di terminal). Baca ini duluan.
 
-**Handoff terakhir diperbarui: 2026-07-06** (menggantikan versi 5 Juli 2026 — ada 3
-commit signifikan tanggal 6 Juli yang belum terangkum, lihat bagian 4 di bawah).
+**Handoff terakhir diperbarui: 2026-07-08** (menggantikan versi 6 Juli 2026 — sesi 7-8
+Juli sangat besar: akun/login/SUPERADMIN, UI mobile, dan fitur baru Opname Non-SAP,
+lihat bagian 4 di bawah).
 
 ---
 
@@ -61,7 +62,100 @@ Data terkontrol (lihat section 4).
 
 ---
 
-## 4. STATUS TERKINI (2026-07-05) — baca ini sebelum ubah apa pun
+## 4. STATUS TERKINI (2026-07-08) — baca ini sebelum ubah apa pun
+
+### ✅ SELESAI — Deploy ke Vercel (`warnoto.vercel.app`), auto-deploy dari GitHub (2026-07-08)
+- Project sudah terhubung Vercel via GitHub (dashboard Vercel, bukan file `vercel.json` — tidak ada
+  file itu di repo). **Tiap `git push` ke `main` otomatis re-deploy** — tidak perlu langkah manual
+  lagi setelah ini.
+- Env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, `VITE_GROQ_API_KEY`,
+  `VITE_COHERE_API_KEY`) diisi manual di dashboard Vercel (project settings), bukan dari `.env` lokal
+  (`.env` sengaja tidak masuk git).
+- **Insiden**: sempat ada 1 sesi kerja besar (fitur Opname Non-SAP) yang lupa di-commit sebelum
+  dilaporkan "belum tampil di Vercel" — ternyata memang belum pernah di-push sama sekali. Pelajaran:
+  kalau user lapor fitur "belum tampil" di Vercel, **cek `git status`/`git log origin/main` dulu**
+  sebelum menebak penyebab lain.
+
+### ✅ SELESAI — Fitur Akun/Login besar: ganti password mandiri, kuota role, SUPERADMIN (2026-07-07/08)
+Spec detail & histori keputusan lengkap ada di **`docs/AKUN_LOGIN_SPEC.md`** — baca itu kalau perlu
+detail, ringkasan di sini saja:
+- **Ganti password mandiri**: tombol 🔑 di sidebar (semua role), re-auth password lama wajib sebelum
+  `updateUser`. Skenario "lupa password/reset tanpa login" DITUTUP — tetap manual lewat Admin.
+- **Kuota role per UPT & UIT** (hard limit): 1 MANAGER/ASMAN/TL/ADMIN/PENGADAAN per UPT, 1
+  ADMIN_UIT/MGR_LOGISTIK_UIT/PENGADAAN per UIT — ditegakkan di `admin-create-user`/`admin-update-user`
+  (Edge Functions, sudah dideploy) + `scripts/bulk_create_users.mjs`. Kolom `uit_id` baru di `profiles`
+  (migration `add_uit_id_to_profiles`, sudah diterapkan ke Supabase).
+- **Role SUPERADMIN** (full-access, bypass approval berjenjang): helper terpusat `hasRole(currentUser,
+  ...allowedRoles)` (App.jsx, dekat const `ROLES`) — ~140 titik pengecekan role di-refactor pakai ini
+  (regex-based, diverifikasi build tiap tahap) + beberapa compound-scope gate ditambal manual
+  (`canApproveHeavyEquipmentLoan`, `approveTUG5_MgrULTG`, `approveTxn`/`rejectTxn`, dst). Akun pertama
+  **HARUS dibuat manual lewat SQL/Supabase Dashboard** (tidak bisa lewat UI Kelola Akun — sengaja
+  diblok). Sudah ada 1 akun aktif (username `super`).
+- **Bug lama ke-expose & diperbaiki**: `DashboardManager` tidak pernah menerima prop `currentUser`
+  (asimetri dari `DashboardAsman`), dan `isManager` di `HeavyEquipmentDashboardSummary` tidak pernah
+  didefinisikan (seharusnya `isMSB`) — baru ketahuan karena SUPERADMIN adalah role pertama yang lolos
+  ke cabang render `hasRole(...,"MANAGER")` sekaligus `"ASMAN"`. Sudah di-fix.
+- **⚠️ CATATAN DESAIN**: karena SUPERADMIN lolos `hasRole` untuk MANAGER dan ASMAN sekaligus, tab
+  Dashboard kemungkinan menampilkan `DashboardManager` DAN `DashboardAsman` bertumpuk untuk akun
+  SUPERADMIN — belum diputuskan apakah ini perlu dibatasi jadi 1 dashboard saja.
+
+### ✅ SELESAI — UI Design Review + perbaikan mobile (2026-07-08)
+User laporan: tampilan HP "sangat tidak enak dilihat dan berantakan". Dibuatkan **agent baru
+`.claude/agents/ui-design-reviewer.md`** (belum terdaftar otomatis di sesi yang membuatnya — baru
+kepakai mulai sesi Claude berikutnya) + log temuan **`docs/UI_DESIGN_REVIEW_LOG.md`**.
+- **Akar masalah**: WARNOTO tidak pakai CSS/media query sama sekali — responsif 100% manual lewat
+  1 variabel `isMobile` yang cuma dipakai di segelintir tempat (nav, `sty.btn/input/select`). Sisanya
+  pakai lebar piksel tetap.
+- **Sudah diperbaiki**: 28 modal ditambah `maxWidth:"100%"` (dulu overflow di semua HP), 6 grid
+  KPI/dashboard diganti `gridTemplateColumns:"repeat(auto-fit,minmax(Npx,1fr))"` (CSS murni, tidak
+  perlu isMobile), tabel item Opname sembunyikan 3 kolom kurang esensial di HP, 8 tombol Edit/Hapus
+  ditambah `title=`.
+- **Belum dikerjakan** (dicatat di log, bukan diabaikan): layout kartu (card-based) untuk tabel Stock
+  Opname/Data Stok, 16 dari 17 tabel `overflowX:"auto"` lain belum disentuh, kontras warna, ~50 tombol
+  ikon sisanya belum diaudit manual. **Belum pernah ada screenshot visual asli** — semua analisis dari
+  baca kode (tidak ada `chromium-cli`/Playwright terpasang di environment ini saat itu).
+
+### ✅ SELESAI — Fitur baru: Opname Non-SAP diperkuat (2026-07-07/08)
+Alur "+ Opname Non-SAP" yang lama cuma bisa hitung ulang qty material yang SUDAH terdaftar. Sekarang:
+- **"➕ Tambah Material Ditemukan"**: barang fisik yang belum tercatat sama sekali. Cari kode MARA
+  langsung dari HP (reuse pola `searchMaraCatalog` yang sudah ada di form Master Katalog), isi
+  qty+lokasi (**wajib**, bukti opname fisik)+foto → langsung dapat **label QR** (reuse
+  `KartuGantungModal`/`api.qrserver.com` yang sudah ada, TIDAK bikin sistem QR baru) untuk ditempel
+  di tempat.
+- **Opsi A (disengaja)**: katalog+stok dibuat LANGSUNG saat "Simpan" di lapangan (status
+  `pendingOpnameId` terisi = "Pending Approval"), BUKAN nunggu Manager approve seperti pola lama
+  material baru SAP — supaya QR bisa dicetak & ditempel saat itu juga. Manager approve nanti cuma
+  melepas flag `pendingOpnameId` (fungsi `addNonStockFoundItem` + update di `approveOpname_Manager`,
+  App.jsx).
+- **Kode fallback** kalau tidak ketemu di MARA: `NS-<UPT>-<urut 4 digit>` (`generateNonStockFallbackCode`).
+- **"📂 Upload Usulan Pencocokan"**: upload file Excel hasil kerja cocok-MARA yang sudah disiapkan
+  sebelumnya (`parseUsulanPencocokanXLSX`) → jadi antrian checklist, tiap baris tetap direview manual
+  lewat form yang SAMA (qty+lokasi tetap wajib diverifikasi ulang, TIDAK dipercaya mentah dari file).
+  Ada tombol "✕ Batal" untuk menutup antrian (material yang sudah DONE tidak ikut terhapus).
+  - **Bug ditemukan & diperbaiki saat testing**: pemisah antar-kandidat MARA di teks review pakai `";"`
+    polos, padahal nama MARA sendiri sering mengandung `;` tanpa spasi — bikin nama kandidat kepotong.
+    Fix: split by `"; "` (titik-koma+spasi), bukan `";"` saja.
+- **Master Katalog**: filter chip baru "⚠️ Belum Dicocokkan MARA (n)" + badge "⏳ Pending Approval" —
+  reuse form Edit Katalog yang sudah ada (sudah punya search MARA) sebagai jalur "cocokkan ulang".
+
+### ⏳ PENDING — Migrasi data Non-Stock UPT Surabaya (lanjutan, 2026-07-07/08)
+- Sumber: `outputs/warnoto-asset-backup/master_data_json/listMaterial.json` (Valuasi=="NON-STOCK"),
+  difilter UPT Surabaya + qty>0 → **40 baris siap diproses**.
+- File review: `outputs/warnoto-nonstock-review/USULAN_PENCOCOKAN_MARA_NONSTOCK_UPT_SURABAYA.xlsx`
+  (sheet `usulan_pencocokan`) — 34 KUAT, 5 LEMAH, 1 tanpa kandidat MARA. **Siap di-upload lewat fitur
+  "Upload Usulan Pencocokan" di atas** — belum pernah benar-benar dijalankan/diproses satu per satu.
+- **Jangan bingung dengan** `outputs/warnoto-history-clean-upt-surabaya/WARNOTO_History_TUG_Clean_Import_UPT_Surabaya.xlsx`
+  (sheet `master_material_clean`/`mapping_material_review`) — itu proyek TERPISAH (histori transaksi
+  TUG untuk forecasting `tug15_history`, bukan Non-Stock). Sudah dicek 2026-07-08: 606 baris di situ
+  join 606/606 balik ke `listMaterial.json` yang sama, dan kalau difilter Non-Stock+qty>0 hasilnya
+  **identik** 40 baris — bukan data yang lebih besar/baru, cuma kode katalognya lebih rapi (nol di
+  depan dihapus). Diputuskan TIDAK regenerate file usulan untuk manfaat kosmetik itu.
+- 220 baris Non-Stock sisanya (4 UPT lain: Gresik 169, Probolinggo 9, Madiun 5, Bali 3) — **prioritas
+  ditunda**, user fokus beresin UPT Surabaya dulu.
+- **Belum ada satu baris pun yang dieksekusi ke Supabase** untuk data Non-Stock ini — masih tahap file
+  review + fitur upload siap pakai, proses per-baris fisik belum pernah dijalankan sungguhan.
+
+---
 
 ### ✅ SELESAI — Bug KRITIS: submit Stock Opname ke Asman hilang diam-diam (race condition, 2026-07-07)
 Lanjutan investigasi "tidak masuk ke approval Asman" — setelah section Approval terpusat ditambah
@@ -421,6 +515,8 @@ Sempat dilakukan audit menyeluruh (6 subagent) menemukan & memperbaiki: destruct
 5. **Saat memperbaiki 1 edge case di fungsi merge/apply, cek ulang apakah guard baru itu diam-diam menelan edge case LAIN yang butuh perlakuan beda.** Kejadian nyata: fix "1 katalog >1 lokasi cuma 1 baris ke-update" sempat ikut men-skip kasus "katalog match tapi belum pernah punya stok sama sekali" yang seharusnya dibuatkan baris baru, bukan di-skip.
 6. **Jangan asumsikan urutan hasil query Supabase stabil** kalau tidak ada `.order()` eksplisit — beberapa bug lahir dari asumsi `lokasiList[0]` selalu sama.
 7. Selalu `npm run build` setelah edit `App.jsx`, dan kalau ada preview server jalan, reload + cek console sebelum lapor selesai ke user.
+8. **Kalau user lapor fitur "belum tampil" di Vercel/production, cek `git status` & `git log origin/main` dulu** sebelum menebak penyebab lain — kejadian nyata 2026-07-08: fitur besar (Opname Non-SAP) sempat cuma ada di `App.jsx` lokal, belum pernah di-commit sama sekali, jadi wajar tidak muncul di deploy.
+9. **Kalau mengubah pola gate role (`currentUser.role===X` dst) secara mekanis/regex, cek juga variasi `currentUser?.role` (optional chaining)** — regex yang cuma target `currentUser.role` (tanpa `?`) akan melewatkan variasi ber-`?.`, meninggalkan gate yang tidak konsisten (kejadian nyata saat refactor SUPERADMIN 2026-07-07, ada ~13 titik lolos di putaran pertama).
 
 ---
 
