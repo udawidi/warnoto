@@ -2927,11 +2927,36 @@ export default function PLNWarehouse() {
     setAkunResult(null);
     setAkunModal("add");
   }
+  function openEditAkun(u) {
+    setAkunForm({id:u.id, username:u.username, password:"", name:u.name||"", role:u.role||"VIEWER", jabatan:u.jabatan||"", uptId:u.uptId||"", ultgId:u.ultgId||""});
+    setAkunResult(null);
+    setAkunModal("edit");
+  }
+  async function submitAkunEdit() {
+    const f = akunForm;
+    if (!f.name?.trim()) { showToast("Nama lengkap wajib diisi.","error"); return; }
+    if (!f.jabatan?.trim()) { showToast("Jabatan wajib diisi.","error"); return; }
+    if (!f.uptId) { showToast("UPT wajib dipilih.","error"); return; }
+    if ((f.role==="ADMIN_ULTG"||f.role==="MGR_ULTG") && !f.ultgId) { showToast(`Role ${ROLES[f.role]} wajib memilih unit ULTG.`,"error"); return; }
+    if (f.password && f.password.length < 6) { showToast("Password baru minimal 6 karakter.","error"); return; }
+    setAkunBusy(true);
+    const { data, error } = await supabase.functions.invoke("admin-update-user", { body: {
+      userId: f.id, name: f.name.trim(), role: f.role, jabatan: f.jabatan||"", uptId: f.uptId||"", ultgId: f.ultgId||"",
+      newPassword: f.password||"",
+    }});
+    setAkunBusy(false);
+    if (error || !data?.ok) { showToast(data?.error || error?.message || "Gagal menyimpan perubahan akun.","error"); return; }
+    setAkunModal(null);
+    await reloadUsers();
+    showToast("✅ Akun berhasil diperbarui!");
+  }
   async function submitAkunBaru() {
     const f = akunForm;
     if (!f.username?.trim()) { showToast("Username wajib diisi.","error"); return; }
     if (!f.password || f.password.length < 6) { showToast("Password minimal 6 karakter.","error"); return; }
     if (!f.name?.trim()) { showToast("Nama lengkap wajib diisi.","error"); return; }
+    if (!f.jabatan?.trim()) { showToast("Jabatan wajib diisi.","error"); return; }
+    if (!f.uptId) { showToast("UPT wajib dipilih.","error"); return; }
     if ((f.role==="ADMIN_ULTG"||f.role==="MGR_ULTG") && !f.ultgId) { showToast(`Role ${ROLES[f.role]} wajib memilih unit ULTG.`,"error"); return; }
     setAkunBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-create-user", { body: {
@@ -6906,6 +6931,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         <th style={{padding:"8px 6px"}}>Jabatan</th>
                         <th style={{padding:"8px 6px"}}>UPT</th>
                         <th style={{padding:"8px 6px"}}>ULTG</th>
+                        <th style={{padding:"8px 6px"}}></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -6917,6 +6943,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <td style={{padding:"8px 6px",color:C.muted}}>{u.jabatan||"-"}</td>
                           <td style={{padding:"8px 6px",color:C.muted}}>{uptList.find(p=>p.id===u.uptId)?.nama||"-"}</td>
                           <td style={{padding:"8px 6px",color:C.muted}}>{ultgList.find(g=>g.id===u.ultgId)?.nama||"-"}</td>
+                          <td style={{padding:"8px 6px"}}><button style={sty.btn("ghost","sm")} onClick={()=>openEditAkun(u)}>✏️ Edit</button></td>
                         </tr>
                       ))}
                     </tbody>
@@ -8158,12 +8185,19 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </>
             ) : (
               <>
-                <h3 style={{fontSize:18,fontWeight:800,marginBottom:20}}>Daftarkan Akun Baru</h3>
-                <div style={{marginBottom:12}}><label style={sty.label}>Username</label><input style={sty.input} value={akunForm.username||""} onChange={e=>setAkunForm(f=>({...f,username:e.target.value}))} placeholder="cth: budi.manager (huruf kecil, tanpa spasi)"/></div>
+                <h3 style={{fontSize:18,fontWeight:800,marginBottom:20}}>{akunModal==="edit"?"Edit Akun":"Daftarkan Akun Baru"}</h3>
                 <div style={{marginBottom:12}}>
-                  <label style={sty.label}>Password</label>
+                  <label style={sty.label}>Username</label>
+                  {akunModal==="edit" ? (
+                    <div style={{...sty.input,background:C.bg2||"#f3f4f6",color:C.muted}}>{akunForm.username}</div>
+                  ) : (
+                    <input style={sty.input} value={akunForm.username||""} onChange={e=>setAkunForm(f=>({...f,username:e.target.value}))} placeholder="cth: budi.manager (huruf kecil, tanpa spasi)"/>
+                  )}
+                </div>
+                <div style={{marginBottom:12}}>
+                  <label style={sty.label}>{akunModal==="edit"?"Reset Password (opsional)":"Password"}</label>
                   <div style={{display:"flex",gap:6}}>
-                    <input style={sty.input} value={akunForm.password||""} onChange={e=>setAkunForm(f=>({...f,password:e.target.value}))} placeholder="minimal 6 karakter"/>
+                    <input style={sty.input} value={akunForm.password||""} onChange={e=>setAkunForm(f=>({...f,password:e.target.value}))} placeholder={akunModal==="edit"?"kosongkan jika tidak diubah":"minimal 6 karakter"}/>
                     <button style={sty.btn("ghost","sm")} onClick={()=>setAkunForm(f=>({...f,password:Math.random().toString(36).slice(-5)+Math.random().toString(36).slice(-5)}))}>🎲 Acak</button>
                   </div>
                 </div>
@@ -8174,16 +8208,16 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     {Object.entries(ROLES).map(([id,label])=><option key={id} value={id}>{label}</option>)}
                   </select>
                 </div>
-                <div style={{marginBottom:12}}><label style={sty.label}>Jabatan (opsional)</label><input style={sty.input} value={akunForm.jabatan||""} onChange={e=>setAkunForm(f=>({...f,jabatan:e.target.value}))}/></div>
+                <div style={{marginBottom:12}}><label style={sty.label}>Jabatan *</label><input style={sty.input} value={akunForm.jabatan||""} onChange={e=>setAkunForm(f=>({...f,jabatan:e.target.value}))}/></div>
                 <div style={{marginBottom:12}}>
-                  <label style={sty.label}>UPT (opsional)</label>
+                  <label style={sty.label}>UPT *</label>
                   <select style={sty.select} value={akunForm.uptId||""} onChange={e=>setAkunForm(f=>({...f,uptId:e.target.value}))}>
-                    <option value="">-- Tidak discope ke UPT tertentu --</option>
+                    <option value="">-- Pilih UPT --</option>
                     {uptList.map(u=><option key={u.id} value={u.id}>{u.kode} — {u.nama}</option>)}
                   </select>
                 </div>
                 <div style={{marginBottom:16}}>
-                  <label style={sty.label}>ULTG {(akunForm.role==="ADMIN_ULTG"||akunForm.role==="MGR_ULTG")?"*":"(opsional)"}</label>
+                  <label style={sty.label}>ULTG {(akunForm.role==="ADMIN_ULTG"||akunForm.role==="MGR_ULTG")?"* (wajib untuk role ULTG)":"(kosongkan jika bukan lingkungan ULTG)"}</label>
                   <select style={sty.select} value={akunForm.ultgId||""} onChange={e=>setAkunForm(f=>({...f,ultgId:e.target.value}))}>
                     <option value="">-- Pilih ULTG --</option>
                     {ultgList.map(u=><option key={u.id} value={u.id}>{u.kode} — {u.nama}</option>)}
@@ -8191,7 +8225,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setAkunModal(null)} disabled={akunBusy}>Batal</button>
-                  <button style={{...sty.btn("primary"),flex:2,opacity:akunBusy?0.6:1}} onClick={submitAkunBaru} disabled={akunBusy}>{akunBusy?"Mendaftarkan...":"💾 Daftarkan"}</button>
+                  <button style={{...sty.btn("primary"),flex:2,opacity:akunBusy?0.6:1}} onClick={akunModal==="edit"?submitAkunEdit:submitAkunBaru} disabled={akunBusy}>{akunBusy?(akunModal==="edit"?"Menyimpan...":"Mendaftarkan..."):(akunModal==="edit"?"💾 Simpan Perubahan":"💾 Daftarkan")}</button>
                 </div>
               </>
             )}
