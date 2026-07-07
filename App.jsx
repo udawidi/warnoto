@@ -11139,17 +11139,27 @@ function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, s
           )}
         </div>
 
-        {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP */}
+        {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP.
+            Pola card biru + label sama persis dengan "Step 1: Upload File SAP" di bawah,
+            supaya konsisten dengan menu Opname lain (keluhan user 2026-07-08). */}
         {!isSAP && !isReadOnly && (
           <>
-            <div style={{display:"flex",gap:8,marginBottom:tambahQueue.length?8:14}}>
-              <button style={{...sty.btn("primary"),flex:1,fontSize:14,padding:"12px 0"}} onClick={()=>openTambahModal()}>
-                ➕ Tambah Material Ditemukan
-              </button>
-              <label style={{...sty.btn("ghost"),flex:1,fontSize:14,padding:"12px 0",textAlign:"center",cursor:queueUploadBusy?"default":"pointer",opacity:queueUploadBusy?0.6:1}}>
-                {queueUploadBusy?"Memuat...":"📂 Upload Usulan Pencocokan"}
-                <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
-              </label>
+            <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
+                📋 Material Non-Stock yang Ditemukan
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                <button style={{...sty.btn("primary"),width:"100%"}} onClick={()=>openTambahModal()}>
+                  ➕ Tambah Material Ditemukan
+                </button>
+                <label style={{...sty.btn("ghost"),width:"100%",textAlign:"center",cursor:queueUploadBusy?"default":"pointer",opacity:queueUploadBusy?0.6:1}}>
+                  {queueUploadBusy?"Memuat...":"📂 Upload Usulan Pencocokan"}
+                  <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
+                </label>
+              </div>
+              <div style={{fontSize:10,color:C.muted,marginTop:8}}>
+                "Tambah Material" untuk barang yang belum pernah tercatat di mana pun. "Upload Usulan Pencocokan" untuk file review yang sudah disiapkan sebelumnya (kode MARA sudah dicocokkan, tinggal diverifikasi fisik).
+              </div>
             </div>
 
             {/* Antrian dari file usulan — tiap baris tetap wajib direview manual (qty+lokasi
