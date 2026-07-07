@@ -1,3 +1,7 @@
+// @ts-nocheck — file ini jalan di runtime Deno (Supabase Edge Functions),
+// bukan Node/Vite seperti sisa proyek, jadi `Deno` global dan import
+// esm.sh tidak dikenali TypeScript checker bawaan VS Code di sini.
+//
 // Supabase Edge Function — Admin mengubah profil user yang sudah ada dari
 // menu "Kelola Akun" (nama, role, jabatan, UPT, ULTG, dan reset password
 // opsional). Username TIDAK bisa diubah di sini karena terikat ke email
