@@ -1427,6 +1427,7 @@ bawah — prioritas project sudah berubah total sejak roadmap ini ditulis.
 | WA AI Agent | Spesifikasi integrasi AI Agent ke WhatsApp Cloud API, read-only, whitelist nomor, server-side state, RAG sync harian, dan audit log sudah dipisah di `WA_AI_AGENT_SPEC.md` | Fase 2 |
 | Migrasi Stok SAP/Non-SAP + TUG-15 | Planning cutover data, cleansing Non-SAP, staging review, histori migrasi `MIGRASI`, dan backup wajib terdokumentasi di bagian 20 | Fase 2 |
 | Monitoring Kapasitas Gudang | Spesifikasi import laporan UIT berbasis m2, dashboard manajemen, mapping peta gudang, dan storage Supabase sudah dipisah di `GUDANG_CAPACITY_SPEC.md` | Fase 2 |
+| Material ATTB | Pipeline 5 tahap penghapusan aset (Usulan AE.1 → AE.1-AE.4 → Cek Dekom → Cek KJPP → Menunggu Lelang), 6 jenis aset, approval Asman di Tahap 1→2, spesifikasi lengkap sudah dipisah di `ATTB_SPEC.md` | Belum dimulai |
 
 #### 14.5 Roadmap Selanjutnya
 
@@ -1441,6 +1442,7 @@ bawah — prioritas project sudah berubah total sejak roadmap ini ditulis.
 - Siapkan server-side state Supabase agar AI Agent WhatsApp bisa membaca konteks yang setara dengan AI Agent web
 - Siapkan migrasi data stok SAP/Non-SAP dan histori TUG-15 berdasarkan planning bagian 20
 - Review dan implementasi Monitoring Kapasitas Gudang berdasarkan `GUDANG_CAPACITY_SPEC.md`
+- Review dan implementasi Material ATTB berdasarkan `ATTB_SPEC.md`
 
 **Fase 2 (1 bulan):**
 - Enhanced Claude API forecasting (sudah ada di v31)
@@ -2145,4 +2147,22 @@ Sebelum final, jalankan `npm run build`.
 - Belum ada expiry otomatis untuk surat izin alat.
 - Belum ada Supabase table khusus; v1 memakai fallback cloud/local storage seperti state aplikasi lain.
 - Jika fitur ini diperluas, pertimbangkan tabel Supabase `heavy_equipment` dan `heavy_equipment_loans`.
+
+---
+
+### 24. Planning — Material ATTB (Aktiva Tetap Tidak Beroperasi)
+
+#### 24.1 Status
+- Detail spesifikasi lengkap fitur Material ATTB ada di `ATTB_SPEC.md`.
+- Status saat ini (2026-07-09): **PLANNING / SPEC READY**, hasil sesi `/plan-warnoto`. Belum ada kode ditulis.
+- Sumber referensi: `D:\_SURABAYA\ATTB\ATTB SEMESTER 2 2026\` (file Excel Bursa Material, Monitoring Saldo ATTB, Template AE.3.1, diagram alur pendaftaran). File `CAD AKUNTANSI.xlsx` di folder yang sama di luar scope.
+
+#### 24.2 Keputusan Utama
+- Satu pipeline linear 5 tahap per material: Usulan AE.1 ke Unit Induk → AE.1 s.d. AE.4 → Siap Cek Dekom → Cek KJPP → Menunggu Lelang.
+- Mendukung 6 jenis aset (Tanah, Bangunan, Saluran Air, Jalan, Kendaraan Bermotor, Material/Alat) dengan field tambahan berbeda per jenis, mengikuti template resmi PLN.
+- Approval Asman hanya diperlukan di transisi Tahap 1→2 (sebelum "Kirim ke KI"); tahap lain dieksekusi langsung oleh Admin/TL.
+- Link ke Data Stok bersifat opsional, bukan wajib.
+- Import data lama dari Excel dibangun untuk 6 jenis aset, tapi dijalankan sekali nanti setelah semua jenis siap (saat ini hanya jenis Material/Alat yang punya data riil untuk diimpor).
+- Menu berdiri sendiri di sidebar (bukan sub-tab Master Data), scope multi-UPT mengikuti pola Alat Berat.
+- Detail lengkap struktur data, field per jenis aset, dan urutan implementasi ada di `ATTB_SPEC.md`.
 - Data user existing belum punya binding UPT formal; sementara Asman tanpa `upt/uptName/uptKode/uptId` tetap bisa approve agar fitur berjalan. Jika profil UPT sudah tersedia, approve dibatasi ke UPT pemilik alat.

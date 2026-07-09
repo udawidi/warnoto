@@ -19,6 +19,9 @@ const UPT = "UPT Surabaya";
 const WAREHOUSE = "Gudang Ketintang";
 const DOC_CODE = "LOG.00.02";
 const APP_VERSION = "v3.0.0";
+// Label tampilan status kapasitas gudang (kode data internal KRITIS/WASPADA/AMAN
+// tetap dipakai untuk perbandingan & warna, hanya teks yang ditampilkan ke user berubah)
+const KAPASITAS_LABEL = { KRITIS: "Penuh", WASPADA: "Terbatas", AMAN: "Cukup" };
 
 // ─── SUPABASE CLIENT ────────────────────────────────────────────────
 // Satu client dipakai untuk auth (login/sesi/logout) maupun REST sync
@@ -158,12 +161,25 @@ function normalizeHeavyEquipmentJenis(jenis, nama) {
   return "Angkat";
 }
 
+// Status alat: LAYAK, MAINTENANCE, PERLU_SERVICE, RUSAK, KIR (5 status yang bisa dipilih
+// manual lewat tombol Edit Alat oleh Admin/TL). MAINTENANCE & KIR memblokir peminjaman UPT
+// lain — lihat createHeavyEquipmentLoan.
 function heavyEquipmentStatusFromKondisi(kondisi) {
   const s = String(kondisi || "").toUpperCase();
-  if (s.includes("PEREMAJAAN")) return "BUTUH_PEREMAJAAN";
-  if (s.includes("PERBAIKAN") || s.includes("KERUSAKAN") || s.includes("BOCOR")) return "BUTUH_PERBAIKAN";
+  if (s.includes("PEREMAJAAN") || s.includes("PERBAIKAN") || s.includes("KERUSAKAN") || s.includes("BOCOR")) return "RUSAK";
   if (s.includes("SERVICE")) return "PERLU_SERVICE";
   return "LAYAK";
+}
+
+// Migrasi data lama: kode status yang sudah tidak dipakai (BUTUH_PERBAIKAN/BUTUH_PEREMAJAAN
+// dari import awal, MAINTENANCE yang sebelumnya sempat disimpan di availabilityStatus)
+// dipetakan ke skema statusAlat yang baru supaya data lama tetap tampil benar.
+function normalizeHeavyEquipmentRecord(eq) {
+  let statusAlat = eq.statusAlat;
+  if (statusAlat === "BUTUH_PERBAIKAN" || statusAlat === "BUTUH_PEREMAJAAN") statusAlat = "RUSAK";
+  let availabilityStatus = eq.availabilityStatus;
+  if (availabilityStatus === "MAINTENANCE") { statusAlat = "MAINTENANCE"; availabilityStatus = "TERSEDIA"; }
+  return { ...eq, statusAlat: statusAlat || "LAYAK", availabilityStatus: availabilityStatus || "TERSEDIA" };
 }
 
 const DEFAULT_HEAVY_EQUIPMENT = HEAVY_EQUIPMENT_RAW.trim().split("\n").map(line => {
@@ -277,6 +293,22 @@ const CLOUD = {
 // yang tidak semua dipakai di semua baris) — kolom id/relasi/status dipisah
 // supaya tetap bisa di-query/relasikan di Supabase Studio, tapi tidak perlu
 // mendaftar ulang setiap field yang mungkin ada.
+// Blok (Lokasi) bisa diplot koordinatnya lewat 2 denah berbeda: denah Gudang keseluruhan
+// (mapX/mapY, terhadap gdg.denahImageData) ATAU denah Sub Gudang (subMapX/subMapY, terhadap
+// sg.denahImageData, kalau blok itu di-assign ke sebuah Sub Gudang). Dulu "Lihat di Peta
+// Gudang" di Data Stok cuma cek mapX/gdg.denahImageData, jadi blok yang koordinatnya sudah
+// diplot lewat denah Sub Gudang tetap dianggap "belum diplot" — bug ditemukan 2026-07-09.
+function getLokasiPetaInfo(lok, gdg, subGudangList) {
+  if (!lok) return null;
+  if (lok.subGudangId && lok.subMapX != null) {
+    const sg = subGudangList.find(s => s.id === lok.subGudangId);
+    if (sg?.denahImageData) return { denahImageData: sg.denahImageData, x: lok.subMapX, y: lok.subMapY, subGudang: sg };
+  }
+  if (gdg?.denahImageData && lok.mapX != null) {
+    return { denahImageData: gdg.denahImageData, x: lok.mapX, y: lok.mapY, subGudang: null };
+  }
+  return null;
+}
 async function loadMasterTable(table) {
   if (!supabase) return null;
   const { data, error } = await supabase.from(table).select("*");
@@ -2820,10 +2852,10 @@ export default function PLNWarehouse() {
       // upgrade ke skema jsonb ini, atau baru pertama kali), dorong sekali data
       // localStorage/DEFAULT yang ada ke Supabase supaya tidak hilang lagi (pola
       // sama seperti katalog/stocks/warehouse_capacity di atas).
-      const heLocal = che || DEFAULT_HEAVY_EQUIPMENT;
+      const heLocal = (che || DEFAULT_HEAVY_EQUIPMENT).map(normalizeHeavyEquipmentRecord);
       const helLocal = chel || [];
       if (cheRemote && cheRemote.length > 0) {
-        setHeavyEquipmentList(cheRemote);
+        setHeavyEquipmentList(cheRemote.map(normalizeHeavyEquipmentRecord));
       } else {
         setHeavyEquipmentList(heLocal);
         if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null }));
@@ -4533,8 +4565,8 @@ export default function PLNWarehouse() {
           model: "llama-3.3-70b-versatile",
           max_tokens: 1000,
           messages: [
-            { role: "system", content: `Kamu adalah asisten ekstraksi data kontrak pengadaan PLN. Ekstrak informasi dari dokumen kontrak dan kembalikan HANYA JSON valid tanpa teks lain. Format: {"noKontrak":"...","tanggalKontrak":"YYYY-MM-DD","supplier":"...","tanggalSerahTerima":"YYYY-MM-DD","items":[{"namaBarang":"...","jumlah":0,"satuan":"..."}]}. Jika field tidak ditemukan gunakan string kosong atau 0.` },
-            { role: "user", content: `Ekstrak data kontrak pengadaan dari teks dokumen ini. Kembalikan JSON saja.\n\n${pdfText}` }
+            { role: "system", content: `Kamu adalah asisten ekstraksi data dari Surat Rencana Pengiriman Material (delivery plan / surat jalan) vendor PLN. Dokumen ini biasanya mencantumkan nomor kontrak sebagai referensi dan tanggal rencana kirim/tiba barang. Ekstrak informasi dan kembalikan HANYA JSON valid tanpa teks lain. Format: {"noKontrak":"...","tanggalKontrak":"YYYY-MM-DD","supplier":"...","tanggalSerahTerima":"YYYY-MM-DD","items":[{"namaBarang":"...","jumlah":0,"satuan":"..."}]}. noKontrak diambil dari nomor kontrak yang direferensikan di surat. tanggalSerahTerima diambil dari tanggal rencana kirim/tiba barang yang tercantum di surat. Jika field tidak ditemukan gunakan string kosong atau 0.` },
+            { role: "user", content: `Ekstrak data dari Surat Rencana Pengiriman Material vendor ini. Kembalikan JSON saja.\n\n${pdfText}` }
           ]
         })
       });
@@ -4554,11 +4586,17 @@ export default function PLNWarehouse() {
     const f = e.target.files[0]; if (!f) return;
     const r = new FileReader(); r.onload = ev => setter(ev.target.result); r.readAsDataURL(f);
   }
-  async function saveHeavyEquipmentPhoto(equipmentId, img) {
-    const next = heavyEquipmentList.map(eq => eq.id === equipmentId ? { ...eq, foto: img, fotoUpdatedAt: Date.now(), fotoUpdatedBy: currentUser.id } : eq);
+  async function saveHeavyEquipmentEdit(equipmentId, updates) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa mengubah data alat.","error"); return; }
+    const alat = heavyEquipmentList.find(eq=>eq.id===equipmentId);
+    if (!alat) return;
+    if (["MAINTENANCE","KIR"].includes(updates.statusAlat) && alat.availabilityStatus==="DIPINJAM") {
+      showToast("Alat sedang dipinjam, tidak bisa diubah ke status ini.","error"); return;
+    }
+    const next = heavyEquipmentList.map(eq => eq.id === equipmentId ? { ...eq, ...updates, ...(updates.foto!==undefined ? {fotoUpdatedAt:Date.now(), fotoUpdatedBy:currentUser.id} : {}) } : eq);
     setHeavyEquipmentList(next);
     await saveToCloud({heavyEquipmentList: next});
-    showToast("Foto alat disimpan.");
+    showToast("✅ Data alat berat disimpan.");
   }
   async function createHeavyEquipmentLoan(form) {
     if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa mengajukan peminjaman alat.","error"); return; }
@@ -4568,6 +4606,8 @@ export default function PLNWarehouse() {
     const alat = heavyEquipmentList.find(eq=>eq.id===form.equipmentId);
     if (!alat) { showToast("Alat tidak ditemukan.","error"); return; }
     if (alat.availabilityStatus === "DIPINJAM") { showToast("Alat sedang dipinjam, tidak bisa diajukan lagi.","error"); return; }
+    if (alat.statusAlat === "MAINTENANCE") { showToast("Alat sedang maintenance, tidak bisa dipinjam UPT lain.","error"); return; }
+    if (alat.statusAlat === "KIR") { showToast("Alat sedang KIR, tidak bisa dipinjam UPT lain.","error"); return; }
     if (alat.upt === form.requesterUpt) { showToast("Peminjaman harus antar UPT. Pilih UPT peminjam yang berbeda dari UPT pemilik alat.","error"); return; }
     const loan = {
       id: `HLOAN-${uid().slice(-8)}`,
@@ -6361,7 +6401,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     const noLokasi = !st.lokasiId;
                     const lok = lokasiList.find(l=>l.id===st.lokasiId);
                     const gdg = lok?.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : null;
-                    const canLihatPeta = lok && gdg && gdg.denahImageData && lok.mapX!=null;
+                    const petaInfo = getLokasiPetaInfo(lok, gdg, subGudangList);
+                    const canLihatPeta = !!petaInfo;
+                    const hasDenah = !!(gdg?.denahImageData || (lok?.subGudangId && subGudangList.find(s=>s.id===lok.subGudangId)?.denahImageData));
                     return (
                       <tr key={st.id} onClick={()=>{setPendingFoto({}); setStockDetailId(st.id);}} style={{cursor:"pointer",background:st.deletePending?"#fef2f2":undefined,borderBottom:`1px solid ${C.border}`,borderLeft:`3px ${st.deletePending?"dashed #dc2626":"solid"} ${st.deletePending?"#dc2626":noLokasi?"#f59e0b":isLow?C.red:st.jenisBarang==="Non-Stock"?"#be185d":C.green}`}}>
                         <td onClick={e=>{ if(st.img){e.stopPropagation(); setLightboxImg(st.img);} }} style={{padding:"8px 10px",textAlign:"center",cursor:st.img?"zoom-in":"default"}}>
@@ -6494,12 +6536,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             <button title="Kartu Gantung TUG-2" style={{...sty.btn("ghost","sm"),padding:"6px 8px",borderColor:"#e0f2fe",color:"#0369a1"}}
                               onClick={()=>{const k=katalogList.find(x=>x.id===st.katalogId); if(k) setKartuGantungDetail(k);}}>🏷️</button>
                             <button
-                              title={canLihatPeta ? "Lihat di Peta Gudang" : !lok ? "Blok belum diisi" : !gdg?.denahImageData ? "Denah Gudang belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
+                              title={canLihatPeta ? "Lihat di Peta Gudang" : !lok ? "Blok belum diisi" : !hasDenah ? "Denah belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
                               style={{...sty.btn("ghost","sm"),padding:"6px 8px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
                               onClick={()=>{
-                                if (canLihatPeta) { setPetaMiniDetail({stock:st, lokasi:lok, gudang:gdg}); return; }
+                                if (canLihatPeta) { setPetaMiniDetail({stock:st, lokasi:lok, gudang:gdg, petaInfo}); return; }
                                 if (!lok) { showToast("Blok/Lokasi belum diisi untuk material ini.","error"); return; }
-                                if (!gdg?.denahImageData) { showToast(`Denah Gudang "${gdg?.nama||lok?.kode||"-"}" belum diupload. Upload di Master Data → Master Gudang.`,"error"); return; }
+                                if (!hasDenah) { showToast(`Denah "${gdg?.nama||lok?.kode||"-"}" belum diupload. Upload di Master Data → Master Gudang.`,"error"); return; }
                                 showToast(`Blok ${lok?.kode||"-"} belum diplot koordinatnya di denah. Atur di Master Data → Master Gudang.`,"error");
                               }}>📍</button>
                           </div>
@@ -7356,7 +7398,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             sty={sty}
             C={C}
             handleImg={handleImg}
-            savePhoto={saveHeavyEquipmentPhoto}
+            saveEdit={saveHeavyEquipmentEdit}
             createLoan={createHeavyEquipmentLoan}
             approveLoan={approveHeavyEquipmentLoan}
             rejectLoan={rejectHeavyEquipmentLoan}
@@ -8148,23 +8190,26 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div>
                 <h3 style={{fontSize:16,fontWeight:800}}>📍 Lokasi di Peta Gudang</h3>
-                <p style={{fontSize:11,color:C.muted}}>{petaMiniDetail.gudang.nama} — Blok: {petaMiniDetail.lokasi.kode} {petaMiniDetail.lokasi.nama}</p>
+                <p style={{fontSize:11,color:C.muted}}>{petaMiniDetail.petaInfo?.subGudang ? `${petaMiniDetail.gudang.nama} — ${petaMiniDetail.petaInfo.subGudang.nama}` : petaMiniDetail.gudang.nama} — Blok: {petaMiniDetail.lokasi.kode} {petaMiniDetail.lokasi.nama}</p>
               </div>
               <button style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12}} onClick={()=>setPetaMiniDetail(null)}>✕</button>
             </div>
             <div style={{position:"relative",width:"100%"}}>
-              <img src={petaMiniDetail.gudang.denahImageData} alt="Denah" style={{width:"100%",borderRadius:8,display:"block",filter:"brightness(0.7)"}}/>
-              {/* Semua blok lain — abu */}
-              {(petaMiniDetail.gudang ? lokasiList.filter(l=>l.gudangId===petaMiniDetail.gudang.id&&l.mapX!=null&&l.id!==petaMiniDetail.lokasi.id) : []).map(l=>(
-                <div key={l.id} style={{position:"absolute",left:`${l.mapX}%`,top:`${l.mapY}%`,transform:"translate(-50%,-50%)",width:10,height:10,borderRadius:"50%",background:"#9ca3af",border:"1px solid white",opacity:0.6}}/>
-              ))}
+              <img src={petaMiniDetail.petaInfo.denahImageData} alt="Denah" style={{width:"100%",borderRadius:8,display:"block",filter:"brightness(0.7)"}}/>
+              {/* Semua blok lain di scope denah yang sama — abu */}
+              {(petaMiniDetail.petaInfo.subGudang
+                ? lokasiList.filter(l=>l.subGudangId===petaMiniDetail.petaInfo.subGudang.id&&l.subMapX!=null&&l.id!==petaMiniDetail.lokasi.id)
+                : lokasiList.filter(l=>l.gudangId===petaMiniDetail.gudang.id&&l.mapX!=null&&l.id!==petaMiniDetail.lokasi.id)
+              ).map(l=>{
+                const px = petaMiniDetail.petaInfo.subGudang ? l.subMapX : l.mapX;
+                const py = petaMiniDetail.petaInfo.subGudang ? l.subMapY : l.mapY;
+                return <div key={l.id} style={{position:"absolute",left:`${px}%`,top:`${py}%`,transform:"translate(-50%,-50%)",width:10,height:10,borderRadius:"50%",background:"#9ca3af",border:"1px solid white",opacity:0.6}}/>;
+              })}
               {/* Titik merah — lokasi barang ini */}
-              {petaMiniDetail.lokasi.mapX!=null && (
-                <div style={{position:"absolute",left:`${petaMiniDetail.lokasi.mapX}%`,top:`${petaMiniDetail.lokasi.mapY}%`,transform:"translate(-50%,-50%)"}}>
-                  <div style={{width:18,height:18,borderRadius:"50%",background:"#dc2626",border:"3px solid white",boxShadow:"0 0 0 3px rgba(220,38,38,0.4)",animation:"pulse 1.5s infinite"}}/>
-                  <div style={{position:"absolute",top:-24,left:"50%",transform:"translateX(-50%)",background:"#dc2626",color:"white",fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{petaMiniDetail.lokasi.kode}</div>
-                </div>
-              )}
+              <div style={{position:"absolute",left:`${petaMiniDetail.petaInfo.x}%`,top:`${petaMiniDetail.petaInfo.y}%`,transform:"translate(-50%,-50%)"}}>
+                <div style={{width:18,height:18,borderRadius:"50%",background:"#dc2626",border:"3px solid white",boxShadow:"0 0 0 3px rgba(220,38,38,0.4)",animation:"pulse 1.5s infinite"}}/>
+                <div style={{position:"absolute",top:-24,left:"50%",transform:"translateX(-50%)",background:"#dc2626",color:"white",fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{petaMiniDetail.lokasi.kode}</div>
+              </div>
             </div>
             <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(220,38,38,0.4)}50%{box-shadow:0 0 0 8px rgba(220,38,38,0)}}`}</style>
           </div>
@@ -9866,8 +9911,8 @@ function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [], C, sty
   const overdueLoans = scopedLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE");
   const pendingLoans = scopedLoans.filter(isPendingHeavyEquipmentLoan);
   const borrowedLoans = scopedLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="DIPINJAM");
-  const availableCount = scopedEquipment.filter(e=>e.availabilityStatus!=="DIPINJAM").length;
-  const issueCount = scopedEquipment.filter(e=>["PERLU_SERVICE","BUTUH_PERBAIKAN","BUTUH_PEREMAJAAN"].includes(e.statusAlat)).length;
+  const availableCount = scopedEquipment.filter(e=>e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
+  const issueCount = scopedEquipment.filter(e=>["PERLU_SERVICE","RUSAK"].includes(e.statusAlat)).length;
   const catIcons = {
     crane:(
       <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
@@ -12058,21 +12103,21 @@ function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, sty, C, s
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <div>
           <h1 style={{fontSize:22,fontWeight:900}}>📅 Rencana Kedatangan Barang</h1>
-          <p style={{color:C.muted,fontSize:13}}>Input dari kontrak pengadaan — AI ekstrak otomatis</p>
+          <p style={{color:C.muted,fontSize:13}}>Input dari surat rencana pengiriman material vendor — AI ekstrak otomatis</p>
         </div>
-        {canEdit && <button style={sty.btn("primary")} onClick={newForm}>+ Input Kontrak Baru</button>}
+        {canEdit && <button style={sty.btn("primary")} onClick={newForm}>+ Input Rencana Baru</button>}
       </div>
 
-      {/* Form input kontrak */}
+      {/* Form input rencana kedatangan */}
       {showForm && (
         <div style={{...sty.card,marginBottom:20,borderLeft:`4px solid ${C.accent}`}}>
           <h3 style={{fontSize:15,fontWeight:800,marginBottom:12}}>Input Rencana Kedatangan</h3>
           <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:8,padding:10,marginBottom:14}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#1d4ed8",marginBottom:6}}>🤖 Upload PDF Kontrak — AI akan ekstrak otomatis</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#1d4ed8",marginBottom:6}}>🤖 Upload Surat Rencana Pengiriman Material dari Vendor — AI akan ekstrak otomatis</div>
             <input type="file" accept=".pdf" onChange={handlePdfUpload} style={{fontSize:12}}/>
-            {aiLoading && <div style={{fontSize:11,color:"#1d4ed8",marginTop:6}}>⏳ AI sedang membaca kontrak...</div>}
+            {aiLoading && <div style={{fontSize:11,color:"#1d4ed8",marginTop:6}}>⏳ AI sedang membaca surat...</div>}
             {aiError && <div style={{fontSize:11,color:C.red,marginTop:6}}>❌ {aiError}</div>}
-            <div style={{fontSize:10,color:C.muted,marginTop:4}}>Setelah upload, review hasilnya di bawah dan edit jika perlu.</div>
+            <div style={{fontSize:10,color:C.muted,marginTop:4}}>Dokumen ini biasanya mencantumkan no. kontrak & tanggal rencana kirim/tiba barang. Setelah upload, review hasilnya di bawah dan edit jika perlu.</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
             <div><label style={sty.label}>No. Kontrak</label><input style={sty.input} value={form.noKontrak} onChange={e=>setForm(f=>({...f,noKontrak:e.target.value}))}/></div>
@@ -12109,7 +12154,7 @@ function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, sty, C, s
           <button style={{...sty.btn("ghost","sm"),marginBottom:14}} onClick={addItem}>+ Tambah Item</button>
           <div style={{display:"flex",gap:10}}>
             <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setShowForm(false)}>Batal</button>
-            <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{saveRencana(form);setShowForm(false);}}>💾 Simpan Rencana Kedatangan</button>
+            <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{saveRencana(form);setShowForm(false);}}>💾 Simpan</button>
           </div>
         </div>
       )}
@@ -12349,7 +12394,7 @@ function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasi
 }
 
 // ─── PETA GUDANG TAB ─────────────────────────────────────────────────────
-function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, savePhoto, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
+function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, saveEdit, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
   const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i, "").trim();
   const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
   const isMSB = hasRole(currentUser, "MSB","Manager UIT");
@@ -12367,6 +12412,8 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
   const [loanForm, setLoanForm] = useState({equipmentId:"", requesterUpt:myUpt||"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
+  const [editingEquipment, setEditingEquipment] = useState(null);
+  const [editForm, setEditForm] = useState({statusAlat:"LAYAK", foto:null});
 
   const normalizedLoans = loans.map(l=>({
     ...l,
@@ -12391,22 +12438,33 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
   // Ajukan Peminjaman = "kita mau pinjam alat", jadi alat yang ditawarkan HARUS di luar UPT
   // sendiri (non-MSB) — pinjam alat sendiri lewat form sendiri tidak masuk akal. MSB/Manager UIT
   // memfasilitasi peminjaman UPT mana pun, jadi tetap lihat semua alat.
-  const borrowableEquipment = equipmentList.filter(e => e.availabilityStatus!=="DIPINJAM" && (isMSB || e.upt!==myUpt));
+  const borrowableEquipment = equipmentList.filter(e => e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat) && (isMSB || e.upt!==myUpt));
   const selectedEquipment = equipmentList.find(e=>e.id===loanForm.equipmentId);
   const requesterOptions = selectedEquipment ? uptOptions.filter(u=>u!==selectedEquipment.upt) : uptOptions;
   const pendingCount = scopedLoans.filter(isPendingHeavyEquipmentLoan).length;
   const dipinjamCount = scopedLoans.filter(l=>l.runtimeStatus==="DIPINJAM").length;
   const overdueCount = scopedLoans.filter(l=>l.runtimeStatus==="OVERDUE").length;
-  const issueCount = equipmentList.filter(e=>["PERLU_SERVICE","BUTUH_PERBAIKAN","BUTUH_PEREMAJAAN"].includes(e.statusAlat)).length;
-  const availableCount = equipmentList.filter(e=>e.availabilityStatus!=="DIPINJAM").length;
+  const issueCount = equipmentList.filter(e=>["PERLU_SERVICE","RUSAK"].includes(e.statusAlat)).length;
+  const availableCount = equipmentList.filter(e=>e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
+  const maintenanceCount = equipmentList.filter(e=>e.statusAlat==="MAINTENANCE").length;
+
+  // 5 status alat yang bisa dipilih Admin/TL lewat tombol Edit Alat
+  const STATUS_ALAT_OPTIONS = [
+    {value:"LAYAK", label:"Layak"},
+    {value:"MAINTENANCE", label:"Maintenance"},
+    {value:"PERLU_SERVICE", label:"Perlu Servis"},
+    {value:"RUSAK", label:"Rusak"},
+    {value:"KIR", label:"Sedang KIR"},
+  ];
 
   const statusMeta = {
     LAYAK:{label:"Layak", bg:"#dcfce7", fg:C.green},
-    PERLU_SERVICE:{label:"Perlu Service", bg:"#fef3c7", fg:"#92400e"},
-    BUTUH_PERBAIKAN:{label:"Butuh Perbaikan", bg:"#fee2e2", fg:C.red},
-    BUTUH_PEREMAJAAN:{label:"Butuh Peremajaan", bg:"#f3e8ff", fg:"#7c3aed"},
+    PERLU_SERVICE:{label:"Perlu Servis", bg:"#fef3c7", fg:"#92400e"},
+    RUSAK:{label:"Rusak", bg:"#fee2e2", fg:C.red},
+    KIR:{label:"Sedang KIR", bg:"#dbeafe", fg:"#1d4ed8"},
     TERSEDIA:{label:"Tersedia", bg:"#e0f2fe", fg:"#0369a1"},
     DIPINJAM:{label:"Dipinjam", bg:"#ffedd5", fg:"#c2410c"},
+    MAINTENANCE:{label:"Maintenance", bg:"#e5e7eb", fg:"#4b5563"},
     PENDING_OWNER_ASMAN:{label:"Menunggu Asman Pemilik", bg:"#fef3c7", fg:"#92400e"},
     OVERDUE:{label:"Overdue", bg:"#fee2e2", fg:C.red},
     REJECTED:{label:"Ditolak", bg:"#fee2e2", fg:C.red},
@@ -12518,9 +12576,10 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
     {id:"ALL",      label:"Semua Alat",     color:C.accent,   count:equipmentList.filter(e=>!effectiveUptFilter||e.upt===effectiveUptFilter).length},
     {id:"LAYAK",    label:"Layak",          color:C.green,    count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="LAYAK").length},
     {id:"DIPINJAM", label:"Dipinjam",       color:"#c2410c",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&activeLoanForEquipment(e.id)).length},
-    {id:"PERLU_SERVICE",    label:"Perlu Service",    color:"#f59e0b", count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="PERLU_SERVICE").length},
-    {id:"BUTUH_PERBAIKAN",  label:"Butuh Perbaikan",  color:C.red,     count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="BUTUH_PERBAIKAN").length},
-    {id:"BUTUH_PEREMAJAAN", label:"Butuh Peremajaan", color:"#7c3aed", count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="BUTUH_PEREMAJAAN").length},
+    {id:"MAINTENANCE", label:"Maintenance", color:"#4b5563",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="MAINTENANCE").length},
+    {id:"KIR",      label:"Sedang KIR",     color:"#1d4ed8",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="KIR").length},
+    {id:"PERLU_SERVICE", label:"Perlu Servis", color:"#f59e0b", count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="PERLU_SERVICE").length},
+    {id:"RUSAK",    label:"Rusak",          color:C.red,      count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="RUSAK").length},
   ].filter(g=>g.id==="ALL"||g.count>0);
 
   return (
@@ -12578,12 +12637,14 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
       <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:14,padding:"9px 14px",background:"#f8fafc",borderRadius:10,border:`1px solid ${C.border}`,fontSize:12,alignItems:"center"}}>
         {(()=>{
           const base = equipmentList.filter(e=>!effectiveUptFilter||e.upt===effectiveUptFilter);
-          const avail = base.filter(e=>!activeLoanForEquipment(e.id)).length;
+          const maint = base.filter(e=>["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
+          const avail = base.filter(e=>!activeLoanForEquipment(e.id) && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
           const pinjam = base.filter(e=>{ const l=activeLoanForEquipment(e.id); return l&&l.runtimeStatus==="DIPINJAM"; }).length;
           return [
             {label:"Total Alat",val:base.length,color:C.accent},
             {label:"Tersedia",val:avail,color:C.green},
             {label:"Dipinjam",val:pinjam,color:"#c2410c"},
+            {label:"Maintenance/KIR",val:maint,color:maint?"#4b5563":C.muted},
             {label:"Overdue",val:overdueCount,color:overdueCount?C.red:C.muted},
             {label:"Pending Approval",val:pendingCount,color:pendingCount?"#92400e":C.muted},
           ].map(k=>(
@@ -12649,8 +12710,9 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
               <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>Merk/Type: <b>{eq.merkType||"-"}</b><br/>Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>No Seri: <b>{eq.nomorSeri||"-"}</b><br/>Kondisi: <b>{eq.kondisi||"-"}</b><br/>Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b></div>
               {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius:8,padding:10,fontSize:11,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
+              {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:11,lineHeight:1.5}}><div style={{fontWeight:900,color:"#4b5563"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
               {lastLoan && <div style={{fontSize:11,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
-              {canManage && <label style={{...sty.btn("ghost","sm"),textAlign:"center"}}>📷 Upload Foto<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>savePhoto(eq.id, img))}/></label>}
+              {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm({statusAlat:eq.statusAlat||"LAYAK", foto:eq.foto||null});}}>✏️ Edit Alat</button>}
             </div>
           );
         })}
@@ -12751,6 +12813,39 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
         </div>
 
       </div>
+
+      {/* MODAL EDIT ALAT — status alat + upload foto sekaligus, Admin/TL saja */}
+      {editingEquipment && (()=>{
+        const eq = equipmentList.find(e=>e.id===editingEquipment);
+        if (!eq) return null;
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+            <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+              <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
+              <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{eq.nama} — {eq.upt}</div>
+              <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
+                {editForm.foto ? <img src={editForm.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:38,color:"#9ca3af"}}>🚜</div>}
+              </div>
+              <label style={{...sty.btn("ghost","sm"),textAlign:"center",display:"block",marginBottom:16}}>
+                📷 {editForm.foto?"Ganti Foto":"Upload Foto"}
+                <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>setEditForm(f=>({...f,foto:img})))}/>
+              </label>
+              <div style={{marginBottom:16}}>
+                <label style={sty.label}>Status Alat</label>
+                <select style={sty.select} value={editForm.statusAlat} onChange={e=>setEditForm(f=>({...f,statusAlat:e.target.value}))}>
+                  {STATUS_ALAT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                {["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:10,color:C.muted,marginTop:4}}>⚠️ Alat tidak bisa dipinjam UPT lain selama status ini.</div>}
+                {eq.availabilityStatus==="DIPINJAM" && ["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:10,color:C.red,marginTop:4}}>Alat sedang dipinjam — tidak bisa diubah ke status ini sampai kembali.</div>}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingEquipment(null)}>Batal</button>
+                <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(eq.id, editForm);setEditingEquipment(null);}}>💾 Simpan</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -14710,7 +14805,7 @@ function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapacityImpo
                     <td style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasLahanM2} onChange={e=>updatePreviewField(i,"luasLahanM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
                     <td style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasTerpakaiM2} onChange={e=>updatePreviewField(i,"luasTerpakaiM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
                     <td style={{padding:"5px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{(r.persentaseTerpakai*100).toFixed(1)}%</td>
-                    <td style={{padding:"5px 8px"}}><span style={{fontSize:10,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{r.statusKapasitas}</span></td>
+                    <td style={{padding:"5px 8px"}}><span style={{fontSize:10,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</span></td>
                     <td style={{padding:"5px 8px",fontSize:10,color:C.muted,maxWidth:200}}>{[...r._errors,...r._warnings].join(", ")||"-"}</td>
                     <td style={{padding:"4px 6px"}}>{canEdit && <button style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={()=>deletePreviewRow(i)} title="Hapus baris ini">🗑️</button>}</td>
                   </tr>
@@ -14830,9 +14925,9 @@ function KapasitasGudangTab({ gudangCapacityList, gudangList, subGudangList, lok
                   {label:"Total Terpakai",val:fmtNum(Math.round(totalTerpakai))+" m²",color:"#7c3aed"},
                   {label:"Sisa Luas",val:fmtNum(Math.round(totalSisa))+" m²",color:C.green},
                   {label:"Utilization Total",val:(utilTotal*100).toFixed(1)+"%",color:utilTotal>=0.9?C.red:utilTotal>=0.75?"#f59e0b":C.green},
-                  {label:"🔴 Kritis (≥90%)",val:kritis,color:C.red},
-                  {label:"🟡 Waspada (75-89%)",val:waspada,color:"#f59e0b"},
-                  {label:"🟢 Aman (<75%)",val:aman,color:C.green},
+                  {label:"🔴 Penuh (≥90%)",val:kritis,color:C.red},
+                  {label:"🟡 Terbatas (75-89%)",val:waspada,color:"#f59e0b"},
+                  {label:"🟢 Cukup (<75%)",val:aman,color:C.green},
                 ].map(kpi=>(
                   <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
                     <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
@@ -14859,7 +14954,7 @@ function KapasitasGudangTab({ gudangCapacityList, gudangList, subGudangList, lok
                   ))}
                 </div>
                 <div style={{...sty.card}}>
-                  <div style={{fontWeight:700,marginBottom:10}}>🔴 Sub-Gudang Paling Kritis</div>
+                  <div style={{fontWeight:700,marginBottom:10}}>🔴 Sub-Gudang Paling Penuh</div>
                   {gudangCapacityList.filter(r=>r.statusKapasitas==="KRITIS").sort((a,b)=>b.persentaseTerpakai-a.persentaseTerpakai).slice(0,8).map((r,i)=>(
                     <div key={i} style={{padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>
                       <div style={{display:"flex",justifyContent:"space-between"}}>
@@ -14869,7 +14964,7 @@ function KapasitasGudangTab({ gudangCapacityList, gudangList, subGudangList, lok
                       <div style={{fontSize:10,color:C.muted}}>{r.upt} — {r.gudang}</div>
                     </div>
                   ))}
-                  {gudangCapacityList.filter(r=>r.statusKapasitas==="KRITIS").length===0 && <div style={{color:C.muted,fontSize:12}}>Tidak ada sub-gudang kritis saat ini.</div>}
+                  {gudangCapacityList.filter(r=>r.statusKapasitas==="KRITIS").length===0 && <div style={{color:C.muted,fontSize:12}}>Tidak ada sub-gudang penuh saat ini.</div>}
                 </div>
               </div>
             </div>
@@ -14887,9 +14982,9 @@ function KapasitasGudangTab({ gudangCapacityList, gudangList, subGudangList, lok
             </select>
             <select style={{...sty.select,maxWidth:180}} value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}>
               <option value="ALL">Semua Status</option>
-              <option value="KRITIS">🔴 Kritis</option>
-              <option value="WASPADA">🟡 Waspada</option>
-              <option value="AMAN">🟢 Aman</option>
+              <option value="KRITIS">🔴 Penuh</option>
+              <option value="WASPADA">🟡 Terbatas</option>
+              <option value="AMAN">🟢 Cukup</option>
             </select>
             <span style={{color:C.muted,fontSize:12,alignSelf:"center"}}>{filtered.length} record</span>
           </div>
@@ -14920,7 +15015,7 @@ function KapasitasGudangTab({ gudangCapacityList, gudangList, subGudangList, lok
                       </div>
                     </td>
                     <td style={{padding:"6px 10px"}}>
-                      <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,background:r.statusKapasitas==="KRITIS"?"#fef2f2":r.statusKapasitas==="WASPADA"?"#fefce8":"#f0fdf4",color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#92400e":C.green}}>{r.statusKapasitas}</span>
+                      <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,background:r.statusKapasitas==="KRITIS"?"#fef2f2":r.statusKapasitas==="WASPADA"?"#fefce8":"#f0fdf4",color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#92400e":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</span>
                     </td>
                     <td style={{padding:"6px 10px",fontSize:10,color:C.muted}}>{r.waktuUpdate||"-"}</td>
                     <td style={{padding:"6px 10px"}}>
@@ -16622,7 +16717,7 @@ function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty,
                     <td style={{padding:"4px 8px"}}>{r.subGudang}</td>
                     <td style={{padding:"4px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasLahanM2))}</td>
                     <td style={{padding:"4px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasTerpakaiM2))}</td>
-                    <td style={{padding:"4px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{r.statusKapasitas}</td>
+                    <td style={{padding:"4px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</td>
                   </tr>
                 ))}
               </tbody>
