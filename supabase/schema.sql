@@ -955,3 +955,27 @@ drop policy if exists "Authenticated read stock_count" on stock_count;
 drop policy if exists "Authenticated write stock_count" on stock_count;
 create policy "Authenticated read stock_count" on stock_count for select using (auth.role() = 'authenticated');
 create policy "Authenticated write stock_count" on stock_count for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 23. ATTB_LIST — pipeline monitoring penghapusan aset material ATTB
+--     (Aktiva Tetap Tidak Beroperasi), 6 jenis aset (Tanah/Bangunan/
+--     Saluran Air/Jalan/Kendaraan/Material), 5 tahap linear: Usulan AE.1 ->
+--     AE.1 s.d. AE.4 -> Siap Cek Dekom -> Cek KJPP -> Menunggu Lelang.
+--     Pola sama heavy_equipment: jsonb generik, App.jsx baca dari `data`.
+--     Lihat docs/ATTB_SPEC.md untuk spesifikasi lengkap.
+-- ────────────────────────────────────────────────────────────
+create table if not exists attb_list (
+  id text primary key,              -- id item ATTB, dibuat App.jsx ("ATTB-...")
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint,
+  upt text,
+  stage text                        -- 1_USULAN/2_AE1_AE4/3_DEKOM/4_KJPP/5_LELANG
+);
+create index if not exists idx_attb_list_upt on attb_list(upt);
+create index if not exists idx_attb_list_stage on attb_list(stage);
+
+alter table attb_list enable row level security;
+drop policy if exists "Authenticated read attb_list" on attb_list;
+drop policy if exists "Authenticated write attb_list" on attb_list;
+create policy "Authenticated read attb_list" on attb_list for select using (auth.role() = 'authenticated');
+create policy "Authenticated write attb_list" on attb_list for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');

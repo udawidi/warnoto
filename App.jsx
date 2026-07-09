@@ -2,7 +2,7 @@
 // Sistem Tata Usaha Gudang (TUG) Digital - v3.0
 // TUG-9: Bon Pemakaian + Surat Jalan + BAST
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import * as pdfjsLib from "pdfjs-dist";
@@ -258,6 +258,243 @@ function canApproveHeavyEquipmentLoan(user, loan) {
   // approve pinjaman yang datanya rusak/tidak lengkap. Sekarang WAJIB match persis.
   const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
   return !!requesterUpt && userUpt === requesterUpt;
+}
+
+// ─── ATTB (pipeline penghapusan aset material Aktiva Tetap Tidak Beroperasi) ──
+// Lihat docs/ATTB_SPEC.md untuk spesifikasi lengkap. Satu record = satu material/aset,
+// bergerak maju linear lewat 5 tahap (tidak pernah mundur), kecuali ditandai "Belum
+// Lanjut" di Tahap 2 — item tetap di tahap yang sama, bukan mundur.
+const ATTB_JENIS_ASET = ["TANAH","BANGUNAN","SALURAN_AIR","JALAN","KENDARAAN","MATERIAL"];
+const ATTB_JENIS_ASET_LABEL = { TANAH:"Tanah", BANGUNAN:"Bangunan", SALURAN_AIR:"Saluran Air", JALAN:"Jalan", KENDARAAN:"Kendaraan Bermotor", MATERIAL:"Material/Alat" };
+const ATTB_STAGES = [
+  { code:"USULAN_AE1", label:"Usulan AE.1 ke Unit Induk" },
+  { code:"AE1_AE4", label:"AE.1 s.d. AE.4" },
+  { code:"CEK_DEKOM", label:"Siap Cek Dekom" },
+  { code:"CEK_KJPP", label:"Cek KJPP" },
+  { code:"LELANG", label:"Menunggu Lelang" },
+];
+function attbStageIndex(stage) {
+  const i = ATTB_STAGES.findIndex(s=>s.code===stage);
+  return i === -1 ? 0 : i;
+}
+function attbStageLabel(stage) {
+  return ATTB_STAGES.find(s=>s.code===stage)?.label || stage || "-";
+}
+// Approval Tahap1->2 discope ke Asman UPT PENGAJU (item.upt) — pola sama
+// canApproveHeavyEquipmentLoan: WAJIB match persis, tidak longgar kalau upt kosong.
+function canApproveAttb(user, item) {
+  if (user?.role === "SUPERADMIN") return true;
+  if (user?.role !== "ASMAN") return false;
+  const userUpt = getUserUptScope(user);
+  return !!item?.upt && userUpt === item.upt;
+}
+function isPendingAttbApproval(item) {
+  return item?.approvalStatus === "PENDING_ASMAN";
+}
+// Field tambahan per jenis aset (docs/ATTB_SPEC.md bagian 5, sheet template AE.3.1).
+// estimasiNilaiManfaat{jenis,konversiKg,rpPerKg,nilaiTaksiran} dari spec disederhanakan
+// jadi field flat (estimasiJenis/estimasiKonversiKg/dst) supaya form tetap generik lewat
+// renderField, tanpa kehilangan data (tetap tersimpan sebagai kolom jsonb biasa).
+const ATTB_FIELDS_BY_JENIS = {
+  TANAH: [
+    {key:"noSertifikat", label:"No Sertifikat", type:"text"},
+    {key:"luasM2", label:"Luas (m²)", type:"number"},
+    {key:"tahunPerolehan", label:"Tahun Perolehan", type:"text"},
+  ],
+  BANGUNAN: [
+    {key:"masaManfaat", label:"Masa Manfaat", type:"text"},
+    {key:"lokasi", label:"Lokasi", type:"text"},
+    {key:"kuantitas", label:"Kuantitas", type:"number"},
+    {key:"satuan", label:"Satuan", type:"text"},
+    {key:"tahunPerolehan", label:"Tahun Perolehan", type:"text"},
+    {key:"umurPakai", label:"Umur Pakai", type:"text"},
+    {key:"estimasiJenis", label:"Estimasi Nilai Manfaat — Jenis", type:"text"},
+    {key:"estimasiKonversiKg", label:"Estimasi — Konversi Kg", type:"number"},
+    {key:"estimasiRpPerKg", label:"Estimasi — Rp per Kg", type:"number"},
+    {key:"estimasiNilaiTaksiran", label:"Estimasi — Nilai Taksiran", type:"number"},
+  ],
+  KENDARAAN: [
+    {key:"masaManfaat", label:"Masa Manfaat", type:"text"},
+    {key:"tahunPerolehan", label:"Tahun Perolehan", type:"text"},
+    {key:"umurPakai", label:"Umur Pakai", type:"text"},
+    {key:"kuantitas", label:"Kuantitas", type:"number"},
+    {key:"satuan", label:"Satuan", type:"text"},
+    {key:"spesifikasi", label:"Spesifikasi", type:"text"},
+    {key:"nomorRangka", label:"Nomor Rangka", type:"text"},
+    {key:"nomorMesin", label:"Nomor Mesin", type:"text"},
+    {key:"nomorBPKB", label:"Nomor BPKB", type:"text"},
+    {key:"nomorSTNK", label:"Nomor STNK", type:"text"},
+    {key:"nomorPolisi", label:"Nomor Polisi", type:"text"},
+    {key:"estimasiJenis", label:"Estimasi Nilai Manfaat — Jenis", type:"text"},
+    {key:"estimasiKonversiKg", label:"Estimasi — Konversi Kg", type:"number"},
+    {key:"estimasiRpPerKg", label:"Estimasi — Rp per Kg", type:"number"},
+    {key:"estimasiNilaiTaksiran", label:"Estimasi — Nilai Taksiran", type:"number"},
+  ],
+  MATERIAL: [
+    {key:"masaManfaat", label:"Masa Manfaat", type:"text"},
+    {key:"merkType", label:"Merk/Type", type:"text"},
+    {key:"spesifikasi", label:"Spesifikasi", type:"text"},
+    {key:"kuantitas", label:"Kuantitas", type:"number"},
+    {key:"satuan", label:"Satuan", type:"text"},
+    {key:"tahunPerolehan", label:"Tahun Perolehan", type:"text"},
+    {key:"umurPakai", label:"Umur Pakai", type:"text"},
+    {key:"lokasi", label:"Lokasi", type:"text"},
+    {key:"bay", label:"Bay", type:"text"},
+    {key:"noEquipment", label:"No Equipment", type:"text"},
+    {key:"kelengkapanBA", label:"Kelengkapan BA", type:"text"},
+    {key:"hasilUji", label:"Hasil Uji", type:"text"},
+    {key:"linkBAUpdate", label:"Link BA Update", type:"text"},
+    {key:"catatanBA", label:"Catatan BA (QC)", type:"text"},
+    {key:"keteranganAlat", label:"Keterangan Alat", type:"text"},
+    {key:"lokasiFisikCatatan", label:"Catatan Lokasi Fisik", type:"text"},
+    {key:"estimasiJenis", label:"Estimasi Nilai Manfaat — Jenis", type:"text"},
+    {key:"estimasiKonversiKg", label:"Estimasi — Konversi Kg", type:"number"},
+    {key:"estimasiRpPerKg", label:"Estimasi — Rp per Kg", type:"number"},
+    {key:"estimasiNilaiTaksiran", label:"Estimasi — Nilai Taksiran", type:"number"},
+  ],
+};
+ATTB_FIELDS_BY_JENIS.SALURAN_AIR = ATTB_FIELDS_BY_JENIS.BANGUNAN;
+ATTB_FIELDS_BY_JENIS.JALAN = [...ATTB_FIELDS_BY_JENIS.BANGUNAN, {key:"hilang", label:"Hilang", type:"text"}];
+// Daftar baku dari sheet referensi "Daftar Alasan Pengapusbukuan" (file 4 ATTB_SPEC bagian 7a/7b).
+const ATTB_ALASAN_PENGHAPUSBUKUAN = [
+  "Hilang", "Musnah", "Rusak",
+  "Biaya pemindahtanganan lebih besar daripada nilai ekonomis",
+  "Dibongkar untuk dibangun kembali/jadi Aktiva Tetap lain",
+  "Dibongkar untuk tidak dibangun kembali",
+  "Berdasarkan UU/putusan Pengadilan",
+  "Penjualan", "Tukar Menukar", "Ganti Rugi",
+  "Aktiva Tetap dijadikan Penyertaan Modal", "Cara Lain",
+];
+// Format baku Waktu Usulan Penghapusan: "Semester {1/2} - {tahun}". Tahun berjalan +
+// tahun sebelumnya (untuk data historis). Dibangun sekali saat load modul.
+const ATTB_WAKTU_USULAN_OPTIONS = (() => {
+  const y = new Date().getFullYear();
+  return [`Semester 1 - ${y}`, `Semester 2 - ${y}`, `Semester 1 - ${y-1}`, `Semester 2 - ${y-1}`];
+})();
+const ATTB_CORE_FIELDS = [
+  {key:"description", label:"Deskripsi", type:"text"},
+  {key:"nomorAT", label:"Nomor AT", type:"text"},
+  {key:"nomorATTB", label:"Nomor ATTB", type:"text"},
+  {key:"assetClass", label:"Asset Class", type:"text"},
+  {key:"assetType", label:"Asset Type", type:"text"},
+  {key:"function", label:"Function", type:"text"},
+  {key:"nilaiPerolehan", label:"Nilai Perolehan", type:"number"},
+  {key:"nilaiBuku", label:"Nilai Buku", type:"number"},
+  {key:"alasanPenghapusbukuan", label:"Alasan Penghapusbukuan", type:"select", options:ATTB_ALASAN_PENGHAPUSBUKUAN},
+  {key:"waktuUsulanPenghapusan", label:"Waktu Usulan Penghapusan", type:"select", options:ATTB_WAKTU_USULAN_OPTIONS},
+  {key:"keterangan", label:"Keterangan", type:"text"},
+];
+const ATTB_STAGE2_FIELDS = [
+  {key:"ba", label:"BA (BA AE3/BA AE4)", type:"text"},
+  {key:"statusATTB", label:"Status ATTB (kode batch)", type:"text"},
+  {key:"linkEvidenDokumen", label:"Link Eviden Dokumen", type:"text"},
+];
+const ATTB_STAGE3_FIELDS = [
+  {key:"tanggalCekDekom", label:"Tanggal Cek Dekom", type:"date"},
+  {key:"picDekom", label:"PIC Pemeriksa", type:"text"},
+  {key:"hasilDekom", label:"Hasil Pemeriksaan", type:"text"},
+  {key:"catatanDekom", label:"Catatan", type:"text"},
+];
+const ATTB_STAGE4_FIELDS = [
+  {key:"tanggalKJPP", label:"Tanggal Penilaian KJPP", type:"date"},
+  {key:"nilaiTaksiranKJPP", label:"Nilai Taksiran KJPP", type:"number"},
+  {key:"dokumenKJPP", label:"Dokumen Hasil Penilaian (link)", type:"text"},
+  {key:"catatanKJPP", label:"Catatan", type:"text"},
+];
+const ATTB_STAGE5_FIELDS = [
+  {key:"estimasiJadwalLelang", label:"Estimasi Jadwal Lelang", type:"date"},
+  {key:"catatanLelang", label:"Catatan", type:"text"},
+];
+
+// ─── Import Excel ATTB (jenis MATERIAL) — lihat docs/ATTB_SPEC.md bagian 7a/7b ──
+// Dua format sumber berbeda, dipetakan ke target tahap berbeda:
+// - "File 2" (Bursa Material belum diusulkan, ~18 kolom) -> kandidat baru Tahap 1.
+// - "File 4" (Template AE.3.1f resmi, ~32 kolom, header ganda) -> item yang sudah
+//   disetujui sebelum WARNOTO ada, langsung masuk Tahap 2.
+// Baris data dideteksi generik lewat kolom "Nomor AT/ATTB" (index 1 di kedua format)
+// yang berisi angka >=6 digit — membedakannya dari baris judul section (teks),
+// baris legenda nomor kolom ("2","3",...), dan baris TOTAL/footer (kosong di kolom ini).
+function parseAttbCurrency(v) {
+  const cleaned = String(v ?? "").replace(/[^0-9.\-]/g, "");
+  const num = parseFloat(cleaned);
+  return Number.isFinite(num) ? num : 0;
+}
+function parseAttbMaterialFile2(rows, opts) {
+  const records = [];
+  for (const row of rows) {
+    const nomorAT = String(row[1] ?? "").trim();
+    if (!/^\d{6,}$/.test(nomorAT)) continue;
+    records.push({
+      jenisAset: "MATERIAL",
+      nomorAT,
+      assetClass: String(row[2] ?? "").trim(),
+      description: String(row[3] ?? "").trim(),
+      merkType: String(row[4] ?? "").trim(),
+      spesifikasi: String(row[5] ?? "").trim(),
+      kuantitas: String(row[6] ?? "").trim(),
+      satuan: String(row[7] ?? "").trim(),
+      lokasi: String(row[8] ?? "").trim(),
+      keterangan: String(row[9] ?? "").trim(),
+      nilaiPerolehan: parseAttbCurrency(row[10]),
+      bay: String(row[11] ?? "").trim(),
+      noEquipment: String(row[12] ?? "").trim(),
+      hasilUji: String(row[14] ?? "").trim(),
+      keteranganAlat: String(row[15] ?? "").trim(),
+      lokasiFisikCatatan: String(row[16] ?? "").trim(),
+      upt: opts.upt,
+      waktuUsulanPenghapusan: opts.waktuUsulanPenghapusan,
+    });
+  }
+  return records;
+}
+function parseAttbMaterialFile4(rows, opts) {
+  const records = [];
+  for (const row of rows) {
+    const nomorAT = String(row[1] ?? "").trim();
+    if (!/^\d{6,}$/.test(nomorAT)) continue;
+    const assetClass = String(row[2] ?? "").trim();
+    const noUrutSebelumnya = String(row[28] ?? "").trim();
+    const catatanQCTambahan = String(row[31] ?? "").trim();
+    const keteranganExtra = [
+      noUrutSebelumnya ? `No urut sebelumnya: ${noUrutSebelumnya}` : "",
+      catatanQCTambahan,
+    ].filter(Boolean).join(" | ");
+    const keterangan = [String(row[21] ?? "").trim(), keteranganExtra].filter(Boolean).join(" — ");
+    records.push({
+      jenisAset: "MATERIAL",
+      nomorAT,
+      assetClass,
+      assetType: String(row[3] ?? "").trim(),
+      function: String(row[4] ?? "").trim(),
+      description: String(row[5] ?? "").trim(),
+      masaManfaat: String(row[6] ?? "").trim(),
+      merkType: String(row[7] ?? "").trim(),
+      spesifikasi: String(row[8] ?? "").trim(),
+      kuantitas: String(row[9] ?? "").trim(),
+      satuan: String(row[10] ?? "").trim(),
+      tahunPerolehan: String(row[11] ?? "").trim(),
+      umurPakai: String(row[12] ?? "").trim(),
+      nilaiPerolehan: parseAttbCurrency(row[13]),
+      nilaiBuku: parseAttbCurrency(row[14]),
+      estimasiJenis: String(row[15] ?? "").trim(),
+      estimasiKonversiKg: parseAttbCurrency(row[16]),
+      estimasiRpPerKg: parseAttbCurrency(row[17]),
+      estimasiNilaiTaksiran: parseAttbCurrency(row[18]),
+      lokasi: String(row[19] ?? "").trim(),
+      alasanPenghapusbukuan: String(row[20] ?? "").trim(),
+      keterangan,
+      bay: String(row[22] ?? "").trim(),
+      noEquipment: String(row[23] ?? "").trim(),
+      hasilUji: String(row[25] ?? "").trim(),
+      linkBAUpdate: String(row[27] ?? "").trim(),
+      keteranganAlat: String(row[29] ?? "").trim(),
+      catatanBA: String(row[30] ?? "").trim(),
+      kategoriMaterial: assetClass === "00040107" ? "Trafo" : "Non Trafo",
+      upt: opts.upt,
+      waktuUsulanPenghapusan: opts.waktuUsulanPenghapusan,
+    });
+  }
+  return records;
 }
 
 const CLOUD = {
@@ -2527,6 +2764,7 @@ export default function PLNWarehouse() {
   const [maturityAssessments, setMaturityAssessments] = useState([]); // riwayat asesmen Maturity Level Gudang UPT Surabaya, diisi manual oleh Admin
   const [heavyEquipmentList, setHeavyEquipmentList] = useState([]);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState([]);
+  const [attbList, setAttbList] = useState([]);
   const [materialCadangData, setMaterialCadangData] = useState({ imports:[], analyses:[], applyHistory:[] });
   const [materialCadangHealthData, setMaterialCadangHealthData] = useState({ imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
   const [materialCadangAiInsights, setMaterialCadangAiInsights] = useState({ runs:[], materialInsights:[] });
@@ -2735,6 +2973,7 @@ export default function PLNWarehouse() {
       const cma = await CLOUD.get("pln_maturity_v1");
       const che = await CLOUD.get("pln_heavy_equipment_v1");
       const chel = await CLOUD.get("pln_heavy_equipment_loans_v1");
+      const cattb = await CLOUD.get("pln_attb_v1");
       const cmcd = await CLOUD.get("pln_material_cadang_v1");
       const cmch = await CLOUD.get("pln_material_cadang_health_v1");
       const cmcai = await CLOUD.get("pln_material_cadang_ai_insights_v1");
@@ -2746,7 +2985,7 @@ export default function PLNWarehouse() {
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote] = await Promise.all([
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote] = await Promise.all([
         seedMasterTableIfEmpty("uit", DEFAULT_UIT),
         seedMasterTableIfEmpty("upt", DEFAULT_UPT_LIST, u => ({ uit_id: u.uitId || null })),
         loadMasterTable("ultg").then(r => r || []),
@@ -2763,6 +3002,7 @@ export default function PLNWarehouse() {
         loadMasterTable("heavy_equipment_loans"),
         loadMasterTable("stock_opname"),
         loadMasterTable("stock_count"),
+        loadMasterTable("attb_list"),
       ]);
       const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
@@ -2871,6 +3111,13 @@ export default function PLNWarehouse() {
           requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
         }));
       }
+      const attbLocal = cattb || [];
+      if (cattbRemote && cattbRemote.length > 0) {
+        setAttbList(cattbRemote);
+      } else {
+        setAttbList(attbLocal);
+        if (attbLocal.length > 0) syncMasterTable("attb_list", attbLocal, e => ({ upt: e.upt || null, stage: e.stage || null }));
+      }
       setMaterialCadangData(cmcd || { imports:[], analyses:[], applyHistory:[] });
       setMaterialCadangHealthData(cmch || { imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
       setMaterialCadangAiInsights(cmcai || { runs:[], materialInsights:[] });
@@ -2903,7 +3150,7 @@ export default function PLNWarehouse() {
   // to the latest React state via stateRef (always up to date, avoids stale
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
-  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview };
+  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, attbList, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview };
   // Debounce auto-sync warnoto_state + RAG (bot WA/Telegram) — dipicu tiap ada perubahan
   // stocks/txns lewat saveToCloud, tapi ditunda sampai 90 detik tidak ada perubahan baru
   // lagi (quiet period), supaya sesi edit beruntun (banyak saveToCloud berturut-turut)
@@ -2926,6 +3173,7 @@ export default function PLNWarehouse() {
     const ma = overrides.maturityAssessments ?? stateRef.current.maturityAssessments;
     const he = overrides.heavyEquipmentList ?? stateRef.current.heavyEquipmentList;
     const hel = overrides.heavyEquipmentLoans ?? stateRef.current.heavyEquipmentLoans;
+    const attb = overrides.attbList ?? stateRef.current.attbList;
     const mcd = overrides.materialCadangData ?? stateRef.current.materialCadangData;
     const mch = overrides.materialCadangHealthData ?? stateRef.current.materialCadangHealthData;
     const mcai = overrides.materialCadangAiInsights ?? stateRef.current.materialCadangAiInsights;
@@ -2946,6 +3194,7 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_maturity_v1", ma),
       CLOUD.set("pln_heavy_equipment_v1", he),
       CLOUD.set("pln_heavy_equipment_loans_v1", hel),
+      CLOUD.set("pln_attb_v1", attb),
       CLOUD.set("pln_material_cadang_v1", mcd),
       CLOUD.set("pln_material_cadang_health_v1", mch),
       CLOUD.set("pln_material_cadang_ai_insights_v1", mcai),
@@ -2977,6 +3226,9 @@ export default function PLNWarehouse() {
       owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
       requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
     }));
+    // ATTB (pipeline penghapusan aset material) — auto-backup ke Supabase tiap kali
+    // berubah, pola sama seperti heavy_equipment (lihat schema.sql section 23).
+    if (overrides.attbList !== undefined) syncMasterTable("attb_list", attb, e => ({ upt: e.upt || null, stage: e.stage || null }));
     // Stock Opname & Stock Count — sebelumnya localStorage/CLOUD-only, ditemukan 2026-07-07
     // (widget akurasi Dashboard "hilang" kalau dibuka dari device/browser lain karena datanya
     // memang tidak pernah keluar dari localStorage device asal). Sekarang auto-backup ke
@@ -4672,6 +4924,162 @@ export default function PLNWarehouse() {
     await saveToCloud({heavyEquipmentLoans: nextLoans, heavyEquipmentList: nextEquipment});
     showToast("Alat ditandai sudah kembali.");
   }
+  // ATTB — lihat docs/ATTB_SPEC.md. Tahap1 (Usulan AE.1): createAttbItem (DRAFT) ->
+  // submitAttbToKI (PENDING_ASMAN) -> approveAttbToKI/rejectAttbToKI oleh Asman UPT
+  // pengaju. Tahap2->3->4->5: advanceAttbStage, dieksekusi langsung Admin/TL tanpa
+  // approval. "Belum Lanjut" (khusus Tahap2) ditandai lewat markAttbBelumLanjut —
+  // tidak memindahkan tahap, hanya menandai + wajib alasan.
+  async function createAttbItem(form) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa menambah kandidat ATTB.","error"); return; }
+    if (!form.jenisAset || !ATTB_JENIS_ASET.includes(form.jenisAset)) { showToast("Pilih jenis aset.","error"); return; }
+    if (!form.description?.trim()) { showToast("Deskripsi material/aset wajib diisi.","error"); return; }
+    const now = Date.now();
+    const item = {
+      ...form,
+      id: `ATTB-${uid().slice(-8)}`,
+      upt: form.upt || getUserUptScope(currentUser),
+      stage: "USULAN_AE1",
+      approvalStatus: "DRAFT",
+      lanjutBelumLanjut: false,
+      stageHistory: [{ stage:"USULAN_AE1", tanggal:now, oleh:currentUser.id, catatan:"Dibuat sebagai kandidat ATTB" }],
+      createdAt: now, createdBy: currentUser.id,
+      updatedAt: now, updatedBy: currentUser.id,
+    };
+    const next = [item, ...attbList];
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    showToast("✅ Kandidat ATTB ditambahkan (Tahap 1 - Draft).");
+  }
+  async function saveAttbEdit(id, updates) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa mengubah data ATTB.","error"); return; }
+    const item = attbList.find(a=>a.id===id);
+    if (!item) return;
+    const next = attbList.map(a => a.id===id ? { ...a, ...updates, updatedAt:Date.now(), updatedBy:currentUser.id } : a);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    showToast("✅ Data ATTB disimpan.");
+  }
+  async function submitAttbToKI(id) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa mengajukan ke Asman.","error"); return; }
+    const item = attbList.find(a=>a.id===id);
+    if (!item || item.stage!=="USULAN_AE1") return;
+    if (!["DRAFT",undefined].includes(item.approvalStatus)) { showToast("Item sudah diajukan.","error"); return; }
+    if (!item.description?.trim()) { showToast("Deskripsi material/aset wajib diisi sebelum diajukan.","error"); return; }
+    const next = attbList.map(a => a.id===id ? { ...a, approvalStatus:"PENDING_ASMAN", diajukanBy:currentUser.id, diajukanAt:Date.now() } : a);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    showToast("Diajukan ke Asman untuk Usulan AE.1 ke Unit Induk.");
+  }
+  async function approveAttbToKI(id, catatan="") {
+    const item = attbList.find(a=>a.id===id);
+    if (!item || !isPendingAttbApproval(item)) return;
+    if (!canApproveAttb(currentUser, item)) { showToast("Hanya Asman UPT pengaju yang bisa approve item ini.","error"); return; }
+    const now = Date.now();
+    const next = attbList.map(a => a.id===id ? {
+      ...a, approvalStatus:"APPROVED", approvedBy:currentUser.id, approvedAt:now, catatanApproval:catatan,
+      stage:"AE1_AE4",
+      stageHistory: [...(a.stageHistory||[]), { stage:"AE1_AE4", tanggal:now, oleh:currentUser.id, catatan:catatan||"Disetujui Asman, terkirim ke Kantor Induk" }],
+    } : a);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    await logApprovalHistory({type:"ATTB", decision:"APPROVED", title:`Usulan ATTB ${item.nomorATTB||item.description}`, requestedBy:item.diajukanBy, requestedAt:item.diajukanAt});
+    showToast("Usulan ATTB disetujui, lanjut ke Tahap AE.1 s.d. AE.4.");
+  }
+  async function rejectAttbToKI(id, alasan) {
+    if (!alasan?.trim()) { showToast("Masukkan alasan penolakan.","error"); return; }
+    const item = attbList.find(a=>a.id===id);
+    if (!item || !isPendingAttbApproval(item)) return;
+    if (!canApproveAttb(currentUser, item)) { showToast("Hanya Asman UPT pengaju yang bisa menolak item ini.","error"); return; }
+    const next = attbList.map(a => a.id===id ? { ...a, approvalStatus:"DRAFT", rejectedBy:currentUser.id, rejectedAt:Date.now(), alasanTolak:alasan.trim() } : a);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    await logApprovalHistory({type:"ATTB", decision:"REJECTED", title:`Usulan ATTB ${item.nomorATTB||item.description}`, requestedBy:item.diajukanBy, requestedAt:item.diajukanAt});
+    showToast("Usulan ATTB ditolak, kembali ke Draft Tahap 1.", "error");
+  }
+  async function advanceAttbStage(id) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa memindahkan tahap ATTB.","error"); return; }
+    const item = attbList.find(a=>a.id===id);
+    if (!item) return;
+    const idx = attbStageIndex(item.stage);
+    if (idx>=ATTB_STAGES.length-1) { showToast("Sudah di tahap akhir, tidak bisa dilanjutkan lagi.","error"); return; }
+    const nextStage = ATTB_STAGES[idx+1].code;
+    const now = Date.now();
+    // Advance dari Tahap 1 (Usulan AE.1) langsung ke Tahap 2 tanpa approval (tombol
+    // Ajukan ke Asman sudah dihapus) — sekalian set approvalStatus APPROVED. Maju tahap
+    // apapun otomatis melepas flag "Belum Lanjut" (item bergerak lagi).
+    const next = attbList.map(a => a.id===id ? {
+      ...a, stage:nextStage,
+      approvalStatus: idx===0 ? "APPROVED" : a.approvalStatus,
+      lanjutBelumLanjut:false, keteranganTidakLanjut:"",
+      updatedAt:now, updatedBy:currentUser.id,
+      stageHistory: [...(a.stageHistory||[]), { stage:nextStage, tanggal:now, oleh:currentUser.id, catatan: idx===0?"Dilanjutkan ke AE.1 s.d. AE.4":"" }],
+    } : a);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    showToast(`✅ Lanjut ke tahap: ${attbStageLabel(nextStage)}`);
+  }
+  async function markAttbBelumLanjut(id, keterangan) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa menandai Belum Lanjut.","error"); return; }
+    if (!keterangan?.trim()) { showToast("Alasan Belum Lanjut wajib diisi.","error"); return; }
+    const item = attbList.find(a=>a.id===id);
+    if (!item || !["USULAN_AE1","AE1_AE4"].includes(item.stage)) { showToast("Belum Lanjut hanya berlaku di tahap Usulan AE.1 atau AE.1 s.d. AE.4.","error"); return; }
+    const next = attbList.map(a => a.id===id ? { ...a, lanjutBelumLanjut:true, keteranganTidakLanjut:keterangan.trim(), updatedAt:Date.now(), updatedBy:currentUser.id } : a);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    showToast("Item ditandai Belum Lanjut.", "error");
+  }
+  // Import Excel batch — dedupe generik lewat nomorAT (bukan cuma string "sudah usul
+  // hapus"): baris apapun yang nomorAT-nya sudah ada di attbList (dari import lain atau
+  // input manual) otomatis dilewati, supaya aman dipanggil ulang tanpa duplikat.
+  // targetStage: "TAHAP1" (DRAFT, USULAN_AE1) atau "TAHAP2" (APPROVED, AE1_AE4 — dipakai
+  // utk data historis yang sudah disetujui sebelum WARNOTO ada, lihat ATTB_SPEC bagian 7b).
+  async function bulkImportAttbItems(records, targetStage, importOpts={}) {
+    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa import ATTB.","error"); return { created:0, skipped:0 }; }
+    const now = Date.now();
+    // Mode "tiban" (overwrite): buang dulu semua item eksisting dgn Waktu Usulan (+UPT)
+    // yang sama, lalu file jadi sumber kebenaran untuk batch itu. Dedup nomorAT tetap
+    // dijalankan terhadap item yang DIPERTAHANKAN (batch lain), supaya item lintas-batch
+    // (mis. Tahap 2 dari file 4) tidak dobel.
+    const { overwrite=false, waktu=null, upt=null } = importOpts;
+    const matchWaktu = a => a.waktuUsulanPenghapusan===waktu && (a.upt||"")===(upt||"");
+    const keptList = overwrite ? attbList.filter(a=>!matchWaktu(a)) : attbList;
+    const removedCount = attbList.length - keptList.length;
+    const existingNomorAT = new Set(keptList.map(a=>a.nomorAT).filter(Boolean));
+    const toCreate = records.filter(r => !existingNomorAT.has(r.nomorAT));
+    const skipped = records.length - toCreate.length;
+    const newItems = toCreate.map(r => {
+      const base = { ...r, id:`ATTB-${uid().slice(-8)}`, createdAt:now, createdBy:currentUser.id, updatedAt:now, updatedBy:currentUser.id };
+      if (targetStage === "TAHAP2") {
+        return {
+          ...base, stage:"AE1_AE4", approvalStatus:"APPROVED", lanjutBelumLanjut:false,
+          diajukanBy:null, diajukanAt:null, approvedBy:null, approvedAt:null,
+          catatanApproval:"Data historis — tanggal & approver asli tidak tercatat, diimpor langsung sebagai Tahap 2",
+          stageHistory:[
+            {stage:"USULAN_AE1", tanggal:null, oleh:null, catatan:"Data historis, tahap awal tidak tercatat di WARNOTO"},
+            {stage:"AE1_AE4", tanggal:now, oleh:currentUser.id, catatan:"Sudah diusulkan & disetujui sebelum WARNOTO ada, diimpor langsung dari Excel"},
+          ],
+        };
+      }
+      return {
+        ...base, stage:"USULAN_AE1", approvalStatus:"DRAFT", lanjutBelumLanjut:false,
+        stageHistory:[{stage:"USULAN_AE1", tanggal:now, oleh:currentUser.id, catatan:"Diimpor dari Excel (kandidat baru)"}],
+      };
+    });
+    if (newItems.length > 0 || removedCount > 0) {
+      const next = [...keptList, ...newItems];
+      setAttbList(next);
+      await saveToCloud({attbList: next});
+    }
+    showToast(`✅ Import ATTB selesai: ${newItems.length} item ditambahkan${removedCount>0?`, ${removedCount} data lama (Waktu ${waktu}) ditimpa`:""}${skipped>0?`, ${skipped} dilewati (sudah ada di batch lain)`:""}.`);
+    return { created: newItems.length, skipped, removed: removedCount };
+  }
+  async function deleteAttbItem(id) {
+    if (!hasRole(currentUser, "ADMIN")) { showToast("Hanya Admin yang bisa menghapus item ATTB.","error"); return; }
+    const next = attbList.filter(a=>a.id!==id);
+    setAttbList(next);
+    await saveToCloud({attbList: next});
+    showToast("Item ATTB dihapus.", "error");
+  }
   function setMaterialPhoto(stockId, dataUrl) {
     setTxnForm(tf => {
       const existing = tf.fotoMaterial.filter(fm => fm.stockId !== stockId);
@@ -5859,6 +6267,33 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const myUptForHeavyEquipment = getUserUptScope(currentUser);
   const heavyEquipmentOverdueCount = heavyEquipmentLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE" &&
     (getHeavyEquipmentLoanOwnerUpt(l)===myUptForHeavyEquipment || getHeavyEquipmentLoanRequesterUpt(l)===myUptForHeavyEquipment)).length;
+  const attbPendingCount = attbList.filter(a=>isPendingAttbApproval(a) && canApproveAttb(currentUser, a)).length;
+  const attbBelumLanjutCount = attbList.filter(a=>a.lanjutBelumLanjut && (a.upt===myUptForHeavyEquipment || hasRole(currentUser,"MSB","Manager UIT"))).length;
+  // Pool material Bongkaran ATTB (MTU) dari TUG-10 — sumber kandidat ATTB sebelum
+  // tahap AE.1. Diturunkan dari transaksi TUG-10 (retur) yang punya stockItem
+  // berstatus "Bongkaran ATTB (MTU)". Tiap item = 1 unit material bongkaran fisik.
+  const attbBongkaranPool = useMemo(() => {
+    const items = [];
+    txns.filter(t => t.docType==="TUG10").forEach(t => {
+      (t.stockItems||[]).forEach((si, idx) => {
+        if (si.statusMaterial !== "Bongkaran ATTB (MTU)") return;
+        const nama = si.katalogMode==="existing"
+          ? (katalogList.find(k=>k.id===si.katalogId)?.name || si.namaBaru || "-")
+          : (si.namaBaru || "-");
+        items.push({
+          key: `${t.id}::${si.noSeri||idx}`,
+          nama, qty: si.qty, satuan: si.satuanBaru || "",
+          noSeri: si.noSeri || "", noAsset: si.noAsset || "",
+          tug10No: t.docNumbers?.tug10 || t.id,
+          tanggal: t.approvedAt || t.createdAt,
+          namaPekerjaan: t.namaPekerjaan || "",
+          status: t.status || "",
+          foto: si.fotoBarangRetur || si.fotoNameplate || null,
+        });
+      });
+    });
+    return items.sort((a,b)=>(b.tanggal||0)-(a.tanggal||0));
+  }, [txns, katalogList]);
   const lowStocks = enrichedStocks.filter(s=>s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty);
   const totalVal = enrichedStocks.reduce((a,s)=>a+s.qty*s.price,0);
   const filteredStocks = enrichedStocks.filter(s=>{
@@ -5971,6 +6406,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"transaction",icon:"🔄",label:"TUG"},
     ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:"✅",label:"Approval",badge:myPendingApprovals.length + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "ADMIN","TL") ? ultgPengajuanUntukAdopt.length : 0) + (hasRole(currentUser, "TL") ? stocks.filter(s=>(s.lokasiMovePending&&s.lokasiMoveApprover==="TL")||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0)}] : []),
     {id:"heavyEquipment",icon:"🚜",label:"Alat Berat",badge:(hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
+    {id:"attb",icon:"🗂️",label:"ATTB",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:"📋",label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"rencana",icon:"📅",label:"Rencana Kedatangan"},
     {id:"kapasitasGudang",icon:"📐",label:"Kapasitas Gudang"},
@@ -6172,6 +6608,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             C={C} sty={sty} setTab={setTab}
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
             currentUser={currentUser}
+            attbList={attbList} attbBongkaranPool={attbBongkaranPool}
           />
         )}
         {tab==="dashboard" && hasRole(currentUser, "ASMAN") && !hasRole(currentUser, "MANAGER") && (
@@ -6184,6 +6621,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             C={C} sty={sty} setTab={setTab}
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
             currentUser={currentUser}
+            attbList={attbList} attbBongkaranPool={attbBongkaranPool}
           />
         )}
         {tab==="dashboard" && !hasRole(currentUser, "MANAGER","ASMAN") && (
@@ -6276,6 +6714,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             C={C} sty={sty} setTab={setTab} currentUser={currentUser}
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
             materialCadangData={materialCadangData}
+            attbList={attbList} attbBongkaranPool={attbBongkaranPool}
           />
         </>
         )}
@@ -7404,6 +7843,33 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             rejectLoan={rejectHeavyEquipmentLoan}
             completeLoan={completeHeavyEquipmentLoan}
             showToast={showToast}
+          />
+        )}
+
+        {tab==="attb" && (
+          <AttbTab
+            attbList={attbList}
+            currentUser={currentUser}
+            users={users}
+            sty={sty}
+            C={C}
+            createItem={createAttbItem}
+            saveEdit={saveAttbEdit}
+            submitToKI={submitAttbToKI}
+            approveToKI={approveAttbToKI}
+            rejectToKI={rejectAttbToKI}
+            advanceStage={advanceAttbStage}
+            markBelumLanjut={markAttbBelumLanjut}
+            bulkImport={bulkImportAttbItems}
+            showToast={showToast}
+            gudangList={gudangList}
+            subGudangList={subGudangList}
+            lokasiList={lokasiList}
+            setPetaMiniDetail={setPetaMiniDetail}
+            deleteItem={deleteAttbItem}
+            askConfirmDelete={askConfirmDelete}
+            bongkaranPool={attbBongkaranPool}
+            handleImg={handleImg}
           />
         )}
 
@@ -10024,7 +10490,82 @@ function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [], C, sty
   );
 }
 
-function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser, heavyEquipmentList, heavyEquipmentLoans, materialCadangData }) {
+// Ringkasan ATTB untuk Dashboard — fokus data yang dilihat manajemen: nilai aset yang
+// akan dihapusbukukan, estimasi nilai lelang (recovery), sebaran tahap pipeline, item
+// yang tertahan (bottleneck), dan inflow material bongkaran dari TUG-10.
+function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty, setTab, currentUser }) {
+  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i,"").trim();
+  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
+  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
+  const scoped = isMSB ? attbList : attbList.filter(a=>a.upt===myUpt);
+  const scopeLabel = isMSB ? "Semua UPT" : (myUpt || "UPT");
+  if (attbList.length === 0 && bongkaranPool.length === 0) return null;
+
+  const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+  const nilaiPerolehan = scoped.reduce((a,x)=>a+num(x.nilaiPerolehan), 0);
+  const nilaiBuku = scoped.reduce((a,x)=>a+num(x.nilaiBuku), 0);
+  const estimasiLelang = scoped.reduce((a,x)=>a+num(x.estimasiNilaiTaksiran||x.nilaiTaksiranKJPP), 0);
+  const ditahan = scoped.filter(a=>a.lanjutBelumLanjut).length;
+  const menungguLelang = scoped.filter(a=>a.stage==="LELANG").length;
+  const promotedKeys = new Set(attbList.map(a=>a.sourceTug10Key).filter(Boolean));
+  const bongkaranBelum = bongkaranPool.filter(p=>!promotedKeys.has(p.key)).length;
+  const stageCounts = ATTB_STAGES.map(s=>({ ...s, count: scoped.filter(a=>a.stage===s.code).length }));
+  const maxStage = Math.max(1, ...stageCounts.map(s=>s.count));
+  const stageColor = code => [C.accent,"#7c3aed","#0891b2","#ea580c",C.green][attbStageIndex(code)] || C.muted;
+
+  const kpis = [
+    {label:"Total Item", val:scoped.length, color:C.accent, sub:"aset dalam proses"},
+    {label:"Nilai Perolehan", val:fmtRp(nilaiPerolehan), color:"#0891b2", sub:"total aset"},
+    {label:"Nilai Buku", val:fmtRp(nilaiBuku), color:"#7c3aed", sub:"dihapusbukukan"},
+    {label:"Estimasi Nilai Lelang", val:fmtRp(estimasiLelang), color:C.green, sub:"potensi recovery"},
+    {label:"Tertahan", val:ditahan, color:ditahan?"#f59e0b":C.green, sub:"belum lanjut"},
+    {label:"Menunggu Lelang", val:menungguLelang, color:menungguLelang?"#16a34a":C.muted, sub:"tahap akhir"},
+  ];
+
+  return (
+    <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${ditahan?"#f59e0b":C.accent}`,cursor:"pointer"}} onClick={()=>setTab("attb")}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:900}}>🗂️ Ringkasan ATTB — Penghapusan Aset</div>
+          <div style={{fontSize:11,color:C.muted}}>Scope: <b>{scopeLabel}</b> — nilai aset, progres pipeline &amp; item tertahan.</div>
+        </div>
+        <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("attb");}}>Buka Menu</button>
+      </div>
+
+      {/* KPI utama */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
+        {kpis.map(k=>(
+          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+            <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
+            <div style={{fontSize:k.val&&String(k.val).startsWith("Rp")?15:20,fontWeight:900,color:k.color}}>{k.val}</div>
+            <div style={{fontSize:9,color:C.muted}}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Pipeline funnel — sebaran item per tahap + inflow bongkaran TUG-10 */}
+      <div style={{display:"flex",alignItems:"stretch",gap:6,flexWrap:"wrap"}}>
+        <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"8px 10px",borderRadius:8,border:`1px dashed #cbd5e1`,background:"#f8fafc",minWidth:96}}>
+          <div style={{fontSize:9,fontWeight:800,color:C.muted,textTransform:"uppercase"}}>🧰 Bongkaran</div>
+          <div style={{fontSize:18,fontWeight:900,color:"#6b7280"}}>{bongkaranBelum}</div>
+          <div style={{fontSize:9,color:C.muted}}>belum diusulkan</div>
+        </div>
+        {stageCounts.map((s,i)=>(
+          <div key={s.code} style={{flex:1,minWidth:90,display:"flex",flexDirection:"column",gap:4,padding:"8px 8px",borderRadius:8,border:`1px solid ${C.border}`,background:"white"}}>
+            <div style={{display:"flex",alignItems:"center",gap:5}}>
+              <span style={{width:16,height:16,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,background:stageColor(s.code)+"22",color:stageColor(s.code)}}>{i+1}</span>
+              <span style={{fontSize:16,fontWeight:900,color:stageColor(s.code)}}>{s.count}</span>
+            </div>
+            <div style={{fontSize:9,color:C.muted,lineHeight:1.2,minHeight:22}}>{s.label}</div>
+            <div style={{height:4,borderRadius:3,background:"#eef2f7",overflow:"hidden"}}><div style={{height:"100%",width:`${(s.count/maxStage)*100}%`,background:stageColor(s.code)}}/></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, attbList, attbBongkaranPool }) {
   const [dashModal, setDashModal] = useState(null); // null | "totalItem" | "nilai" | "kritis" | "tindakan"
 
   const jenisBreakdown = JENIS_BARANG.map(jb => ({
@@ -10059,6 +10600,7 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
       </div>
       <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
       <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+      <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
       {(()=>{
         const results = materialCadangData?.analyses?.slice(-1)[0]?.results || [];
         if (!results.length) return null;
@@ -10195,7 +10737,7 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
 }
 
 // ─── DASHBOARD ASMAN (Operasional UPT Surabaya) ──────────────────────────
-function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser }) {
+function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser, attbList, attbBongkaranPool }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const stokKritis = stocks.filter(s=>s.minQty>0 && s.qty<=s.minQty);
   const akanHabis = getMaterialAkanHabis(stocks, katalogList, txns, 5);
@@ -10236,6 +10778,7 @@ function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPe
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
           <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+          <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
           {/* Material Kritis */}
           {stokKritis.length>0 && (
             <div style={{...sty.card,borderLeft:`4px solid #dc2626`,marginBottom:16}}>
@@ -10275,7 +10818,7 @@ function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPe
 }
 
 // ─── DASHBOARD MANAGER (Eksekutif Multi-UPT) ─────────────────────────────
-function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser }) {
+function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser, attbList, attbBongkaranPool }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiCadang = stocks.filter(s=>s.jenisBarang==="Cadang").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiPersediaan = stocks.filter(s=>s.jenisBarang==="Persediaan").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
@@ -10334,6 +10877,7 @@ function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanga
 
       <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
       <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+      <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
 
       {/* Tabel per UPT */}
       <div style={{...sty.card,marginBottom:20}}>
@@ -12841,6 +13385,748 @@ function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C,
               <div style={{display:"flex",gap:10}}>
                 <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingEquipment(null)}>Batal</button>
                 <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(eq.id, editForm);setEditingEquipment(null);}}>💾 Simpan</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// AttbTab — pipeline monitoring penghapusan aset material ATTB, lihat docs/ATTB_SPEC.md.
+// Pola konsisten HeavyEquipmentTabV2: chip filter + kartu, scoping UPT via effectiveUptFilter.
+function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, submitToKI, approveToKI, rejectToKI, advanceStage, markBelumLanjut, bulkImport, showToast, gudangList=[], subGudangList=[], lokasiList=[], setPetaMiniDetail, deleteItem, askConfirmDelete, bongkaranPool=[], handleImg }) {
+  const canDelete = hasRole(currentUser, "ADMIN");
+  // Key TUG-10 yang sudah "diusulkan" jadi item ATTB (untuk tandai pool yg sudah dipakai).
+  const promotedKeys = new Set(attbList.map(a=>a.sourceTug10Key).filter(Boolean));
+  const bongkaranBelum = bongkaranPool.filter(p=>!promotedKeys.has(p.key));
+  // Batalkan tanda "Belum Lanjut" (lanjutkan lagi, tetap di tahap yang sama).
+  async function resumeBelumLanjut(item) { await saveEdit(item.id, { lanjutBelumLanjut:false, keteranganTidakLanjut:"" }); }
+  // Usulkan 1 material bongkaran (dari pool TUG-10) menjadi kandidat ATTB Tahap 1 (AE.1).
+  async function promoteBongkaran(p) {
+    await createItem({
+      jenisAset:"MATERIAL",
+      description: p.nama,
+      nomorAT: p.noAsset || "",
+      noEquipment: p.noSeri || "",
+      kuantitas: p.qty!=null ? String(p.qty) : "",
+      satuan: p.satuan || "",
+      keterangan: `Eks Bongkaran ATTB (MTU) dari ${p.tug10No}${p.namaPekerjaan?` — ${p.namaPekerjaan}`:""}`,
+      sourceTug10Key: p.key,
+      foto: p.foto || null, // pakai foto dari input TUG-10 (foto barang/nameplate)
+    });
+  }
+  const [attbGudangFilter, setAttbGudangFilter] = useState({}); // per-item id -> gudangId (utk filter dropdown Blok)
+  // Resolve lokasi master-data dari lokasiId (blok) yang tersimpan di item ->
+  // objek {lok, gdg, petaInfo, teks} untuk tampilan + tombol peta. Pola sama Data Stok.
+  const resolveLokasiMaster = (item) => {
+    const lok = lokasiList.find(l=>l.id===item.lokasiId);
+    if (!lok) return null;
+    const gdg = lok.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : null;
+    const sg = lok.subGudangId ? subGudangList.find(s=>s.id===lok.subGudangId) : null;
+    const petaInfo = getLokasiPetaInfo(lok, gdg, subGudangList);
+    const teks = [gdg?.nama, sg?.nama, lok.kode].filter(Boolean).join(" / ");
+    return { lok, gdg, petaInfo, teks };
+  };
+  async function setAttbLokasi(item, newLokasiId) {
+    await saveEdit(item.id, { lokasiId: newLokasiId || null });
+  }
+  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i, "").trim();
+  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
+  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
+  const [myUptSelected, setMyUptSelected] = useState(isMSB ? "" : (myUpt || ""));
+  const effectiveUptFilter = isMSB ? myUptSelected : (myUpt || "");
+  const canManage = hasRole(currentUser, "ADMIN","TL");
+
+  const [stageFilter, setStageFilter] = useState("ALL");
+  const [belumLanjutOnly, setBelumLanjutOnly] = useState(false);
+  const [attbSearch, setAttbSearch] = useState("");
+  const [jenisFilter, setJenisFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [waktuFilter, setWaktuFilter] = useState("ALL");
+  const [attbPageSize, setAttbPageSize] = useState(20);
+  const [attbPage, setAttbPage] = useState(1);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const emptyAddForm = { jenisAset:"MATERIAL", description:"", nomorAT:"", nomorATTB:"", assetClass:"", assetType:"", nilaiPerolehan:"", nilaiBuku:"", alasanPenghapusbukuan:"", keterangan:"" };
+  const [addForm, setAddForm] = useState(emptyAddForm);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [rejectingId, setRejectingId] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [belumLanjutId, setBelumLanjutId] = useState(null);
+  const [belumLanjutNote, setBelumLanjutNote] = useState("");
+
+  // Import Excel (jenis MATERIAL) — lihat docs/ATTB_SPEC.md bagian 7a/7b.
+  // UPT tidak dipilih manual — otomatis ikut UPT login admin (effectiveUptFilter/myUpt).
+  const importUpt = effectiveUptFilter || myUpt || "";
+  // Format baku Waktu Usulan Penghapusan: "Semester {1/2} - {tahun}". Tahun default =
+  // tahun berjalan; sediakan juga tahun sebelumnya untuk data historis (mis. file 4).
+  const currentYear = new Date().getFullYear();
+  const attbTahunOptions = [currentYear, currentYear-1];
+  const [showImportPanel, setShowImportPanel] = useState(false);
+  const [importTarget, setImportTarget] = useState("TAHAP1");
+  const [importSemester, setImportSemester] = useState("2"); // "1" / "2"
+  const [importTahun, setImportTahun] = useState(currentYear);
+  const importWaktu = `Semester ${importSemester} - ${importTahun}`;
+  const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
+  const [importIncludeHidden, setImportIncludeHidden] = useState(false); // default: baris hidden di Excel DILEWATI
+  const [importOverwrite, setImportOverwrite] = useState(false); // "tiban": timpa data eksisting dgn Waktu Usulan sama
+  const [importRaw, setImportRaw] = useState(null); // {rawRows, rowsMeta, sheetName, fileName} dari file terupload
+
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    try {
+      const buf = await file.arrayBuffer();
+      // File 4 bisa ~200MB (banyak sheet dokumentasi foto) — parse metadata dulu
+      // (bookSheets: cepat, cuma daftar nama sheet), cari sheet target, baru parse
+      // HANYA sheet itu (opsi `sheets`). Tanpa ini browser bisa freeze/crash karena
+      // memparse semua sheet gambar. cellStyles:true supaya `!rows` terisi -> tahu
+      // baris mana yang di-hide/di-filter di Excel (dipakai untuk opsi sertakan/lewati).
+      const wbMeta = XLSX.read(buf, { type:"array", bookSheets:true });
+      const sheetName = wbMeta.SheetNames.find(s=>s.toUpperCase().includes("AE.3.1F")) || wbMeta.SheetNames.find(s=>s.toUpperCase().includes("AT OP")) || wbMeta.SheetNames[0];
+      const wb = XLSX.read(buf, { type:"array", cellDates:true, cellStyles:true, sheets:[sheetName] });
+      const ws = wb.Sheets[sheetName];
+      const rawRows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:"" });
+      const rowsMeta = ws["!rows"] || [];
+      setImportRaw({ rawRows, rowsMeta, sheetName, fileName: file.name });
+    } catch(err) {
+      showToast("Gagal baca file: " + err.message, "error");
+    }
+    setImporting(false);
+    e.target.value = "";
+  }
+
+  // Bangun ulang preview tiap raw data / opsi hidden / tiban / target / UPT / waktu berubah,
+  // supaya semua toggle langsung mengubah hitungan tanpa upload ulang.
+  useEffect(() => {
+    if (!importRaw) { setImportPreview(null); return; }
+    const { rawRows, rowsMeta, sheetName, fileName } = importRaw;
+    const hiddenCount = rawRows.filter((_,i)=>rowsMeta[i] && rowsMeta[i].hidden===true).length;
+    const rows = importIncludeHidden ? rawRows : rawRows.filter((_,i)=>!(rowsMeta[i] && rowsMeta[i].hidden===true));
+    const opts = { upt: importUpt.trim(), waktuUsulanPenghapusan: importWaktu.trim() };
+    const parsed = importTarget==="TAHAP1" ? parseAttbMaterialFile2(rows, opts) : parseAttbMaterialFile4(rows, opts);
+    // Mode "tiban": item eksisting dgn Waktu Usulan (+UPT) sama akan ditimpa, jadi
+    // TIDAK dihitung sebagai duplikat (nomornya akan dibuat ulang dari file).
+    const matchWaktu = a => a.waktuUsulanPenghapusan===importWaktu && (a.upt||"")===(importUpt||"");
+    const overwriteCount = importOverwrite ? attbList.filter(matchWaktu).length : 0;
+    const keptNomorAT = new Set(attbList.filter(a => importOverwrite ? !matchWaktu(a) : true).map(a=>a.nomorAT).filter(Boolean));
+    const withDup = parsed.map(r => ({ ...r, _duplicate: keptNomorAT.has(r.nomorAT) }));
+    setImportPreview({ records: withDup, fileName, sheetName, newCount: withDup.filter(r=>!r._duplicate).length, dupCount: withDup.filter(r=>r._duplicate).length, hiddenCount, overwriteCount });
+  }, [importRaw, importIncludeHidden, importOverwrite, importTarget, importUpt, importWaktu, attbList]);
+
+  async function confirmImport() {
+    if (!importPreview) return;
+    // buang flag _duplicate sebelum simpan (cuma penanda UI)
+    const records = importPreview.records.map(({_duplicate, ...r})=>r);
+    const runImport = async () => {
+      await bulkImport(records, importTarget, { overwrite: importOverwrite, waktu: importWaktu, upt: importUpt });
+      setImportRaw(null);
+      setImportPreview(null);
+      setShowImportPanel(false);
+    };
+    // Mode tiban yang benar-benar menghapus data lama = destruktif -> konfirmasi dulu.
+    if (importOverwrite && importPreview.overwriteCount>0 && askConfirmDelete) {
+      askConfirmDelete({
+        title:"Tiban (Timpa) Data Eksisting?",
+        message:`${importPreview.overwriteCount} item lama dengan Waktu Usulan "${importWaktu}" (UPT ${importUpt}) akan DIHAPUS, lalu diganti ${importPreview.newCount} item dari file ini.`,
+        warning:"Data lama yang ditimpa tidak bisa dikembalikan. Pastikan file sudah benar.",
+        confirmLabel:"♻️ Ya, Tiban & Import",
+        onConfirm: runImport,
+      });
+    } else {
+      await runImport();
+    }
+  }
+
+  const uptOptions = Array.from(new Set(attbList.map(a=>a.upt).filter(Boolean))).sort();
+  const scopedList = attbList.filter(a => !effectiveUptFilter || a.upt===effectiveUptFilter);
+  const stageCounts = ATTB_STAGES.reduce((acc,s)=>{ acc[s.code]=scopedList.filter(a=>a.stage===s.code).length; return acc; }, {});
+  const belumLanjutCount = scopedList.filter(a=>a.lanjutBelumLanjut).length;
+  const pendingApprovalCount = scopedList.filter(isPendingAttbApproval).length;
+  // Opsi dropdown filter diturunkan dari data yang ada (bukan hardcode) supaya
+  // hanya menampilkan nilai yang benar-benar dipakai.
+  const jenisOptions = Array.from(new Set(scopedList.map(a=>a.jenisAset).filter(Boolean)));
+  const statusOptions = Array.from(new Set(scopedList.map(a=>a.approvalStatus||"DRAFT").filter(Boolean)));
+  const waktuOptions = Array.from(new Set(scopedList.map(a=>a.waktuUsulanPenghapusan).filter(Boolean))).sort();
+  const q = attbSearch.trim().toLowerCase();
+  const filteredList = scopedList
+    .filter(a => stageFilter==="ALL" || a.stage===stageFilter)
+    .filter(a => !belumLanjutOnly || a.lanjutBelumLanjut)
+    .filter(a => jenisFilter==="ALL" || a.jenisAset===jenisFilter)
+    .filter(a => statusFilter==="ALL" || (a.approvalStatus||"DRAFT")===statusFilter)
+    .filter(a => waktuFilter==="ALL" || a.waktuUsulanPenghapusan===waktuFilter)
+    .filter(a => !q || [a.nomorAT, a.nomorATTB, a.description, a.merkType, a.spesifikasi, a.bay, a.lokasi, a.noEquipment, a.keterangan].some(v => String(v||"").toLowerCase().includes(q)))
+    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const attbTotalPages = Math.max(1, Math.ceil(filteredList.length / attbPageSize));
+  const attbPageClamped = Math.min(attbPage, attbTotalPages);
+  const pagedList = filteredList.slice((attbPageClamped-1)*attbPageSize, attbPageClamped*attbPageSize);
+  // Reset ke halaman 1 saat filter/scope berubah supaya tidak nyangkut di halaman kosong.
+  useEffect(()=>{ setAttbPage(1); }, [stageFilter, belumLanjutOnly, effectiveUptFilter, attbPageSize, attbSearch, jenisFilter, statusFilter, waktuFilter]);
+
+  function renderField(field, form, setForm) {
+    return (
+      <div key={field.key} style={{marginBottom:8}}>
+        <label style={sty.label}>{field.label}</label>
+        {field.type==="select" ? (
+          <select style={sty.select} value={form[field.key] ?? ""} onChange={e=>setForm(f=>({...f,[field.key]:e.target.value}))}>
+            <option value="">-- Pilih --</option>
+            {field.options.map(o=><option key={o} value={o}>{o}</option>)}
+          </select>
+        ) : (
+          <input style={sty.input} type={field.type==="number"?"number":field.type==="date"?"date":"text"}
+            value={form[field.key] ?? ""} onChange={e=>setForm(f=>({...f,[field.key]:e.target.value}))}/>
+        )}
+      </div>
+    );
+  }
+
+  async function submitAdd() {
+    await createItem(addForm);
+    setAddForm(emptyAddForm);
+    setShowAddForm(false);
+  }
+
+  const stageColor = stage => [C.accent,"#7c3aed","#0891b2","#ea580c",C.green][attbStageIndex(stage)] || C.muted;
+
+  return (
+    <div>
+      <h1 style={{fontSize:20,fontWeight:900,marginBottom:12}}>🗂️ ATTB — Penghapusan Aset Material</h1>
+
+      {isMSB ? (
+        <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap",marginBottom:12}}>
+          <div style={{minWidth:180}}>
+            <label style={{...sty.label,marginBottom:3}}>Filter UPT</label>
+            <select style={sty.select} value={myUptSelected} onChange={e=>setMyUptSelected(e.target.value)}>
+              <option value="">Semua UPT</option>
+              {uptOptions.map(u=><option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+        </div>
+      ) : (
+        <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+          Menampilkan item ATTB <b style={{color:C.accent}}>UPT {myUpt||"Surabaya"}</b>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:16,flexWrap:"wrap",marginBottom:14,padding:"9px 14px",background:"#f8fafc",borderRadius:10,border:`1px solid ${C.border}`,fontSize:12,alignItems:"center"}}>
+        <div style={{display:"flex",alignItems:"baseline",gap:4}}><span style={{color:C.muted}}>Total Item:</span><span style={{fontWeight:900,fontSize:14,color:C.accent}}>{scopedList.length}</span></div>
+        <div style={{display:"flex",alignItems:"baseline",gap:4}}><span style={{color:C.muted}}>Pending Approval:</span><span style={{fontWeight:900,fontSize:14,color:pendingApprovalCount?"#92400e":C.muted}}>{pendingApprovalCount}</span></div>
+        <div style={{display:"flex",alignItems:"baseline",gap:4}}><span style={{color:C.muted}}>Belum Lanjut:</span><span style={{fontWeight:900,fontSize:14,color:belumLanjutCount?C.red:C.muted}}>{belumLanjutCount}</span></div>
+      </div>
+
+      {/* Pipeline 5 tahap ATTB — kartu berurutan dihubungkan panah (proses maju
+          menuju lelang). Klik kartu untuk memfilter tabel per tahap. */}
+      <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",marginBottom:10}}>
+        <button onClick={()=>setStageFilter("ALL")} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,border:`2px solid ${stageFilter==="ALL"?C.accent:C.border}`,background:stageFilter==="ALL"?C.accent:"white",color:stageFilter==="ALL"?"white":C.accent,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+          <span style={{fontWeight:900,fontSize:14}}>{scopedList.length}</span><span>Semua Tahap</span>
+        </button>
+        {belumLanjutCount>0 && (
+          <button onClick={()=>setBelumLanjutOnly(b=>!b)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:20,border:`2px solid ${belumLanjutOnly?C.red:"#fecaca"}`,background:belumLanjutOnly?C.red:"#fef2f2",color:belumLanjutOnly?"white":C.red,fontWeight:700,fontSize:12,cursor:"pointer"}}>
+            ⚠️ Belum Lanjut ({belumLanjutCount})
+          </button>
+        )}
+      </div>
+      <div style={{display:"flex",alignItems:"stretch",flexWrap:"wrap",gap:0,marginBottom:16}}>
+        {/* Pra-tahap: Material Bongkaran ATTB (MTU) dari TUG-10 — sumber kandidat sebelum AE.1 */}
+        {(()=>{ const active = stageFilter==="SUMBER"; const color="#6b7280"; return (
+          <Fragment key="SUMBER">
+            <button onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
+              style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px dashed ${active?color:"#cbd5e1"}`,background:active?color:"#f8fafc",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <span style={{fontSize:16}}>🧰</span>
+                <span style={{fontSize:20,fontWeight:900,color:active?"white":color}}>{bongkaranBelum.length}</span>
+              </div>
+              <span style={{fontSize:11,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>Material Bongkaran<br/>(TUG-10)</span>
+            </button>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",color:C.muted,fontSize:22,fontWeight:900,alignSelf:"center"}}>→</div>
+          </Fragment>
+        ); })()}
+        {ATTB_STAGES.map((s,i)=>{
+          const active = stageFilter===s.code;
+          const color = stageColor(s.code);
+          const isLast = i===ATTB_STAGES.length-1;
+          return (
+            <Fragment key={s.code}>
+              <button onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
+                style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px solid ${active?color:C.border}`,background:active?color:"white",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,background:active?"rgba(255,255,255,0.25)":color+"22",color:active?"white":color}}>{i+1}</span>
+                  <span style={{fontSize:20,fontWeight:900,color:active?"white":color}}>{stageCounts[s.code]||0}</span>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>{s.label}</span>
+              </button>
+              {!isLast && (
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",color:C.muted,fontSize:22,fontWeight:900,alignSelf:"center"}}>→</div>
+              )}
+            </Fragment>
+          );
+        })}
+        {/* Tujuan akhir proses */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",color:C.green,fontSize:22,fontWeight:900,alignSelf:"center"}}>→</div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"10px 14px",minWidth:90,borderRadius:12,border:`2px dashed ${C.green}`,background:"#f0fdf4",alignSelf:"center"}}>
+          <span style={{fontSize:20}}>🔨</span>
+          <span style={{fontSize:11,fontWeight:800,color:C.green,textAlign:"center",lineHeight:1.2}}>LELANG<br/>oleh KI</span>
+        </div>
+      </div>
+
+      {canManage && stageFilter!=="SUMBER" && (
+        <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+          <button style={sty.btn("ghost")} onClick={()=>{setImportRaw(null);setImportPreview(null);setImportOverwrite(false);setImportIncludeHidden(false);setShowImportPanel(true);}}>📥 Import Excel (Material)</button>
+        </div>
+      )}
+
+      {/* ── PRA-TAHAP: Pool Material Bongkaran ATTB (MTU) dari TUG-10 ── */}
+      {stageFilter==="SUMBER" && (
+        <div>
+          <div style={{...sty.card,marginBottom:12,background:"#f8fafc",borderLeft:`4px solid #6b7280`,padding:"10px 14px",fontSize:12,color:C.muted}}>
+            🧰 Daftar material <b>Bongkaran ATTB (MTU)</b> yang masuk lewat TUG-10 (retur). Ini sumber kandidat sebelum diusulkan ke AE.1. Klik <b>Usulkan ATTB</b> untuk memindahkan material ke pipeline (Tahap 1 — Usulan AE.1 ke Unit Induk).
+          </div>
+          <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Total <b style={{color:C.text}}>{bongkaranPool.length}</b> material bongkaran • <b style={{color:C.accent}}>{bongkaranBelum.length}</b> belum diusulkan</div>
+          <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:24}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:820}}>
+              <thead>
+                <tr style={{background:"#003087",color:"white"}}>
+                  {["Material","Qty","No Seri","No Asset","Sumber TUG-10","Tanggal","Status TUG-10","Aksi"].map(h=>(
+                    <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"?"center":"left",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {bongkaranPool.length===0 && (
+                  <tr><td colSpan={8} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada material Bongkaran ATTB (MTU) dari TUG-10.</td></tr>
+                )}
+                {bongkaranPool.map(p=>{
+                  const sudah = promotedKeys.has(p.key);
+                  return (
+                    <tr key={p.key} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${sudah?C.green:"#6b7280"}`,opacity:sudah?0.65:1}}>
+                      <td style={{padding:"8px 10px",fontWeight:600,minWidth:180}}>{p.nama}</td>
+                      <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.qty} {p.satuan}</td>
+                      <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.noSeri||"—"}</td>
+                      <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.noAsset||"—"}</td>
+                      <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.tug10No}{p.namaPekerjaan?<div style={{fontSize:10,color:C.muted}}>{p.namaPekerjaan}</div>:null}</td>
+                      <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.tanggal?new Date(p.tanggal).toLocaleDateString("id-ID"):"—"}</td>
+                      <td style={{padding:"8px 10px"}}><span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:p.status==="APPROVED"?"#dcfce7":"#fef3c7",color:p.status==="APPROVED"?C.green:"#92400e"}}>{p.status||"-"}</span></td>
+                      <td style={{padding:"8px 10px",textAlign:"center"}}>
+                        {sudah
+                          ? <span style={{fontSize:10,fontWeight:700,color:C.green}}>✅ Sudah diusulkan</span>
+                          : canManage
+                            ? <button style={sty.btn("primary","sm")} onClick={()=>promoteBongkaran(p)}>➕ Usulkan ATTB</button>
+                            : <span style={{fontSize:10,color:C.muted}}>—</span>}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {stageFilter!=="SUMBER" && <>
+      {/* Bar filter data — search bebas + dropdown jenis/status/waktu usulan */}
+      <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+        <div style={{position:"relative",flex:1,minWidth:220}}>
+          <input style={{...sty.input,paddingRight:28}} placeholder="🔍 Cari nomor AT/ATTB, deskripsi, merk, bay, lokasi..." value={attbSearch} onChange={e=>setAttbSearch(e.target.value)}/>
+          {attbSearch && <button onClick={()=>setAttbSearch("")} title="Hapus pencarian" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:C.muted,padding:4,lineHeight:1}}>✕</button>}
+        </div>
+        {jenisOptions.length>1 && (
+          <select style={{...sty.select,width:"auto",minWidth:130}} value={jenisFilter} onChange={e=>setJenisFilter(e.target.value)}>
+            <option value="ALL">Semua Jenis</option>
+            {jenisOptions.map(j=><option key={j} value={j}>{ATTB_JENIS_ASET_LABEL[j]||j}</option>)}
+          </select>
+        )}
+        <select style={{...sty.select,width:"auto",minWidth:130}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
+          <option value="ALL">Semua Status</option>
+          {statusOptions.map(s=><option key={s} value={s}>{s}</option>)}
+        </select>
+        {waktuOptions.length>0 && (
+          <select style={{...sty.select,width:"auto",minWidth:150}} value={waktuFilter} onChange={e=>setWaktuFilter(e.target.value)}>
+            <option value="ALL">Semua Waktu Usulan</option>
+            {waktuOptions.map(w=><option key={w} value={w}>{w}</option>)}
+          </select>
+        )}
+        {(attbSearch||jenisFilter!=="ALL"||statusFilter!=="ALL"||waktuFilter!=="ALL") && (
+          <button style={sty.btn("ghost","sm")} onClick={()=>{setAttbSearch("");setJenisFilter("ALL");setStatusFilter("ALL");setWaktuFilter("ALL");}}>Reset filter</button>
+        )}
+      </div>
+
+      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>Menampilkan <b style={{color:C.text}}>{filteredList.length}</b> item</div>
+
+      {/* Tampilan tabel horizontal, pola sama dengan Data Stok (header biru,
+          baris ringkas, border kiri berwarna per tahap). Form Tolak/Belum Lanjut
+          muncul sebagai baris expand di bawah baris item terkait. */}
+      <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:12}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:920}}>
+          <thead>
+            <tr style={{background:"#003087",color:"white"}}>
+              {["Nomor AT/ATTB","Jenis / UPT","Deskripsi","Lokasi","Nilai Perolehan","Nilai Buku","Status","Tahap","Aksi"].map(h=>(
+                <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"?"center":h.startsWith("Nilai")?"right":"left",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filteredList.length===0 && (
+              <tr><td colSpan={9} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
+            )}
+            {pagedList.map(item=>{
+              const canApproveThis = isPendingAttbApproval(item) && canApproveAttb(currentUser, item);
+              const borderColor = item.lanjutBelumLanjut ? "#f59e0b" : stageColor(item.stage);
+              return (
+                <Fragment key={item.id}>
+                  <tr style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`}}>
+                    <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <div style={{width:34,height:34,flexShrink:0,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {item.foto ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:15,color:"#9ca3af"}}>📦</span>}
+                        </div>
+                        <div>
+                          <div style={{fontWeight:700,color:C.text}}>{item.nomorATTB || item.nomorAT || item.id}</div>
+                          {item.waktuUsulanPenghapusan && <div style={{fontSize:9,color:C.muted,marginTop:1}}>🕘 {item.waktuUsulanPenghapusan}</div>}
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
+                      <div style={{fontWeight:600}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
+                      <div style={{fontSize:10,color:C.muted}}>{item.upt}</div>
+                    </td>
+                    <td style={{padding:"8px 10px",minWidth:180,maxWidth:280}}>
+                      <div style={{fontWeight:600,color:C.text}}>{item.description||"-"}</div>
+                      {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:10,color:C.red,marginTop:2}}>Ditolak: {item.alasanTolak}</div>}
+                    </td>
+                    <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:180,maxWidth:230}}>
+                      {(()=>{
+                        const loc = resolveLokasiMaster(item);
+                        const selGudangId = attbGudangFilter[item.id] ?? loc?.gdg?.id ?? "";
+                        const canLihatPeta = !!loc?.petaInfo;
+                        if (canManage) {
+                          return (
+                            <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                              <select value={selGudangId} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset"}}
+                                onChange={e=>{ setAttbGudangFilter(prev=>({...prev,[item.id]:e.target.value})); if(item.lokasiId){ setAttbLokasi(item, ""); } }}>
+                                <option value="">-- Pilih Gudang --</option>
+                                {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+                              </select>
+                              <div style={{display:"flex",gap:3,alignItems:"center"}}>
+                                <select value={item.lokasiId||""} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset",flex:1}}
+                                  onChange={e=>setAttbLokasi(item, e.target.value)}>
+                                  <option value="">-- Pilih Blok --</option>
+                                  {lokasiList.filter(l=>l.gudangId===selGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                                </select>
+                                <button title={canLihatPeta?"Lihat di Peta Gudang":!item.lokasiId?"Blok belum diisi":"Blok ini belum diplot di denah / denah belum diupload"}
+                                  style={{...sty.btn("ghost","sm"),padding:"4px 7px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
+                                  onClick={()=>{ if(canLihatPeta){ setPetaMiniDetail && setPetaMiniDetail({stock:item, lokasi:loc.lok, gudang:loc.gdg, petaInfo:loc.petaInfo}); } else { showToast(!item.lokasiId?"Blok/Lokasi belum diisi.":"Blok ini belum diplot koordinatnya di denah (atur di Master Data → Master Gudang).","error"); } }}>📍</button>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div>
+                            {loc ? <div style={{fontWeight:600,color:C.text,fontSize:11}}>📍 {loc.teks}</div> : <div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>Belum diisi</div>}
+                          </div>
+                        );
+                      })()}
+                    </td>
+                    <td style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>{item.nilaiPerolehan?Number(item.nilaiPerolehan).toLocaleString("id-ID"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap",color:item.nilaiBuku?C.text:C.muted}}>{item.nilaiBuku?Number(item.nilaiBuku).toLocaleString("id-ID"):"—"}</td>
+                    <td style={{padding:"8px 10px"}}>
+                      <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{item.approvalStatus||"DRAFT"}</span>
+                    </td>
+                    <td style={{padding:"8px 10px"}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
+                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
+                        {item.lanjutBelumLanjut && <span title={`Belum Lanjut: ${item.keteranganTidakLanjut||"-"}`} style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap",cursor:"help"}}>⏸ Ditahan</span>}
+                      </div>
+                    </td>
+                    <td style={{padding:"8px 10px"}}>
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center"}}>
+                        {canManage && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"5px 8px"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>✏️</button>}
+                        {canApproveThis && (
+                          <>
+                            <button style={sty.btn("success","sm")} onClick={()=>approveToKI(item.id)}>Approve</button>
+                            <button style={sty.btn("danger","sm")} onClick={()=>{setRejectingId(item.id);setRejectReason("");}}>Tolak</button>
+                          </>
+                        )}
+                        {/* Kontrol Lanjut / Belum Lanjut — compact segmented, aktif di Tahap 1 (Usulan AE.1)
+                            & Tahap 2 (AE.1 s.d AE.4). Tahap 3-4 cuma tombol Lanjut. */}
+                        {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
+                          <div style={{display:"inline-flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                            <button title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
+                              style={{border:"none",cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:800,background:"#dcfce7",color:C.green,whiteSpace:"nowrap"}}>▶ Lanjut</button>
+                            <button title={item.lanjutBelumLanjut?"Sedang Belum Lanjut — klik untuk lanjutkan lagi":"Tandai Belum Lanjut"}
+                              onClick={()=>{ if(item.lanjutBelumLanjut){ resumeBelumLanjut(item); } else { setBelumLanjutId(item.id); setBelumLanjutNote(""); } }}
+                              style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"5px 10px",fontSize:11,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"#fffbeb",color:item.lanjutBelumLanjut?"white":"#92400e",whiteSpace:"nowrap"}}>{item.lanjutBelumLanjut?"⏸ Ditahan":"⏸ Belum"}</button>
+                          </div>
+                        )}
+                        {canManage && ["CEK_DEKOM","CEK_KJPP"].includes(item.stage) && (
+                          <button style={sty.btn("ghost","sm")} onClick={()=>advanceStage(item.id)}>▶ Lanjut</button>
+                        )}
+                        {canDelete && (
+                          <button title="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 8px"}}
+                            onClick={()=>askConfirmDelete && askConfirmDelete({
+                              title:"Hapus Item ATTB?",
+                              message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,
+                              warning:"Data item ATTB ini akan dihapus permanen dari daftar & database. Tindakan ini tidak bisa di-undo.",
+                              confirmLabel:"🗑️ Ya, Hapus",
+                              onConfirm:()=>deleteItem(item.id),
+                            })}>🗑️</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {(rejectingId===item.id || belumLanjutId===item.id) && (
+                    <tr style={{borderLeft:`3px solid ${borderColor}`}}>
+                      <td colSpan={9} style={{padding:"8px 10px",background:"#fef2f2"}}>
+                        {rejectingId===item.id && (
+                          <div>
+                            <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
+                            <div style={{display:"flex",gap:6,marginTop:6}}>
+                              <button style={sty.btn("ghost","sm")} onClick={()=>setRejectingId(null)}>Batal</button>
+                              <button style={sty.btn("danger","sm")} onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}>Tolak</button>
+                            </div>
+                          </div>
+                        )}
+                        {belumLanjutId===item.id && (
+                          <div>
+                            <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan Belum Lanjut..." value={belumLanjutNote} onChange={e=>setBelumLanjutNote(e.target.value)}/>
+                            <div style={{display:"flex",gap:6,marginTop:6}}>
+                              <button style={sty.btn("ghost","sm")} onClick={()=>setBelumLanjutId(null)}>Batal</button>
+                              <button style={sty.btn("danger","sm")} onClick={async()=>{await markBelumLanjut(item.id, belumLanjutNote);setBelumLanjutId(null);}}>Simpan</button>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {filteredList.length > 0 && (
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,flexWrap:"wrap",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted}}>
+            Tampilkan
+            <select style={{...sty.select,width:"auto",padding:"4px 8px",minHeight:"unset",fontSize:12}} value={attbPageSize} onChange={e=>setAttbPageSize(Number(e.target.value))}>
+              {[20,50,100].map(n=><option key={n} value={n}>{n}</option>)}
+            </select>
+            item per halaman — {filteredList.length} total
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button style={{...sty.btn("ghost","sm")}} disabled={attbPageClamped<=1} onClick={()=>setAttbPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+            <span style={{fontSize:12,color:C.muted,padding:"0 6px"}}>Halaman {attbPageClamped} / {attbTotalPages}</span>
+            <button style={{...sty.btn("ghost","sm")}} disabled={attbPageClamped>=attbTotalPages} onClick={()=>setAttbPage(p=>Math.min(attbTotalPages,p+1))}>Berikutnya →</button>
+          </div>
+        </div>
+      )}
+      </>}
+
+      {/* MODAL IMPORT EXCEL — jenis MATERIAL, 2 format sumber -> 2 tahap target berbeda */}
+      {showImportPanel && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:640,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+            <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>📥 Import Excel ATTB (Material)</h3>
+            <p style={{fontSize:11,color:C.muted,marginBottom:14}}>Baris data dideteksi otomatis lewat kolom Nomor AT/ATTB. Baris yang nomor AT-nya sudah ada di daftar akan otomatis dilewati (tidak dobel). 💡 Kalau punya kedua file (kandidat baru + yang sudah disetujui), import <b>Tahap 2 dulu</b>, baru Tahap 1 — supaya item yang sudah disetujui otomatis ke-skip saat import Tahap 1, tidak dobel-catat.</p>
+
+            <div style={{marginBottom:8}}>
+              <label style={sty.label}>Target Tahap</label>
+              <select style={sty.select} value={importTarget} onChange={e=>setImportTarget(e.target.value)}>
+                <option value="TAHAP1">Tahap 1 — Kandidat Baru (format "Bursa Material belum diusulkan")</option>
+                <option value="TAHAP2">Tahap 2 — Sudah Disetujui (format resmi "Template AE.3.1f")</option>
+              </select>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={sty.label}>UPT</label>
+              <div style={{...sty.input,background:"#f3f4f6",color:C.text,display:"flex",alignItems:"center",fontWeight:600}}>{importUpt||"(UPT login tidak terdeteksi)"}</div>
+              <div style={{fontSize:10,color:C.muted,marginTop:2}}>Otomatis mengikuti UPT login admin.</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <div>
+                <label style={sty.label}>Waktu Usulan — Semester</label>
+                <select style={sty.select} value={importSemester} onChange={e=>setImportSemester(e.target.value)}>
+                  <option value="1">Semester 1</option>
+                  <option value="2">Semester 2</option>
+                </select>
+              </div>
+              <div>
+                <label style={sty.label}>Tahun</label>
+                <select style={sty.select} value={importTahun} onChange={e=>setImportTahun(Number(e.target.value))}>
+                  {attbTahunOptions.map(y=><option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Tersimpan sebagai: <b style={{color:C.accent}}>{importWaktu}</b></div>
+
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:8,cursor:"pointer",padding:"8px 10px",background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8}}>
+              <input type="checkbox" checked={importIncludeHidden} onChange={e=>setImportIncludeHidden(e.target.checked)}/>
+              <span>Sertakan baris yang di-<b>hide</b>/di-filter di Excel
+                {importPreview && importPreview.hiddenCount>0 && <span style={{color:"#92400e",fontWeight:700}}> — ada {importPreview.hiddenCount} baris hidden, saat ini <b>{importIncludeHidden?"disertakan":"dilewati"}</b></span>}
+                {importPreview && importPreview.hiddenCount===0 && <span style={{color:C.muted}}> (file ini tidak punya baris hidden)</span>}
+              </span>
+            </label>
+
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:12,cursor:"pointer",padding:"8px 10px",background:importOverwrite?"#fef2f2":"#f8fafc",border:`1px solid ${importOverwrite?"#fecaca":C.border}`,borderRadius:8}}>
+              <input type="checkbox" checked={importOverwrite} onChange={e=>setImportOverwrite(e.target.checked)}/>
+              <span>♻️ <b>Tiban (timpa)</b> semua data eksisting dengan Waktu Usulan = <b>{importWaktu}</b>
+                {importOverwrite && importPreview && <span style={{color:C.red,fontWeight:700}}> — {importPreview.overwriteCount} item lama akan dihapus & diganti isi file</span>}
+                {!importOverwrite && <span style={{color:C.muted}}> (default: data lama dipertahankan, hanya menambah yang baru)</span>}
+              </span>
+            </label>
+
+            <label style={{...sty.btn("primary"),cursor:"pointer",display:"inline-block",marginBottom:12}}>
+              {importing?"⏳ Memproses...":"📂 Upload File Excel"}
+              <input type="file" accept=".xlsx" style={{display:"none"}} onChange={handleImportFile} disabled={importing}/>
+            </label>
+
+            {importPreview && (
+              <div>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Preview: {importPreview.fileName} (Sheet: {importPreview.sheetName})</div>
+                <div style={{display:"flex",gap:10,marginBottom:10}}>
+                  <div style={{padding:"6px 12px",borderRadius:8,background:"#f0fdf4",border:`1px solid #bbf7d0`,textAlign:"center"}}>
+                    <div style={{fontSize:10,color:C.muted}}>Baru</div>
+                    <div style={{fontSize:16,fontWeight:800,color:C.green}}>{importPreview.newCount}</div>
+                  </div>
+                  <div style={{padding:"6px 12px",borderRadius:8,background:"#f3f4f6",border:`1px solid ${C.border}`,textAlign:"center"}}>
+                    <div style={{fontSize:10,color:C.muted}}>Dilewati (duplikat)</div>
+                    <div style={{fontSize:16,fontWeight:800,color:C.muted}}>{importPreview.dupCount}</div>
+                  </div>
+                  {importPreview.hiddenCount>0 && (
+                    <div style={{padding:"6px 12px",borderRadius:8,background:"#fef9c3",border:`1px solid #fde68a`,textAlign:"center"}}>
+                      <div style={{fontSize:10,color:"#92400e"}}>Hidden di Excel (dilewati)</div>
+                      <div style={{fontSize:16,fontWeight:800,color:"#92400e"}}>{importPreview.hiddenCount}</div>
+                    </div>
+                  )}
+                </div>
+                <div style={{overflowX:"auto",maxHeight:280,overflowY:"auto",marginBottom:12,border:`1px solid ${C.border}`,borderRadius:8}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:480}}>
+                    <thead style={{background:"#003087",color:"white",position:"sticky",top:0}}>
+                      <tr>{["Nomor AT","Description","Nilai Perolehan","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {importPreview.records.map((r,i)=>(
+                        <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r._duplicate?"#f9fafb":"white",opacity:r._duplicate?0.6:1}}>
+                          <td style={{padding:"4px 8px"}}>{r.nomorAT}</td>
+                          <td style={{padding:"4px 8px"}}>{r.description}</td>
+                          <td style={{padding:"4px 8px",textAlign:"right"}}>{r.nilaiPerolehan?.toLocaleString("id-ID")}</td>
+                          <td style={{padding:"4px 8px"}}>{r._duplicate?"Duplikat — dilewati":"Baru"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div style={{display:"flex",gap:10,marginTop:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setShowImportPanel(false);setImportRaw(null);setImportPreview(null);}}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} disabled={!importPreview || importPreview.newCount===0} onClick={confirmImport}>
+                💾 Import {importPreview?.newCount||0} Item Baru
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL TAMBAH — pilih jenis aset dulu, field menyesuaikan (Tahap 1) */}
+      {showAddForm && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+            <h3 style={{fontSize:16,fontWeight:800,marginBottom:16}}>+ Tambah Kandidat ATTB (Tahap 1)</h3>
+            <div style={{marginBottom:8}}>
+              <label style={sty.label}>Jenis Aset</label>
+              <select style={sty.select} value={addForm.jenisAset} onChange={e=>setAddForm(f=>({...f,jenisAset:e.target.value}))}>
+                {ATTB_JENIS_ASET.map(j=><option key={j} value={j}>{ATTB_JENIS_ASET_LABEL[j]}</option>)}
+              </select>
+            </div>
+            {ATTB_CORE_FIELDS.map(f=>renderField(f, addForm, setAddForm))}
+            {(ATTB_FIELDS_BY_JENIS[addForm.jenisAset]||[]).map(f=>renderField(f, addForm, setAddForm))}
+            <div style={{display:"flex",gap:10,marginTop:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setShowAddForm(false)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={submitAdd}>💾 Simpan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDIT — field tahap berikutnya baru muncul setelah item mencapai tahap itu */}
+      {editingId && (()=>{
+        const item = attbList.find(a=>a.id===editingId);
+        if (!item) return null;
+        const stageIdx = attbStageIndex(item.stage);
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+            <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+              <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>✏️ Edit ATTB</h3>
+              <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{item.nomorATTB||item.id} — {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
+
+              {/* Foto barang — bisa ditambah/diperbarui di semua tahap. Untuk material
+                  eks Bongkaran TUG-10, foto awal sudah ter-isi dari input TUG-10. */}
+              <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Foto Barang</div>
+              <div style={{height:170,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:8}}>
+                {editForm.foto ? <img src={editForm.foto} alt="Foto barang ATTB" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:36,color:"#9ca3af"}}>📦</div>}
+              </div>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                <label style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer"}}>
+                  📷 {editForm.foto?"Ganti Foto":"Upload Foto"}
+                  <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg && handleImg(e, img=>setEditForm(f=>({...f,foto:img})))}/>
+                </label>
+                {editForm.foto && <button style={sty.btn("danger","sm")} onClick={()=>setEditForm(f=>({...f,foto:null}))}>🗑️ Hapus Foto</button>}
+              </div>
+
+              <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Data Inti</div>
+              {ATTB_CORE_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+              {(ATTB_FIELDS_BY_JENIS[item.jenisAset]||[]).map(f=>renderField(f, editForm, setEditForm))}
+              <div style={{fontSize:10,color:C.muted,marginBottom:8,fontStyle:"italic"}}>📍 Lokasi/Blok Gudang diatur langsung di kolom Lokasi pada tabel (pilih Gudang → Blok), lengkap dengan tombol lihat di peta.</div>
+
+              {stageIdx>=1 && <>
+                <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 2 — AE.1 s.d. AE.4</div>
+                {ATTB_STAGE2_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+                {item.jenisAset==="MATERIAL" && (
+                  <div style={{marginBottom:8}}>
+                    <label style={sty.label}>Kategori Material</label>
+                    <select style={sty.select} value={editForm.kategoriMaterial||""} onChange={e=>setEditForm(f=>({...f,kategoriMaterial:e.target.value}))}>
+                      <option value="">-- Pilih --</option>
+                      <option value="Trafo">Trafo</option>
+                      <option value="Non Trafo">Non Trafo</option>
+                    </select>
+                  </div>
+                )}
+              </>}
+              {stageIdx>=2 && <>
+                <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 3 — Siap Cek Dekom</div>
+                {ATTB_STAGE3_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+              </>}
+              {stageIdx>=3 && <>
+                <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 4 — Cek KJPP</div>
+                {ATTB_STAGE4_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+              </>}
+              {stageIdx>=4 && <>
+                <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 5 — Menunggu Lelang</div>
+                {ATTB_STAGE5_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+              </>}
+
+              {item.stageHistory?.length>0 && (
+                <div style={{marginTop:12}}>
+                  <div style={{fontSize:11,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Riwayat Tahap</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:120,overflowY:"auto"}}>
+                    {[...item.stageHistory].reverse().map((h,i)=>(
+                      <div key={i} style={{fontSize:11,color:C.muted,borderLeft:`2px solid ${C.border}`,paddingLeft:8}}>
+                        <b style={{color:C.text}}>{attbStageLabel(h.stage)}</b> — {users.find(u=>u.id===h.oleh)?.name||h.oleh} • {h.tanggal?new Date(h.tanggal).toLocaleString("id-ID"):"-"}
+                        {h.catatan && <div>{h.catatan}</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div style={{display:"flex",gap:10,marginTop:16}}>
+                <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingId(null)}>Batal</button>
+                <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(item.id, editForm);setEditingId(null);}}>💾 Simpan</button>
               </div>
             </div>
           </div>
