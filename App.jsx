@@ -6847,7 +6847,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     const isLow = st.jenisBarang!=="Non-Stock" && st.qty<=st.minQty;
                     const noLokasi = !st.lokasiId;
                     const lok = lokasiList.find(l=>l.id===st.lokasiId);
-                    const gdg = lok?.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : null;
+                    // Fallback ke st.gudangId (declared, independen dari Blok) kalau belum ada Blok
+                    // tersimpan — ditemukan 2026-07-10 (sama seperti bug ATTB): kalau Gudang yang
+                    // dipilih ternyata tidak punya Blok terdaftar sama sekali, dropdown Blok kosong dan
+                    // pilihan Gudang (yang tadinya cuma filter lokal, tidak pernah disimpan) hilang lagi
+                    // tiap render ulang. Sekarang gudangId disimpan langsung ke stok begitu dipilih.
+                    const gdg = lok?.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : (st.gudangId ? gudangList.find(g=>g.id===st.gudangId) : null);
+                    const effGudangIdForBlok = stockGudangFilter[st.id] ?? st.gudangId ?? gdg?.id ?? "";
+                    const blokOptionsForStock = lokasiList.filter(l=>l.gudangId===effGudangIdForBlok);
                     const petaInfo = getLokasiPetaInfo(lok, gdg, subGudangList);
                     const canLihatPeta = !!petaInfo;
                     const hasDenah = !!(gdg?.denahImageData || (lok?.subGudangId && subGudangList.find(s=>s.id===lok.subGudangId)?.denahImageData));
@@ -6881,9 +6888,17 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:120}}>
                           {hasRole(currentUser, "ADMIN","TL") ? (
                             <select
-                              value={stockGudangFilter[st.id] ?? gdg?.id ?? ""}
+                              value={stockGudangFilter[st.id] ?? st.gudangId ?? gdg?.id ?? ""}
                               style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8}}
-                              onChange={e=>setStockGudangFilter(prev=>({...prev,[st.id]:e.target.value}))}>
+                              onChange={async e=>{
+                                const v = e.target.value;
+                                setStockGudangFilter(prev=>({...prev,[st.id]:v}));
+                                // Simpan langsung (bukan cuma filter lokal) supaya tidak hilang kalau
+                                // Gudang ini ternyata tidak punya Blok terdaftar sama sekali.
+                                const ns = stocks.map(s=>s.id===st.id?{...s, gudangId: v||null}:s);
+                                setStocks(ns);
+                                await saveToCloud({stocks:ns});
+                              }}>
                               <option value="">-- Pilih Gudang --</option>
                               {gudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                             </select>
@@ -6927,8 +6942,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                   showToast(msg);
                                 }}>
                                 <option value="">-- Pilih Blok --</option>
-                                {lokasiList.filter(l=>l.gudangId === (stockGudangFilter[st.id] ?? gdg?.id ?? "")).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                                {blokOptionsForStock.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                               </select>
+                              {effGudangIdForBlok && blokOptionsForStock.length===0 && <div style={{fontSize:9,color:"#b45309",fontStyle:"italic",marginTop:2}}>⚠️ Belum ada Blok terdaftar di Gudang ini — pilihan Gudang tetap tersimpan.</div>}
                               {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"TL"} → {st.pendingLokasiKode}</div>}
                             </>
                           ) : hasRole(currentUser, "TL") ? (
@@ -6960,8 +6976,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                   showToast(msg);
                                 }}>
                                 <option value="">-- Pilih Blok --</option>
-                                {lokasiList.filter(l=>l.gudangId === (stockGudangFilter[st.id] ?? gdg?.id ?? "")).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                                {blokOptionsForStock.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                               </select>
+                              {effGudangIdForBlok && blokOptionsForStock.length===0 && <div style={{fontSize:9,color:"#b45309",fontStyle:"italic",marginTop:2}}>⚠️ Belum ada Blok terdaftar di Gudang ini — pilihan Gudang tetap tersimpan.</div>}
                               {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"Asman"} → {st.pendingLokasiKode}</div>}
                             </>
                           ) : (
@@ -13427,16 +13444,28 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
   }
   const [attbGudangFilter, setAttbGudangFilter] = useState({}); // per-item id -> gudangId (utk filter dropdown Sub Gudang & Blok)
   const [attbSubGudangFilter, setAttbSubGudangFilter] = useState({}); // per-item id -> subGudangId (utk filter dropdown Blok)
-  // Resolve lokasi master-data dari lokasiId (blok) yang tersimpan di item ->
-  // objek {lok, gdg, petaInfo, teks} untuk tampilan + tombol peta. Pola sama Data Stok.
+  // Resolve lokasi master-data yang tersimpan di item -> objek {lok, gdg, sg, petaInfo, teks}
+  // untuk tampilan + tombol peta. Pola sama Data Stok, tapi ATTB juga simpan gudangId/subGudangId
+  // sendiri (independen dari lokasiId/Blok) — ditemukan 2026-07-10: beberapa Sub Gudang (mis.
+  // BUDURAN) belum punya Blok terdaftar sama sekali di Master Data, jadi kalau lokasi cuma
+  // disimpan lewat lokasiId (harus sampai pilih Blok), pilihan Gudang/Sub Gudang untuk area
+  // begitu tidak pernah bisa tersimpan — kelihatan "hilang" tiap kali halaman di-render ulang.
   const resolveLokasiMaster = (item) => {
     const lok = lokasiList.find(l=>l.id===item.lokasiId);
-    if (!lok) return null;
-    const gdg = lok.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : null;
-    const sg = lok.subGudangId ? subGudangList.find(s=>s.id===lok.subGudangId) : null;
-    const petaInfo = getLokasiPetaInfo(lok, gdg, subGudangList);
-    const teks = [gdg?.nama, sg?.nama, lok.kode].filter(Boolean).join(" / ");
-    return { lok, gdg, petaInfo, teks };
+    if (lok) {
+      const gdg = lok.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : null;
+      const sg = lok.subGudangId ? subGudangList.find(s=>s.id===lok.subGudangId) : null;
+      const petaInfo = getLokasiPetaInfo(lok, gdg, subGudangList);
+      const teks = [gdg?.nama, sg?.nama, lok.kode].filter(Boolean).join(" / ");
+      return { lok, gdg, sg, petaInfo, teks };
+    }
+    if (item.gudangId) {
+      const gdg = gudangList.find(g=>g.id===item.gudangId) || null;
+      const sg = item.subGudangId ? subGudangList.find(s=>s.id===item.subGudangId) : null;
+      const teks = [gdg?.nama, sg?.nama].filter(Boolean).join(" / ");
+      return { lok:null, gdg, sg, petaInfo:null, teks };
+    }
+    return null;
   };
   async function setAttbLokasi(item, newLokasiId) {
     await saveEdit(item.id, { lokasiId: newLokasiId || null });
@@ -13810,30 +13839,34 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
                     <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:180,maxWidth:230}}>
                       {(()=>{
                         const loc = resolveLokasiMaster(item);
-                        const selGudangId = attbGudangFilter[item.id] ?? loc?.gdg?.id ?? "";
+                        const selGudangId = attbGudangFilter[item.id] ?? item.gudangId ?? loc?.gdg?.id ?? "";
                         const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
-                        const selSubGudangId = attbSubGudangFilter[item.id] ?? loc?.sg?.id ?? "";
+                        const selSubGudangId = attbSubGudangFilter[item.id] ?? item.subGudangId ?? loc?.sg?.id ?? "";
+                        const blokOptions = lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0 || (l.subGudangId||"")===selSubGudangId));
                         const canLihatPeta = !!loc?.petaInfo;
                         if (canManage) {
                           return (
                             <div style={{display:"flex",flexDirection:"column",gap:3}}>
                               <select value={selGudangId} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset"}}
-                                onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); if(item.lokasiId){ setAttbLokasi(item, ""); } }}>
+                                onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); saveEdit(item.id, { gudangId: v||null, subGudangId: null, lokasiId: null }); }}>
                                 <option value="">-- Pilih Gudang --</option>
                                 {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
                               </select>
                               {subsForGudang.length>0 && (
                                 <select value={selSubGudangId} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset"}}
-                                  onChange={e=>{ setAttbSubGudangFilter(prev=>({...prev,[item.id]:e.target.value})); if(item.lokasiId){ setAttbLokasi(item, ""); } }}>
+                                  onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id, { subGudangId: v||null, lokasiId: null }); }}>
                                   <option value="">-- Pilih Sub Gudang --</option>
                                   {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
                                 </select>
+                              )}
+                              {selGudangId && blokOptions.length===0 && (
+                                <div style={{fontSize:9,color:"#b45309",fontStyle:"italic"}}>⚠️ Belum ada Blok terdaftar di sini (atur di Master Data → Master Gudang) — pilihan Gudang{subsForGudang.length>0?"/Sub Gudang":""} tetap tersimpan.</div>
                               )}
                               <div style={{display:"flex",gap:3,alignItems:"center"}}>
                                 <select value={item.lokasiId||""} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset",flex:1}}
                                   onChange={e=>setAttbLokasi(item, e.target.value)}>
                                   <option value="">-- Pilih Blok --</option>
-                                  {lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0 || (l.subGudangId||"")===selSubGudangId)).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                                  {blokOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                                 </select>
                                 <button title={canLihatPeta?"Lihat di Peta Gudang":!item.lokasiId?"Blok belum diisi":"Blok ini belum diplot di denah / denah belum diupload"}
                                   style={{...sty.btn("ghost","sm"),padding:"4px 7px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
