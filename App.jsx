@@ -13417,7 +13417,8 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
       foto: p.foto || null, // pakai foto dari input TUG-10 (foto barang/nameplate)
     });
   }
-  const [attbGudangFilter, setAttbGudangFilter] = useState({}); // per-item id -> gudangId (utk filter dropdown Blok)
+  const [attbGudangFilter, setAttbGudangFilter] = useState({}); // per-item id -> gudangId (utk filter dropdown Sub Gudang & Blok)
+  const [attbSubGudangFilter, setAttbSubGudangFilter] = useState({}); // per-item id -> subGudangId (utk filter dropdown Blok)
   // Resolve lokasi master-data dari lokasiId (blok) yang tersimpan di item ->
   // objek {lok, gdg, petaInfo, teks} untuk tampilan + tombol peta. Pola sama Data Stok.
   const resolveLokasiMaster = (item) => {
@@ -13801,20 +13802,29 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
                       {(()=>{
                         const loc = resolveLokasiMaster(item);
                         const selGudangId = attbGudangFilter[item.id] ?? loc?.gdg?.id ?? "";
+                        const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
+                        const selSubGudangId = attbSubGudangFilter[item.id] ?? loc?.sg?.id ?? "";
                         const canLihatPeta = !!loc?.petaInfo;
                         if (canManage) {
                           return (
                             <div style={{display:"flex",flexDirection:"column",gap:3}}>
                               <select value={selGudangId} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset"}}
-                                onChange={e=>{ setAttbGudangFilter(prev=>({...prev,[item.id]:e.target.value})); if(item.lokasiId){ setAttbLokasi(item, ""); } }}>
+                                onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); if(item.lokasiId){ setAttbLokasi(item, ""); } }}>
                                 <option value="">-- Pilih Gudang --</option>
                                 {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
                               </select>
+                              {subsForGudang.length>0 && (
+                                <select value={selSubGudangId} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset"}}
+                                  onChange={e=>{ setAttbSubGudangFilter(prev=>({...prev,[item.id]:e.target.value})); if(item.lokasiId){ setAttbLokasi(item, ""); } }}>
+                                  <option value="">-- Pilih Sub Gudang --</option>
+                                  {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
+                                </select>
+                              )}
                               <div style={{display:"flex",gap:3,alignItems:"center"}}>
                                 <select value={item.lokasiId||""} style={{...sty.select,fontSize:11,padding:"4px 6px",minHeight:"unset",flex:1}}
                                   onChange={e=>setAttbLokasi(item, e.target.value)}>
                                   <option value="">-- Pilih Blok --</option>
-                                  {lokasiList.filter(l=>l.gudangId===selGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                                  {lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0 || (l.subGudangId||"")===selSubGudangId)).map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                                 </select>
                                 <button title={canLihatPeta?"Lihat di Peta Gudang":!item.lokasiId?"Blok belum diisi":"Blok ini belum diplot di denah / denah belum diupload"}
                                   style={{...sty.btn("ghost","sm"),padding:"4px 7px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
