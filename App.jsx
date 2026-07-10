@@ -13477,7 +13477,7 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
   const effectiveUptFilter = isMSB ? myUptSelected : (myUpt || "");
   const canManage = hasRole(currentUser, "ADMIN","TL");
 
-  const [stageFilter, setStageFilter] = useState("ALL");
+  const [stageFilter, setStageFilter] = useState("USULAN_AE1"); // default buka langsung ke Tahap 1 (Usulan AE.1 ke Unit Induk)
   const [belumLanjutOnly, setBelumLanjutOnly] = useState(false);
   const [attbSearch, setAttbSearch] = useState("");
   const [jenisFilter, setJenisFilter] = useState("ALL");
@@ -13598,7 +13598,12 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
     .filter(a => statusFilter==="ALL" || (a.approvalStatus||"DRAFT")===statusFilter)
     .filter(a => waktuFilter==="ALL" || a.waktuUsulanPenghapusan===waktuFilter)
     .filter(a => !q || [a.nomorAT, a.nomorATTB, a.description, a.merkType, a.spesifikasi, a.bay, a.lokasi, a.noEquipment, a.keterangan].some(v => String(v||"").toLowerCase().includes(q)))
-    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+    // Tiebreaker pakai id (2026-07-10): data hasil import batch punya createdAt IDENTIK untuk
+    // puluhan/ratusan baris sekaligus (cuma 2 nilai unik utk 151 item ATTB) - kalau createdAt
+    // seri, urutannya jatuh ke urutan mentah hasil fetch Supabase, yang bisa berubah tiap baris
+    // itu di-upsert (kena reorder di storage). Efeknya baris "melompat" posisi begitu lokasi
+    // diisi. Tiebreaker stabil (id) bikin urutan selalu deterministik, tidak terpengaruh upsert.
+    .sort((a,b)=>(b.createdAt||0)-(a.createdAt||0) || String(a.id).localeCompare(String(b.id)));
   const attbTotalPages = Math.max(1, Math.ceil(filteredList.length / attbPageSize));
   const attbPageClamped = Math.min(attbPage, attbTotalPages);
   const pagedList = filteredList.slice((attbPageClamped-1)*attbPageSize, attbPageClamped*attbPageSize);
