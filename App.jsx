@@ -3210,31 +3210,39 @@ export default function PLNWarehouse() {
     // bukan cuma localStorage lagi (lihat catatan migrasi di schema.sql section 1/1b).
     // Disinkron langsung (tidak di-debounce) karena ini data inti aplikasi, bukan cuma
     // kebutuhan bot chat seperti stocks_snapshot/warnoto_state di bawah.
-    if (overrides.katalogList !== undefined) syncMasterTable("katalog", kat);
-    if (overrides.stocks !== undefined) syncMasterTable("stocks", s, item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null }));
+    // PENTING (2026-07-10): semua syncMasterTable di bawah ini WAJIB di-await lewat
+    // Promise.all, bukan fire-and-forget — ditemukan bug nyata: tanpa await, saveToCloud()
+    // resolve duluan (toast "tersimpan" muncul) sebelum request upsert ke Supabase betulan
+    // selesai. Di localhost nyaris tidak kelihatan (round-trip cepat), tapi di Vercel kalau
+    // user refresh (F5) sesaat setelah input, request yang masih in-flight ikut terputus dan
+    // perubahan hilang saat reload (kejadian: lokasi item ATTB hilang lagi setelah F5).
+    const syncPromises = [];
+    if (overrides.katalogList !== undefined) syncPromises.push(syncMasterTable("katalog", kat));
+    if (overrides.stocks !== undefined) syncPromises.push(syncMasterTable("stocks", s, item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null })));
     // Kapasitas Gudang — sebelumnya localStorage/CLOUD-only, sekarang auto-backup
     // ke Supabase tiap kali berubah (lihat schema.sql section 10-11).
-    if (overrides.gudangCapacityList !== undefined) syncMasterTable("warehouse_capacity", gcap);
-    if (overrides.gudangCapacityImports !== undefined) syncMasterTable("warehouse_capacity_imports", gcapi);
+    if (overrides.gudangCapacityList !== undefined) syncPromises.push(syncMasterTable("warehouse_capacity", gcap));
+    if (overrides.gudangCapacityImports !== undefined) syncPromises.push(syncMasterTable("warehouse_capacity_imports", gcapi));
     // Alat Berat/Peminjaman UPT — sebelumnya localStorage/CLOUD-only (ditemukan saat
     // audit 2026-07-06), sekarang auto-backup ke Supabase tiap kali berubah (lihat
     // schema.sql section 21).
-    if (overrides.heavyEquipmentList !== undefined) syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null }));
-    if (overrides.heavyEquipmentLoans !== undefined) syncMasterTable("heavy_equipment_loans", hel, l => ({
+    if (overrides.heavyEquipmentList !== undefined) syncPromises.push(syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null })));
+    if (overrides.heavyEquipmentLoans !== undefined) syncPromises.push(syncMasterTable("heavy_equipment_loans", hel, l => ({
       equipment_id: l.equipmentId || null,
       status: l.status || null,
       owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
       requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
-    }));
+    })));
     // ATTB (pipeline penghapusan aset material) — auto-backup ke Supabase tiap kali
     // berubah, pola sama seperti heavy_equipment (lihat schema.sql section 23).
-    if (overrides.attbList !== undefined) syncMasterTable("attb_list", attb, e => ({ upt: e.upt || null, stage: e.stage || null }));
+    if (overrides.attbList !== undefined) syncPromises.push(syncMasterTable("attb_list", attb, e => ({ upt: e.upt || null, stage: e.stage || null })));
     // Stock Opname & Stock Count — sebelumnya localStorage/CLOUD-only, ditemukan 2026-07-07
     // (widget akurasi Dashboard "hilang" kalau dibuka dari device/browser lain karena datanya
     // memang tidak pernah keluar dari localStorage device asal). Sekarang auto-backup ke
     // Supabase tiap kali berubah, pola sama seperti heavy_equipment (schema.sql section 22).
-    if (overrides.opnameList !== undefined) syncMasterTable("stock_opname", opn, o => ({ status: o.status || null }));
-    if (overrides.stockCountList !== undefined) syncMasterTable("stock_count", sc);
+    if (overrides.opnameList !== undefined) syncPromises.push(syncMasterTable("stock_opname", opn, o => ({ status: o.status || null })));
+    if (overrides.stockCountList !== undefined) syncPromises.push(syncMasterTable("stock_count", sc));
+    await Promise.all(syncPromises);
 
     // Auto-sync warnoto_state + RAG (bot WA/Telegram) kalau ada perubahan stocks/txns —
     // debounced 90 detik supaya tidak spam Cohere embed API tiap 1 saveToCloud.
@@ -13796,6 +13804,7 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
                     </td>
                     <td style={{padding:"8px 10px",minWidth:180,maxWidth:280}}>
                       <div style={{fontWeight:600,color:C.text}}>{item.description||"-"}</div>
+                      {item.bay && <div style={{fontSize:10,color:C.muted,marginTop:2}}>⚡ Asal: {item.bay}</div>}
                       {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:10,color:C.red,marginTop:2}}>Ditolak: {item.alasanTolak}</div>}
                     </td>
                     <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:180,maxWidth:230}}>
