@@ -13864,7 +13864,7 @@ function AttbTab({ attbList, currentUser, users, sty, C, createItem, saveEdit, s
                                   {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
                                 </select>
                               )}
-                              {selGudangId && blokOptions.length===0 && (
+                              {selGudangId && blokOptions.length===0 && (subsForGudang.length===0 || selSubGudangId) && (
                                 <div style={{fontSize:9,color:"#b45309",fontStyle:"italic"}}>⚠️ Belum ada Blok terdaftar di sini (atur di Master Data → Master Gudang) — pilihan Gudang{subsForGudang.length>0?"/Sub Gudang":""} tetap tersimpan.</div>
                               )}
                               <div style={{display:"flex",gap:3,alignItems:"center"}}>
