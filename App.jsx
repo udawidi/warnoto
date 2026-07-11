@@ -3499,8 +3499,11 @@ export default function PLNWarehouse() {
           setCurrentUser(null); setUsers([]);
         } else {
           setCurrentUser({ id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, ultgId: profile.ultg_id, uitId: profile.uit_id });
-          const { data: allProfiles } = await supabase.from("profiles").select("*");
-          setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id })));
+          // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
+          // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
+          supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
+            setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id })));
+          });
         }
       } else {
         setCurrentUser(null); setUsers([]);
@@ -3879,7 +3882,7 @@ export default function PLNWarehouse() {
     try {
       const vec = await cohereEmbedImage(photoSearchImg);
       const { data, error } = await supabase.rpc("match_stock_photos", {
-        query_embedding: vec, p_upt: null, match_count: 10, min_similarity: 0.6,
+        query_embedding: vec, p_upt: null, match_count: 10, min_similarity: 0.75,
       });
       if (error) throw error;
       setPhotoSearchResults(data || []);
@@ -10940,8 +10943,16 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
         ))}
       </div>
       <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
-      <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
-      <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+      {(heavyEquipmentList?.length>0 || heavyEquipmentLoans?.length>0) && (
+        <CollapsibleSection id="alatberat" title="Alat Berat" icon="🏗️" C={C}>
+          <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+        </CollapsibleSection>
+      )}
+      {(attbList?.length>0 || attbBongkaranPool?.length>0) && (
+        <CollapsibleSection id="attb" title="Aset ATTB (Penghapusan)" icon="🏢" C={C}>
+          <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+        </CollapsibleSection>
+      )}
       {(()=>{
         const results = materialCadangData?.analyses?.slice(-1)[0]?.results || [];
         if (!results.length) return null;
@@ -11221,8 +11232,16 @@ function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanga
       </div>
 
       <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
-      <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
-      <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+      {(heavyEquipmentList?.length>0 || heavyEquipmentLoans?.length>0) && (
+        <CollapsibleSection id="alatberat" title="Alat Berat" icon="🏗️" C={C}>
+          <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+        </CollapsibleSection>
+      )}
+      {(attbList?.length>0 || attbBongkaranPool?.length>0) && (
+        <CollapsibleSection id="attb" title="Aset ATTB (Penghapusan)" icon="🏢" C={C}>
+          <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
+        </CollapsibleSection>
+      )}
 
       {/* Tabel per UPT */}
       <div style={{...sty.card,marginBottom:20}}>
