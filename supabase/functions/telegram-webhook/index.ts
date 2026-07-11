@@ -53,6 +53,12 @@ _Bot ini hanya-baca (read-only). Mutasi stok dilakukan di aplikasi WARNOTO._`;
 const MSG_NOT_WHITELISTED = `⛔ Akun Telegram Anda belum terdaftar di WARNOTO AI Agent.
 Hubungi Admin WARNOTO untuk mendaftarkan akun Anda (kirim /start dulu supaya Admin bisa lihat User ID Anda).`;
 
+const MSG_ERROR_RETRY = `🙏 Maaf, Pak War lagi agak kesulitan ambil datanya barusan. Coba kirim ulang pertanyaannya ya — kalau masih belum bisa juga, tunggu beberapa saat lagi baru coba lagi 🙏`;
+
+const MSG_NON_TEXT = `🙏 Maaf, Pak War baru bisa baca pesan teks ya. Coba ketik pertanyaannya langsung, misalnya: *stok trafo 100kva* atau *katalog 5000000123*.`;
+
+const MSG_RATE_LIMITED = `⏳ Sabar dulu ya, pertanyaannya kebanyakan berturut-turut nih 😄 Boleh kasih jeda sebentar sebelum tanya lagi. Kalau memang ada yang mendesak, langsung saja hubungi Admin Gudang.`;
+
 // ── Entry point ─────────────────────────────────────────────────────────────
 
 Deno.serve(async (req) => {
@@ -65,6 +71,7 @@ Deno.serve(async (req) => {
   let username: string | null = null;
   let displayName: string | null = null;
   let question    = "";
+  let chatId: number | string | undefined;
   let logEntry: Record<string, unknown> = {};
 
   try {
@@ -78,15 +85,31 @@ Deno.serve(async (req) => {
     }
 
     const message = update?.message;
-    if (!message || typeof message.text !== "string") {
+    if (!message) {
       return new Response("OK", { status: 200 });
     }
 
-    userId      = String(message.from?.id ?? "");
-    username    = message.from?.username ? `@${message.from.username}` : null;
+    userId   = String(message.from?.id ?? "");
+    username = message.from?.username ? `@${message.from.username}` : null;
     displayName = [message.from?.first_name, message.from?.last_name].filter(Boolean).join(" ") || null;
-    question    = message.text.trim();
-    const chatId = message.chat?.id;
+    chatId   = message.chat?.id;
+
+    // Pesan non-teks (foto/stiker/voice/dokumen tanpa caption teks): kalau user
+    // sudah whitelist, kasih tahu bot cuma baca teks. Kalau belum whitelist,
+    // tetap MSG_NOT_WHITELISTED (konsisten dengan alur pesan teks di bawah,
+    // supaya bot tidak "bocor" merespons ke sembarang orang yang belum terdaftar).
+    if (typeof message.text !== "string") {
+      if (!userId || !chatId) return new Response("OK", { status: 200 });
+      const { data: allowedNonText } = await supabase
+        .from("tg_allowed_users")
+        .select("is_active")
+        .eq("telegram_user_id", userId)
+        .maybeSingle();
+      await sendTelegramMessage(chatId, allowedNonText?.is_active ? MSG_NON_TEXT : MSG_NOT_WHITELISTED);
+      return new Response("OK", { status: 200 });
+    }
+
+    question = message.text.trim();
     if (!question || !userId || !chatId) return new Response("OK", { status: 200 });
 
     logEntry = { telegram_user_id: userId, telegram_username: username, display_name: displayName, message_in: question, is_whitelisted: false };
@@ -130,9 +153,13 @@ Deno.serve(async (req) => {
     } else if (qLower.startsWith("status sinkron") || qLower === "status sync") {
       reply  = await buildSyncStatusReply();
       intent = "status_sinkron";
+    } else if (await isRateLimited(userId)) {
+      reply  = MSG_RATE_LIMITED;
+      intent = "rate_limited";
     } else {
       // 3. RAG query
-      const { text, chunksUsed } = await generateReply(question);
+      await sendTypingAction(chatId);
+      const { text, chunksUsed } = await generateReply(question, userId);
       reply  = text;
       logEntry.rag_chunks_used = chunksUsed;
       intent = "rag_query";
@@ -161,6 +188,11 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("telegram-webhook error:", err);
     const errMsg = (err as Error).message ?? String(err);
+    if (chatId) {
+      // Best-effort — kalau kirim pesan error ini sendiri juga gagal (mis. Telegram API down),
+      // jangan sampai melempar exception baru di sini dan menggagalkan writeLog di bawah.
+      try { await sendTelegramMessage(chatId, MSG_ERROR_RETRY); } catch (sendErr) { console.error("Gagal kirim pesan error ke user:", sendErr); }
+    }
     await writeLog({
       ...logEntry,
       intent: logEntry.intent ?? "error",
@@ -211,16 +243,16 @@ async function buildRagContext(question: string): Promise<{ context: string; chu
     const [queryVector] = await cohereEmbed([question], "search_query");
     const { data: matches, error } = await supabase.rpc("match_rag_chunks", {
       query_embedding: queryVector,
-      match_count: 8,
+      match_count: 12,
     });
     if (error) throw error;
-    if (!matches || matches.length === 0) return { context: "Tidak ada hasil relevan di knowledge base.", chunksUsed: 0 };
+    if (!matches || matches.length === 0) return { context: "(tidak ditemukan referensi yang relevan untuk pertanyaan ini)", chunksUsed: 0 };
     const context = (matches as Array<{ similarity: number; content: string }>)
       .map((m) => `- (${(m.similarity * 100).toFixed(0)}%) ${m.content}`)
       .join("\n");
     return { context, chunksUsed: matches.length };
   } catch (e) {
-    return { context: `(Knowledge Base tidak tersedia: ${(e as Error).message})`, chunksUsed: 0 };
+    return { context: `(referensi data sedang tidak bisa diambil: ${(e as Error).message})`, chunksUsed: 0 };
   }
 }
 
@@ -241,23 +273,92 @@ async function buildWarnotoStateContext(): Promise<string> {
   }
 }
 
-async function generateReply(question: string): Promise<{ text: string; chunksUsed: number }> {
-  const [{ context: ragContext, chunksUsed }, stateContext] = await Promise.all([
+// Ambil 3 tanya-jawab terakhir user ini (reuse answer_summary yang sudah ada di
+// tg_agent_logs, tanpa tabel/kolom baru). Kalau pertanyaan terakhirnya sudah
+// >20 menit lalu, anggap sesi baru dan kembalikan histori kosong — supaya bot
+// tidak "nyambung-nyambungin" topik lama yang sudah tidak relevan.
+async function buildConversationHistory(userId: string): Promise<string> {
+  try {
+    const { data, error } = await supabase
+      .from("tg_agent_logs")
+      .select("message_in, answer_summary, created_at")
+      .eq("telegram_user_id", userId)
+      .eq("intent", "rag_query")
+      .order("created_at", { ascending: false })
+      .limit(3);
+    if (error || !data || data.length === 0) return "";
+
+    const latestAt = new Date(data[0].created_at as string).getTime();
+    if (Date.now() - latestAt > 20 * 60 * 1000) return "";
+
+    return [...data].reverse()
+      .map((r: Record<string, unknown>) => `User: ${r.message_in}\nJawaban kamu sebelumnya: ${String(r.answer_summary ?? "").slice(0, 300)}`)
+      .join("\n\n");
+  } catch {
+    return "";
+  }
+}
+
+// Maks 8 pertanyaan RAG (Cohere+Groq, paling mahal & paling lambat) per user per
+// 3 menit. Fail-open kalau query hitungnya sendiri error — gangguan DB sesaat
+// tidak boleh mengunci user keluar dari bot.
+async function isRateLimited(userId: string): Promise<boolean> {
+  try {
+    const since = new Date(Date.now() - 3 * 60 * 1000).toISOString();
+    const { count, error } = await supabase
+      .from("tg_agent_logs")
+      .select("id", { count: "exact", head: true })
+      .eq("telegram_user_id", userId)
+      .eq("intent", "rag_query")
+      .gte("created_at", since);
+    if (error) throw error;
+    return (count ?? 0) >= 8;
+  } catch (e) {
+    console.error("Gagal cek rate limit (fail-open, tidak diblokir):", e);
+    return false;
+  }
+}
+
+async function generateReply(question: string, userId: string): Promise<{ text: string; chunksUsed: number }> {
+  const [{ context: ragContext, chunksUsed }, stateContext, conversationHistory] = await Promise.all([
     buildRagContext(question),
     buildWarnotoStateContext(),
+    buildConversationHistory(userId),
   ]);
 
-  const systemPrompt = `Kamu adalah AI Agent sistem manajemen gudang PLN bernama WARNOTO, dihubungi lewat Telegram.
-Jawab singkat dan jelas. Format Markdown Telegram sederhana (bold pakai *teks*), hindari tabel panjang.
-Gunakan Bahasa Indonesia profesional namun mudah dipahami.
-Kapasitas jawaban: maksimal 600 kata.
-Kalau ditanya jumlah/qty/harga/nilai material, cari dulu di "DATA KONDISI GUDANG" (bagian top20ByValue/materialKritis) sebelum bilang tidak ada datanya — itu sumber angka real-time (qty, satuan, harga satuan, nilai Rupiah). Kalau ditanya lokasi/di gudang mana/di blok mana suatu material, atau status SAP/Non-SAP-nya, cari juga di KONTEKS KNOWLEDGE BASE (chunk katalog membawa field "Lokasi fisik" dan "Status") — bukan cuma di DATA KONDISI GUDANG.
+  const systemPrompt = `Kamu adalah Pak War — admin gudang senior PLN yang sudah 10+ tahun pegang urusan stok & material, dihubungi user lewat Telegram. Kamu bukan sistem yang "membaca database", kamu kolega yang paham konteks dan mau bantu sampai tuntas.
 
-KONTEKS KNOWLEDGE BASE (Master Katalog + riwayat TUG):
+ATURAN BICARA — WAJIB DIIKUTI:
+1. JANGAN PERNAH memakai istilah teknis internal ke user: "knowledge base", "konteks", "database", "chunk", "similarity", "RAG", "tidak ada di data saya", "saya tidak memiliki akses". User tidak peduli istilah itu, mereka cuma mau jawaban yang jelas.
+2. Kalau datanya ADA di bawah (baik di bagian referensi katalog/riwayat maupun data kondisi gudang), jawab dengan percaya diri pakai angka/fakta itu — jangan ragu-ragu kalau datanya jelas tersedia.
+3. Kalau data yang ada mirip tapi tidak persis sama dengan pertanyaan (misal user tanya "trafo 100kva", yang ada "Trafo Distribusi 100 kVA"), tetap pakai data itu, sebutkan secara natural kalau itu yang paling mendekati.
+4. Kalau BENAR-BENAR tidak ada info relevan sama sekali: JANGAN cuma bilang "tidak tahu" dan berhenti di situ. Akui dengan sopan dan hangat, lalu SELALU kasih langkah lanjutan konkret — sarankan cek menu tertentu di aplikasi WARNOTO, hubungi Admin Gudang, atau minta user kasih detail tambahan (nomor katalog/lokasi/nama lengkap material). Tindak lanjut itu wajib ada, bukan opsional.
+5. Format Markdown Telegram sederhana (bold pakai *teks*), hindari tabel panjang. Bahasa Indonesia profesional tapi hangat dan manusiawi, seperti CS senior menjawab kolega — bukan seperti asisten yang membaca skrip. Maksimal 600 kata.
+6. Kalau jawabanmu menyebut LEBIH DARI SATU material/barang (misal user tanya daftar stok, hasil pencarian nama yang mirip, atau ringkasan beberapa item), JANGAN digabung jadi satu paragraf panjang. WAJIB pakai list bernomor, satu material per nomor, dengan baris rincian di bawah nama (bukan disambung koma), dan baris kosong sebagai pemisah antar nomor. Contoh format yang benar:
+
+1. *Trafo Distribusi 100 kVA* [4180023]
+   📦 Qty: 12 unit
+   📍 Lokasi: Gudang A - Blok 3
+   💰 Harga satuan: Rp 15.000.000
+
+2. *Trafo Distribusi 200 kVA* [4180045]
+   📦 Qty: 5 unit
+   📍 Lokasi: Gudang B - Blok 1
+
+Sesuaikan baris rincian dengan data yang benar-benar tersedia untuk item itu (tidak usah paksa semua baris kalau datanya tidak ada) — tapi format bernomor + terpisah ini WAJIB dipakai begitu ada 2 material atau lebih dalam satu jawaban. Untuk 1 material saja, boleh langsung naratif tanpa nomor.
+${conversationHistory ? `
+RIWAYAT PERCAKAPAN SEBELUMNYA DENGAN USER INI (masih dalam sesi yang sama, gunakan sebagai konteks lanjutan kalau relevan — tapi kalau pertanyaan sekarang ganti topik, abaikan histori ini dan jawab topik barunya):
+${conversationHistory}
+` : ""}
+REFERENSI YANG BISA KAMU PAKAI (jangan sebut nama/istilah ini ke user, cukup pakai isinya secara natural):
+
+Referensi Master Katalog & riwayat transaksi TUG yang relevan dengan pertanyaan:
 ${ragContext}
+
+Data kondisi gudang terkini (qty, satuan, harga satuan, nilai Rupiah, material kritis):
 ${stateContext}
 
-Kalau pertanyaan tidak bisa dijawab dari data di atas, sampaikan dengan jujur dan sarankan buka aplikasi WARNOTO.`;
+Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang terkini" di atas — itu angka real-time. Kalau ditanya lokasi/di gudang mana/di blok mana suatu material, atau status SAP/Non-SAP-nya, cek juga referensi katalog (biasanya bawa field "Lokasi fisik" dan "Status").`;
 
   const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -293,6 +394,22 @@ async function sendTelegramMessage(chatId: number | string, text: string) {
   });
   if (!resp.ok) {
     console.error("Gagal kirim Telegram:", resp.status, await resp.text());
+  }
+}
+
+// Indikator "sedang mengetik..." — dipanggil sebelum RAG query (Cohere+Groq) yang
+// paling lama, biar user tahu bot lagi proses, bukan diam/hang. Best-effort,
+// jangan sampai kegagalannya mengganggu alur balasan utama.
+async function sendTypingAction(chatId: number | string) {
+  try {
+    const resp = await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendChatAction`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, action: "typing" }),
+    });
+    if (!resp.ok) console.error("Gagal kirim typing indicator:", resp.status, await resp.text());
+  } catch (e) {
+    console.error("Gagal kirim typing indicator:", e);
   }
 }
 

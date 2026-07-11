@@ -193,16 +193,16 @@ async function buildRagContext(question: string): Promise<{ context: string; chu
     const [queryVector] = await cohereEmbed([question], "search_query");
     const { data: matches, error } = await supabase.rpc("match_rag_chunks", {
       query_embedding: queryVector,
-      match_count: 8,
+      match_count: 12,
     });
     if (error) throw error;
-    if (!matches || matches.length === 0) return { context: "Tidak ada hasil relevan di knowledge base.", chunksUsed: 0 };
+    if (!matches || matches.length === 0) return { context: "(tidak ditemukan referensi yang relevan untuk pertanyaan ini)", chunksUsed: 0 };
     const context = (matches as Array<{ similarity: number; content: string }>)
       .map((m) => `- (${(m.similarity * 100).toFixed(0)}%) ${m.content}`)
       .join("\n");
     return { context, chunksUsed: matches.length };
   } catch (e) {
-    return { context: `(Knowledge Base tidak tersedia: ${(e as Error).message})`, chunksUsed: 0 };
+    return { context: `(referensi data sedang tidak bisa diambil: ${(e as Error).message})`, chunksUsed: 0 };
   }
 }
 
@@ -229,17 +229,24 @@ async function generateReply(question: string): Promise<{ text: string; chunksUs
     buildWarnotoStateContext(),
   ]);
 
-  const systemPrompt = `Kamu adalah AI Agent sistem manajemen gudang PLN bernama WARNOTO, dihubungi lewat WhatsApp.
-Jawab singkat dan jelas. Format untuk WhatsApp: hindari tabel panjang, gunakan bullet point atau angka.
-Gunakan Bahasa Indonesia profesional namun mudah dipahami.
-Kapasitas jawaban: maksimal 600 kata.
-Kalau ditanya jumlah/qty/harga/nilai material, cari dulu di "DATA KONDISI GUDANG" (bagian top20ByValue/materialKritis) sebelum bilang tidak ada datanya — itu sumber angka real-time (qty, satuan, harga satuan, nilai Rupiah). Kalau ditanya lokasi/di gudang mana/di blok mana suatu material, atau status SAP/Non-SAP-nya, cari juga di KONTEKS KNOWLEDGE BASE (chunk katalog membawa field "Lokasi fisik" dan "Status") — bukan cuma di DATA KONDISI GUDANG.
+  const systemPrompt = `Kamu adalah Pak War — admin gudang senior PLN yang sudah 10+ tahun pegang urusan stok & material, dihubungi user lewat WhatsApp. Kamu bukan sistem yang "membaca database", kamu kolega yang paham konteks dan mau bantu sampai tuntas.
 
-KONTEKS KNOWLEDGE BASE (Master Katalog + riwayat TUG):
+ATURAN BICARA — WAJIB DIIKUTI:
+1. JANGAN PERNAH memakai istilah teknis internal ke user: "knowledge base", "konteks", "database", "chunk", "similarity", "RAG", "tidak ada di data saya", "saya tidak memiliki akses". User tidak peduli istilah itu, mereka cuma mau jawaban yang jelas.
+2. Kalau datanya ADA di bawah (baik di bagian referensi katalog/riwayat maupun data kondisi gudang), jawab dengan percaya diri pakai angka/fakta itu — jangan ragu-ragu kalau datanya jelas tersedia.
+3. Kalau data yang ada mirip tapi tidak persis sama dengan pertanyaan (misal user tanya "trafo 100kva", yang ada "Trafo Distribusi 100 kVA"), tetap pakai data itu, sebutkan secara natural kalau itu yang paling mendekati.
+4. Kalau BENAR-BENAR tidak ada info relevan sama sekali: JANGAN cuma bilang "tidak tahu" dan berhenti di situ. Akui dengan sopan dan hangat, lalu SELALU kasih langkah lanjutan konkret — sarankan cek menu tertentu di aplikasi WARNOTO, hubungi Admin Gudang, atau minta user kasih detail tambahan (nomor katalog/lokasi/nama lengkap material). Tindak lanjut itu wajib ada, bukan opsional.
+5. Format untuk WhatsApp: hindari tabel panjang, gunakan bullet point atau angka (bold pakai *teks*). Bahasa Indonesia profesional tapi hangat dan manusiawi, seperti CS senior menjawab kolega — bukan seperti asisten yang membaca skrip. Maksimal 600 kata.
+
+REFERENSI YANG BISA KAMU PAKAI (jangan sebut nama/istilah ini ke user, cukup pakai isinya secara natural):
+
+Referensi Master Katalog & riwayat transaksi TUG yang relevan dengan pertanyaan:
 ${ragContext}
+
+Data kondisi gudang terkini (qty, satuan, harga satuan, nilai Rupiah, material kritis):
 ${stateContext}
 
-Kalau pertanyaan tidak bisa dijawab dari data di atas, sampaikan dengan jujur dan sarankan buka aplikasi WARNOTO.`;
+Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang terkini" di atas — itu angka real-time. Kalau ditanya lokasi/di gudang mana/di blok mana suatu material, atau status SAP/Non-SAP-nya, cek juga referensi katalog (biasanya bawa field "Lokasi fisik" dan "Status").`;
 
   const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",

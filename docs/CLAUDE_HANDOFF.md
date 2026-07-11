@@ -475,7 +475,7 @@ Direncanakan lewat plan mode (`C:\Users\PLN\.claude\plans\cosmic-skipping-balloo
 - **Telegram Bot = channel utama yang aktif**, jauh lebih gampang setup daripada WA. WA Bot kodenya sudah jadi tapi **terblokir Meta Business Verification** (error 130497) — jangan buang waktu debug ini lagi sampai user selesaikan verifikasi bisnisnya sendiri di Meta.
 - Ada sistem "loop belajar" — nightly cron (`scripts/nightly_sync.mjs`, GitHub Actions) sync `stocks_snapshot`/`ai_faq_curated`/`tug15_history` jadi RAG chunks (Cohere embed), plus panel Admin "Kelola FAQ Bot" untuk kurasi jawaban resmi dari histori chat yang jelek.
 - Whitelist WA: **dibiarkan dulu** sampai verifikasi Meta selesai (permintaan eksplisit user, jangan bangun UI untuk ini duluan).
-- Whitelist Telegram: dikelola manual oleh Admin lewat Supabase Dashboard, pakai form `scripts/gen_form_telegram.py` yang di-generate jadi PDF untuk disebar ke calon user.
+- Whitelist Telegram: sejak 2026-07-10 bisa dikelola langsung dari UI — menu AI Agent → tombol "📱 Kelola User Telegram" (Admin only, komponen `TelegramWhitelistPanel` di App.jsx, CRUD langsung ke tabel `tg_allowed_users`). Alur lama (form PDF `scripts/gen_form_telegram.py` + input manual lewat Supabase Dashboard) masih bisa dipakai sebagai fallback tapi tidak lagi jadi cara utama.
 
 ### Migrasi Data SAP/Non-SAP (`MigrasiDataTab`) — ATURAN KEAMANAN PENTING
 Setelah serangkaian bug data-loss yang ditemukan/diperbaiki, alur sekarang:
