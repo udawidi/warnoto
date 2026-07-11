@@ -1034,6 +1034,23 @@ function migrateLegacyStocks(rawStocks) {
 const now = Date.now();
 const DEFAULT_TXNS = [];
 
+// Label menu TUG dalam bahasa awam (kode TUG jadi keterangan kecil sekunder) —
+// supaya staf baru/ULTG/awam tidak perlu hafal kode untuk tahu harus pilih mana.
+const TUG_UI = {
+  TUG3:  { title:"Terima Barang Baru",      code:"TUG-3/4", chip:"Terima Barang Baru",       buat:"Terima Barang Baru",      desc:"Barang datang dari vendor → diperiksa Tim Mutu → masuk gudang. (3 tahap: TL → Manager → Asman)" },
+  TUG10: { title:"Barang Kembali / Retur",  code:"TUG-10",  chip:"Barang Kembali / Retur",   buat:"Catat Barang Kembali",    desc:"Sisa pekerjaan atau bekas bongkaran dikembalikan ke gudang." },
+  TUG9:  { title:"Keluarkan / Pakai Barang",code:"TUG-9",   chip:"Pakai Barang",             buat:"Keluarkan Barang",        desc:"Ambil barang dari gudang untuk dipakai pekerjaan di unit sendiri (UPT Surabaya)." },
+  TUG8:  { title:"Kirim ke Unit PLN Lain",  code:"TUG-8",   chip:"Kirim ke Unit Lain",       buat:"Kirim ke Unit Lain",      desc:"Keluarkan barang untuk dipakai unit PLN lain." },
+  TUG5:  { title:"Minta Barang ke Gudang",  code:"TUG-5",   chip:"Minta Barang",             buat:"Buat Permintaan Barang",  desc:"Ajukan permintaan material — Intracompany (→TUG-7) atau Intercompany (→TUG-5 UIT)." },
+  TUG15: { title:"Laporan Mutasi Stok",     code:"TUG-15",  chip:"Laporan Mutasi Stok",      buat:null,                      desc:"Riwayat mutasi stok dari semua transaksi TUG yang disetujui — filter tanggal & unduh." },
+};
+const TUG_GROUP_UI = {
+  penerimaan:  { icon:"📥", label:"Barang Masuk",  hint:"Penerimaan barang baru & barang kembali/retur" },
+  pengeluaran: { icon:"📤", label:"Barang Keluar", hint:"Pemakaian di unit sendiri & kirim ke unit PLN lain" },
+  permintaan:  { icon:"📋", label:"Minta Barang",  hint:"Permintaan material ke gudang/UIT" },
+  laporan:     { icon:"📊", label:"Laporan",       hint:"Riwayat mutasi stok" },
+};
+
 // ─── DOC NUMBER GENERATOR ─────────────────────────────────────────────
 function generateDocNumbers(seq, date, docCode) {
   const d = new Date(date);
@@ -6571,12 +6588,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   {tugExpanded && (
                     <div style={{marginBottom:4}}>
                       {(isUltgRole ? [
-                        {id:"permintaan",icon:"📋",label:"Permintaan (TUG-5)",defaultSub:"TUG5"},
+                        {id:"permintaan",icon:"📋",label:"Minta Barang",defaultSub:"TUG5"},
                       ] : [
-                        {id:"penerimaan",icon:"📥",label:"Penerimaan (TUG-3/4/10)",defaultSub:"TUG3"},
-                        {id:"pengeluaran",icon:"📤",label:"Pengeluaran (TUG-8/9)",defaultSub:"TUG9"},
-                        {id:"permintaan",icon:"📋",label:"Permintaan (TUG-5)",defaultSub:"TUG5"},
-                        {id:"laporan",icon:"📊",label:"Laporan (TUG-15)",defaultSub:"TUG15"},
+                        {id:"penerimaan",icon:"📥",label:"Barang Masuk",defaultSub:"TUG3"},
+                        {id:"pengeluaran",icon:"📤",label:"Barang Keluar",defaultSub:"TUG9"},
+                        {id:"permintaan",icon:"📋",label:"Minta Barang",defaultSub:"TUG5"},
+                        {id:"laporan",icon:"📊",label:"Laporan",defaultSub:"TUG15"},
                       ]).map(sub=>{
                         const subActive = isActive && tugGroup===sub.id;
                         return (
@@ -7870,33 +7887,33 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
               <div>
-                <h1 style={{fontSize:22,fontWeight:900}}>
-                  {tugSubTab==="TUG9"?"TUG-9 — Bon Pemakaian":tugSubTab==="TUG8"?"TUG-8 — Pemakaian Unit Lain":tugSubTab==="TUG10"?"TUG-10 — Bon Pengembalian":tugSubTab==="TUG5"?"TUG-5 — Daftar Permintaan Barang":tugSubTab==="TUG15"?"TUG-15 — Laporan Mutasi Stok":"TUG-3 / TUG-4 — Penerimaan Barang"}
+                <h1 style={{fontSize:22,fontWeight:900,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  {(TUG_UI[tugSubTab]||{}).title || tugSubTab}
+                  <span style={{fontSize:11,fontWeight:700,color:C.muted,background:C.border,borderRadius:6,padding:"2px 8px"}}>{(TUG_UI[tugSubTab]||{}).code || tugSubTab}</span>
                 </h1>
-                <p style={{color:C.muted,fontSize:13}}>
-                  {tugSubTab==="TUG9"?"Pengeluaran Barang Pemakaian di Unit Sendiri (UPT Surabaya)":tugSubTab==="TUG8"?"Pengeluaran Barang Pemakaian ke Unit PLN Lain":tugSubTab==="TUG10"?"Pengembalian Material ke Gudang — Sisa Pekerjaan / Bekas Bongkaran":tugSubTab==="TUG5"?"Permintaan material ke UIT — Intracompany (→TUG-7) atau Intercompany (→TUG-5 UIT)":tugSubTab==="TUG15"?"History mutasi stok dari semua transaksi TUG yang disetujui — filter rentang tanggal & unduh":"Karantina → Pemeriksaan Mutu → Final (3 tahap: TL → Manager → Asman)"}
-                </p>
+                <p style={{color:C.muted,fontSize:13}}>{(TUG_UI[tugSubTab]||{}).desc || ""}</p>
               </div>
-              {(hasRole(currentUser, ...CAN_CREATE) || hasRole(currentUser, "ADMIN_ULTG")) && (tugSubTab==="TUG3"||tugSubTab==="TUG10"||tugSubTab==="TUG9"||tugSubTab==="TUG8"||tugSubTab==="TUG5") && <button style={sty.btn("primary")} onClick={()=>openNewTxn(tugSubTab)}>+ Buat {tugSubTab.replace("TUG","TUG-")} Baru</button>}
+              {(hasRole(currentUser, ...CAN_CREATE) || hasRole(currentUser, "ADMIN_ULTG")) && (tugSubTab==="TUG3"||tugSubTab==="TUG10"||tugSubTab==="TUG9"||tugSubTab==="TUG8"||tugSubTab==="TUG5") && <button style={sty.btn("primary")} onClick={()=>openNewTxn(tugSubTab)}>➕ {(TUG_UI[tugSubTab]||{}).buat || "Buat Baru"}</button>}
             </div>
 
-            <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center"}}>
-              <span style={{fontSize:11,color:C.muted}}>TUG</span>
-              <span style={{fontSize:11,color:C.muted}}>▸</span>
-              <span style={{fontSize:11,fontWeight:700,color:C.accent}}>{tugGroup==="penerimaan"?"📥 Penerimaan":tugGroup==="pengeluaran"?"📤 Pengeluaran":"📋 Permintaan"}</span>
-              <span style={{fontSize:10,color:C.muted,marginLeft:4}}>(ganti via sidebar)</span>
+            <div style={{display:"flex",gap:8,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
+              <span style={{fontSize:12,fontWeight:800,color:C.accent}}>{(TUG_GROUP_UI[tugGroup]||{}).icon} {(TUG_GROUP_UI[tugGroup]||{}).label}</span>
+              <span style={{fontSize:11,color:C.muted}}>— {(TUG_GROUP_UI[tugGroup]||{}).hint}</span>
             </div>
             <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-              {(tugGroup==="penerimaan"
-                ? [{id:"TUG3",label:"TUG-3 / TUG-4 (Penerimaan Baru)"},{id:"TUG10",label:"TUG-10 (Pengembalian)"}]
-                : tugGroup==="pengeluaran"
-                ? [{id:"TUG9",label:"TUG-9 (Pemakaian Sendiri)"},{id:"TUG8",label:"TUG-8 (Pemakaian Unit Lain)"}]
-                : tugGroup==="laporan"
-                ? [{id:"TUG15",label:"TUG-15 (Laporan Mutasi Stok)"}]
-                : [{id:"TUG5",label:"TUG-5 (Permintaan Barang)"}]
-              ).map(o=>(
-                <button key={o.id} style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${tugSubTab===o.id?C.accent:C.border}`,background:tugSubTab===o.id?C.accent:"white",color:tugSubTab===o.id?"white":C.muted,fontSize:12,cursor:"pointer",fontWeight:tugSubTab===o.id?700:400}} onClick={()=>setTugSubTab(o.id)}>{o.label}</button>
-              ))}
+              {(tugGroup==="penerimaan" ? ["TUG3","TUG10"]
+                : tugGroup==="pengeluaran" ? ["TUG9","TUG8"]
+                : tugGroup==="laporan" ? ["TUG15"]
+                : ["TUG5"]
+              ).map(id=>{
+                const u = TUG_UI[id]||{}; const on = tugSubTab===id;
+                return (
+                <button key={id} onClick={()=>setTugSubTab(id)} title={u.code} style={{padding:"8px 14px",borderRadius:12,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.text,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"flex-start",lineHeight:1.25,minHeight:44}}>
+                  <span style={{fontSize:13,fontWeight:on?800:600}}>{u.chip||id}</span>
+                  <span style={{fontSize:9,fontWeight:600,opacity:.7}}>{u.code||id}</span>
+                </button>
+                );
+              })}
             </div>
             <div style={{display:"flex",gap:8,marginBottom:14}}>
               {["ALL","PENDING","APPROVED","REJECTED","DRAFT"].map(s=>(
@@ -10869,6 +10886,26 @@ function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty, setTa
   );
 }
 
+// Sub-section Dashboard yang bisa dibuka/tutup (klik judul). Status buka/tutup
+// disimpan per-user di localStorage supaya konsisten antar kunjungan.
+function CollapsibleSection({ id, title, icon, defaultOpen = true, C, children }) {
+  const storeKey = "warnoto_dash_open_" + id;
+  const [open, setOpen] = useState(() => {
+    try { const v = localStorage.getItem(storeKey); return v === null ? defaultOpen : v === "1"; } catch { return defaultOpen; }
+  });
+  const toggle = () => setOpen(o => { const n = !o; try { localStorage.setItem(storeKey, n ? "1" : "0"); } catch { /* ignore */ } return n; });
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <button onClick={toggle} style={{ width:"100%", display:"flex", alignItems:"center", gap:8, background:"transparent", border:"none", borderBottom:`1px solid ${C.border}`, padding:"8px 2px", cursor:"pointer", textAlign:"left" }}>
+        <span style={{ fontSize:11, color:C.muted, width:14, flexShrink:0 }}>{open ? "▼" : "▶"}</span>
+        <span style={{ fontSize:13, fontWeight:800, color:C.text }}>{icon} {title}</span>
+        {!open && <span style={{ fontSize:10, color:C.muted, marginLeft:"auto" }}>klik untuk buka</span>}
+      </button>
+      {open && <div style={{ marginTop: 10 }}>{children}</div>}
+    </div>
+  );
+}
+
 function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, attbList, attbBongkaranPool }) {
   const [dashModal, setDashModal] = useState(null); // null | "totalItem" | "nilai" | "kritis" | "tindakan"
 
@@ -10940,7 +10977,8 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
           </div>
         );
       })()}
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:20}}>
+      <CollapsibleSection id="aktivitas" title="Aktivitas Terbaru & Rencana Kedatangan" icon="🗂️" C={C}>
+      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:0}}>
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
           <div style={sty.card}>
@@ -10967,7 +11005,10 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
         </div>
         <div><RencanaWidget rencanaKedatanganList={rencanaKedatanganList} C={C} sty={sty} setTab={setTab}/></div>
       </div>
+      </CollapsibleSection>
+      <CollapsibleSection id="analitik" title="Analitik & Grafik" icon="📈" C={C}>
       <DashboardAnalitikSection txns={txns} stocks={stocks} katalogList={katalogList} topN={topN} setTopN={setTopN} pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode} C={C} sty={sty}/>
+      </CollapsibleSection>
 
       {/* ── POPUP RINGKASAN KPI ── */}
       {dashModal && (
