@@ -15,3 +15,6 @@ scripts/*.users.csv
 # simpan di luar repo (Drive/eksternal) kalau perlu disimpan jangka panjang.
 outputs/
 migration-tools/node_modules/
+
+# Vercel CLI (link/deploy artefak lokal) — jangan commit.
+.vercel
