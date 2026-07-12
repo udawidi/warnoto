@@ -12,6 +12,7 @@ import { recognize as ocrRecognize } from "tesseract.js";
 import { PLN_LOGO_DATA_URI } from "./src/assets/plnLogoBase64.js";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./src/lib/openLocationCode.js";
 import { fmtNum, getSAPLabel, buildKatalogRagContent, getKritisAgg } from "./src/lib/ragShared.mjs";
+import QRCode from "qrcode";
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────
 const COMPANY = "PT. PLN (Persero)";
@@ -3047,6 +3048,7 @@ export default function PLNWarehouse() {
   const [docPreview, setDocPreview] = useState(null); // txn object when previewing TUG-9 document
   const [docPreviewDoc, setDocPreviewDoc] = useState(null); // versi docPreview dgn SIM/KTP privat sudah jadi signed URL
   const [kartuGantungDetail, setKartuGantungDetail] = useState(null);
+  const [barcodePrintOpen, setBarcodePrintOpen] = useState(false); // modal cetak barcode massal (Admin, Master Katalog)
   const [petaMiniDetail, setPetaMiniDetail] = useState(null); // {stock, lokasi, gudang}
   const [stockDetailId, setStockDetailId] = useState(null); // id stok yang dibuka detailnya (klik baris Data Stok)
   // Cari barang dengan foto (visual search) di Data Stok
@@ -7500,6 +7502,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     ⚠️ Belum Dicocokkan MARA ({katalogList.filter(k=>k.belumDicocokkanMara).length})
                   </button>
                 )}
+                {hasRole(currentUser, "ADMIN") && (
+                  <button onClick={()=>setBarcodePrintOpen(true)} title="Cetak semua barcode/QR kartu gantung sekaligus"
+                    style={{...sty.btn("primary","sm"),whiteSpace:"nowrap"}}>🖨️ Cetak Semua Barcode</button>
+                )}
               </div>
             )}
 
@@ -9113,6 +9119,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           stocks={stocks} txns={txns} lokasiList={lokasiList}
           sty={sty} C={C}
           onClose={()=>setKartuGantungDetail(null)}
+        />
+      )}
+      {barcodePrintOpen && (
+        <BarcodePrintModal
+          katalogList={katalogList} stocks={stocks} lokasiList={lokasiList} gudangList={gudangList}
+          C={C} sty={sty}
+          onClose={()=>setBarcodePrintOpen(false)}
         />
       )}
 
@@ -18011,6 +18024,106 @@ function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migratedTug15Hi
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Lembar cetak barcode/QR kartu gantung (5×5 cm/label). QR di-generate LOKAL (library qrcode —
+// offline & andal untuk cetak massal), encode katalog.id yang sama dgn label per-1 TUG-2.
+async function buildBarcodeSheetHTML(katalogItems, lokasiByKatalog) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const labels = await Promise.all(katalogItems.map(async (k) => {
+    const scanUrl = `${window.location.origin}/?scan=${encodeURIComponent(k.id)}`;
+    const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 220 });
+    const lok = (lokasiByKatalog[k.id] || []).join("; ") || "-";
+    return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(k.name || "-")}</div><div class="kt">No. Kat: ${esc(k.katalog || "-")}</div><div class="meta">${esc(k.jenisBarang || "-")} · ${esc(getSAPLabel(k.katalog))}</div><div class="lk">📍 ${esc(lok)}</div></div>`;
+  }));
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>Cetak Barcode Kartu Gantung — ${labels.length} label</title>
+<style>
+  @page { size: A4; margin: 8mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #e5e7eb; }
+  .bar { position: sticky; top: 0; background: #0b2559; color: #fff; padding: 10px 16px; text-align: center; font-size: 13px; font-weight: 700; z-index: 10; }
+  .bar button { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; margin-left: 12px; }
+  .sheet { display: flex; flex-wrap: wrap; gap: 3mm; padding: 8mm; }
+  .label { width: 5cm; height: 5cm; border: 1px dashed #94a3b8; border-radius: 4px; padding: 2.5mm; display: flex; flex-direction: column; align-items: center; text-align: center; background: #fff; page-break-inside: avoid; overflow: hidden; }
+  .label img { width: 26mm; height: 26mm; }
+  .label .nm { font-size: 7.5px; font-weight: 700; line-height: 1.12; margin-top: 1mm; max-height: 2.3em; overflow: hidden; }
+  .label .kt { font-size: 7px; color: #374151; margin-top: 0.5mm; }
+  .label .meta { font-size: 6.5px; color: #111; font-weight: 700; margin-top: 0.5mm; }
+  .label .lk { font-size: 6.5px; color: #374151; margin-top: auto; max-height: 2.2em; overflow: hidden; line-height: 1.1; }
+  @media print { .bar { display: none; } body { background: #fff; } .sheet { padding: 0; } }
+</style></head><body>
+<div class="bar">🏷️ ${labels.length} label barcode 5×5 cm — potong per kotak, tempel di kartu gantung <button onclick="window.print()">🖨️ Print / Save PDF</button></div>
+<div class="sheet">${labels.join("")}</div>
+</body></html>`;
+}
+
+// Modal Admin: filter (jenis barang + SAP/Non-SAP) lalu cetak lembar barcode massal.
+function BarcodePrintModal({ katalogList, stocks, lokasiList, gudangList, C, sty, onClose }) {
+  const [jenisSel, setJenisSel] = useState(() => new Set(JENIS_BARANG));
+  const [sapSel, setSapSel] = useState("ALL"); // ALL | SAP | NONSAP
+  const [busy, setBusy] = useState(false);
+
+  const lokasiByKatalog = {};
+  (stocks || []).forEach((s) => {
+    if (!s.katalogId) return;
+    const lok = lokasiList.find((l) => l.id === s.lokasiId);
+    const gdg = lok?.gudangId ? gudangList.find((g) => g.id === lok.gudangId) : null;
+    const txt = `${gdg?.nama || ""}${lok?.kode ? " / " + lok.kode : ""}`.trim();
+    if (txt) { (lokasiByKatalog[s.katalogId] = lokasiByKatalog[s.katalogId] || new Set()).add(txt); }
+  });
+  Object.keys(lokasiByKatalog).forEach((k) => { lokasiByKatalog[k] = Array.from(lokasiByKatalog[k]); });
+
+  const allJenis = jenisSel.size === JENIS_BARANG.length;
+  const filtered = katalogList.filter((k) => {
+    const jenisOk = allJenis ? true : jenisSel.has(k.jenisBarang);
+    const isSap = getSAPLabel(k.katalog).startsWith("SAP");
+    const sapOk = sapSel === "ALL" || (sapSel === "SAP" && isSap) || (sapSel === "NONSAP" && !isSap);
+    return jenisOk && sapOk;
+  });
+  const toggleJenis = (j) => setJenisSel((prev) => { const n = new Set(prev); n.has(j) ? n.delete(j) : n.add(j); return n; });
+
+  async function cetak() {
+    if (!filtered.length || busy) return;
+    setBusy(true);
+    try {
+      const w = window.open("", "_blank");
+      const html = await buildBarcodeSheetHTML(filtered, lokasiByKatalog);
+      if (w) { w.document.write(html); w.document.close(); }
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:2000, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }} onClick={onClose}>
+      <div style={{ ...sty.card, maxWidth:560, width:"100%", maxHeight:"90vh", overflowY:"auto" }} onClick={(e)=>e.stopPropagation()}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:6 }}>
+          <div style={{ fontSize:17, fontWeight:800 }}>🖨️ Cetak Semua Barcode (Kartu Gantung)</div>
+          <button onClick={onClose} style={{ background:"transparent", border:"none", fontSize:20, cursor:"pointer", color:C.muted }}>✕</button>
+        </div>
+        <div style={{ fontSize:12, color:C.muted, marginBottom:14 }}>Label QR 5×5 cm untuk ditempel di kartu gantung fisik. QR meng-encode ID katalog yang sama dengan label TUG-2 — kartu lama tetap valid.</div>
+        <div style={{ fontSize:12, fontWeight:700, marginBottom:6 }}>Jenis Barang</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
+          {JENIS_BARANG.map((j) => {
+            const on = jenisSel.has(j);
+            return <button key={j} onClick={()=>toggleJenis(j)} style={{ padding:"5px 12px", borderRadius:20, border:`1px solid ${on?C.accent:C.border}`, background:on?C.accent:"white", color:on?"white":C.muted, fontSize:11, fontWeight:700, cursor:"pointer" }}>{j}</button>;
+          })}
+        </div>
+        <div style={{ fontSize:12, fontWeight:700, marginBottom:6 }}>Status SAP</div>
+        <div style={{ display:"flex", gap:6, marginBottom:16 }}>
+          {[{id:"ALL",label:"Semua"},{id:"SAP",label:"SAP"},{id:"NONSAP",label:"Non-SAP"}].map((o)=>(
+            <button key={o.id} onClick={()=>setSapSel(o.id)} style={{ padding:"5px 14px", borderRadius:20, border:`1px solid ${sapSel===o.id?C.accent:C.border}`, background:sapSel===o.id?C.accent:"white", color:sapSel===o.id?"white":C.muted, fontSize:11, fontWeight:700, cursor:"pointer" }}>{o.label}</button>
+          ))}
+        </div>
+        <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+          <span style={{ fontSize:13, color:C.text }}>Akan dicetak</span>
+          <span style={{ fontSize:20, fontWeight:800, color:C.accent }}>{filtered.length} label</span>
+        </div>
+        <div style={{ display:"flex", gap:10 }}>
+          <button onClick={onClose} style={{ ...sty.btn("ghost"), flex:1 }}>Batal</button>
+          <button onClick={cetak} disabled={!filtered.length || busy} style={{ ...sty.btn("primary"), flex:2, opacity:(!filtered.length||busy)?0.5:1 }}>{busy ? "Menyiapkan QR..." : `🖨️ Cetak ${filtered.length} Label`}</button>
+        </div>
+      </div>
     </div>
   );
 }
