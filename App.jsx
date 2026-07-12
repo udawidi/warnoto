@@ -9116,7 +9116,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {kartuGantungDetail && (
         <KartuGantungModal
           katalog={kartuGantungDetail}
-          stocks={stocks} txns={txns} lokasiList={lokasiList}
+          stocks={stocks} txns={txns} lokasiList={lokasiList} gudangList={gudangList}
           sty={sty} C={C}
           onClose={()=>setKartuGantungDetail(null)}
         />
@@ -18128,7 +18128,7 @@ function BarcodePrintModal({ katalogList, stocks, lokasiList, gudangList, C, sty
   );
 }
 
-function KartuGantungModal({ katalog, stocks, txns, lokasiList, sty, C, onClose }) {
+function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangList, sty, C, onClose }) {
   const [view, setView] = useState("riwayat"); // "riwayat" | "label"
   const history = buildKartuGantungHistory(katalog, txns, stocks, lokasiList);
   const lokasiTerkait = [...new Set(stocks.filter(s=>s.katalogId===katalog.id).map(s=>s.lokasiId))].map(lid=>lokasiList.find(l=>l.id===lid)?.kode).filter(Boolean);
@@ -18206,8 +18206,21 @@ function KartuGantungModal({ katalog, stocks, txns, lokasiList, sty, C, onClose 
                 <div style={{fontSize:10,color:C.muted,marginTop:4}}>No. Katalog: {katalog.katalog||"-"}</div>
                 <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:accent,color:dominantJenis==="Pre Memory"?"#111":"white",border:dominantJenis==="Pre Memory"?`1px solid #d1d5db`:"none"}}>{dominantJenis}</span>
               </div>
+              <button onClick={async()=>{
+                const lokMap={};
+                (stocks||[]).filter(s=>s.katalogId===katalog.id).forEach(s=>{
+                  const lok=(lokasiList||[]).find(l=>l.id===s.lokasiId);
+                  const gdg=lok?.gudangId?(gudangList||[]).find(g=>g.id===lok.gudangId):null;
+                  const txt=`${gdg?.nama||""}${lok?.kode?" / "+lok.kode:""}`.trim();
+                  if(txt){(lokMap[katalog.id]=lokMap[katalog.id]||new Set()).add(txt);}
+                });
+                if(lokMap[katalog.id])lokMap[katalog.id]=Array.from(lokMap[katalog.id]);
+                const w=window.open("","_blank");
+                const html=await buildBarcodeSheetHTML([katalog],lokMap);
+                if(w){w.document.write(html);w.document.close();}
+              }} style={{...sty.btn("primary"),marginBottom:12}}>🖨️ Cetak Label (Print / Save PDF)</button>
               <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:14,maxWidth:320}}>
-                Scan QR ini dari HP (lewat kamera/aplikasi browser) untuk melihat riwayat TUG-2 material ini — tanpa perlu login. Label bisa di-screenshot untuk diprint dan ditempel di material.
+                Klik "Cetak Label" untuk print/simpan PDF label 5×5 cm (QR + nama + lokasi). Scan QR dari HP untuk lihat riwayat TUG-2 material ini tanpa login.
               </div>
               <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:8,padding:"8px 10px",maxWidth:340,textAlign:"center",wordBreak:"break-all"}}>
                 🔗 {scanUrl}
