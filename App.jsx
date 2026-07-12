@@ -6878,6 +6878,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
         {/* DASHBOARD */}
         {tab==="dashboard" && hasRole(currentUser, "MANAGER") && (
+          <>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+            {[{id:"ringkasan",label:"📊 Ringkasan"},{id:"detail",label:"📦 Detail & Analitik"}].map(t=>(
+              <button key={t.id} onClick={()=>setDashTab(t.id)} style={{padding:isMobile?"9px 14px":"8px 16px",minHeight:isMobile?44:undefined,borderRadius:9,border:`1px solid ${dashTab===t.id?C.accent:C.border}`,background:dashTab===t.id?C.accent:C.surface,color:dashTab===t.id?"white":C.muted,fontWeight:700,fontSize:isMobile?13:12.5,cursor:"pointer",boxShadow:dashTab===t.id?"0 2px 8px rgba(29,78,216,0.25)":"none"}}>{t.label}</button>
+            ))}
+          </div>
+          {dashTab==="ringkasan" ? (
+            <ExecOverview totalVal={totalVal} lowStocks={lowStocks} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
+          ) : (
           <DashboardManager
             stocks={enrichedStocks} txns={txns} katalogList={katalogList}
             uptList={uptList} rencanaKedatanganList={rencanaKedatanganList}
@@ -6889,8 +6898,19 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             currentUser={currentUser}
             attbList={attbList} attbBongkaranPool={attbBongkaranPool}
           />
+          )}
+          </>
         )}
         {tab==="dashboard" && hasRole(currentUser, "ASMAN") && !hasRole(currentUser, "MANAGER") && (
+          <>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:18}}>
+            {[{id:"ringkasan",label:"📊 Ringkasan"},{id:"detail",label:"📦 Detail & Analitik"}].map(t=>(
+              <button key={t.id} onClick={()=>setDashTab(t.id)} style={{padding:isMobile?"9px 14px":"8px 16px",minHeight:isMobile?44:undefined,borderRadius:9,border:`1px solid ${dashTab===t.id?C.accent:C.border}`,background:dashTab===t.id?C.accent:C.surface,color:dashTab===t.id?"white":C.muted,fontWeight:700,fontSize:isMobile?13:12.5,cursor:"pointer",boxShadow:dashTab===t.id?"0 2px 8px rgba(29,78,216,0.25)":"none"}}>{t.label}</button>
+            ))}
+          </div>
+          {dashTab==="ringkasan" ? (
+            <ExecOverview totalVal={totalVal} lowStocks={lowStocks} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
+          ) : (
           <DashboardAsman
             stocks={enrichedStocks} txns={txns} katalogList={katalogList}
             rencanaKedatanganList={rencanaKedatanganList}
@@ -6902,6 +6922,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             currentUser={currentUser}
             attbList={attbList} attbBongkaranPool={attbBongkaranPool}
           />
+          )}
+          </>
         )}
         {tab==="dashboard" && !hasRole(currentUser, "MANAGER","ASMAN") && (
           <>
