@@ -28,7 +28,7 @@
 //   SUPABASE_URL, SUPABASE_SECRET_KEY (service_role), COHERE_API_KEY
 
 import { createClient } from "@supabase/supabase-js";
-import { fmtNum, getSAPLabel, buildKatalogRagContent } from "../src/lib/ragShared.mjs";
+import { fmtNum, getSAPLabel, buildKatalogRagContent, getKritisAgg } from "../src/lib/ragShared.mjs";
 import { cohereEmbed } from "./lib/cohere.mjs";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -181,7 +181,7 @@ async function main() {
   };
   const enriched = stocks.map((s) => ({ ...s, nilai: (s.qty || 0) * (s.price || 0) }));
   const top20 = [...enriched].sort((a, b) => b.nilai - a.nilai).slice(0, 20);
-  const kritis = enriched.filter((s) => s.minQty > 0 && s.qty <= s.minQty);
+  const kritis = getKritisAgg(enriched); // agregat per katalog — konsisten dgn dashboard App.jsx
   const state_data = {
     generatedAt: new Date().toISOString(),
     generatedBy: "nightly_sync.mjs (cron)",

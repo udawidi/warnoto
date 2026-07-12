@@ -11,7 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { recognize as ocrRecognize } from "tesseract.js";
 import { PLN_LOGO_DATA_URI } from "./src/assets/plnLogoBase64.js";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./src/lib/openLocationCode.js";
-import { fmtNum, getSAPLabel, buildKatalogRagContent } from "./src/lib/ragShared.mjs";
+import { fmtNum, getSAPLabel, buildKatalogRagContent, getKritisAgg } from "./src/lib/ragShared.mjs";
 
 // ─── CONSTANTS ──────────────────────────────────────────────────────
 const COMPANY = "PT. PLN (Persero)";
@@ -1132,6 +1132,8 @@ const TUG_GROUP_UI = {
   permintaan:  { icon:"📋", label:"Minta Barang",  hint:"Permintaan material ke gudang/UIT" },
   laporan:     { icon:"📊", label:"Laporan",       hint:"Riwayat mutasi stok" },
 };
+// Ikon pembeda per jenis TUG untuk tombol pemilih section (biar staf baru gampang bedakan).
+const TUG_ICON = { TUG3:"🆕", TUG10:"↩️", TUG9:"🔧", TUG8:"🚚", TUG5:"📝", TUG15:"📊" };
 
 // ─── DOC NUMBER GENERATOR ─────────────────────────────────────────────
 function generateDocNumbers(seq, date, docCode) {
@@ -2754,7 +2756,7 @@ function downloadTUG9HTML(txn, stocks, users, satpamList, showToast) {
 async function askAI(msg, stocks, txns, users, currentUser) {
   const pending = txns.filter(t=>t.status==="PENDING");
   const totalVal = stocks.reduce((a,s)=>a+s.qty*s.price,0);
-  const lowStocks = stocks.filter(s=>s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty);
+  const lowStocks = getKritisAgg(stocks);
   const ctx = `Kamu adalah AI Assistant untuk sistem Tata Usaha Gudang (TUG) ${WAREHOUSE}, ${COMPANY} ${UPT}.
 Pengguna saat ini: ${currentUser.name} (${ROLES[currentUser.role]}).
 Jawab dalam Bahasa Indonesia profesional, gunakan istilah kelistrikan PLN bila relevan. Gunakan Rp untuk mata uang, format titik ribuan.
@@ -6206,7 +6208,7 @@ export default function PLNWarehouse() {
     lokasiList.forEach(l=>{ gudangNamaByLokasiId[l.id] = gudangList.find(g=>g.id===l.gudangId)?.nama || ""; });
     const withLokasi = s => ({ gudang: gudangNamaByLokasiId[s.lokasiId]||"", blok: s.lokasi||"-" });
     const top20 = [...enrichedStocks].sort((a,b)=>(b.qty*b.price)-(a.qty*a.price)).slice(0,20);
-    const kritis = enrichedStocks.filter(s=>s.minQty>0&&s.qty<=s.minQty);
+    const kritis = getKritisAgg(enrichedStocks);
     const pending = txns.filter(t=>t.status==="PENDING");
     const tiga_bulan_lalu = Date.now() - 90*24*60*60*1000;
     const txnRecent = txns.filter(t=>t.createdAt>=tiga_bulan_lalu && t.status==="APPROVED");
@@ -6303,7 +6305,7 @@ export default function PLNWarehouse() {
       .slice(0,20);
 
     // Stok kritis
-    const kritis = enrichedStocks.filter(s=>s.minQty>0&&s.qty<=s.minQty);
+    const kritis = getKritisAgg(enrichedStocks);
 
     // Pending approvals
     const pending = txns.filter(t=>t.status==="PENDING");
@@ -6571,7 +6573,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     });
     return items.sort((a,b)=>(b.tanggal||0)-(a.tanggal||0));
   }, [txns, katalogList]);
-  const lowStocks = enrichedStocks.filter(s=>s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty);
+  // Material kritis AGREGAT per katalog (total semua lokasi ≤ minimum) — dipakai seluruh dashboard.
+  const lowStocks = getKritisAgg(enrichedStocks);
+  const forecastSoon = getMaterialAkanHabis(enrichedStocks, katalogList, txns, 9999).filter(r=>!r.isKritis && r.estimasiHari!==Infinity && r.estimasiHari<=30);
   const totalVal = enrichedStocks.reduce((a,s)=>a+s.qty*s.price,0);
   const filteredStocks = enrichedStocks.filter(s=>{
     const ms = matchesStockSearch(s, search);
@@ -6885,7 +6889,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             ))}
           </div>
           {dashTab==="ringkasan" ? (
-            <ExecOverview totalVal={totalVal} lowStocks={lowStocks} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
+            <ExecOverview totalVal={totalVal} kritisMaterials={lowStocks} forecastSoon={forecastSoon} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
           ) : (
           <DashboardManager
             stocks={enrichedStocks} txns={txns} katalogList={katalogList}
@@ -6909,7 +6913,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             ))}
           </div>
           {dashTab==="ringkasan" ? (
-            <ExecOverview totalVal={totalVal} lowStocks={lowStocks} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
+            <ExecOverview totalVal={totalVal} kritisMaterials={lowStocks} forecastSoon={forecastSoon} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
           ) : (
           <DashboardAsman
             stocks={enrichedStocks} txns={txns} katalogList={katalogList}
@@ -6935,7 +6939,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           </div>
 
           {dashTab==="ringkasan" && (
-            <ExecOverview totalVal={totalVal} lowStocks={lowStocks} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
+            <ExecOverview totalVal={totalVal} kritisMaterials={lowStocks} forecastSoon={forecastSoon} approvalCount={myPendingApprovals.length} stockCountPendingCount={stockCountPendingCount} attbActionCount={attbPendingCount+attbBelumLanjutCount} akurasi={stockCountList[0]?.summary?.akuratPct ?? null} maturity={maturityAssessments[0]||null} setTab={setTab} setOpnameSubTab={setOpnameSubTab} C={C} sty={sty} isMobile={isMobile}/>
           )}
 
           {dashTab==="peta" && (<>
@@ -8108,9 +8112,20 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               ).map(id=>{
                 const u = TUG_UI[id]||{}; const on = tugSubTab===id;
                 return (
-                <button key={id} onClick={()=>setTugSubTab(id)} title={u.code} style={{padding:"8px 14px",borderRadius:12,border:`1px solid ${on?C.accent:C.border}`,background:on?C.accent:"white",color:on?"white":C.text,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"flex-start",lineHeight:1.25,minHeight:44}}>
-                  <span style={{fontSize:13,fontWeight:on?800:600}}>{u.chip||id}</span>
-                  <span style={{fontSize:9,fontWeight:600,opacity:.7}}>{u.code||id}</span>
+                <button key={id} onClick={()=>setTugSubTab(id)} title={u.code} style={{
+                  display:"flex", alignItems:"center", gap:12, textAlign:"left", cursor:"pointer",
+                  padding:isMobile?"12px 14px":"12px 16px", borderRadius:14, minHeight:60,
+                  width:isMobile?"100%":260,
+                  border:`2px solid ${on?C.accent:C.border}`,
+                  background:on?C.accent:C.surface, color:on?"white":C.text,
+                  boxShadow:on?"0 4px 14px rgba(29,78,216,0.30)":"0 1px 3px rgba(15,23,42,0.06)",
+                  transition:"all .15s",
+                }}>
+                  <span style={{fontSize:22, width:42, height:42, flexShrink:0, borderRadius:11, display:"flex", alignItems:"center", justifyContent:"center", background:on?"rgba(255,255,255,0.22)":C.bg}}>{TUG_ICON[id]||"📄"}</span>
+                  <span style={{display:"flex", flexDirection:"column", lineHeight:1.2}}>
+                    <span style={{fontSize:14,fontWeight:800}}>{u.chip||id}</span>
+                    <span style={{fontSize:10,fontWeight:600,opacity:on?.85:.6,marginTop:1}}>{u.code||id}</span>
+                  </span>
                 </button>
                 );
               })}
@@ -11128,12 +11143,18 @@ function CollapsibleSection({ id, title, icon, defaultOpen = true, C, children }
 
 // Ringkasan eksekutif Dashboard (tab "Ringkasan") — status + 4 KPI + panel "Butuh Perhatian".
 // Prinsip manage-by-exception: sorot yang bermasalah/menunggu keputusan; detail via tab lain.
-function ExecOverview({ totalVal, lowStocks, approvalCount, stockCountPendingCount, attbActionCount, akurasi, maturity, setTab, setOpnameSubTab, C, sty, isMobile }) {
-  const kritisCount = (lowStocks||[]).length;
+function ExecOverview({ totalVal, kritisMaterials=[], forecastSoon=[], approvalCount, stockCountPendingCount, attbActionCount, akurasi, maturity, setTab, setOpnameSubTab, C, sty, isMobile }) {
+  const [openIdx, setOpenIdx] = useState(null);
+  const kritisCount = (kritisMaterials||[]).length;
   const attention = [
     approvalCount>0 && { icon:"✅", text:`${approvalCount} dokumen menunggu approval Anda`, go:()=>setTab("approval") },
     stockCountPendingCount>0 && { icon:"📊", text:`${stockCountPendingCount} temuan Stock Count menunggu keputusan`, go:()=>{ setTab("opname"); setOpnameSubTab && setOpnameSubTab("stockCount"); } },
-    kritisCount>0 && { icon:"🔴", text:`${kritisCount} material stok kritis (≤ minimum)`, go:()=>setTab("stock") },
+    kritisCount>0 && { icon:"🔴", text:`${kritisCount} material stok kritis sekarang (≤ minimum)`,
+      items:(kritisMaterials||[]).slice(0,8).map(m=>`${m.name} — total ${fmtNum(m.qty)} ${m.unit||""} (min ${fmtNum(m.minQty)})`),
+      more:Math.max(0,kritisCount-8), goLabel:"Buka Data Stok", go:()=>setTab("stock") },
+    forecastSoon.length>0 && { icon:"📈", text:`${forecastSoon.length} material diprediksi habis ≤ 30 hari (forecast)`,
+      items:forecastSoon.slice(0,8).map(r=>`${r.nama} — ~${r.estimasiHari} hari lagi (sisa ${fmtNum(r.totalQty)} ${r.satuan||""})`),
+      more:Math.max(0,forecastSoon.length-8), goLabel:"Buka Forecast Stok", go:()=>setTab("forecastStok") },
     attbActionCount>0 && { icon:"🗂️", text:`${attbActionCount} aset ATTB butuh tindak lanjut`, go:()=>setTab("attb") },
   ].filter(Boolean);
   const statusLabel = attention.length===0 ? "SEHAT" : "PERLU PERHATIAN";
@@ -11172,13 +11193,28 @@ function ExecOverview({ totalVal, lowStocks, approvalCount, stockCountPendingCou
           <div style={{fontSize:13,color:C.green,fontWeight:600,padding:"8px 0"}}>✅ Semua aman — tidak ada yang menunggu keputusan Anda saat ini.</div>
         ) : (
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {attention.map((a,i)=>(
-              <button key={i} onClick={a.go} style={{display:"flex",alignItems:"center",gap:12,width:"100%",textAlign:"left",background:C.bg,border:`1px solid ${C.border}`,borderRadius:10,padding:isMobile?"12px 14px":"11px 14px",minHeight:isMobile?44:undefined,cursor:"pointer"}}>
-                <span style={{fontSize:18,flexShrink:0}}>{a.icon}</span>
-                <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{a.text}</span>
-                <span style={{fontSize:14,color:C.accent,fontWeight:700,flexShrink:0}}>→</span>
-              </button>
-            ))}
+            {attention.map((a,i)=>{
+              const hasDetail = !!a.items && a.items.length>0;
+              const isOpen = openIdx===i;
+              return (
+              <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:"hidden",background:C.bg}}>
+                <button onClick={()=> hasDetail ? setOpenIdx(isOpen?null:i) : a.go()} style={{display:"flex",alignItems:"center",gap:12,width:"100%",textAlign:"left",background:"transparent",border:"none",padding:isMobile?"12px 14px":"11px 14px",minHeight:isMobile?44:undefined,cursor:"pointer"}}>
+                  <span style={{fontSize:18,flexShrink:0}}>{a.icon}</span>
+                  <span style={{flex:1,fontSize:13,fontWeight:600,color:C.text}}>{a.text}</span>
+                  <span style={{fontSize:13,color:C.accent,fontWeight:700,flexShrink:0}}>{hasDetail?(isOpen?"▲":"▼"):"→"}</span>
+                </button>
+                {hasDetail && isOpen && (
+                  <div style={{padding:"0 14px 12px 44px"}}>
+                    {a.items.map((t,j)=>(
+                      <div key={j} style={{fontSize:12,color:C.text,padding:"5px 0",borderTop:`1px solid ${C.border}`}}>• {t}</div>
+                    ))}
+                    {a.more>0 && <div style={{fontSize:11,color:C.muted,padding:"6px 0 2px"}}>+{a.more} material lainnya…</div>}
+                    <button onClick={a.go} style={{...sty.btn("primary","sm"),marginTop:10}}>{a.goLabel} →</button>
+                  </div>
+                )}
+              </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -11372,7 +11408,7 @@ function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedata
 // ─── DASHBOARD ASMAN (Operasional UPT Surabaya) ──────────────────────────
 function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser, attbList, attbBongkaranPool }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-  const stokKritis = stocks.filter(s=>s.minQty>0 && s.qty<=s.minQty);
+  const stokKritis = getKritisAgg(stocks);
   const akanHabis = getMaterialAkanHabis(stocks, katalogList, txns, 5);
   const txnBulanIni = txns.filter(t=>{const d=new Date(t.createdAt); const now=new Date(); return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();});
 
@@ -11457,7 +11493,7 @@ function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanga
   const nilaiPersediaan = stocks.filter(s=>s.jenisBarang==="Persediaan").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiPersediaanBursa = stocks.filter(s=>s.jenisBarang==="Persediaan Bursa").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiPreMemory = stocks.filter(s=>s.jenisBarang==="Pre Memory").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-  const stokKritis = stocks.filter(s=>s.minQty>0 && s.qty<=s.minQty);
+  const stokKritis = getKritisAgg(stocks);
   const terlambat = rencanaKedatanganList.flatMap(r=>(r.items||[]).map(i=>({...i,tanggalSerahTerima:r.tanggalSerahTerima}))).filter(i=>i.tanggalSerahTerima && new Date(i.tanggalSerahTerima).getTime()<Date.now());
   const txnBulanIni = txns.filter(t=>{const d=new Date(t.createdAt); const now=new Date(); return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();});
 
@@ -11537,7 +11573,7 @@ function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanga
                 const isSurabaya = upt.id==="UPT-SBY";
                 const uptStocks = isSurabaya ? stocks : [];
                 const uptNilai = uptStocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-                const uptKritis = uptStocks.filter(s=>s.minQty>0&&s.qty<=s.minQty).length;
+                const uptKritis = getKritisAgg(uptStocks).length;
                 const uptTxn = isSurabaya ? txnBulanIni.length : 0;
                 return (
                   <tr key={upt.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb"}}>

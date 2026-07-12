@@ -20,6 +20,22 @@ export function getSAPLabel(kodeKatalog) {
   return "Non-SAP";
 }
 
+// Material kritis AGREGAT per katalog: total qty semua lokasi (dalam 1 UPT) <= minimum.
+// Dipakai bersama App.jsx (dashboard) & nightly_sync.mjs (bot) supaya definisi "kritis" identik
+// — mencegah beda hitung per-lokasi vs agregat. Objek hasil meniru 1 baris stok representatif
+// (spread ...s) tapi qty=total & minQty=max, jadi kode pemakai (m.name/m.qty/m.minQty) tetap jalan.
+export function getKritisAgg(stocks) {
+  const g = {};
+  (stocks || []).forEach((s) => {
+    if (s.jenisBarang === "Non-Stock") return;
+    const kid = s.katalogId || s.id;
+    if (!g[kid]) g[kid] = { ...s, id: kid, katalogId: kid, qty: 0, minQty: 0, lokasi: null };
+    g[kid].qty += s.qty || 0;
+    g[kid].minQty = Math.max(g[kid].minQty, s.minQty || 0);
+  });
+  return Object.values(g).filter((m) => m.minQty > 0 && m.qty <= m.minQty);
+}
+
 // Isi 1 chunk RAG "katalog": nama, kode, kategori, status SAP, qty + harga Rupiah, lokasi fisik.
 export function buildKatalogRagContent(k, stockInfo) {
   const sap = getSAPLabel(k.katalog);
