@@ -41,4 +41,25 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
+
+  /* ── Komponen #3: INPUT / SELECT / TEXTAREA ──
+     Input pakai inline-style (outline:none). Tambah cincin fokus accent +
+     transisi lewat box-shadow (tak diset inline, jadi tidak bentrok border). */
+  input, select, textarea {
+    transition: box-shadow .15s ease, border-color .15s ease;
+  }
+  input:focus, select:focus, textarea:focus {
+    box-shadow: 0 0 0 3px rgb(29 78 216 / 0.15);
+    border-color: var(--color-accent);
+  }
+
+  /* ── Komponen #4: BARIS TABEL ──
+     Hover halus pada baris tabel. Warnai <td> (bukan <tr>) supaya tampil di
+     atas warna zebra inline yg ada di <tr>; transparan tipis agar tetap subtle. */
+  table tbody tr td {
+    transition: background-color .12s ease;
+  }
+  table tbody tr:hover td {
+    background-color: rgb(29 78 216 / 0.045);
+  }
 }
