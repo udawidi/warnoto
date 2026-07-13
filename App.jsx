@@ -69,19 +69,6 @@ import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoM
 import { getMaterialAkanHabis } from "./src/lib/analytics.js";
 import QRCode from "qrcode";
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 const STATUS_MATERIAL_RETUR = ["Material Sisa Baru", "Bongkaran", "Bongkaran ATTB (MTU)"]; // used in TUG-10 returns
 // Maps a return status to the resulting Jenis Barang in Data Stok (null = leave as user's manual choice)
 const CATEGORIES = ["Transformator", "Kabel", "Panel", "Meter", "Tools", "Safety", "Consumable", "Spare Part", "Struktur", "Isolator", "Lainnya"];
@@ -92,106 +79,25 @@ const ULTG_ROLES = ["ADMIN_ULTG","MGR_ULTG"]; // role dengan sidebar terbatas (v
 const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
 const UIT_ROLE_QUOTA = { ADMIN_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 };
 
-
 // Who can create TUG-9 transactions
 
 // Who can approve, and what happens
 // ADMIN-created -> needs TL approve -> Asman auto-approved alongside
 // TL-created     -> needs ASMAN approve -> directly APPROVED
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ATTB_FIELDS_BY_JENIS.SALURAN_AIR = ATTB_FIELDS_BY_JENIS.BANGUNAN;
 ATTB_FIELDS_BY_JENIS.JALAN = [...ATTB_FIELDS_BY_JENIS.BANGUNAN, {key:"hilang", label:"Hilang", type:"text"}];
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ─── DEFAULT DATA ────────────────────────────────────────────────────
 // User & password TIDAK lagi disimpan di source code (lihat Supabase Auth +
 // tabel "profiles" di supabase/schema.sql) — daftar user kini di-fetch dari
 // Supabase setelah login, bukan array statis seperti sebelumnya.
 
-
-
-
-
 // ─── MASTER GUDANG (bangunan gudang, parent dari Blok/Lokasi) ──────────
 const MATURITY_LEVELS = { 1:"Basic", 2:"Developing", 3:"Defined", 4:"Managed", 5:"Excellent" };
 
-
-
-
-
-
-
-
-
-
-
-
-
 // ─── DATA STOK dari SAP PEMAT (145 material Persediaan UPT Surabaya) ───
 // Data real dari file PEMAT_04062026.csv — selalu tersedia saat aplikasi dibuka.
-
-
-
 
 const now = Date.now();
 const DEFAULT_TXNS = [];
@@ -214,38 +120,6 @@ const TUG_GROUP_UI = {
 };
 // Ikon pembeda per jenis TUG untuk tombol pemilih section (biar staf baru gampang bedakan).
 const TUG_ICON = { TUG3:"🆕", TUG10:"↩️", TUG9:"🔧", TUG8:"🚚", TUG5:"📝", TUG15:"📊" };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // Glosarium LENGKAP singkatan & istilah material PLN (sheet PLN-Terminology, CATALOG
 // MASTER.xlsx). KHUSUS untuk konteks AI (AI Agent web & Telegram bot) supaya paham
@@ -282,65 +156,6 @@ TOOL E = Tool Electronic (Perangkat Kerja Elektronik); TOOL L = Tool Laboratory 
 TOOL M = Tool Mechanic (Perangkat Kerja Mekanik); TOOL S = Tool Safety (Perangkat Kerja Keselamatan)
 TRF = Transformer (Trafo); UG = Under Ground / ST (Saluran Tanah/Bawah Tanah)
 WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -5057,7 +4872,6 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
             )}
 
-
             {/* ── SUB-TAB: SATPAM ── */}
             {stockSubTab==="satpam" && (
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
@@ -7589,29 +7403,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 // Returns sorted array of row objects matching TUG-15 column spec.
 // ─── ANALYTICS HELPER FUNCTIONS ──────────────────────────────────────────
 
-
-
-
-
-
-
-
-
 // ─── SUPABASE SYNC (TUG-15 → tug15_history) ──────────────────────────────
 // Push approved mutasi rows ke Supabase supaya bisa dipakai job ML forecast.
 // Pakai anon/publishable key (write diizinkan lewat RLS policy "Public insert"
 // yang scope-nya cuma ke tabel katalog & tug15_history — lihat supabase/schema.sql).
 // (SUPABASE_URL/SUPABASE_KEY/supabase client didefinisikan di dekat awal file.)
-
-
-
-
-
-
-
-
-
-
 
 // ─── SUPABASE SYNC (Foto Material Keseluruhan → Supabase Storage) ───────
 // Upload base64 dataURL ke bucket "material-photos" (lihat supabase/schema.sql
@@ -7619,54 +7415,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 // katalog.foto_keseluruhan_url supaya halaman scan QR (ScanPublicView) bisa
 // menampilkan foto tanpa perlu login.
 
-
-
-
-
 // ── Foto transaksi TUG → Supabase Storage (bukan base64 di blob) ─────────────
 // SIM/KTP = data pribadi → bucket privat, disimpan sbg penanda "priv:<path>",
 // ditampilkan lewat signed URL. Foto lain → bucket publik (URL langsung).
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ─── TUG-15 TAB COMPONENT ────────────────────────────────────────────────
 // ─── RENCANA KEDATANGAN BARANG TAB ───────────────────────────────────────
 // ─── DASHBOARD ANALITIK SECTION (3 Widget) ───────────────────────────────
 // ─── SHARED DASHBOARD BUILDING BLOCKS ────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ─── AI AGENT PAGE (Forecast + Chat terintegrasi) ────────────────────────
 // Panel kurasi FAQ Bot (Admin only) — tampilkan pertanyaan nyata dari bot WA/Telegram
@@ -7674,43 +7430,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 // tulis jawaban resmi → tersimpan ke ai_faq_curated → ikut di-embed ke rag_chunks
 // (lewat syncRagChunks) supaya pertanyaan serupa besok-besok langsung dijawab benar.
 
-
-
-
-
-
-
-
-
-
-
 // ─── STOCK OPNAME TAB ────────────────────────────────────────────────────
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 // ════════════════════════════════════════════════════════════════════
 // MATERIAL CADANG TAB
 // ════════════════════════════════════════════════════════════════════
 
-
-
-
-
 // Normalisasi nomor katalog (hapus leading zero)
-
-
 
 // Normalisasi nama Gudang untuk pencocokan import Kapasitas Gudang -> Master Gudang.
 // Sebelumnya cuma trim+uppercase persis (String(a).trim().toUpperCase()===...) — variasi
@@ -7748,48 +7474,6 @@ function suggestSimilarGudang(name, uptId, gudangList) {
     .map(x => x.g);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // ════════════════════════════════════════════════════════════════════
 // KAPASITAS GUDANG TAB
 // ════════════════════════════════════════════════════════════════════
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
