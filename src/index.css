@@ -63,3 +63,17 @@
     background-color: rgb(29 78 216 / 0.045);
   }
 }
+
+/* ── Polish global corporate: warna seleksi + scrollbar rapi ── */
+::selection { background: rgb(29 78 216 / 0.18); }
+
+* { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
