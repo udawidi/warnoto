@@ -342,38 +342,6 @@ WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 
 
 
-// ─── AI AGENT ────────────────────────────────────────────────────────
-async function askAI(msg, stocks, txns, users, currentUser) {
-  const pending = txns.filter(t=>t.status==="PENDING");
-  const totalVal = stocks.reduce((a,s)=>a+s.qty*s.price,0);
-  const lowStocks = getKritisAgg(stocks);
-  const ctx = `Kamu adalah AI Assistant untuk sistem Tata Usaha Gudang (TUG) ${WAREHOUSE}, ${COMPANY} ${UPT}.
-Pengguna saat ini: ${currentUser.name} (${ROLES[currentUser.role]}).
-Jawab dalam Bahasa Indonesia profesional, gunakan istilah kelistrikan PLN bila relevan. Gunakan Rp untuk mata uang, format titik ribuan.
-
-=== DATA REAL-TIME GUDANG ===
-Total Item Stok: ${stocks.length}
-Total Nilai Inventory: ${fmtRp(totalVal)}
-Stok Menipis/Kritis (kategori Persediaan/Cadang/Pre Memory/ATTB): ${lowStocks.length} item
-Transaksi TUG-9 Pending Approval: ${pending.length}
-
-${formatStockStatsText(stocks)}
-
-Data Stok Lengkap (termasuk Nomor Katalog):
-${stocks.map(s=>`[${s.id}] ${s.name} | Katalog: ${s.katalog} | Jenis: ${s.jenisBarang} | Qty: ${s.qty} ${s.unit} | Min: ${s.minQty} | Harga: ${fmtRp(s.price)} | Lokasi: ${s.lokasi}`).join("\n")}
-
-Riwayat Transaksi TUG-9:
-${txns.map(t=>`[${t.status}] ${t.id} | Pekerjaan: ${t.namaPekerjaan} | Lokasi: ${t.lokasiPekerjaan} | Items: ${t.stockItems?.map(si=>{const s=stocks.find(x=>x.id===si.stockId);return `${s?.name} x${si.qty}`}).join(", ")} | ${fmtDate(t.createdAt)}`).join("\n")}
-=== AKHIR DATA ===
-
-Analisa data dan berikan jawaban akurat, spesifik, dan dapat ditindaklanjuti.`;
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":`Bearer ${import.meta.env.VITE_GROQ_API_KEY}`},body:JSON.stringify({model:"llama-3.3-70b-versatile",max_tokens:1000,messages:[{role:"system",content:ctx},{role:"user",content:msg}]})});
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || "Maaf, AI tidak dapat menjawab saat ini.";
-}
-
-
-
 // ════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════
