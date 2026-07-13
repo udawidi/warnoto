@@ -3779,14 +3779,9 @@ export default function PLNWarehouse() {
   // Tambah/edit/hapus blok lokasi langsung berlaku, tanpa approval siapapun —
   // menu ini cuma bisa diakses ADMIN (lihat gating hasRole di render Master
   // Gudang), jadi tidak perlu alur PENDING/approval TL lagi (permintaan user 2026-07-09).
-  function openAddLokasi() {
-    setLokasiForm({ id:`LOK-${uid().slice(-6)}`, kode:"", keterangan:"", kapasitas:50 });
-    setLokasiModal("add");
-  }
-  function openAddLokasiFor(gudangId, subGudangId) {
-    setLokasiForm({ id:`LOK-${uid().slice(-6)}`, kode:"", keterangan:"", kapasitas:50, gudangId, subGudangId: subGudangId||null });
-    setLokasiModal("add");
-  }
+  // Tambah Blok manual (modal tanpa denah) sudah dihapus — blok baru sekarang HANYA
+  // ditambahkan lewat "Kelola Denah & Koordinat" (klik titik di denah), jadi tiap blok
+  // dijamin punya koordinat. Modal Lokasi tinggal dipakai untuk EDIT saja.
   function openEditLokasi(l) { setLokasiForm({...l}); setLokasiModal("edit"); }
 
   // Cek kode blok sudah dipakai DI SUB GUDANG yang sama (termasuk usulan pending EDIT lain).
@@ -7873,7 +7868,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                               label="Gudang"
                               denahImage={g.denahImageData}
                               isOpen={mapConfigGudangId===g.id}
-                              onToggleOpen={()=>{setMapConfigGudangId(mapConfigGudangId===g.id?null:g.id);setPendingMapLokasi(null);setManualAddMode(false);}}
+                              onToggleOpen={()=>{const willOpen=mapConfigGudangId!==g.id;setMapConfigGudangId(willOpen?g.id:null);setPendingMapLokasi(null);setManualAddMode(willOpen);}}
                               manualAddMode={manualAddMode} setManualAddMode={setManualAddMode}
                               pendingMapLokasi={pendingMapLokasi} setPendingMapLokasi={setPendingMapLokasi}
                               blocksInScope={bloklokasi}
@@ -7966,7 +7961,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                           label="Sub Gudang"
                                           denahImage={grp.sg.denahImageData}
                                           isOpen={mapConfigSubGudangId===grp.sg.id}
-                                          onToggleOpen={()=>{setMapConfigSubGudangId(mapConfigSubGudangId===grp.sg.id?null:grp.sg.id);setPendingMapLokasiSub(null);setManualAddModeSub(false);}}
+                                          onToggleOpen={()=>{const willOpen=mapConfigSubGudangId!==grp.sg.id;setMapConfigSubGudangId(willOpen?grp.sg.id:null);setPendingMapLokasiSub(null);setManualAddModeSub(willOpen);}}
                                           manualAddMode={manualAddModeSub} setManualAddMode={setManualAddModeSub}
                                           pendingMapLokasi={pendingMapLokasiSub} setPendingMapLokasi={setPendingMapLokasiSub}
                                           blocksInScope={grp.blok}
@@ -7998,7 +7993,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
                               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                                 <div style={{fontSize:12,color:C.muted}}>📍 Daftar Blok Lokasi ({grp.blok.length})</div>
-                                {hasRole(currentUser, "ADMIN") && !isUnregistered && <button style={sty.btn("ghost","sm")} onClick={()=>openAddLokasiFor(g.id, grp.id)}>+ Tambah Blok</button>}
+                                {hasRole(currentUser, "ADMIN") && !isUnregistered && <span style={{fontSize:10,color:C.muted,fontStyle:"italic"}}>➕ Tambah blok lewat 🛠️ Kelola Denah & Koordinat di atas</span>}
                               </div>
                               {grp.blok.length===0
                                 ? <div style={{fontSize:12,color:C.muted,fontStyle:"italic",marginBottom:8}}>Belum ada blok lokasi di sub gudang ini.</div>
