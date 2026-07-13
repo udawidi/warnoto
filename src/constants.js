@@ -14,3 +14,6 @@ export const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","X
 
 // Jenis barang stok (dipindah dari App.jsx Fase 4f).
 export const JENIS_BARANG = ["Pre Memory", "Cadang", "Persediaan", "Persediaan Bursa", "ATTB", "Non-Stock", "Bongkaran"];
+
+// Map status material retur -> jenis barang (dipindah dari App.jsx Fase 5f).
+export const STATUS_RETUR_TO_JENIS = { "Bongkaran": "Bongkaran", "Bongkaran ATTB (MTU)": "ATTB" };
