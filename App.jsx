@@ -14,6 +14,10 @@ import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, at
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
 import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, seedMasterTableIfEmpty, syncMaterialCadangRows } from "./src/lib/masterSync.js";
+import { Sparkline } from "./src/components/Sparkline.jsx";
+import { GudangCoordConfigPanel } from "./src/components/GudangCoordConfigPanel.jsx";
+import { SearchableSelect } from "./src/components/SearchableSelect.jsx";
+import { BarcodeScanner } from "./src/components/BarcodeScanner.jsx";
 import { DEFAULT_UIT } from "./src/data/masterUit.js";
 import { DEFAULT_UPT_LIST } from "./src/data/masterUpt.js";
 import { DEFAULT_GUDANG, DEFAULT_SATPAM } from "./src/data/masterGudang.js";
@@ -293,151 +297,11 @@ WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 
 
 
-// ─── KONFIGURASI KOORDINAT BLOK (Gudang & Sub Gudang) ────────────────────
-// Digabung dari 2 salinan JSX yang tadinya nyaris identik (satu untuk denah Gudang
-// keseluruhan, satu untuk denah Sub Gudang) — dipakai HANYA saat Gudang tidak punya
-// Sub Gudang (level Gudang) atau selalu untuk tiap Sub Gudang (level Sub Gudang, aturan
-// baru 2026-07-06: dot Blok baru tidak lagi boleh dikonfigurasi di peta Gudang
-// keseluruhan kalau Gudang itu punya Sub Gudang). Kedua opsi ("assign koordinat ke blok
-// existing" vs "tambah blok baru") sekarang langsung kelihatan begitu panel dibuka —
-// sebelumnya opsi kedua disembunyikan di balik toggle terpisah di dalam panel, terasa
-// seperti "klik di dalam klik" (keluhan user).
-function GudangCoordConfigPanel({
-  label, denahImage, isOpen, onToggleOpen,
-  manualAddMode, setManualAddMode, pendingMapLokasi, setPendingMapLokasi,
-  blocksInScope, getCoord, draftDots, onAssignCoord, onAddDraft, onFinishAdding,
-  ocrNotReady, sty, C, showToast,
-}) {
-  if (!isOpen) {
-    return (
-      <button style={{...sty.btn("primary","sm")}} onClick={onToggleOpen}>
-        ⚙️ Konfigurasi Koordinat Blok{label==="Sub Gudang"?" (Sub Gudang)":""}
-      </button>
-    );
-  }
-  const unassigned = blocksInScope.filter(l => l.status!=="PENDING" && !getCoord(l));
-  const withCoord = blocksInScope.filter(l => getCoord(l));
-  return (
-    <div>
-      <button style={{...sty.btn("danger","sm"),marginBottom:8}} onClick={onToggleOpen}>✕ Tutup Mode Konfigurasi</button>
-      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:12}}>
-        <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
-          <button style={sty.btn(manualAddMode?"danger":"primary","sm")} onClick={()=>{setManualAddMode(m=>!m);setPendingMapLokasi(null);}}>
-            {manualAddMode?"✕ Batal Mode Tambah Blok Baru":"➕ Mode Tambah Blok Baru"}
-          </button>
-        </div>
 
-        {manualAddMode ? (
-          <div style={{fontSize:11,color:"#1d4ed8",fontWeight:700,marginBottom:8}}>Klik titik-titik di denah untuk menambah blok baru (bisa beberapa kali). Usulan akan muncul di panel untuk dikonfirmasi & dikirim ke TL.</div>
-        ) : (
-          <div style={{marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6}}>Atau, blok yang belum punya koordinat — klik untuk pilih, lalu klik titik di denah:</div>
-            {unassigned.length===0
-              ? <div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>Semua blok di sini sudah punya koordinat.</div>
-              : <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {unassigned.map(l=>(
-                    <button key={l.id} style={sty.btn(pendingMapLokasi===l.id?"danger":"ghost","sm")} onClick={()=>setPendingMapLokasi(pendingMapLokasi===l.id?null:l.id)}>
-                      📍 {l.kode}{pendingMapLokasi===l.id?" (klik di peta)":""}
-                    </button>
-                  ))}
-                </div>
-            }
-          </div>
-        )}
 
-        {ocrNotReady && <div style={{fontSize:10,color:C.muted,marginBottom:8}}>⏳ OCR denah belum tersedia, jalankan ulang upload denah untuk membaca label otomatis.</div>}
 
-        <div style={{maxWidth:380,margin:"0 auto"}}>
-          <div style={{position:"relative",cursor:(manualAddMode||pendingMapLokasi)?"crosshair":"default",width:"100%"}}
-            onClick={e=>{
-              if (!manualAddMode && !pendingMapLokasi) { showToast("Aktifkan 'Mode Tambah Blok Baru' atau pilih blok di daftar dulu!","error"); return; }
-              const rect = e.currentTarget.getBoundingClientRect();
-              const xPct = Number(((e.clientX - rect.left) / rect.width * 100).toFixed(1));
-              const yPct = Number(((e.clientY - rect.top) / rect.height * 100).toFixed(1));
-              if (manualAddMode) { onAddDraft(xPct, yPct); }
-              else if (pendingMapLokasi) { onAssignCoord(pendingMapLokasi, xPct, yPct); setPendingMapLokasi(null); }
-            }}>
-            <img src={denahImage} alt="Denah" style={{width:"100%",height:"auto",borderRadius:6,border:"2px dashed #3b82f6",display:"block"}}/>
-            {withCoord.map(l=>{
-              const c = getCoord(l);
-              return (
-                <div key={l.id} title={pendingMapLokasi===l.id?`${l.kode} — klik posisi baru di denah`:`${l.kode} — klik untuk pindah koordinat`}
-                  style={{position:"absolute",left:`${c.x}%`,top:`${c.y}%`,transform:"translate(-50%,-50%)",width:12,height:12,borderRadius:"50%",background:pendingMapLokasi===l.id?"#22c55e":(l.status==="PENDING"?"#9ca3af":"#dc2626"),border:l.status==="PENDING"?"2px dashed white":"2px solid white",cursor:"pointer",boxShadow:pendingMapLokasi===l.id?"0 0 0 3px rgba(34,197,94,.35)":"0 1px 4px rgba(0,0,0,0.4)"}}
-                  onClick={e=>{e.stopPropagation();setPendingMapLokasi(pendingMapLokasi===l.id?null:l.id);setManualAddMode(false);}}/>
-              );
-            })}
-            {draftDots.map(s=>(
-              <div key={s.id} title={`${s.kode} (draft, belum dikirim)`} style={{position:"absolute",left:`${s.xPct}%`,top:`${s.yPct}%`,transform:"translate(-50%,-50%)",width:12,height:12,borderRadius:"50%",background:"#22c55e",border:"2px dashed white",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
-            ))}
-          </div>
-        </div>
 
-        {manualAddMode && (
-          <button style={{...sty.btn("success","sm"),marginTop:10}} onClick={onFinishAdding}>💾 Save Blok</button>
-        )}
-        <div style={{fontSize:10,color:C.muted,marginTop:6}}>💡 Klik titik yang sudah ada, lalu klik posisi baru di denah untuk memindahkan koordinatnya (titik jadi hijau saat aktif). Titik hijau putus-putus = blok baru draft (belum dikirim ke TL).</div>
-      </div>
-    </div>
-  );
-}
 
-// ─── SEARCHABLE SELECT (combobox) ────────────────────────────────────
-// Ganti <select> raksasa (semua barang/material dijejer dalam 1 dropdown
-// panjang) dengan field cari + daftar hasil yang bisa disaring sambil
-// mengetik — dipakai di semua form TUG saat memilih barang/material.
-function SearchableSelect({ options, value, onChange, getLabel, getSearchText, renderOption, placeholder="-- Cari & pilih barang --", sty, C, emptyText="Tidak ada barang yang cocok", isMobile=false }) {
-  const [query, setQuery] = useState("");
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-  const selected = options.find(o=>o.id===value);
-
-  useEffect(() => {
-    function onDocClick(e) { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, []);
-
-  // Dipakai di semua form TUG (TUG-5/7/8/9/10, Stock Opname) buat pilih material —
-  // dulu cuma substring polos, sekarang pakai mesin sinonim PLN yang sama dengan
-  // Data Stok/Master Katalog (matchesMaterialSearch), biar user yang ketik bahasa
-  // awam ("pemutus", "penangkal petir") tetap nemu barangnya di sini juga.
-  const filtered = options.filter(o => matchesMaterialSearch([getSearchText?getSearchText(o):getLabel(o)], query));
-
-  return (
-    <div ref={wrapRef} style={{position:"relative"}}>
-      <input
-        style={sty.input}
-        placeholder={placeholder}
-        value={open ? query : (selected ? getLabel(selected) : "")}
-        onFocus={()=>{setOpen(true); setQuery("");}}
-        onChange={e=>{setQuery(e.target.value); setOpen(true);}}
-      />
-      {open && (
-        <div style={{position:"absolute",zIndex:50,top:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:8,marginTop:2,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
-          {value && (
-            <div onClick={()=>{onChange("");setOpen(false);setQuery("");}} style={{padding:"8px 10px",fontSize:11,color:C.muted,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>✕ Kosongkan pilihan</div>
-          )}
-          {filtered.length===0 && <div style={{padding:"12px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>{emptyText}</div>}
-          {filtered.slice(0,50).map(o=>(
-            <div key={o.id} onClick={()=>{onChange(o.id);setOpen(false);setQuery("");}}
-              style={{padding:isMobile?"12px 10px":"8px 10px",minHeight:isMobile?44:undefined,display:"flex",flexDirection:"column",justifyContent:"center",fontSize:isMobile?13:12,cursor:"pointer",background:o.id===value?"#eff6ff":"white",borderBottom:`1px solid #f1f5f9`}}>
-              {renderOption?renderOption(o):getLabel(o)}
-            </div>
-          ))}
-          {filtered.length>50 && <div style={{padding:"6px 10px",fontSize:10,color:C.muted,textAlign:"center"}}>+{filtered.length-50} lainnya — ketik lebih spesifik untuk menyaring</div>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── SPARKLINE ───────────────────────────────────────────────────────
-function Sparkline({ data, color="#3b82f6", h=36, w=100 }) {
-  if (!data || data.length<2) return <svg width={w} height={h}><line x1="0" y1={h/2} x2={w} y2={h/2} stroke={color} strokeOpacity="0.3" strokeWidth="1.5" strokeDasharray="4"/></svg>;
-  const max=Math.max(...data,1), min=Math.min(...data,0), range=max-min||1;
-  const pts = data.map((v,i)=>`${(i/(data.length-1))*w},${h-((v-min)/range)*(h-4)-2}`).join(" ");
-  return <svg width={w} height={h}><polyline fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" points={pts}/></svg>;
-}
 
 
 
@@ -499,67 +363,7 @@ Analisa data dan berikan jawaban akurat, spesifik, dan dapat ditindaklanjuti.`;
   return data.choices?.[0]?.message?.content || "Maaf, AI tidak dapat menjawab saat ini.";
 }
 
-// ─── BARCODE SCANNER (camera-based) ───────────────────────────────────
-function BarcodeScanner({ onDetect, onClose }) {
-  const videoRef = useRef(null);
-  const [error, setError] = useState("");
-  const [scanning, setScanning] = useState(true);
-  const streamRef = useRef(null);
-  const detectorRef = useRef(null);
 
-  useEffect(() => {
-    let active = true;
-    async function start() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-        if (!active) { stream.getTracks().forEach(t=>t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
-        if ("BarcodeDetector" in window) {
-          detectorRef.current = new window.BarcodeDetector({ formats: ["qr_code","code_128","ean_13","code_39","upc_a","upc_e","ean_8"] });
-          scanLoop();
-        } else {
-          setError("Browser ini tidak mendukung scan barcode otomatis. Gunakan Chrome di Android, atau input manual kode katalog.");
-        }
-      } catch (e) {
-        setError("Tidak dapat mengakses kamera. Pastikan izin kamera diaktifkan.");
-      }
-    }
-    async function scanLoop() {
-      if (!active || !videoRef.current || !detectorRef.current) return;
-      try {
-        const codes = await detectorRef.current.detect(videoRef.current);
-        if (codes.length > 0 && active) {
-          onDetect(codes[0].rawValue);
-          return;
-        }
-      } catch {}
-      if (active) requestAnimationFrame(scanLoop);
-    }
-    start();
-    return () => { active = false; if (streamRef.current) streamRef.current.getTracks().forEach(t=>t.stop()); };
-  }, []);
-
-  return (
-    <div style={{position:"fixed",inset:0,background:"black",zIndex:2000,display:"flex",flexDirection:"column"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:16,background:"#111"}}>
-        <span style={{color:"white",fontWeight:700,fontSize:14}}>📷 Scan Barcode / QR Barang</span>
-        <button onClick={onClose} style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:13}}>✕ Tutup</button>
-      </div>
-      <div style={{flex:1,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        {error ? (
-          <div style={{color:"white",textAlign:"center",padding:30,fontSize:13}}>⚠️ {error}</div>
-        ) : (
-          <>
-            <video ref={videoRef} style={{width:"100%",height:"100%",objectFit:"cover"}} muted playsInline/>
-            <div style={{position:"absolute",width:240,height:240,border:"3px solid #22d3ee",borderRadius:16,boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)"}}/>
-          </>
-        )}
-      </div>
-      <div style={{padding:14,background:"#111",color:"#9ca3af",fontSize:11,textAlign:"center"}}>Arahkan kamera ke barcode / QR code label barang</div>
-    </div>
-  );
-}
 
 // ════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
