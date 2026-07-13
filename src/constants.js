@@ -11,3 +11,6 @@ export const KAPASITAS_LABEL = { KRITIS: "Penuh", WASPADA: "Terbatas", AMAN: "Cu
 
 // Bulan romawi untuk nomor dokumen TUG (dipindah dari App.jsx Fase 3a).
 export const ROMAN = ["I","II","III","IV","V","VI","VII","VIII","IX","X","XI","XII"];
+
+// Jenis barang stok (dipindah dari App.jsx Fase 4f).
+export const JENIS_BARANG = ["Pre Memory", "Cadang", "Persediaan", "Persediaan Bursa", "ATTB", "Non-Stock", "Bongkaran"];
