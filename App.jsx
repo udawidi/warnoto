@@ -3,7 +3,8 @@
 // TUG-9: Bon Pemakaian + Surat Jalan + BAST
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL } from "./src/constants.js";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, usernameToAuthEmail } from "./src/supabaseClient.js";
 import * as XLSX from "xlsx";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
@@ -13,30 +14,6 @@ import { PLN_LOGO_DATA_URI } from "./src/assets/plnLogoBase64.js";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./src/lib/openLocationCode.js";
 import { fmtNum, getSAPLabel, buildKatalogRagContent, getKritisAgg } from "./src/lib/ragShared.mjs";
 import QRCode from "qrcode";
-
-// ─── CONSTANTS ──────────────────────────────────────────────────────
-const COMPANY = "PT. PLN (Persero)";
-const UIT = "Unit Induk Transmisi Jawa Bagian Timur dan Bali";
-const UPT = "UPT Surabaya";
-const WAREHOUSE = "Gudang Ketintang";
-const DOC_CODE = "LOG.00.02";
-const APP_VERSION = "v3.0.0";
-// Label tampilan status kapasitas gudang (kode data internal KRITIS/WASPADA/AMAN
-// tetap dipakai untuk perbandingan & warna, hanya teks yang ditampilkan ke user berubah)
-const KAPASITAS_LABEL = { KRITIS: "Penuh", WASPADA: "Terbatas", AMAN: "Cukup" };
-
-// ─── SUPABASE CLIENT ────────────────────────────────────────────────
-// Satu client dipakai untuk auth (login/sesi/logout) maupun REST sync
-// (tug15_history, stock_current, dst — lihat fungsi sync di bawah).
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const supabase = (SUPABASE_URL && SUPABASE_KEY) ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
-// Supabase Auth butuh format email; akun PLN login pakai username pendek
-// seperti sebelumnya, jadi kita tempelkan domain sintetis di belakangnya.
-// Tidak perlu domain ini benar-benar bisa terima email (Fase 1 belum pakai
-// fitur reset password lewat email — Admin reset manual via Dashboard).
-const AUTH_EMAIL_DOMAIN = "@warnoto.pln.local";
-function usernameToAuthEmail(username) { return `${(username||"").trim().toLowerCase()}${AUTH_EMAIL_DOMAIN}`; }
 
 // ─── RAG (Retrieval-Augmented Generation) — knowledge base AI Agent ────
 // Embedding pakai Cohere (embed-multilingual-v3.0, 1024 dim) — model
