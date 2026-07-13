@@ -155,3 +155,11 @@ export function canApproveHeavyEquipmentLoan(user, loan) {
   const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
   return !!requesterUpt && userUpt === requesterUpt;
 }
+
+export function getEquipmentCategory(e) {
+  const n = String(e.nama||"").toUpperCase().replace(/\s+/g," ").trim();
+  if (n.includes("CRANE")) return "crane";
+  if (n.includes("FORKLIFT")) return "forklift";
+  if (n.includes("MANLIFT")) return "manlift";
+  return "pendukung";
+}

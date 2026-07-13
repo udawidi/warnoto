@@ -10,7 +10,7 @@ import { generateDocNumbers, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, 
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML } from "./src/lib/docBuilders.js";
 import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, expandQueryForIlikeSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory } from "./src/lib/sap.js";
 import { ROLES, CAN_CREATE, hasRole, getUserUptScope } from "./src/lib/roles.js";
-import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentStatusFromKondisi, normalizeHeavyEquipmentRecord, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanStartDate, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName, normalizeHeavyEquipmentLoanStatus, isPendingHeavyEquipmentLoan, getHeavyEquipmentLoanRuntimeStatus, canApproveHeavyEquipmentLoan } from "./src/lib/heavyEquipment.js";
+import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentStatusFromKondisi, normalizeHeavyEquipmentRecord, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanStartDate, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName, normalizeHeavyEquipmentLoanStatus, isPendingHeavyEquipmentLoan, getHeavyEquipmentLoanRuntimeStatus, canApproveHeavyEquipmentLoan, getEquipmentCategory } from "./src/lib/heavyEquipment.js";
 import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, ATTB_FIELDS_BY_JENIS, ATTB_ALASAN_PENGHAPUSBUKUAN, ATTB_WAKTU_USULAN_OPTIONS, ATTB_CORE_FIELDS, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, parseAttbCurrency, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "./src/lib/attb.js";
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
@@ -24,6 +24,8 @@ import { PendingWidget } from "./src/components/PendingWidget.jsx";
 import { RencanaWidget } from "./src/components/RencanaWidget.jsx";
 import { CollapsibleSection } from "./src/components/CollapsibleSection.jsx";
 import { ExecOverview } from "./src/components/ExecOverview.jsx";
+import { HeavyEquipmentDashboardSummary } from "./src/components/HeavyEquipmentDashboardSummary.jsx";
+import { AttbDashboardSummary } from "./src/components/AttbDashboardSummary.jsx";
 import { GudangCoordConfigPanel } from "./src/components/GudangCoordConfigPanel.jsx";
 import { SearchableSelect } from "./src/components/SearchableSelect.jsx";
 import { BarcodeScanner } from "./src/components/BarcodeScanner.jsx";
@@ -8261,214 +8263,11 @@ function summarizeTxnDashboard(t, stocks, lokasiList) {
   return { noTugLabel, pekerjaan, tanggal, lokasiLabel, pihakLabel };
 }
 
-// ─── DASHBOARD DEFAULT (Admin, TL, Viewer, Pengadaan) ────────────────────
-function getEquipmentCategory(e) {
-  const n = String(e.nama||"").toUpperCase().replace(/\s+/g," ").trim();
-  if (n.includes("CRANE")) return "crane";
-  if (n.includes("FORKLIFT")) return "forklift";
-  if (n.includes("MANLIFT")) return "manlift";
-  return "pendukung";
-}
 
-function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [], C, sty, setTab, currentUser }) {
-  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i,"").trim();
-  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
-  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
-  const scopedEquipment = isMSB ? equipmentList : equipmentList.filter(e=>e.upt===myUpt);
-  const scopedLoans = isMSB ? loans : loans.filter(l=>
-    (getHeavyEquipmentLoanOwnerUpt(l)===myUpt)||(getHeavyEquipmentLoanRequesterUpt(l)===myUpt)
-  );
-  const scopeLabel = isMSB ? "Semua UPT" : (myUpt || "UPT");
-  const overdueLoans = scopedLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE");
-  const pendingLoans = scopedLoans.filter(isPendingHeavyEquipmentLoan);
-  const borrowedLoans = scopedLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="DIPINJAM");
-  const availableCount = scopedEquipment.filter(e=>e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
-  const issueCount = scopedEquipment.filter(e=>["PERLU_SERVICE","RUSAK"].includes(e.statusAlat)).length;
-  const catIcons = {
-    crane:(
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <rect x="12" y="4" width="2.5" height="18" rx="1" fill="currentColor"/>
-        <rect x="2" y="4" width="12" height="2" rx="1" fill="currentColor" opacity=".85"/>
-        <line x1="12" y1="5" x2="24" y2="22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-        <rect x="10" y="20" width="6" height="5" rx="1" fill="currentColor" opacity=".7"/>
-        <rect x="5" y="22" width="16" height="2.5" rx="1" fill="currentColor" opacity=".5"/>
-      </svg>
-    ),
-    forklift:(
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <rect x="2" y="10" width="14" height="10" rx="2" fill="currentColor" opacity=".85"/>
-        <rect x="16" y="14" width="8" height="6" rx="1" fill="currentColor" opacity=".6"/>
-        <rect x="2" y="3" width="2.5" height="14" rx="1" fill="currentColor"/>
-        <rect x="6" y="3" width="2.5" height="14" rx="1" fill="currentColor"/>
-        <circle cx="6" cy="23" r="2.5" fill="currentColor"/>
-        <circle cx="18" cy="23" r="2.5" fill="currentColor"/>
-      </svg>
-    ),
-    manlift:(
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <rect x="9" y="2" width="10" height="8" rx="1.5" fill="currentColor" opacity=".85"/>
-        <rect x="11" y="10" width="6" height="10" rx="1" fill="currentColor" opacity=".7"/>
-        <rect x="6" y="18" width="16" height="4" rx="1.5" fill="currentColor" opacity=".5"/>
-        <circle cx="9" cy="25" r="2" fill="currentColor"/>
-        <circle cx="19" cy="25" r="2" fill="currentColor"/>
-      </svg>
-    ),
-    pendukung:(
-      <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-        <rect x="2" y="12" width="18" height="4" rx="1" fill="currentColor" opacity=".85"/>
-        <path d="M18 14 Q22 14 22 8 L24 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
-        <rect x="3" y="16" width="6" height="8" rx="0.5" fill="currentColor" opacity=".7"/>
-        <rect x="11" y="16" width="6" height="8" rx="0.5" fill="currentColor" opacity=".7"/>
-        <circle cx="5" cy="25" r="2" fill="currentColor"/>
-        <circle cx="14" cy="25" r="2" fill="currentColor"/>
-      </svg>
-    ),
-  };
-  const catBreakdown = [
-    {key:"crane",    label:"Crane"},
-    {key:"forklift", label:"Forklift"},
-    {key:"manlift",  label:"Manlift"},
-    {key:"pendukung",label:"Alat Pendukung"},
-  ].map(c=>({...c, count:scopedEquipment.filter(e=>getEquipmentCategory(e)===c.key).length}));
 
-  if (equipmentList.length === 0 && loans.length === 0) return null;
-  return (
-    <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${overdueLoans.length?C.red:C.accent}`,cursor:"pointer"}} onClick={()=>setTab("heavyEquipment")}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:900}}>🚜 Ringkasan Alat Berat</div>
-          <div style={{fontSize:11,color:C.muted}}>Scope: <b>{scopeLabel}</b> — status peminjaman, ketersediaan &amp; kondisi alat.</div>
-        </div>
-        <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("heavyEquipment");}}>Buka Menu</button>
-      </div>
 
-      {/* Kategori alat dengan icon */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))",gap:8,marginBottom:12}}>
-        {catBreakdown.map(c=>(
-          <div key={c.key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 8px",background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:10}}>
-            <span style={{color:C.accent}}>{catIcons[c.key]}</span>
-            <span style={{fontSize:20,fontWeight:900,color:C.accent}}>{c.count}</span>
-            <span style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:"center"}}>{c.label}</span>
-          </div>
-        ))}
-      </div>
 
-      {/* KPI status */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:8}}>
-        {[
-          {label:"Total", val:scopedEquipment.length, color:C.accent},
-          {label:"Tersedia", val:availableCount, color:C.green},
-          {label:"Dipinjam", val:borrowedLoans.length, color:"#c2410c"},
-          {label:"Overdue", val:overdueLoans.length, color:overdueLoans.length?C.red:C.green},
-          {label:"Pending", val:pendingLoans.length, color:pendingLoans.length?"#92400e":C.green},
-          {label:"Perlu Tindakan", val:issueCount, color:issueCount?C.red:C.green},
-        ].map(k=>(
-          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
-            <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
-            <div style={{fontSize:20,fontWeight:900,color:k.color}}>{k.val}</div>
-          </div>
-        ))}
-      </div>
-      {/* Dipinjam aktif list */}
-      {(borrowedLoans.length > 0 || overdueLoans.length > 0) && (
-        <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:4}}>
-          {[...overdueLoans, ...borrowedLoans].slice(0,3).map(l=>{
-            const status = getHeavyEquipmentLoanRuntimeStatus(l);
-            const ownerUpt = getHeavyEquipmentLoanOwnerUpt(l);
-            const requesterUpt = getHeavyEquipmentLoanRequesterUpt(l);
-            const returnDate = getHeavyEquipmentLoanReturnDate(l);
-            const jobName = getHeavyEquipmentLoanJobName(l);
-            return (
-              <div key={l.id} style={{fontSize:11,display:"flex",gap:6,alignItems:"center",padding:"4px 8px",borderRadius:6,background:status==="OVERDUE"?"#fef2f2":"#fff7ed"}}>
-                <span style={{fontWeight:700,color:status==="OVERDUE"?C.red:"#c2410c",minWidth:54}}>{status==="OVERDUE"?"⚠ OVERDUE":"📌 Dipinjam"}</span>
-                <span style={{color:C.text}}>{l.equipmentId||"-"}</span>
-                <span style={{color:C.muted}}>→ {requesterUpt}</span>
-                {!isMSB && ownerUpt!==myUpt && <span style={{color:C.muted,fontStyle:"italic"}}>dari {ownerUpt}</span>}
-                <span style={{marginLeft:"auto",color:C.muted}}>s/d {returnDate||"-"}</span>
-              </div>
-            );
-          })}
-          {(borrowedLoans.length+overdueLoans.length)>3&&<div style={{fontSize:11,color:C.muted,paddingLeft:8}}>+{borrowedLoans.length+overdueLoans.length-3} peminjaman lainnya</div>}
-        </div>
-      )}
-    </div>
-  );
-}
 
-// Ringkasan ATTB untuk Dashboard — fokus data yang dilihat manajemen: nilai aset yang
-// akan dihapusbukukan, estimasi nilai lelang (recovery), sebaran tahap pipeline, item
-// yang tertahan (bottleneck), dan inflow material bongkaran dari TUG-10.
-function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty, setTab, currentUser }) {
-  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i,"").trim();
-  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
-  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
-  const scoped = isMSB ? attbList : attbList.filter(a=>a.upt===myUpt);
-  const scopeLabel = isMSB ? "Semua UPT" : (myUpt || "UPT");
-  if (attbList.length === 0 && bongkaranPool.length === 0) return null;
-
-  const num = v => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
-  const nilaiPerolehan = scoped.reduce((a,x)=>a+num(x.nilaiPerolehan), 0);
-  const nilaiBuku = scoped.reduce((a,x)=>a+num(x.nilaiBuku), 0);
-  const estimasiLelang = scoped.reduce((a,x)=>a+num(x.estimasiNilaiTaksiran||x.nilaiTaksiranKJPP), 0);
-  const ditahan = scoped.filter(a=>a.lanjutBelumLanjut).length;
-  const menungguLelang = scoped.filter(a=>a.stage==="LELANG").length;
-  const promotedKeys = new Set(attbList.map(a=>a.sourceTug10Key).filter(Boolean));
-  const bongkaranBelum = bongkaranPool.filter(p=>!promotedKeys.has(p.key)).length;
-  const stageCounts = ATTB_STAGES.map(s=>({ ...s, count: scoped.filter(a=>a.stage===s.code).length }));
-  const maxStage = Math.max(1, ...stageCounts.map(s=>s.count));
-  const stageColor = code => [C.accent,"#7c3aed","#0891b2","#ea580c",C.green][attbStageIndex(code)] || C.muted;
-
-  const kpis = [
-    {label:"Total Item", val:scoped.length, color:C.accent, sub:"aset dalam proses"},
-    {label:"Nilai Perolehan", val:fmtRp(nilaiPerolehan), color:"#0891b2", sub:"total aset"},
-    {label:"Nilai Buku", val:fmtRp(nilaiBuku), color:"#7c3aed", sub:"dihapusbukukan"},
-    {label:"Estimasi Nilai Lelang", val:fmtRp(estimasiLelang), color:C.green, sub:"potensi recovery"},
-    {label:"Tertahan", val:ditahan, color:ditahan?"#f59e0b":C.green, sub:"belum lanjut"},
-    {label:"Menunggu Lelang", val:menungguLelang, color:menungguLelang?"#16a34a":C.muted, sub:"tahap akhir"},
-  ];
-
-  return (
-    <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${ditahan?"#f59e0b":C.accent}`,cursor:"pointer"}} onClick={()=>setTab("attb")}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
-        <div>
-          <div style={{fontSize:14,fontWeight:900}}>🗂️ Ringkasan ATTB — Penghapusan Aset</div>
-          <div style={{fontSize:11,color:C.muted}}>Scope: <b>{scopeLabel}</b> — nilai aset, progres pipeline &amp; item tertahan.</div>
-        </div>
-        <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("attb");}}>Buka Menu</button>
-      </div>
-
-      {/* KPI utama */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
-        {kpis.map(k=>(
-          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
-            <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
-            <div style={{fontSize:k.val&&String(k.val).startsWith("Rp")?15:20,fontWeight:900,color:k.color}}>{k.val}</div>
-            <div style={{fontSize:9,color:C.muted}}>{k.sub}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Pipeline funnel — sebaran item per tahap + inflow bongkaran TUG-10 */}
-      <div style={{display:"flex",alignItems:"stretch",gap:6,flexWrap:"wrap"}}>
-        <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"8px 10px",borderRadius:8,border:`1px dashed #cbd5e1`,background:"#f8fafc",minWidth:96}}>
-          <div style={{fontSize:9,fontWeight:800,color:C.muted,textTransform:"uppercase"}}>🧰 Bongkaran</div>
-          <div style={{fontSize:18,fontWeight:900,color:"#6b7280"}}>{bongkaranBelum}</div>
-          <div style={{fontSize:9,color:C.muted}}>belum diusulkan</div>
-        </div>
-        {stageCounts.map((s,i)=>(
-          <div key={s.code} style={{flex:1,minWidth:90,display:"flex",flexDirection:"column",gap:4,padding:"8px 8px",borderRadius:8,border:`1px solid ${C.border}`,background:"white"}}>
-            <div style={{display:"flex",alignItems:"center",gap:5}}>
-              <span style={{width:16,height:16,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,background:stageColor(s.code)+"22",color:stageColor(s.code)}}>{i+1}</span>
-              <span style={{fontSize:16,fontWeight:900,color:stageColor(s.code)}}>{s.count}</span>
-            </div>
-            <div style={{fontSize:9,color:C.muted,lineHeight:1.2,minHeight:22}}>{s.label}</div>
-            <div style={{height:4,borderRadius:3,background:"#eef2f7",overflow:"hidden"}}><div style={{height:"100%",width:`${(s.count/maxStage)*100}%`,background:stageColor(s.code)}}/></div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 
 
