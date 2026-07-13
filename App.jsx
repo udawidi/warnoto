@@ -635,6 +635,38 @@ const CLOUD = {
 // sg.denahImageData, kalau blok itu di-assign ke sebuah Sub Gudang). Dulu "Lihat di Peta
 // Gudang" di Data Stok cuma cek mapX/gdg.denahImageData, jadi blok yang koordinatnya sudah
 // diplot lewat denah Sub Gudang tetap dianggap "belum diplot" — bug ditemukan 2026-07-09.
+// Singkatan 3 huruf dari nama Sub Gudang, dipakai sebagai tag di depan kode blok supaya
+// blok yang namanya sama antar Sub Gudang tetap terbedakan (mis. "Terbuka" vs "Tertutup"
+// -> TRB vs TRT). Sengaja pakai huruf pertama + konsonan berikutnya, bukan 3 huruf pertama,
+// supaya nama berawalan sama ("Ter...") tidak tabrakan jadi singkatan yang sama.
+function subGudangAbbr(nama) {
+  const clean = (nama||"").toUpperCase().replace(/[^A-Z ]/g,"").replace(/\bSUB\b|\bGUDANG\b/g," ").replace(/\s+/g," ").trim();
+  const letters = clean.replace(/ /g,"");
+  if (!letters) return "";
+  const consonants = letters[0] + letters.slice(1).replace(/[AEIOU]/g,"");
+  return (consonants.length>=3 ? consonants : letters).slice(0,3);
+}
+
+// Peta id Sub Gudang -> kode 3 huruf yang DIJAMIN unik dalam satu Gudang. Kalau dua Sub
+// Gudang menghasilkan singkatan sama (mis. dua nama beda tapi konsonannya kebetulan sama),
+// yang berikutnya diberi akhiran angka (TRB, TR2, TR3, ...) supaya setiap Sub Gudang punya
+// kode masing-masing. Kode manual (sg.kode) kalau diisi dihormati & tetap dijaga uniknya.
+function subGudangKodeMap(subs) {
+  const used = new Set();
+  const map = {};
+  subs.forEach(sg => {
+    if (sg.kode?.trim()) { const k = sg.kode.trim().toUpperCase().slice(0,3); map[sg.id] = k; used.add(k); }
+  });
+  subs.forEach(sg => {
+    if (map[sg.id]) return;
+    const base = subGudangAbbr(sg.nama) || "SGD";
+    let kode = base, n = 1;
+    while (used.has(kode)) { n++; kode = (base.slice(0,2) + n).slice(0,3); }
+    used.add(kode); map[sg.id] = kode;
+  });
+  return map;
+}
+
 function getLokasiPetaInfo(lok, gdg, subGudangList) {
   if (!lok) return null;
   if (lok.subGudangId && lok.subMapX != null) {
@@ -3757,14 +3789,18 @@ export default function PLNWarehouse() {
   }
   function openEditLokasi(l) { setLokasiForm({...l}); setLokasiModal("edit"); }
 
-  // Cek kode blok sudah dipakai di gudang yang sama (termasuk usulan pending EDIT lain).
+  // Cek kode blok sudah dipakai DI SUB GUDANG yang sama (termasuk usulan pending EDIT lain).
+  // Kode boleh sama antar Sub Gudang berbeda (mis. Blok A di Sub Gudang Terbuka & Tertutup itu
+  // wajar) — jadi scope duplikat = gudang yang sama DAN sub gudang yang sama (null=grup "Umum").
   // Blok tanpa gudangId (belum di-assign) tidak dicek silang, karena belum "di dalam" gudang manapun.
-  function isKodeDuplicateInGudang(kode, gudangId, excludeId) {
+  function isKodeDuplicateInSubGudang(kode, gudangId, subGudangId, excludeId) {
     if (!gudangId || !kode?.trim()) return false;
     const norm = kode.trim().toLowerCase();
+    const sub = subGudangId || null;
     return lokasiList.some(l => {
       if (l.id === excludeId) return false;
       if (l.gudangId !== gudangId) return false;
+      if ((l.subGudangId || null) !== sub) return false;
       if (l.pendingAction === "DELETE") return false;
       const kodeAktif = (l.pendingAction === "EDIT" && l.pendingData?.kode) ? l.pendingData.kode : l.kode;
       return (kodeAktif||"").trim().toLowerCase() === norm;
@@ -3776,8 +3812,8 @@ export default function PLNWarehouse() {
   async function saveLokasi() {
     if (!lokasiForm.gudangId) { showToast("Pilih Gudang dulu sebelum mengisi Blok! Data harus berjenjang: Gudang → Blok.","error"); return; }
     if (!lokasiForm.kode?.trim()) { showToast("Kode Lokasi tidak boleh kosong!","error"); return; }
-    if (isKodeDuplicateInGudang(lokasiForm.kode, lokasiForm.gudangId, lokasiModal==="edit"?lokasiForm.id:null)) {
-      showToast(`Kode blok "${lokasiForm.kode}" sudah dipakai di gudang ini!`,"error"); return;
+    if (isKodeDuplicateInSubGudang(lokasiForm.kode, lokasiForm.gudangId, lokasiForm.subGudangId, lokasiModal==="edit"?lokasiForm.id:null)) {
+      showToast(`Kode blok "${lokasiForm.kode}" sudah dipakai di sub gudang ini!`,"error"); return;
     }
     let nl;
     if (lokasiModal==="edit") {
@@ -4507,7 +4543,7 @@ export default function PLNWarehouse() {
   // Tambah blok langsung dari klik titik di denah pada wizard step 3 (tanpa modal Lokasi terpisah)
   async function addWizardBlok() {
     if (!wizardBlokDraft?.kode?.trim()) { showToast("Kode blok tidak boleh kosong!","error"); return; }
-    if (isKodeDuplicateInGudang(wizardBlokDraft.kode, gudangForm.id, null)) {
+    if (isKodeDuplicateInSubGudang(wizardBlokDraft.kode, gudangForm.id, null, null)) {
       showToast(`Kode blok "${wizardBlokDraft.kode}" sudah dipakai di gudang ini!`,"error"); return;
     }
     const baru = {
@@ -4627,14 +4663,14 @@ export default function PLNWarehouse() {
     const valid = [], duplikat = [];
     checked.forEach(s => {
       const norm = s.kode.trim().toLowerCase();
-      if (seenInBatch.has(norm) || isKodeDuplicateInGudang(s.kode, gudangId, null)) {
+      if (seenInBatch.has(norm) || isKodeDuplicateInSubGudang(s.kode, gudangId, subGudangId, null)) {
         duplikat.push(s.kode);
       } else {
         seenInBatch.add(norm);
         valid.push(s);
       }
     });
-    if (valid.length === 0) { showToast("Semua usulan terpilih duplikat kode dengan blok yang sudah ada di gudang ini.","error"); return; }
+    if (valid.length === 0) { showToast(`Semua usulan terpilih duplikat kode dengan blok yang sudah ada di ${subGudangId?"sub gudang":"gudang"} ini.`,"error"); return; }
 
     const baru = valid.map(s => ({
       id: `LOK-${uid().slice(-6)}`,
@@ -7872,6 +7908,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div style={{marginTop:16}}>
                         {(() => {
                           const knownSubIds = new Set(subsOfGudang.map(sg=>sg.id));
+                          const subKodeMap = subGudangKodeMap(subsOfGudang);
                           const umumBlok = bloklokasi.filter(l=>!l.subGudangId || !knownSubIds.has(l.subGudangId));
                           const groups = [
                             ...subsOfGudang.map(sg=>({ id:sg.id, sg, nama:sg.nama, blok: bloklokasi.filter(l=>l.subGudangId===sg.id) })),
@@ -7892,7 +7929,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             const isUnregistered = !grp.sg && subsOfGudang.length>0;
                             return (
                             <div key={grp.id||"umum"} style={{marginBottom:18,paddingLeft:10,borderLeft:`3px solid ${C.border}`}}>
-                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:8}}>🏢 Sub Gudang: {grp.nama}</div>}
+                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>🏢 Sub Gudang: {grp.nama}{subKodeMap[grp.sg.id] && <span title="Kode singkatan Sub Gudang (dipakai sebagai tag di depan kode blok)" style={{fontSize:10,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 7px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>}
 
                               {/* Denah + Konfigurasi Koordinat level Sub Gudang — collapsed by default,
                                   sama alasan seperti level Gudang di atas. Hanya untuk grup real (grp.sg),
@@ -7972,6 +8009,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                       return (
                                         <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12}}>
                                           <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                                            {grp.sg && subKodeMap[grp.sg.id] && <span title={`Sub Gudang: ${grp.sg.nama}`} style={{fontSize:9,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6,flexShrink:0}}>{subKodeMap[grp.sg.id]}</span>}
                                             <span style={{fontWeight:700}}>{l.kode}</span>
                                             {l.nama && <span style={{color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.nama}</span>}
                                             {l.status==="PENDING" && <span style={{fontSize:9,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>MENUNGGU APPROVAL TL</span>}
@@ -8008,7 +8046,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                     <div key={key}>
                                       <div onClick={()=>setSelectedSubGudangId(isSelected?null:key)}
                                         style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:isSelected?"#eff6ff":"#f9fafb",border:`1px solid ${isSelected?"#93c5fd":C.border}`,borderRadius:8,cursor:"pointer"}}>
-                                        <div style={{fontSize:13,fontWeight:700}}>{grp.sg?"🏢":"📦"} {grp.nama}</div>
+                                        <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>{grp.sg?"🏢":"📦"} {grp.nama}{grp.sg && subKodeMap[grp.sg.id] && <span style={{fontSize:9,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>
                                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                                           <span style={{fontSize:11,color:C.muted}}>{grp.blok.length} blok</span>
                                           <span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",transform:isSelected?"rotate(90deg)":"rotate(0deg)",display:"inline-block"}}>▶</span>
