@@ -85,7 +85,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
   const Badge = ({metaKey}) => {
     const key = normalizeHeavyEquipmentLoanStatus(metaKey);
     const m = statusMeta[key] || {label:key, bg:"#f3f4f6", fg:C.muted};
-    return <span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
+    return <span style={{padding:"3px 9px",borderRadius:20,fontSize:12,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
   };
   const loanBorderColor = status => status==="OVERDUE" ? C.red : status==="PENDING_OWNER_ASMAN" ? C.yellow : status==="DIPINJAM" ? "#c2410c" : status==="REJECTED" ? C.red : "#0369a1";
   const loanUserName = userId => users.find(u=>u.id===userId)?.name || "-";
@@ -237,7 +237,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
               <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10,flexWrap:"wrap"}}>
                 <div>
                   <div style={{fontSize:12,fontWeight:700}}>{eq?.nama||l.equipmentId} • {l.ownerUpt} → {l.requesterUpt}</div>
-                  <div style={{fontSize:11,color:C.muted}}>Rencana kembali: {l.tanggalKembali||"-"} • {l.namaPekerjaan||"-"} • Diajukan oleh {pemohon?.name||"?"}</div>
+                  <div style={{fontSize:12,color:C.muted}}>Rencana kembali: {l.tanggalKembali||"-"} • {l.namaPekerjaan||"-"} • Diajukan oleh {pemohon?.name||"?"}</div>
                 </div>
                 {hasRole(currentUser, "ADMIN","TL","ASMAN") && (
                   <button style={sty.btn("success","sm")} onClick={()=>completeLoan(l.id)}>Tandai Kembali</button>
@@ -274,13 +274,13 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
           return (
             <button key={cat.id} className={active?"is-active":""} onClick={()=>setCategoryFilter(cat.id)}>
               <span style={{color:active?C.accent:"#9ca3af",display:"flex"}}>{cat.icon}</span>
-              <span style={{fontSize:10,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
-              <span style={{fontSize:10,fontWeight:700,color:active?C.accent:C.muted}}>{count}</span>
+              <span style={{fontSize:12,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
+              <span style={{fontSize:12,fontWeight:700,color:active?C.accent:C.muted}}>{count}</span>
             </button>
           );
         })}
       </div>
-      <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+      <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
         Menampilkan <b style={{color:C.text}}>{filteredEquipment.length}</b> alat
         {kondisiFilter!=="ALL"&&<span> • Kondisi: <b style={{color:C.accent}}>{kondisiGroups.find(g=>g.id===kondisiFilter)?.label}</b></span>}
         {categoryFilter!=="ALL"&&<span> • Kategori: <b style={{color:C.accent}}>{EQUIPMENT_CATEGORIES.find(c=>c.id===categoryFilter)?.label}</b></span>}
@@ -295,14 +295,14 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
                 {eq.foto ? <img src={eq.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div className="equipment-placeholder">EQ</div>}
               </div>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
-                <div><div style={{fontSize:14,fontWeight:900}}>{eq.nama}</div><div style={{fontSize:11,color:C.muted}}>{eq.upt} • {eq.lokasi}</div></div>
+                <div><div style={{fontSize:14,fontWeight:900}}>{eq.nama}</div><div style={{fontSize:12,color:C.muted}}>{eq.upt} • {eq.lokasi}</div></div>
                 <Badge metaKey={activeLoan?.runtimeStatus || eq.availabilityStatus || "TERSEDIA"}/>
               </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
-              <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>Merk/Type: <b>{eq.merkType||"-"}</b><br/>Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>No Seri: <b>{eq.nomorSeri||"-"}</b><br/>Kondisi: <b>{eq.kondisi||"-"}</b><br/>Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b></div>
-              {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius:8,padding:10,fontSize:11,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
-              {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:11,lineHeight:1.5}}><div style={{fontWeight:900,color:"#4b5563"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
-              {lastLoan && <div style={{fontSize:11,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
+              <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>Merk/Type: <b>{eq.merkType||"-"}</b><br/>Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>No Seri: <b>{eq.nomorSeri||"-"}</b><br/>Kondisi: <b>{eq.kondisi||"-"}</b><br/>Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b></div>
+              {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius:8,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
+              {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:"#4b5563"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
+              {lastLoan && <div style={{fontSize:12,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
               {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm({statusAlat:eq.statusAlat||"LAYAK", foto:eq.foto||null});}}>Edit data alat</button>}
             </div>
           );
@@ -321,12 +321,12 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
             <button key={cat.id} className={active?"is-active":""} onClick={()=>setLoanCategoryFilter(cat.id)}
               style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"6px 12px",minWidth:64,borderRadius:10,border:`2px solid ${active?C.accent:C.border}`,background:active?"#eff6ff":"white",color:active?C.accent:C.muted,cursor:"pointer",boxShadow:active?"0 2px 8px rgba(0,152,218,.15)":"none"}}>
               <span style={{color:active?C.accent:"#9ca3af"}}>{cat.icon}</span>
-              <span style={{fontSize:10,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
-              <span style={{fontSize:10,color:active?C.accent:C.muted}}><b>{countActive}</b>/{countTotal}</span>
+              <span style={{fontSize:12,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
+              <span style={{fontSize:12,color:active?C.accent:C.muted}}><b>{countActive}</b>/{countTotal}</span>
             </button>
           );
         })}
-        <div style={{display:"flex",alignItems:"center",fontSize:11,color:C.muted,paddingLeft:4}}>dipinjam/total</div>
+        <div style={{display:"flex",alignItems:"center",fontSize:12,color:C.muted,paddingLeft:4}}>dipinjam/total</div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:canManage?"minmax(260px,300px) 1fr":"1fr",gap:14,alignItems:"start"}}>
@@ -342,7 +342,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
                 <option value="">-- Pilih alat --</option>
                 {borrowableEquipment.map(e=><option key={e.id} value={e.id}>{e.upt} — {e.nama} ({e.kapasitas||"-"})</option>)}
               </select>
-              {selectedEquipment&&<div style={{fontSize:10,color:C.muted,marginTop:3}}>Pemilik: <b>{selectedEquipment.upt}</b></div>}
+              {selectedEquipment&&<div style={{fontSize:12,color:C.muted,marginTop:3}}>Pemilik: <b>{selectedEquipment.upt}</b></div>}
             </div>
             <div style={{marginBottom:8}}>
               <label style={sty.label}>UPT Peminjam</label>
@@ -378,12 +378,12 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
                   <div style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start",marginBottom:4}}>
                     <div>
                       <div style={{fontWeight:900,fontSize:13}}>{eq?.nama||loan.equipmentId}</div>
-                      <div style={{fontSize:11,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt}</div>
+                      <div style={{fontSize:12,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt}</div>
                     </div>
                     <Badge metaKey={loan.runtimeStatus}/>
                   </div>
                   <div style={{fontSize:12,fontWeight:700,marginBottom:2}}>{loan.namaPekerjaan||"-"}</div>
-                  <div style={{fontSize:11,color:C.muted,marginBottom:isActive?6:0}}>{loan.tanggalAmbil} s/d {loan.tanggalKembali}</div>
+                  <div style={{fontSize:12,color:C.muted,marginBottom:isActive?6:0}}>{loan.tanggalAmbil} s/d {loan.tanggalKembali}</div>
                   {isActive&&isPendingHeavyEquipmentLoan(loan)&&canApproveHeavyEquipmentLoan(currentUser,loan)&&(
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                       {rejectingId===loan.id
@@ -426,8 +426,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
                 <select style={sty.select} value={editForm.statusAlat} onChange={e=>setEditForm(f=>({...f,statusAlat:e.target.value}))}>
                   {STATUS_ALAT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
-                {["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:10,color:C.muted,marginTop:4}}>⚠️ Alat tidak bisa dipinjam UPT lain selama status ini.</div>}
-                {eq.availabilityStatus==="DIPINJAM" && ["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:10,color:C.red,marginTop:4}}>Alat sedang dipinjam — tidak bisa diubah ke status ini sampai kembali.</div>}
+                {["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:12,color:C.muted,marginTop:4}}>⚠️ Alat tidak bisa dipinjam UPT lain selama status ini.</div>}
+                {eq.availabilityStatus==="DIPINJAM" && ["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:12,color:C.red,marginTop:4}}>Alat sedang dipinjam — tidak bisa diubah ke status ini sampai kembali.</div>}
               </div>
               <div style={{display:"flex",gap:10}}>
                 <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingEquipment(null)}>Batal</button>

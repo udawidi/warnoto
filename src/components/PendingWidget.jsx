@@ -12,13 +12,13 @@ export function PendingWidget({ myPendingApprovals, C, sty, setTab }) {
           <div key={t.id} style={{padding:"7px 0",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
               <div style={{fontSize:12,fontWeight:600}}>{label}</div>
-              <div style={{fontSize:10,color:"#0098da"}}>{t.docType.replace("TUG","TUG-")} • {docNo}</div>
+              <div style={{fontSize:12,color:"#0098da"}}>{t.docType.replace("TUG","TUG-")} • {docNo}</div>
             </div>
             <button style={sty.btn("primary","sm")} onClick={()=>setTab("approval")}>Review</button>
           </div>
         );
       })}
-      {myPendingApprovals.length>4 && <div style={{fontSize:11,color:C.muted,marginTop:6,textAlign:"center"}}>+{myPendingApprovals.length-4} lainnya</div>}
+      {myPendingApprovals.length>4 && <div style={{fontSize:12,color:C.muted,marginTop:6,textAlign:"center"}}>+{myPendingApprovals.length-4} lainnya</div>}
     </div>
   );
 }

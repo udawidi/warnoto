@@ -252,7 +252,7 @@ export default function PLNWarehouse() {
     return (
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginTop:8}}>
         <button style={{...sty.btn("ghost","sm")}} disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
-        <span style={{fontSize:11,color:C.muted,padding:"0 4px"}}>Halaman {page} / {totalPages}</span>
+        <span style={{fontSize:12,color:C.muted,padding:"0 4px"}}>Halaman {page} / {totalPages}</span>
         <button style={{...sty.btn("ghost","sm")}} disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Berikutnya →</button>
       </div>
     );
@@ -1229,16 +1229,16 @@ export default function PLNWarehouse() {
     const isPending = l.status==="PENDING";
     return (
       <div key={l.id} style={{...sty.card,borderTop:`3px solid ${isPending?C.yellow:barC}`,opacity:isPending?0.85:1}}>
-        <div style={{fontWeight:700,fontSize:14}}>📍 {l.kode} {isPending && <span style={{fontSize:10,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:6,marginLeft:6}}>⏳ Menunggu Approval ({ {ADD:"Baru",EDIT:"Edit",DELETE:"Hapus"}[l.pendingAction] })</span>}</div>
-        <div style={{fontSize:11,color:C.muted,marginTop:2}}>{l.id}</div>
-        <div style={{fontSize:11,color:C.muted,marginTop:4}}>{l.keterangan||"-"}</div>
+        <div style={{fontWeight:700,fontSize:14}}>📍 {l.kode} {isPending && <span style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:6,marginLeft:6}}>⏳ Menunggu Approval ({ {ADD:"Baru",EDIT:"Edit",DELETE:"Hapus"}[l.pendingAction] })</span>}</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:2}}>{l.id}</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:4}}>{l.keterangan||"-"}</div>
         <div style={{marginTop:10,marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",fontSize:11,marginBottom:3}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}>
             <span style={{fontWeight:600}}>Kapasitas Terpakai</span>
             <span style={{color:barC,fontWeight:700}}>{fmtNum(used)} / {fmtNum(l.kapasitas)}</span>
           </div>
           <div style={{background:"#f3f4f6",borderRadius:20,height:8}}><div style={{width:`${pct}%`,background:barC,height:"100%",borderRadius:20}}/></div>
-          {pct>=90 && <div style={{fontSize:10,color:C.red,marginTop:4,fontWeight:600}}>⚠️ Lokasi hampir penuh!</div>}
+          {pct>=90 && <div style={{fontSize:12,color:C.red,marginTop:4,fontWeight:600}}>⚠️ Lokasi hampir penuh!</div>}
         </div>
         {hasRole(currentUser, "ADMIN") && (
           <div style={{display:"flex",gap:6}}>
@@ -4012,7 +4012,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         <div style={{display:isMobile?"none":"flex",flexDirection:"column",justifyContent:"center",width:300,flexShrink:0,padding:40,background:"linear-gradient(160deg,#123a7a,#0b2559)",color:"white"}}>
           <div style={{width:76,height:76,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:22,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
           <div style={{fontSize:34,fontWeight:900,letterSpacing:"1px",lineHeight:1}}>WARNOTO</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.75)",fontWeight:600,letterSpacing:1.5,textTransform:"uppercase",margin:"14px 0 6px"}}>{COMPANY}</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.75)",fontWeight:600,letterSpacing:1.5,textTransform:"uppercase",margin:"14px 0 6px"}}>{COMPANY}</div>
           <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",lineHeight:1.5}}>{UPT} · {WAREHOUSE}</div>
         </div>
         {/* KANAN — form login */}
@@ -4036,7 +4036,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           </div>
           {loginErr && <div style={{color:C.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius:8}}>{loginErr}</div>}
           <button style={{...sty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
-          <div style={{marginTop:16,fontSize:11,color:C.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
+          <div style={{marginTop:16,fontSize:12,color:C.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
         </div>
       </div>
     </div>
@@ -4135,14 +4135,16 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div className="app-sidebar__brand-mark" style={{width:38,height:38,background:"white",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,padding:5,boxShadow:"0 2px 8px rgba(0,0,0,0.22)"}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
             <div style={{minWidth:0,lineHeight:1.15,flex:1}}>
               <div style={{color:"white",fontWeight:800,fontSize:17,letterSpacing:".5px"}}>WARNOTO</div>
-              <div style={{color:"rgba(255,255,255,0.6)",fontSize:10,letterSpacing:".5px",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{UPT}</div>
+              <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,letterSpacing:".5px",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{UPT}</div>
             </div>
+            {isMobile && (
             <button
               className="app-sidebar__toggle"
-              onClick={()=>isMobile?setMobileMenuOpen(false):setSidebarCollapsed(v=>!v)}
-              title={isMobile?"Tutup menu":"Tutup sidebar"}
-              aria-label={isMobile?"Tutup menu":"Tutup sidebar"}
-            ><SidebarIcon name={isMobile?"close":"collapse"} size={17}/></button>
+              onClick={()=>setMobileMenuOpen(false)}
+              title="Tutup menu"
+              aria-label="Tutup menu"
+            ><SidebarIcon name="close" size={17}/></button>
+            )}
           </div>
           )}
         </div>
@@ -4262,7 +4264,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
                             onClick={()=>{setTab("opname"); setOpnameSubTab(sub.id); setMobileMenuOpen(false);}}
                           >
-                            <span>{sub.icon}</span> {sub.label} {sub.badge>0 && <span style={{background:"#dc2626",color:"white",borderRadius:20,padding:"1px 6px",fontSize:9,fontWeight:800,marginLeft:4}}>{sub.badge}</span>}
+                            <span>{sub.icon}</span> {sub.label} {sub.badge>0 && <span style={{background:"#dc2626",color:"white",borderRadius:20,padding:"1px 6px",fontSize:12,fontWeight:800,marginLeft:4}}>{sub.badge}</span>}
                           </button>
                         );
                       })}
@@ -4283,7 +4285,19 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             );
           })}
         </div>
-        <div className="app-sidebar__cloud" style={{padding:sidebarCompact?"10px":"8px 16px",borderTop:"1px solid rgba(255,255,255,0.1)",fontSize:10,color:"rgba(255,255,255,0.58)"}} title={sidebarCompact?(cloudSaving?"Menyimpan...":lastSaved?"Tersimpan":"Cloud Storage Aktif"):undefined}>
+        {!isMobile && (
+          <div className="app-sidebar__footer">
+            <button
+              className="app-sidebar__footer-toggle"
+              onClick={()=>setSidebarCollapsed(v=>!v)}
+              title={sidebarCompact?"Buka sidebar":"Sembunyikan menu"}
+              aria-label={sidebarCompact?"Buka sidebar":"Sembunyikan menu"}
+            >
+              <SidebarIcon name={sidebarCompact?"expand":"collapse"} size={16}/>
+            </button>
+          </div>
+        )}
+        <div className="app-sidebar__cloud" style={{padding:sidebarCompact?"10px":"8px 16px",borderTop:"1px solid rgba(255,255,255,0.1)",fontSize:12,color:"rgba(255,255,255,0.58)"}} title={sidebarCompact?(cloudSaving?"Menyimpan...":lastSaved?"Tersimpan":"Cloud Storage Aktif"):undefined}>
           <SidebarIcon name="cloud" size={16}/>
           {!sidebarCompact && <span>{cloudSaving ? "Menyimpan..." : lastSaved ? "Tersimpan" : "Cloud Storage Aktif"}</span>}
         </div>
@@ -4569,7 +4583,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <button style={sty.btn("ghost","sm")} onClick={()=>setPhotoSearchResults(null)}>✕ Reset</button>
                   </div>
                   {photoSearchResultMode==="nameplate" && photoSearchOcrText && (
-                    <div style={{fontSize:10,color:C.muted,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",marginBottom:10,whiteSpace:"pre-wrap",maxHeight:60,overflowY:"auto"}}>
+                    <div style={{fontSize:12,color:C.muted,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",marginBottom:10,whiteSpace:"pre-wrap",maxHeight:60,overflowY:"auto"}}>
                       <b>Teks nameplate terbaca:</b> {photoSearchOcrText}
                     </div>
                   )}
@@ -4586,8 +4600,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             {thumb ? <img src={thumb} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius:8,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius:8,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>📦</div>}
                             <div style={{minWidth:0,flex:1}}>
                               <div style={{fontWeight:700,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{est?.name||"(tidak ada di Data Stok)"}</div>
-                              <div style={{fontSize:10,color:"#0098da",fontWeight:700}}>📑 {r.katalog}</div>
-                              <div style={{fontSize:11,fontWeight:800,color:pct>=80?C.green:pct>=70?"#d97706":C.muted,marginTop:2}}>{pct}% {photoSearchResultMode==="nameplate"?"cocok":"mirip"}</div>
+                              <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>📑 {r.katalog}</div>
+                              <div style={{fontSize:12,fontWeight:800,color:pct>=80?C.green:pct>=70?"#d97706":C.muted,marginTop:2}}>{pct}% {photoSearchResultMode==="nameplate"?"cocok":"mirip"}</div>
                             </div>
                           </div>
                         );
@@ -4610,7 +4624,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <thead>
                   <tr style={{background:C.sidebar,color:"white"}}>
                     {["Foto","Nama Barang","Kategori","Qty","Gudang","Blok","Harga","Status","Aksi"].map(h=>(
-                      <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"||h==="Foto"?"center":"left",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
+                      <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"||h==="Foto"?"center":"left",whiteSpace:"nowrap",fontSize:12}}>{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -4638,14 +4652,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         </td>
                         <td style={{padding:"8px 10px",minWidth:200}}>
                           <div style={{fontWeight:700,color:C.text}}>{st.name}</div>
-                          <div style={{fontSize:10,color:"#0098da",fontWeight:700,marginTop:1}}>📑 {st.katalog||"-"}</div>
-                          {st.deletePending && <div style={{fontSize:9,color:"#dc2626",fontWeight:700,marginTop:2}}>⏳ Menunggu approval Hapus</div>}
-                          {st.editPending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Ada perubahan menunggu approval TL</div>}
+                          <div style={{fontSize:12,color:"#0098da",fontWeight:700,marginTop:1}}>📑 {st.katalog||"-"}</div>
+                          {st.deletePending && <div style={{fontSize:12,color:"#dc2626",fontWeight:700,marginTop:2}}>⏳ Menunggu approval Hapus</div>}
+                          {st.editPending && <div style={{fontSize:12,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Ada perubahan menunggu approval TL</div>}
                         </td>
                         <td style={{padding:"8px 10px"}}>
                           <div style={{display:"flex",gap:4,flexWrap:"wrap",maxWidth:160}}>
                             <span style={sty.jenisBadge(st.jenisBarang)}>{st.jenisBarang}</span>
-                            <span style={{padding:"2px 7px",borderRadius:20,fontSize:10,background:"#f3f4f6",color:C.muted}}>{st.category}</span>
+                            <span style={{padding:"2px 7px",borderRadius:20,fontSize:12,background:"#f3f4f6",color:C.muted}}>{st.category}</span>
                           </div>
                         </td>
                         <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
@@ -4653,15 +4667,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             ? <span style={{color:C.muted}}>Project-Based</span>
                             : <div>
                                 <span style={{fontWeight:700,color:isLow?C.red:C.green}}>{fmtNum(st.qty)} {st.unit}</span>
-                                <div style={{fontSize:9,color:C.muted}}>Min {fmtNum(st.minQty)} {st.unit}</div>
+                                <div style={{fontSize:12,color:C.muted}}>Min {fmtNum(st.minQty)} {st.unit}</div>
                               </div>}
-                          {isLow && <div style={{fontSize:9,color:C.red,fontWeight:700,marginTop:2}}>⚠️ Stok kritis</div>}
+                          {isLow && <div style={{fontSize:12,color:C.red,fontWeight:700,marginTop:2}}>⚠️ Stok kritis</div>}
                         </td>
                         <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:120}}>
                           {hasRole(currentUser, "ADMIN","TL") ? (
                             <select
                               value={stockGudangFilter[st.id] ?? st.gudangId ?? gdg?.id ?? ""}
-                              style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8}}
+                              style={{...sty.select,fontSize:12,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8}}
                               onChange={async e=>{
                                 const v = e.target.value;
                                 setStockGudangFilter(prev=>({...prev,[st.id]:v}));
@@ -4684,7 +4698,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                               <select
                                 value={st.lokasiId||""}
                                 disabled={st.lokasiMovePending}
-                                style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8,border:`1px solid ${noLokasi?"#f59e0b":C.border}`,background:st.lokasiMovePending?"#f3f4f6":noLokasi?"#fffbeb":"#f9fafb"}}
+                                style={{...sty.select,fontSize:12,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8,border:`1px solid ${noLokasi?"#f59e0b":C.border}`,background:st.lokasiMovePending?"#f3f4f6":noLokasi?"#fffbeb":"#f9fafb"}}
                                 onChange={async e=>{
                                   const newLokasiId = e.target.value;
                                   const lokSel = lokasiList.find(l=>l.id===newLokasiId);
@@ -4716,15 +4730,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                 <option value="">-- Pilih Blok --</option>
                                 {blokOptionsForStock.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                               </select>
-                              {effGudangIdForBlok && blokOptionsForStock.length===0 && <div style={{fontSize:9,color:"#b45309",fontStyle:"italic",marginTop:2}}>⚠️ Belum ada Blok terdaftar di Gudang ini — pilihan Gudang tetap tersimpan.</div>}
-                              {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"TL"} → {st.pendingLokasiKode}</div>}
+                              {effGudangIdForBlok && blokOptionsForStock.length===0 && <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginTop:2}}>⚠️ Belum ada Blok terdaftar di Gudang ini — pilihan Gudang tetap tersimpan.</div>}
+                              {st.lokasiMovePending && <div style={{fontSize:12,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"TL"} → {st.pendingLokasiKode}</div>}
                             </>
                           ) : hasRole(currentUser, "TL") ? (
                             <>
                               <select
                                 value={st.lokasiId||""}
                                 disabled={st.lokasiMovePending}
-                                style={{...sty.select,fontSize:11,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8,border:`1px solid ${noLokasi?"#f59e0b":C.border}`,background:st.lokasiMovePending?"#f3f4f6":noLokasi?"#fffbeb":"#f9fafb"}}
+                                style={{...sty.select,fontSize:12,paddingTop:5,paddingBottom:5,paddingLeft:8,paddingRight:8,border:`1px solid ${noLokasi?"#f59e0b":C.border}`,background:st.lokasiMovePending?"#f3f4f6":noLokasi?"#fffbeb":"#f9fafb"}}
                                 onChange={async e=>{
                                   const newLokasiId = e.target.value;
                                   const lokSel = lokasiList.find(l=>l.id===newLokasiId);
@@ -4750,8 +4764,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                 <option value="">-- Pilih Blok --</option>
                                 {blokOptionsForStock.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                               </select>
-                              {effGudangIdForBlok && blokOptionsForStock.length===0 && <div style={{fontSize:9,color:"#b45309",fontStyle:"italic",marginTop:2}}>⚠️ Belum ada Blok terdaftar di Gudang ini — pilihan Gudang tetap tersimpan.</div>}
-                              {st.lokasiMovePending && <div style={{fontSize:9,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"Asman"} → {st.pendingLokasiKode}</div>}
+                              {effGudangIdForBlok && blokOptionsForStock.length===0 && <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginTop:2}}>⚠️ Belum ada Blok terdaftar di Gudang ini — pilihan Gudang tetap tersimpan.</div>}
+                              {st.lokasiMovePending && <div style={{fontSize:12,color:"#92400e",fontWeight:700,marginTop:2}}>⏳ Menunggu approval {st.lokasiMoveApprover||"Asman"} → {st.pendingLokasiKode}</div>}
                             </>
                           ) : (
                             <span style={{color:noLokasi?"#f59e0b":C.text,fontWeight:noLokasi?700:400}}>{noLokasi?"⚠️ Belum diisi":st.lokasi||"—"}</span>
@@ -4759,7 +4773,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         </td>
                         <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>Rp {fmtNum(st.price)}</td>
                         <td style={{padding:"8px 10px"}}>
-                          {(()=>{const bs=getSAPBadgeStyle(st.katalog);return <span style={{padding:"2px 7px",borderRadius:20,fontSize:10,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{getSAPLabel(st.katalog)}</span>})()}
+                          {(()=>{const bs=getSAPBadgeStyle(st.katalog);return <span style={{padding:"2px 7px",borderRadius:20,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{getSAPLabel(st.katalog)}</span>})()}
                         </td>
                         <td onClick={e=>e.stopPropagation()} style={{padding:"8px 10px"}}>
                           <div className="table-actions">
@@ -4868,11 +4882,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div style={{display:"flex",flexDirection:"column",gap:12}}>
                       <div>
                         <button style={sty.btn("ghost","sm")} onClick={backfillGudangCoordFromCapacity}>🔄 Sinkron Koordinat dari Kapasitas Gudang</button>
-                        <div style={{fontSize:11,color:C.muted,marginTop:4}}>Pakai kalau titik lokasi Gudang di peta hilang/salah, padahal data Kapasitas Gudang untuk gudang itu sudah live — menarik ulang koordinat lat/lng dari sana.</div>
+                        <div style={{fontSize:12,color:C.muted,marginTop:4}}>Pakai kalau titik lokasi Gudang di peta hilang/salah, padahal data Kapasitas Gudang untuk gudang itu sudah live — menarik ulang koordinat lat/lng dari sana.</div>
                       </div>
                       <div>
                         <button style={sty.btn("ghost","sm")} onClick={() => dedupeGudangDanSubGudang()}>🧹 Gabungkan Gudang Duplikat</button>
-                        <div style={{fontSize:11,color:C.muted,marginTop:4}}>Pakai kalau ada 2 Gudang/Sub Gudang dengan nama sama yang seharusnya satu (biasanya bikin denah/koordinat kelihatan "hilang" karena data nyasar ke ID yang berbeda).</div>
+                        <div style={{fontSize:12,color:C.muted,marginTop:4}}>Pakai kalau ada 2 Gudang/Sub Gudang dengan nama sama yang seharusnya satu (biasanya bikin denah/koordinat kelihatan "hilang" karena data nyasar ke ID yang berbeda).</div>
                       </div>
                     </div>
                   </div>
@@ -4885,11 +4899,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                   <div>
                     <div style={{fontSize:13,fontWeight:800,color:"#0369a1"}}>📚 Referensi Katalog MARA</div>
-                    <div style={{fontSize:11,color:C.muted,marginTop:2}}>Upload file MARA agar tersedia sebagai referensi saat menambah katalog baru.</div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:2}}>Upload file MARA agar tersedia sebagai referensi saat menambah katalog baru.</div>
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                     {maraUploadProgress && (
-                      <span style={{fontSize:11,color:"#0369a1",fontWeight:700,padding:"4px 10px",background:"#e0f2fe",borderRadius:6}}>{maraUploadProgress}</span>
+                      <span style={{fontSize:12,color:"#0369a1",fontWeight:700,padding:"4px 10px",background:"#e0f2fe",borderRadius:6}}>{maraUploadProgress}</span>
                     )}
                     <label style={{...sty.btn(maraUploadLoading?"ghost":"ghost","sm"),cursor:"pointer",borderColor:"#0369a1",color:"#0369a1"}}>
                       {maraUploadLoading ? "⏳ Mengupload..." : "📂 Upload MARA (.xlsx)"}
@@ -4915,7 +4929,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </div>
                 {katalogList.some(k=>k.belumDicocokkanMara) && (
                   <button onClick={()=>setKatalogFilterBelumMara(v=>!v)}
-                    style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${katalogFilterBelumMara?"#f59e0b":C.border}`,background:katalogFilterBelumMara?"#fef3c7":"white",color:katalogFilterBelumMara?"#92400e":C.text,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${katalogFilterBelumMara?"#f59e0b":C.border}`,background:katalogFilterBelumMara?"#fef3c7":"white",color:katalogFilterBelumMara?"#92400e":C.text,fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                     ⚠️ Belum Dicocokkan MARA ({katalogList.filter(k=>k.belumDicocokkanMara).length})
                   </button>
                 )}
@@ -4937,7 +4951,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <thead>
                     <tr style={{background:C.sidebar,color:"white"}}>
                       {["Foto","No Katalog","Nama Barang","Kategori","Jenis","Satuan","Status","Aksi"].map(h=>(
-                        <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"||h==="Foto"?"center":"left",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
+                        <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"||h==="Foto"?"center":"left",whiteSpace:"nowrap",fontSize:12}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -4952,18 +4966,18 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                               : <div style={{width:40,height:40,background:"#eff6ff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
                           </td>
                           <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
-                            <div style={{fontSize:10,color:"#0098da",fontWeight:700}}>📑 {k.katalog}</div>
-                            <div style={{fontSize:9,color:C.muted}}>{k.id}</div>
+                            <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>📑 {k.katalog}</div>
+                            <div style={{fontSize:12,color:C.muted}}>{k.id}</div>
                           </td>
                           <td style={{padding:"8px 10px",minWidth:200,fontWeight:700}}>{k.name}</td>
-                          <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:10,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{(k.name||"").split(";")[0]?.trim()||k.category||"Lainnya"}</span></td>
+                          <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:12,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{(k.name||"").split(";")[0]?.trim()||k.category||"Lainnya"}</span></td>
                           <td style={{padding:"8px 10px"}}>
                             <span style={sty.jenisBadge(k.jenisBarang)}>{k.jenisBarang||"-"}</span>
-                            {k.pendingOpnameId && <div style={{marginTop:3}}><span style={{padding:"1px 6px",borderRadius:10,fontSize:8,fontWeight:700,background:"#dbeafe",color:"#1e40af"}}>⏳ Pending Approval</span></div>}
-                            {k.belumDicocokkanMara && <div style={{marginTop:3}}><span style={{padding:"1px 6px",borderRadius:10,fontSize:8,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>⚠️ Belum MARA</span></div>}
+                            {k.pendingOpnameId && <div style={{marginTop:3}}><span style={{padding:"1px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#dbeafe",color:"#1e40af"}}>⏳ Pending Approval</span></div>}
+                            {k.belumDicocokkanMara && <div style={{marginTop:3}}><span style={{padding:"1px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>⚠️ Belum MARA</span></div>}
                           </td>
                           <td style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{k.satuan}</td>
-                          <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:10,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{getSAPLabel(k.katalog)}</span></td>
+                          <td style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{getSAPLabel(k.katalog)}</span></td>
                           <td style={{padding:"8px 10px"}}>
                             {hasRole(currentUser, "ADMIN") && (
                               <div style={{display:"flex",gap:4,justifyContent:"center"}}>
@@ -5007,7 +5021,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div style={{width:44,height:44,borderRadius:"50%",background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,border:`1px solid #bfdbfe`}}>🛡️</div>
                       <div>
                         <div style={{fontWeight:700,fontSize:14}}>{sp.name}</div>
-                        <div style={{fontSize:11,color:C.muted}}>{sp.id}{sp.telp ? ` • ${sp.telp}` : ""}</div>
+                        <div style={{fontSize:12,color:C.muted}}>{sp.id}{sp.telp ? ` • ${sp.telp}` : ""}</div>
                       </div>
                     </div>
                     {hasRole(currentUser, "ADMIN") && (
@@ -5061,7 +5075,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     {label:"Total ULTG",val:ultgList.length,color:"#0891b2"},
                   ].map(kpi=>(
                     <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14,textAlign:"center"}}>
-                      <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
+                      <div style={{fontSize:12,color:C.muted,marginBottom:4}}>{kpi.label}</div>
                       <div style={{fontSize:24,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
                     </div>
                   ))}
@@ -5098,11 +5112,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             <div style={{fontSize:22,flexShrink:0}}>🏢</div>
                             <div style={{minWidth:0}}>
                               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                                <span style={{fontSize:9,fontWeight:800,color:"white",background:C.sidebar,padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>UIT</span>
+                                <span style={{fontSize:12,fontWeight:800,color:"white",background:C.sidebar,padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>UIT</span>
                                 <span style={{fontWeight:800,fontSize:14}}>{uit.kode} — {uit.nama}</span>
                               </div>
-                              <div style={{fontSize:11,color:C.muted,marginTop:3}}>📍 {uit.alamat||"Alamat belum diisi"}</div>
-                              <div style={{fontSize:11,color:C.muted,marginTop:1}}>{uptOfUit.length} UPT • {totalUltgOfUit} ULTG</div>
+                              <div style={{fontSize:12,color:C.muted,marginTop:3}}>📍 {uit.alamat||"Alamat belum diisi"}</div>
+                              <div style={{fontSize:12,color:C.muted,marginTop:1}}>{uptOfUit.length} UPT • {totalUltgOfUit} ULTG</div>
                             </div>
                           </div>
                           <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}} onClick={e=>e.stopPropagation()}>
@@ -5129,10 +5143,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                             <div style={{fontSize:16,flexShrink:0}}>📍</div>
                                             <div style={{minWidth:0}}>
                                               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                                                <span style={{fontSize:9,fontWeight:800,color:"#0369a1",background:"#e0f2fe",padding:"1px 6px",borderRadius:4}}>UPT</span>
+                                                <span style={{fontSize:12,fontWeight:800,color:"#0369a1",background:"#e0f2fe",padding:"1px 6px",borderRadius:4}}>UPT</span>
                                                 <span style={{fontWeight:700,fontSize:13}}>{upt.kode} — {upt.nama}</span>
                                               </div>
-                                              <div style={{fontSize:11,color:C.muted,marginTop:2}}>{upt.alamat||"Alamat belum diisi"} • {ultgOfUpt.length} ULTG</div>
+                                              <div style={{fontSize:12,color:C.muted,marginTop:2}}>{upt.alamat||"Alamat belum diisi"} • {ultgOfUpt.length} ULTG</div>
                                             </div>
                                           </div>
                                           {hasRole(currentUser, "ADMIN") && (
@@ -5146,12 +5160,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                         {ultgOfUpt.length>0 && (
                                           <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,paddingLeft:24}}>
                                             {ultgOfUpt.map(ultg=>(
-                                              <div key={ultg.id} style={{display:"flex",alignItems:"center",gap:6,background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:20,padding:"4px 10px",fontSize:11}}>
+                                              <div key={ultg.id} style={{display:"flex",alignItems:"center",gap:6,background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:20,padding:"4px 10px",fontSize:12}}>
                                                 <span>🏘️ <b>{ultg.kode}</b> {ultg.nama}</span>
                                                 {hasRole(currentUser, "ADMIN") && (
                                                   <span style={{display:"flex",gap:2,marginLeft:2}}>
-                                                    <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"1px 4px",fontSize:10}} onClick={()=>openEditULTG(ultg)}>✏️</button>
-                                                    <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"1px 4px",fontSize:10}} onClick={()=>deleteULTG(ultg.id)}>🗑️</button>
+                                                    <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"1px 4px",fontSize:12}} onClick={()=>openEditULTG(ultg)}>✏️</button>
+                                                    <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"1px 4px",fontSize:12}} onClick={()=>deleteULTG(ultg.id)}>🗑️</button>
                                                   </span>
                                                 )}
                                               </div>
@@ -5190,7 +5204,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         <div>
                           <div style={{fontWeight:800,fontSize:15}}>🏭 {g.nama}</div>
                           <div style={{fontSize:12,color:C.muted}}>{g.kode} • {upt?.nama||"-"} • {g.alamat||"-"}</div>
-                          <div style={{fontSize:11,color:C.muted,marginTop:2}}>{bloklokasi.length} blok terkait, {blokWithCoord.length} sudah ter-peta{subsOfGudang.length>0?` • ${subsOfGudang.length} Sub Gudang`:""}</div>
+                          <div style={{fontSize:12,color:C.muted,marginTop:2}}>{bloklokasi.length} blok terkait, {blokWithCoord.length} sudah ter-peta{subsOfGudang.length>0?` • ${subsOfGudang.length} Sub Gudang`:""}</div>
                         </div>
                         <div style={{display:"flex",gap:6,alignItems:"center"}}>
                           {hasRole(currentUser, "ADMIN") && (
@@ -5221,19 +5235,19 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         {hasRole(currentUser, "ADMIN") && (
                           <div style={{marginBottom:12}}>
                             <label style={sty.label}>Upload Denah Gudang (PNG / JPG) — peta keseluruhan</label>
-                            <div style={{fontSize:10,color:C.muted,marginBottom:4}}>
+                            <div style={{fontSize:12,color:C.muted,marginBottom:4}}>
                               💡 Convert PDF denah ke gambar terlebih dahulu (screenshot, foto, atau export dari PDF viewer)
                             </div>
                             <input type="file" accept="image/*" capture="environment"
                               onChange={e=>{const f=e.target.files[0];if(f)uploadDenahGudang(g.id,f);}}
-                              style={{fontSize:11,color:C.muted}}/>
+                              style={{fontSize:12,color:C.muted}}/>
                             {denahLoading && (
-                              <div style={{fontSize:11,color:"#1d4ed8",marginTop:4}}>
+                              <div style={{fontSize:12,color:"#1d4ed8",marginTop:4}}>
                                 ⏳ Mengompres dan menyimpan gambar...
                               </div>
                             )}
                             {g.denahUploadedAt && !denahLoading && (
-                              <div style={{fontSize:10,color:C.green,marginTop:4}}>
+                              <div style={{fontSize:12,color:C.green,marginTop:4}}>
                                 ✅ Denah tersimpan • {fmtDate(g.denahUploadedAt)}
                               </div>
                             )}
@@ -5242,7 +5256,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
                         {g.denahImageData && (
                           <div style={{marginBottom:12}}>
-                            <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah (peta keseluruhan Gudang):</div>
+                            <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah (peta keseluruhan Gudang):</div>
                             <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:200,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
                           </div>
                         )}
@@ -5272,7 +5286,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                               sty={sty} C={C} showToast={showToast}
                             />
                           ) : (
-                            <div style={{fontSize:11,color:"#0369a1",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px"}}>
+                            <div style={{fontSize:12,color:"#0369a1",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px"}}>
                               ℹ️ Gudang ini punya {subsOfGudang.length} Sub Gudang — atur koordinat Blok baru di peta masing-masing Sub Gudang di bawah, bukan di peta keseluruhan ini.
                             </div>
                           )
@@ -5309,7 +5323,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             const isUnregistered = !grp.sg && subsOfGudang.length>0;
                             return (
                             <div key={grp.id||"umum"} style={{marginBottom:18,paddingLeft:10,borderLeft:`3px solid ${C.border}`}}>
-                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>🏢 Sub Gudang: {grp.nama}{subKodeMap[grp.sg.id] && <span title="Kode singkatan Sub Gudang (dipakai sebagai tag di depan kode blok)" style={{fontSize:10,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 7px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>}
+                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>🏢 Sub Gudang: {grp.nama}{subKodeMap[grp.sg.id] && <span title="Kode singkatan Sub Gudang (dipakai sebagai tag di depan kode blok)" style={{fontSize:12,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 7px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>}
 
                               {/* Denah + Konfigurasi Koordinat level Sub Gudang — collapsed by default,
                                   sama alasan seperti level Gudang di atas. Hanya untuk grup real (grp.sg),
@@ -5325,19 +5339,19 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                     <div style={{marginTop:10}}>
                                       {hasRole(currentUser, "ADMIN") && (
                                         <div style={{marginBottom:10}}>
-                                          <label style={{...sty.label,fontSize:10}}>Upload Denah Sub Gudang (PNG / JPG) — opsional, fallback ke denah Gudang jika kosong</label>
+                                          <label style={{...sty.label,fontSize:12}}>Upload Denah Sub Gudang (PNG / JPG) — opsional, fallback ke denah Gudang jika kosong</label>
                                           <div>
                                             <input type="file" accept="image/*" capture="environment"
                                               onChange={e=>{const f=e.target.files[0];if(f)uploadDenahSubGudang(grp.sg.id,g.id,f);}}
-                                              style={{fontSize:11,color:C.muted}}/>
+                                              style={{fontSize:12,color:C.muted}}/>
                                           </div>
-                                          {denahSubLoading && <div style={{fontSize:11,color:"#1d4ed8",marginTop:4}}>⏳ Mengompres dan menyimpan gambar...</div>}
-                                          {grp.sg.denahUploadedAt && !denahSubLoading && <div style={{fontSize:10,color:C.green,marginTop:4}}>✅ Denah tersimpan • {fmtDate(grp.sg.denahUploadedAt)}</div>}
+                                          {denahSubLoading && <div style={{fontSize:12,color:"#1d4ed8",marginTop:4}}>⏳ Mengompres dan menyimpan gambar...</div>}
+                                          {grp.sg.denahUploadedAt && !denahSubLoading && <div style={{fontSize:12,color:C.green,marginTop:4}}>✅ Denah tersimpan • {fmtDate(grp.sg.denahUploadedAt)}</div>}
                                         </div>
                                       )}
                                       {grp.sg?.denahImageData && (
                                         <div style={{marginBottom:10}}>
-                                          <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah Sub Gudang:</div>
+                                          <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah Sub Gudang:</div>
                                           <img src={grp.sg.denahImageData} alt="Denah Sub Gudang" style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
                                         </div>
                                       )}
@@ -5371,14 +5385,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                               )}
 
                               {isUnregistered && grp.blok.length>0 && (
-                                <div style={{fontSize:11,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>
+                                <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>
                                   ⚠️ {grp.blok.length} blok belum dikelompokkan ke Sub Gudang manapun. Klik ✏️ di baris blok untuk assign ke Sub Gudang yang benar, baru atur koordinatnya di sana.
                                 </div>
                               )}
 
                               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                                 <div style={{fontSize:12,color:C.muted}}>📍 Daftar Blok Lokasi ({grp.blok.length})</div>
-                                {hasRole(currentUser, "ADMIN") && !isUnregistered && <span style={{fontSize:10,color:C.muted,fontStyle:"italic"}}>➕ Tambah blok lewat 🛠️ Kelola Denah & Koordinat di atas</span>}
+                                {hasRole(currentUser, "ADMIN") && !isUnregistered && <span style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>➕ Tambah blok lewat 🛠️ Kelola Denah & Koordinat di atas</span>}
                               </div>
                               {grp.blok.length===0
                                 ? <div style={{fontSize:12,color:C.muted,fontStyle:"italic",marginBottom:8}}>Belum ada blok lokasi di sub gudang ini.</div>
@@ -5389,14 +5403,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                       return (
                                         <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12}}>
                                           <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-                                            {grp.sg && subKodeMap[grp.sg.id] && <span title={`Sub Gudang: ${grp.sg.nama}`} style={{fontSize:9,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6,flexShrink:0}}>{subKodeMap[grp.sg.id]}</span>}
+                                            {grp.sg && subKodeMap[grp.sg.id] && <span title={`Sub Gudang: ${grp.sg.nama}`} style={{fontSize:12,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6,flexShrink:0}}>{subKodeMap[grp.sg.id]}</span>}
                                             <span style={{fontWeight:700}}>{l.kode}</span>
                                             {l.nama && <span style={{color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.nama}</span>}
-                                            {l.status==="PENDING" && <span style={{fontSize:9,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>MENUNGGU APPROVAL TL</span>}
-                                            {!hasCoord && <span style={{fontSize:9,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>BELUM ADA KOORDINAT</span>}
+                                            {l.status==="PENDING" && <span style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>MENUNGGU APPROVAL TL</span>}
+                                            {!hasCoord && <span style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>BELUM ADA KOORDINAT</span>}
                                           </div>
                                           <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                                            <span style={{fontSize:11,color:n>0?C.accent:C.muted,fontWeight:700}}>{n} item</span>
+                                            <span style={{fontSize:12,color:n>0?C.accent:C.muted,fontWeight:700}}>{n} item</span>
                                             {hasRole(currentUser, "ADMIN") && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>openEditLokasi(l)}>✏️</button>}
                                             {hasRole(currentUser, "ADMIN") && <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"2px 8px"}} onClick={()=>requestDeleteLokasi(l)}>🗑️</button>}
                                           </div>
@@ -5426,9 +5440,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                     <div key={key}>
                                       <div onClick={()=>setSelectedSubGudangId(isSelected?null:key)}
                                         style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:isSelected?"#eff6ff":"#f9fafb",border:`1px solid ${isSelected?"#93c5fd":C.border}`,borderRadius:8,cursor:"pointer"}}>
-                                        <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>{grp.sg?"🏢":"📦"} {grp.nama}{grp.sg && subKodeMap[grp.sg.id] && <span style={{fontSize:9,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>
+                                        <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>{grp.sg?"🏢":"📦"} {grp.nama}{grp.sg && subKodeMap[grp.sg.id] && <span style={{fontSize:12,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>
                                         <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                          <span style={{fontSize:11,color:C.muted}}>{grp.blok.length} blok</span>
+                                          <span style={{fontSize:12,color:C.muted}}>{grp.blok.length} blok</span>
                                           <span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",transform:isSelected?"rotate(90deg)":"rotate(0deg)",display:"inline-block"}}>▶</span>
                                         </div>
                                       </div>
@@ -5592,11 +5606,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                       <div>
                         <div style={{fontWeight:800,fontSize:14}}>{t.namaPekerjaan}</div>
-                        <div style={{fontSize:11,color:"#0098da",fontWeight:700}}>{t.docNumbers[dKey]}</div>
+                        <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers[dKey]}</div>
                       </div>
                       <span style={sty.statusBadge(t.status)}>{t.status}</span>
                     </div>
-                    <div style={{fontSize:11,color:C.muted,display:"flex",gap:16,flexWrap:"wrap",marginBottom:8}}>
+                    <div style={{fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap",marginBottom:8}}>
                       <span>📍 {t.lokasiPekerjaan}</span>
                       <span>📅 {fmtDate(t.createdAt)}</span>
                       <span>👷 {creator.name||"-"} ({ROLES[creator.role]})</span>
@@ -5608,15 +5622,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
                       {t.docType!=="TUG10" ? t.stockItems.map((si,idx)=>{
                         const stock = enrichedStocks.find(s=>s.id===si.stockId);
-                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit} <span style={{fontSize:11,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span></div>;
+                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span></div>;
                       }) : t.stockItems.map((si,idx)=>{
                         const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);
-                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius:20,fontSize:10,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:11,color:C.muted}}> • SN: {si.noSeri}</span>}</div>;
+                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius:20,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:12,color:C.muted}}> • SN: {si.noSeri}</span>}</div>;
                       })}
                     </div>
-                    {t.status==="APPROVED" && <div style={{fontSize:11,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}
-                    {t.status==="REJECTED" && <div style={{fontSize:11,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
+                    {t.status==="APPROVED" && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}
+                    {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
                     {t.status==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat & Unduh Dokumen {t.docType.replace("TUG","TUG-")}</button>}
                   </div>
                 );
@@ -5722,7 +5736,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       </div>
                       <div className="approval-pagesize">
                         Tampilkan
-                        <select style={{...sty.select,width:"auto",padding:"3px 6px",minHeight:"unset",fontSize:11}} value={approvalPageSize} onChange={e=>setApprovalPageSize(Number(e.target.value))}>
+                        <select style={{...sty.select,width:"auto",padding:"3px 6px",minHeight:"unset",fontSize:12}} value={approvalPageSize} onChange={e=>setApprovalPageSize(Number(e.target.value))}>
                           {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
                         </select>
                         <span>item</span>
@@ -5777,7 +5791,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                         <div>
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                          <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
+                          <div style={{fontSize:12,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
                         </div>
                         <div style={{display:"flex",gap:6}}>
                           <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
@@ -5805,7 +5819,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                         <div>
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                          <div style={{fontSize:11,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
+                          <div style={{fontSize:12,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
                         </div>
                         <div style={{display:"flex",gap:6}}>
                           <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
@@ -5832,7 +5846,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                         <div>
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                          <div style={{fontSize:11,color:C.muted}}>
+                          <div style={{fontSize:12,color:C.muted}}>
                             Qty {fmtNum(s.qty)}→{fmtNum(s.pendingEditData.qty)} • Harga Rp{fmtNum(s.price)}→Rp{fmtNum(s.pendingEditData.price)} • Jenis {s.jenisBarang}→{s.pendingEditData.jenisBarang}<br/>
                             Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.editRequestedAt)}
                           </div>
@@ -5862,7 +5876,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                         <div>
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                          <div style={{fontSize:11,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.deleteRequestedAt)}</div>
+                          <div style={{fontSize:12,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.deleteRequestedAt)}</div>
                         </div>
                         <div style={{display:"flex",gap:6}}>
                           <button style={sty.btn("primary","sm")} onClick={()=>approveStockDelete(s.id)}>✓ Setuju</button>
@@ -5892,8 +5906,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                         <div>
                           <div style={{fontSize:12,fontWeight:700}}>{alat?.nama||l.equipmentId} • {ownerUpt} → {requesterUpt}</div>
-                          <div style={{fontSize:11,color:C.muted}}>{getHeavyEquipmentLoanStartDate(l)} s/d {getHeavyEquipmentLoanReturnDate(l)} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
-                          <div style={{fontSize:11,color:C.text,marginTop:2}}>{getHeavyEquipmentLoanJobName(l)}{l.keperluan ? ` • ${l.keperluan}` : ""}</div>
+                          <div style={{fontSize:12,color:C.muted}}>{getHeavyEquipmentLoanStartDate(l)} s/d {getHeavyEquipmentLoanReturnDate(l)} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
+                          <div style={{fontSize:12,color:C.text,marginTop:2}}>{getHeavyEquipmentLoanJobName(l)}{l.keperluan ? ` • ${l.keperluan}` : ""}</div>
                         </div>
                         <div style={{display:"flex",gap:6,flexShrink:0}}>
                           <button style={sty.btn("primary","sm")} onClick={()=>approveHeavyEquipmentLoan(l.id)}>✓ Setuju</button>
@@ -5927,7 +5941,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div key={opn.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                         <div>
                           <div style={{fontSize:12,fontWeight:700}}>Opname {opn.semester} — {opn.jenisAlur}</div>
-                          <div style={{fontSize:11,color:C.muted}}>{opn.items?.length||0} item • Selisih: {selisihCount} item • Diajukan oleh {pengaju?.name||"?"} • {fmtDate(opn.submittedAt)}</div>
+                          <div style={{fontSize:12,color:C.muted}}>{opn.items?.length||0} item • Selisih: {selisihCount} item • Diajukan oleh {pengaju?.name||"?"} • {fmtDate(opn.submittedAt)}</div>
                         </div>
                         <div style={{display:"flex",gap:6,flexShrink:0}}>
                           <button style={sty.btn("primary","sm")} onClick={()=>hasRole(currentUser, "ASMAN")?approveOpname_Asman(opn,""):approveOpname_Manager(opn,"")}>✓ Setuju</button>
@@ -5958,7 +5972,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div key={`${session.id}_${item.id}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                       <div>
                         <div style={{fontSize:12,fontWeight:700}}>{item.nama}</div>
-                        <div style={{fontSize:11,color:C.muted}}>No. Katalog {item.katalogKode} • SAP {fmtNum(item.qtySap)} vs Aplikasi {item.katalogId?fmtNum(item.qtyApp):"Tidak terdaftar"} {item.satuan} • Selisih {item.selisih>0?"+":""}{fmtNum(item.selisih)} ({item.selisihPct}%) • {fmtDate(session.uploadedAt)}</div>
+                        <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.katalogKode} • SAP {fmtNum(item.qtySap)} vs Aplikasi {item.katalogId?fmtNum(item.qtyApp):"Tidak terdaftar"} {item.satuan} • Selisih {item.selisih>0?"+":""}{fmtNum(item.selisih)} ({item.selisihPct}%) • {fmtDate(session.uploadedAt)}</div>
                       </div>
                       <div style={{display:"flex",gap:6,flexShrink:0}}>
                         <button style={sty.btn("primary","sm")} onClick={()=>approveStockCountItem(session.id, item.id, "")}>✓ Setuju</button>
@@ -6005,9 +6019,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                             <div>
                               <div style={{fontSize:12,fontWeight:700}}>{h.title}</div>
-                              <div style={{fontSize:11,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
+                              <div style={{fontSize:12,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
                             </div>
-                            <span style={{padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
+                            <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
                               {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
                             </span>
                           </div>
@@ -6094,7 +6108,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <option value="">-- Pilih Barang --</option>
                   {katalogList.map(k=><option key={k.id} value={k.id}>{k.name} [{k.katalog}]</option>)}
                 </select>
-                {katalogList.length===0 && <div style={{fontSize:10,color:"#be185d",marginTop:4}}>Belum ada Master Katalog. Tambahkan dulu di tab "Master Katalog".</div>}
+                {katalogList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Master Katalog. Tambahkan dulu di tab "Master Katalog".</div>}
               </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={sty.label}>Lokasi (dari Master Lokasi)</label>
@@ -6102,7 +6116,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <option value="">-- Pilih Lokasi --</option>
                   {lokasiList.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan ? `— ${l.keterangan}` : ""}</option>)}
                 </select>
-                {lokasiList.length===0 && <div style={{fontSize:10,color:"#be185d",marginTop:4}}>Belum ada Blok Lokasi. Tambahkan dulu di Master Data → Master Gudang.</div>}
+                {lokasiList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Blok Lokasi. Tambahkan dulu di Master Data → Master Gudang.</div>}
               </div>
               <div><label style={sty.label}>Harga Satuan (Rp)</label><input style={sty.input} type="number" inputMode="decimal" value={stockForm.price||0} onChange={e=>setStockForm(sf=>({...sf,price:Number(e.target.value)}))}/></div>
               <div><label style={sty.label}>Qty di Lokasi Ini</label><input style={sty.input} type="number" inputMode="decimal" value={stockForm.qty||0} onChange={e=>setStockForm(sf=>({...sf,qty:Number(e.target.value)}))}/></div>
@@ -6110,7 +6124,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               <div>
                 <label style={sty.label}>Jenis Barang</label>
                 <select style={sty.select} value={stockForm.jenisBarang||"Cadang"} onChange={e=>setStockForm(sf=>({...sf,jenisBarang:e.target.value}))}>{JENIS_BARANG.map(j=><option key={j}>{j}</option>)}</select>
-                {stockForm.jenisBarang==="Non-Stock" && <div style={{fontSize:10,color:"#be185d",marginTop:4}}>ℹ️ Barang khusus proyek — tidak dihitung dalam alert stok minimum</div>}
+                {stockForm.jenisBarang==="Non-Stock" && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>ℹ️ Barang khusus proyek — tidak dihitung dalam alert stok minimum</div>}
               </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={sty.label}>Foto Kondisi Barang (opsional)</label>
@@ -6137,7 +6151,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </label>
               </div>
               {stockForm.id?.startsWith("STK-SAP-") && (
-                <div style={{gridColumn:"1/-1",fontSize:10,color:C.muted}}>ℹ️ Data hasil import SAP (PEMAT) — foto Nameplate/Keseluruhan akan disinkronkan saat import data PEMAT berikutnya, tidak wajib diisi sekarang.</div>
+                <div style={{gridColumn:"1/-1",fontSize:12,color:C.muted}}>ℹ️ Data hasil import SAP (PEMAT) — foto Nameplate/Keseluruhan akan disinkronkan saat import data PEMAT berikutnya, tidak wajib diisi sekarang.</div>
               )}
             </div>
             <div style={sty.stickyFooter}>
@@ -6161,8 +6175,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   onChange={e=>searchMaraCatalog(e.target.value)}/>
                 {maraSearch && <button style={sty.btn("ghost","sm")} onClick={()=>{setMaraSearch("");setMaraSearchResults([])}}>✕</button>}
               </div>
-              {maraSearchLoading && <div style={{fontSize:11,color:"#0369a1",marginTop:6}}>Mencari...</div>}
-              {maraSearchError && <div style={{fontSize:11,color:C.red,marginTop:6,padding:"6px 8px",background:"#fef2f2",borderRadius:6}}>⚠️ {maraSearchError}</div>}
+              {maraSearchLoading && <div style={{fontSize:12,color:"#0369a1",marginTop:6}}>Mencari...</div>}
+              {maraSearchError && <div style={{fontSize:12,color:C.red,marginTop:6,padding:"6px 8px",background:"#fef2f2",borderRadius:6}}>⚠️ {maraSearchError}</div>}
               {maraSearchResults.length>0 && (
                 <div style={{marginTop:8,maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
                   {maraSearchResults.map(item=>(
@@ -6180,13 +6194,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 </div>
               )}
               {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && (
-                <div style={{fontSize:11,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}"</div>
+                <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}"</div>
               )}
-              <div style={{fontSize:10,color:"#94a3b8",marginTop:6}}>Klik item untuk auto-fill form. MARA tersimpan di database.</div>
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:6}}>Klik item untuk auto-fill form. MARA tersimpan di database.</div>
             </div>
             {katalogForm._maraLocked && (
               <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px"}}>
-                <span style={{fontSize:11,color:"#166534"}}>🔒 Terkunci dari referensi MARA — Nomor Katalog, Nama, Kategori, Satuan tidak bisa diketik manual.</span>
+                <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — Nomor Katalog, Nama, Kategori, Satuan tidak bisa diketik manual.</span>
                 <button type="button" style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>setKatalogForm(kf=>({...kf,_maraLocked:false}))}>🔓 Lepas Kunci</button>
               </div>
             )}
@@ -6228,7 +6242,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <div key={s.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,background:s.checked?"#fefce8":"#f9fafb"}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                     <input type="checkbox" checked={s.checked} onChange={e=>updateOcrSuggestion(s.id,{checked:e.target.checked})}/>
-                    <span style={{fontSize:11,color:C.muted}}>Posisi: {s.xPct}%, {s.yPct}%</span>
+                    <span style={{fontSize:12,color:C.muted}}>Posisi: {s.xPct}%, {s.yPct}%</span>
                     <button style={{...sty.btn("danger","sm"),marginLeft:"auto"}} onClick={()=>removeOcrSuggestion(s.id)}>🗑️ Hapus</button>
                   </div>
                   <div style={{marginBottom:8}}>
@@ -6279,7 +6293,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <option value="">-- Pilih Gudang --</option>
                 {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
               </select>
-              {lokasiModal==="edit" && <div style={{fontSize:10,color:C.muted,marginTop:4}}>Gudang tidak bisa diubah saat edit blok. Hapus & buat ulang blok jika perlu pindah Gudang.</div>}
+              {lokasiModal==="edit" && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Gudang tidak bisa diubah saat edit blok. Hapus & buat ulang blok jika perlu pindah Gudang.</div>}
             </div>
             {lokasiForm.gudangId && (
               <div style={{marginBottom:12}}>
@@ -6288,7 +6302,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <option value="">-- Umum / Tidak ada Sub Gudang --</option>
                   {subGudangList.filter(sg=>sg.gudangId===lokasiForm.gudangId).map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
                 </select>
-                {lokasiModal==="edit" && <div style={{fontSize:10,color:C.muted,marginTop:4}}>Sub Gudang tidak bisa diubah saat edit blok.</div>}
+                {lokasiModal==="edit" && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Sub Gudang tidak bisa diubah saat edit blok.</div>}
               </div>
             )}
             <div style={{marginBottom:12}}><label style={sty.label}>Kode Lokasi (Blok)</label><input style={sty.input} value={lokasiForm.kode||""} placeholder="cth: Rak A-1" disabled={!lokasiForm.gudangId} onChange={e=>setLokasiForm(lf=>({...lf,kode:e.target.value}))}/></div>
@@ -6313,7 +6327,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               {lokasiDeleteConfirm.keterangan ? <> ({lokasiDeleteConfirm.keterangan})</> : null}
               {" "}pada Gudang <b style={{color:C.text}}>{gudangList.find(g=>g.id===lokasiDeleteConfirm.gudangId)?.nama||"-"}</b>?
             </div>
-            <div style={{fontSize:11,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:20}}>
+            <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:20}}>
               ⚠️ Tindakan ini tidak bisa dibatalkan dan ada {stocks.filter(s=>s.lokasiId===lokasiDeleteConfirm.id).length} material terdaftar di blok ini.
             </div>
             <div style={{display:"flex",gap:10}}>
@@ -6332,7 +6346,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <h3 style={{fontSize:16,fontWeight:800,marginBottom:6}}>{confirmDialog.title}</h3>
             <div style={{fontSize:13,color:C.muted,marginBottom:14,lineHeight:1.5}}>{confirmDialog.message}</div>
             {confirmDialog.warning && (
-              <div style={{fontSize:11,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:20}}>
+              <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:20}}>
                 ⚠️ {confirmDialog.warning}
               </div>
             )}
@@ -6451,11 +6465,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           const hasUnsaved = pendingFoto[field] != null;
           return (
             <div style={{flex:1,minWidth:160}}>
-              <div style={{fontSize:11,fontWeight:700,marginBottom:6}}>{label} {!isSAP && "*"}</div>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>{label} {!isSAP && "*"}</div>
               {previewImg ? (
                 <img src={previewImg} alt={label} onClick={()=>setLightboxImg(previewImg)} style={{width:"100%",height:140,objectFit:"cover",borderRadius:8,border:`1px solid ${hasUnsaved?"#f59e0b":C.border}`,cursor:"zoom-in"}}/>
               ) : (
-                <div style={{width:"100%",height:140,background:"#f3f4f6",borderRadius:8,border:`1px dashed ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:11,textAlign:"center",padding:8}}>
+                <div style={{width:"100%",height:140,background:"#f3f4f6",borderRadius:8,border:`1px dashed ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",color:C.muted,fontSize:12,textAlign:"center",padding:8}}>
                   {isSAP ? "Belum ada foto (data SAP — akan disinkronkan saat import PEMAT)" : "⚠️ Belum ada foto"}
                 </div>
               )}
@@ -6475,7 +6489,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <button style={{...sty.btn("ghost","sm")}} onClick={()=>setPendingFoto(p=>{const n={...p}; delete n[field]; return n;})}>Batal</button>
                     </div>
                   )}
-                  {hasUnsaved && <div style={{fontSize:9,color:"#92400e",marginTop:4}}>⚠️ Belum disimpan — klik "Simpan Foto" untuk memastikan tersimpan di sistem.</div>}
+                  {hasUnsaved && <div style={{fontSize:12,color:"#92400e",marginTop:4}}>⚠️ Belum disimpan — klik "Simpan Foto" untuk memastikan tersimpan di sistem.</div>}
                 </>
               )}
             </div>
@@ -6487,7 +6501,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
                 <div>
                   <h3 style={{fontSize:16,fontWeight:800}}>{st.name}</h3>
-                  <p style={{fontSize:11,color:"#0098da",fontWeight:700,marginTop:2}}>📑 {st.katalog||kat?.katalog||"-"}</p>
+                  <p style={{fontSize:12,color:"#0098da",fontWeight:700,marginTop:2}}>📑 {st.katalog||kat?.katalog||"-"}</p>
                 </div>
                 <button style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12}} onClick={()=>{setStockDetailId(null); setPendingFoto({});}}>✕</button>
               </div>
@@ -6499,13 +6513,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <div><b>Gudang:</b> {gdg?.kode||gdg?.nama||"—"}</div>
                 <div><b>Blok:</b> {lok?.kode||"—"}</div>
                 <div><b>Harga:</b> Rp {fmtNum(st.price)}</div>
-                <div><b>Status:</b> <span style={{padding:"2px 7px",borderRadius:20,fontSize:10,fontWeight:700,background:bs.bg,color:bs.fg}}>{getSAPLabel(st.katalog)}</span></div>
+                <div><b>Status:</b> <span style={{padding:"2px 7px",borderRadius:20,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg}}>{getSAPLabel(st.katalog)}</span></div>
               </div>
               <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
                 {fotoBox("Foto Nameplate", "fotoNameplate")}
                 {fotoBox("Foto Keseluruhan", "fotoKeseluruhan")}
               </div>
-              {!canUploadFoto && <div style={{fontSize:10,color:C.muted,marginTop:10}}>Hanya Admin/TL yang bisa mengunggah/mengganti foto.</div>}
+              {!canUploadFoto && <div style={{fontSize:12,color:C.muted,marginTop:10}}>Hanya Admin/TL yang bisa mengunggah/mengganti foto.</div>}
               <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
                 <button style={{...sty.btn("ghost"),width:"100%",borderColor:"#e0f2fe",color:"#0369a1"}}
                   onClick={()=>{ if(kat) setKartuGantungDetail(kat); }}>🏷️ Lihat Kartu Gantung (TUG-2)</button>
@@ -6530,7 +6544,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div>
                 <h3 style={{fontSize:16,fontWeight:800}}>📍 Lokasi di Peta Gudang</h3>
-                <p style={{fontSize:11,color:C.muted}}>{petaMiniDetail.petaInfo?.subGudang ? `${petaMiniDetail.gudang.nama} — ${petaMiniDetail.petaInfo.subGudang.nama}` : petaMiniDetail.gudang.nama} — Blok: {petaMiniDetail.lokasi.kode} {petaMiniDetail.lokasi.nama}</p>
+                <p style={{fontSize:12,color:C.muted}}>{petaMiniDetail.petaInfo?.subGudang ? `${petaMiniDetail.gudang.nama} — ${petaMiniDetail.petaInfo.subGudang.nama}` : petaMiniDetail.gudang.nama} — Blok: {petaMiniDetail.lokasi.kode} {petaMiniDetail.lokasi.nama}</p>
               </div>
               <button style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12}} onClick={()=>setPetaMiniDetail(null)}>✕</button>
             </div>
@@ -6548,7 +6562,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               {/* Titik merah — lokasi barang ini */}
               <div style={{position:"absolute",left:`${petaMiniDetail.petaInfo.x}%`,top:`${petaMiniDetail.petaInfo.y}%`,transform:"translate(-50%,-50%)"}}>
                 <div style={{width:18,height:18,borderRadius:"50%",background:"#dc2626",border:"3px solid white",boxShadow:"0 0 0 3px rgba(220,38,38,0.4)",animation:"pulse 1.5s infinite"}}/>
-                <div style={{position:"absolute",top:-24,left:"50%",transform:"translateX(-50%)",background:"#dc2626",color:"white",fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{petaMiniDetail.lokasi.kode}</div>
+                <div style={{position:"absolute",top:-24,left:"50%",transform:"translateX(-50%)",background:"#dc2626",color:"white",fontSize:12,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{petaMiniDetail.lokasi.kode}</div>
               </div>
             </div>
             <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(220,38,38,0.4)}50%{box-shadow:0 0 0 8px rgba(220,38,38,0)}}`}</style>
@@ -6587,7 +6601,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 const r = extractLatLngFromAddress(val);
                 setGudangForm(f=>({...f, alamat:val, lat:r?r.lat:f.lat, lng:r?r.lng:f.lng}));
               }} placeholder="cth: MRR6+9M Wonorejo, Surabaya, East Java"/>
-              <div style={{fontSize:10,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
             </div>
             <div style={{marginBottom:16}}>
               <label style={sty.label}>UPT</label>
@@ -6624,7 +6638,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     const r = extractLatLngFromAddress(val);
                     setGudangForm(f=>({...f, alamat:val, lat:r?r.lat:f.lat, lng:r?r.lng:f.lng}));
                   }} placeholder="cth: MRR6+9M Wonorejo, Surabaya, East Java"/>
-                  <div style={{fontSize:10,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
                 </div>
                 <div style={{marginBottom:16}}>
                   <label style={sty.label}>UPT</label>
@@ -6647,9 +6661,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <div>
                   <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Upload Denah Gudang</h3>
                   <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Langkah 2 dari 3 — Opsional, tapi disarankan supaya bisa menambahkan blok di peta.</p>
-                  <div style={{fontSize:10,color:C.muted,marginBottom:8}}>💡 Convert PDF denah ke gambar terlebih dahulu (screenshot, foto, atau export dari PDF viewer)</div>
-                  <input type="file" accept="image/*" capture="environment" onChange={e=>{const f=e.target.files[0]; if(f) uploadDenahGudang(gudangForm.id,f);}} style={{fontSize:11,color:C.muted}}/>
-                  {denahLoading && <div style={{fontSize:11,color:"#1d4ed8",marginTop:8}}>⏳ Mengompres, menyimpan, dan membaca label di gambar (OCR)...</div>}
+                  <div style={{fontSize:12,color:C.muted,marginBottom:8}}>💡 Convert PDF denah ke gambar terlebih dahulu (screenshot, foto, atau export dari PDF viewer)</div>
+                  <input type="file" accept="image/*" capture="environment" onChange={e=>{const f=e.target.files[0]; if(f) uploadDenahGudang(gudangForm.id,f);}} style={{fontSize:12,color:C.muted}}/>
+                  {denahLoading && <div style={{fontSize:12,color:"#1d4ed8",marginTop:8}}>⏳ Mengompres, menyimpan, dan membaca label di gambar (OCR)...</div>}
                   {g?.denahImageData && !denahLoading && (
                     <div style={{marginTop:12}}>
                       <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
@@ -6736,7 +6750,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 return (
                   <div key={c.key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12}}>
                     <div style={{fontWeight:700,fontSize:13}}>{c.gudang}</div>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:8}}>UPT: {c.upt}</div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:8}}>UPT: {c.upt}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer"}}>
                         <input type="radio" name={`capdec-${c.key}`} checked={decision.action==="NEW"}
@@ -6918,7 +6932,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           const filled = holder ? 1 : 0;
                           const quota = UIT_ROLE_QUOTA[akunForm.role];
                           return (
-                            <div style={{fontSize:11,marginTop:4,color:filled>=quota?"#dc2626":C.muted}}>
+                            <div style={{fontSize:12,marginTop:4,color:filled>=quota?"#dc2626":C.muted}}>
                               Slot {ROLES[akunForm.role]} di UIT ini: {filled}/{quota} terisi{holder?` (${holder.name})`:""}
                             </div>
                           );
@@ -6938,7 +6952,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         const filled = holder ? 1 : 0;
                         const quota = UPT_ROLE_QUOTA[akunForm.role];
                         return (
-                          <div style={{fontSize:11,marginTop:4,color:filled>=quota?"#dc2626":C.muted}}>
+                          <div style={{fontSize:12,marginTop:4,color:filled>=quota?"#dc2626":C.muted}}>
                             Slot {ROLES[akunForm.role]} di UPT ini: {filled}/{quota} terisi{holder?` (${holder.name})`:""}
                           </div>
                         );
@@ -6995,7 +7009,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-5 — Daftar Permintaan Barang</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:11,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-5/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-5/...</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
@@ -7040,8 +7054,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     </button>
                   ))}
                 </div>
-                {txnForm.jenisTransfer==="INTRACOMPANY" && <div style={{fontSize:10,color:C.green,marginTop:4}}>→ Setelah approved: otomatis generate draft TUG-7 di UIT untuk ditentukan UPT pengirimnya.</div>}
-                {txnForm.jenisTransfer==="INTERCOMPANY" && <div style={{fontSize:10,color:"#7c3aed",marginTop:4}}>→ Setelah approved: otomatis generate draft TUG-5 UIT untuk dikirim manual ke UIT lain.</div>}
+                {txnForm.jenisTransfer==="INTRACOMPANY" && <div style={{fontSize:12,color:C.green,marginTop:4}}>→ Setelah approved: otomatis generate draft TUG-7 di UIT untuk ditentukan UPT pengirimnya.</div>}
+                {txnForm.jenisTransfer==="INTERCOMPANY" && <div style={{fontSize:12,color:"#7c3aed",marginTop:4}}>→ Setelah approved: otomatis generate draft TUG-5 UIT untuk dikirim manual ke UIT lain.</div>}
               </div>
             </div>
             </>
@@ -7058,11 +7072,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 if (!isExpanded) {
                   return (
                     <div key={idx} style={{display:"flex",alignItems:isMobile?"stretch":"center",flexDirection:isMobile?"column":"row",gap:8,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8,background:"white",cursor:"pointer"}} onClick={()=>setTug5ExpandedIdx(idx)}>
-                      <span style={{fontSize:11,fontWeight:700,color:C.muted}}>#{idx+1}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:C.muted}}>#{idx+1}</span>
                       <span style={{flex:1,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{kat ? `${kat.name} [${kat.katalog||"-"}]` : <span style={{color:C.muted,fontStyle:"italic"}}>Belum dipilih</span>}</span>
                       <div style={{display:"flex",alignItems:"center",justifyContent:isMobile?"space-between":"flex-start",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:11,color:C.accent,fontWeight:700}}>Qty: {si.permintaan||0}{kat?.satuan?` ${kat.satuan}`:""}</span>
-                        <span style={{fontSize:11,color:C.muted}}>✏️ Edit</span>
+                        <span style={{fontSize:12,color:C.accent,fontWeight:700}}>Qty: {si.permintaan||0}{kat?.satuan?` ${kat.satuan}`:""}</span>
+                        <span style={{fontSize:12,color:C.muted}}>✏️ Edit</span>
                         {txnForm.stockItems.length>1 && <button type="button" title="Hapus material TUG-5 ini" style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={e=>{e.stopPropagation();removeItemRow(idx);if(tug5ExpandedIdx===idx)setTug5ExpandedIdx(Math.max(0,idx-1));}}>✕</button>}
                       </div>
                     </div>
@@ -7085,7 +7099,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     </div>
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus material TUG-5 ini" style={{...sty.btn("danger","sm")}} onClick={()=>{removeItemRow(idx);setTug5ExpandedIdx(Math.max(0,idx-1));}}>✕</button>}
                   </div>
-                  {kat && <div style={{fontSize:10,color:C.muted,marginBottom:8}}>Nomor Normalisasi: {kat.katalog||"-"} • Satuan: {kat.satuan}</div>}
+                  {kat && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Nomor Normalisasi: {kat.katalog||"-"} • Satuan: {kat.satuan}</div>}
                   {txnForm.sourceType==="ULTG" ? (
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
                       <div><label style={sty.label}>Sisa Persediaan <span style={{color:C.muted,fontWeight:400}}>(stok aktual UPT)</span></label><input style={{...sty.input,background:"#f3f4f6"}} type="number" inputMode="decimal" min="0" value={si.sisaPersediaan||0} disabled/></div>
@@ -7106,7 +7120,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             {txnForm.stockItems.length>5 && (
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                 <button type="button" style={sty.btn("ghost","sm")} disabled={tug5MaterialPage===0} onClick={()=>setTug5MaterialPage(p=>Math.max(0,p-1))}>← Sebelumnya</button>
-                <span style={{fontSize:11,color:C.muted}}>Halaman {tug5MaterialPage+1} dari {Math.ceil(txnForm.stockItems.length/5)}</span>
+                <span style={{fontSize:12,color:C.muted}}>Halaman {tug5MaterialPage+1} dari {Math.ceil(txnForm.stockItems.length/5)}</span>
                 <button type="button" style={sty.btn("ghost","sm")} disabled={(tug5MaterialPage+1)*5>=txnForm.stockItems.length} onClick={()=>setTug5MaterialPage(p=>p+1)}>Selanjutnya →</button>
               </div>
             )}
@@ -7140,7 +7154,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir {txnForm.docType.replace("TUG","TUG-")} — {txnForm.docType==="TUG9"?"Bon Pemakaian":"Pemakaian Unit Lain"}</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:11,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.{txnForm.docType.replace("TUG","TUG-")}/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.{txnForm.docType.replace("TUG","TUG-")}/...</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
@@ -7179,11 +7193,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <option value="">-- Pilih Satpam --</option>
                 {satpamList.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}
               </select>
-              {satpamList.length===0 && <div style={{fontSize:10,color:C.muted,marginTop:4}}>Belum ada data Satpam. Tambahkan di menu Master Data → tab Satpam.</div>}
+              {satpamList.length===0 && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Belum ada data Satpam. Tambahkan di menu Master Data → tab Satpam.</div>}
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / MATERIAL</div>
-            <div style={{fontSize:10,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Barang yang sama bisa ada di lokasi berbeda — pastikan pilih baris dengan lokasi yang benar.</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Barang yang sama bisa ada di lokasi berbeda — pastikan pilih baris dengan lokasi yang benar.</div>
             {txnForm.stockItems.map((si,idx)=>{
               const stockOpt = enrichedStocks.find(s=>s.id===si.stockId);
               return (
@@ -7199,7 +7213,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       renderOption={s=>(
                         <div>
                           <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
-                          <div style={{fontSize:10,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
+                          <div style={{fontSize:12,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
                         </div>
                       )}
                       placeholder="-- Cari & pilih barang --"
@@ -7244,13 +7258,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   const existingPhoto = txnForm.fotoMaterial.find(fm=>fm.stockId===si.stockId);
                   return (
                     <div key={idx} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
-                      <div style={{fontSize:11,fontWeight:600,marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{stock?.name||"-"}</div>
-                      <input type="file" accept="image/*" capture="environment" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:10,color:C.muted,width:"100%"}}/>
+                      <div style={{fontSize:12,fontWeight:600,marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{stock?.name||"-"}</div>
+                      <input type="file" accept="image/*" capture="environment" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:12,color:C.muted,width:"100%"}}/>
                       {existingPhoto && <img src={existingPhoto.img} alt={stock?.name} style={{width:"100%",height:60,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
                     </div>
                   );
                 })}
-                {txnForm.stockItems.filter(si=>si.stockId).length===0 && <div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>Pilih barang terlebih dahulu untuk upload foto material</div>}
+                {txnForm.stockItems.filter(si=>si.stockId).length===0 && <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Pilih barang terlebih dahulu untuk upload foto material</div>}
               </div>
             </div>
 
@@ -7269,7 +7283,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-10 — Bon Pengembalian</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:11,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-10/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-10/...</span>
                 <button onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
@@ -7295,12 +7309,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <option value="">-- Pilih Lokasi --</option>
                   {lokasiList.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan?`— ${l.keterangan}`:""}</option>)}
                 </select>
-                {lokasiList.length===0 && <div style={{fontSize:10,color:"#be185d",marginTop:4}}>Belum ada Blok Lokasi. Tambahkan dulu di menu Master Data → Master Gudang.</div>}
+                {lokasiList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Blok Lokasi. Tambahkan dulu di menu Master Data → Master Gudang.</div>}
               </div>
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / MATERIAL RETUR</div>
-            <div style={{fontSize:10,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Pilih dari katalog yang sudah ada, atau daftarkan barang baru langsung di sini.</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Pilih dari katalog yang sudah ada, atau daftarkan barang baru langsung di sini.</div>
             {txnForm.stockItems.map((si,idx)=>(
               <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:"#f9fafb"}}>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
@@ -7347,8 +7361,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       );
                     })}
                   </div>
-                  {si.statusMaterial==="Bongkaran" && <div style={{fontSize:10,color:"#854d0e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "Bongkaran".</div>}
-                  {si.statusMaterial==="Bongkaran ATTB (MTU)" && <div style={{fontSize:10,color:"#92400e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "ATTB". Wajib lengkapi data tambahan di bawah.</div>}
+                  {si.statusMaterial==="Bongkaran" && <div style={{fontSize:12,color:"#854d0e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "Bongkaran".</div>}
+                  {si.statusMaterial==="Bongkaran ATTB (MTU)" && <div style={{fontSize:12,color:"#92400e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "ATTB". Wajib lengkapi data tambahan di bawah.</div>}
                 </div>
 
                 <div style={{background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:8,padding:10,marginBottom:si.statusMaterial==="Bongkaran ATTB (MTU)"?8:0}}>
@@ -7359,7 +7373,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
                 {si.statusMaterial==="Bongkaran ATTB (MTU)" && (
                   <div style={{background:"#fffbeb",border:`1px solid #fde68a`,borderRadius:8,padding:10}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:8}}>📋 Data Tambahan Wajib — Bongkaran ATTB (MTU)</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>📋 Data Tambahan Wajib — Bongkaran ATTB (MTU)</div>
                     <div style={{marginBottom:8}}><label style={sty.label}>Nomor Seri Material *</label><input style={sty.input} value={si.noSeri} onChange={e=>updateItemRow(idx,"noSeri",e.target.value)} placeholder="cth: SN-2024-001"/></div>
                     <div>
                       <label style={sty.label}>Foto Nameplate *</label>
@@ -7395,7 +7409,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-3 Karantina — Bon Penerimaan</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:11,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-3/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-3/...</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
@@ -7407,14 +7421,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               <div><label style={sty.label}>Dari (Supplier) *</label><input style={sty.input} value={txnForm.dariSupplier} onChange={e=>setTxnForm(tf=>({...tf,dariSupplier:e.target.value}))} placeholder="cth: PT. Sedayu"/></div>
               <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Dengan</label><input style={sty.input} value={txnForm.denganKirim} onChange={e=>setTxnForm(tf=>({...tf,denganKirim:e.target.value}))} placeholder="cth: Dikirim Langsung"/></div>
             </div>
-            <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Pengiriman</div>
+            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Pengiriman</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>
               <div><label style={sty.label}>No. Surat Jalan</label><input style={sty.input} value={txnForm.noSuratJalan} onChange={e=>setTxnForm(tf=>({...tf,noSuratJalan:e.target.value}))}/></div>
               <div><label style={sty.label}>Tgl. Surat Jalan</label><input type="date" style={sty.input} value={txnForm.tglSuratJalan} onChange={e=>setTxnForm(tf=>({...tf,tglSuratJalan:e.target.value}))}/></div>
               <div><label style={sty.label}>No. SPK / Surat Pesanan</label><input style={sty.input} value={txnForm.noSpk} onChange={e=>setTxnForm(tf=>({...tf,noSpk:e.target.value}))}/></div>
               <div><label style={sty.label}>Tgl. SPK</label><input type="date" style={sty.input} value={txnForm.tglSpk} onChange={e=>setTxnForm(tf=>({...tf,tglSpk:e.target.value}))}/></div>
             </div>
-            <div style={{fontSize:10,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Keuangan</div>
+            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Keuangan</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
               <div><label style={sty.label}>No. Faktur / Bukti Kas</label><input style={sty.input} value={txnForm.noFaktur} onChange={e=>setTxnForm(tf=>({...tf,noFaktur:e.target.value}))}/></div>
               <div><label style={sty.label}>Tgl. Faktur</label><input type="date" style={sty.input} value={txnForm.tglFaktur} onChange={e=>setTxnForm(tf=>({...tf,tglFaktur:e.target.value}))}/></div>
@@ -7423,7 +7437,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / SPARE PARTS</div>
-            <div style={{fontSize:10,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Pilih dari katalog yang sudah ada, atau daftarkan barang baru langsung di sini.</div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Pilih dari katalog yang sudah ada, atau daftarkan barang baru langsung di sini.</div>
             {txnForm.stockItems.map((si,idx)=>(
               <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:"#f9fafb"}}>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
@@ -7511,7 +7525,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               style={{width:"100%",height:"100%",border:"none"}}
             />
           </div>
-          <div style={{padding:"8px 18px",background:"#fef3c7",fontSize:11,color:"#92400e",flexShrink:0}}>
+          <div style={{padding:"8px 18px",background:"#fef3c7",fontSize:12,color:"#92400e",flexShrink:0}}>
             💡 Tips: klik "Unduh File", buka file-nya di browser HP/laptop, lalu pilih menu Print → Save as PDF untuk dapat file PDF asli.
           </div>
         </div>

@@ -25,12 +25,12 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
       <div style={{background:"linear-gradient(135deg,#003087,#0098da)",borderRadius:12,padding:"20px 24px",marginBottom:20,color:"white"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
           <div>
-            <div style={{fontSize:11,opacity:0.7,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>PT PLN (Persero) UIT-JBM</div>
+            <div style={{fontSize:12,opacity:0.7,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>PT PLN (Persero) UIT-JBM</div>
             <div style={{fontSize:20,fontWeight:900}}>Dashboard Eksekutif Material</div>
             <div style={{fontSize:12,opacity:0.8,marginTop:4}}>{new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           </div>
           <div style={{textAlign:"right"}}>
-            <div style={{fontSize:11,opacity:0.7,marginBottom:4}}>Total Nilai Inventori (UPT Surabaya)</div>
+            <div style={{fontSize:12,opacity:0.7,marginBottom:4}}>Total Nilai Inventori (UPT Surabaya)</div>
             <div style={{fontSize:26,fontWeight:900,marginBottom:8}}>{fmtRp(nilaiTotal)}</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
               {[
@@ -40,8 +40,8 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
                 {label:"Pre Memory",val:nilaiPreMemory,color:"#93c5fd"},
               ].map((b,i)=>(
                 <div key={i} style={{background:"rgba(255,255,255,0.15)",borderRadius:6,padding:"4px 8px",textAlign:"right"}}>
-                  <div style={{fontSize:9,opacity:0.8}}>{b.label}</div>
-                  <div style={{fontSize:11,fontWeight:700,color:b.color}}>{fmtRp(b.val)}</div>
+                  <div style={{fontSize:12,opacity:0.8}}>{b.label}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:b.color}}>{fmtRp(b.val)}</div>
                 </div>
               ))}
             </div>
@@ -61,7 +61,7 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
           <div key={i} style={{...sty.card,borderTop:`3px solid ${s.color}`,padding:12}}>
             <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
             <div style={{fontSize:18,fontWeight:900,color:s.color}}>{s.val}</div>
-            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.label}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -106,8 +106,8 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
                     <td style={{padding:"10px 10px"}}>{isSurabaya?`${uptTxn} TUG`:"—"}</td>
                     <td style={{padding:"10px 10px"}}>
                       {isSurabaya
-                        ? <span style={{padding:"3px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#dcfce7",color:"#166534"}}>🟢 Aktif</span>
-                        : <span style={{padding:"3px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>⚪ Belum terhubung</span>}
+                        ? <span style={{padding:"3px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#dcfce7",color:"#166534"}}>🟢 Aktif</span>
+                        : <span style={{padding:"3px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>⚪ Belum terhubung</span>}
                     </td>
                   </tr>
                 );
@@ -115,7 +115,7 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
             </tbody>
           </table>
         </div>
-        <div style={{fontSize:10,color:C.muted,marginTop:8}}>* Data real hanya tersedia untuk UPT Surabaya (Fase 1). UPT lain akan terhubung di Fase 2.</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:8}}>* Data real hanya tersedia untuk UPT Surabaya (Fase 1). UPT lain akan terhubung di Fase 2.</div>
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:16}}>
@@ -132,8 +132,8 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
                   const days = Math.floor((Date.now()-t.createdAt)/(24*60*60*1000));
                   return (
                     <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between"}}>
-                      <div><div style={{fontSize:11,fontWeight:600}}>{t.namaPekerjaan}</div><div style={{fontSize:10,color:C.muted}}>{t.docType.replace("TUG","TUG-")}</div></div>
-                      <div style={{fontSize:11,fontWeight:700,color:"#dc2626"}}>{days} hari</div>
+                      <div><div style={{fontSize:12,fontWeight:600}}>{t.namaPekerjaan}</div><div style={{fontSize:12,color:C.muted}}>{t.docType.replace("TUG","TUG-")}</div></div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#dc2626"}}>{days} hari</div>
                     </div>
                   );
                 })}

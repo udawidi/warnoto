@@ -82,14 +82,14 @@ export function ScanPublicView({ katalogId }) {
   return (
     <div style={wrap}>
       <div style={card}>
-        <div style={{fontSize:11,color:"#6b7280",fontWeight:700,letterSpacing:.5}}>PT PLN (PERSERO) UPT SURABAYA — WARNOTO</div>
+        <div style={{fontSize:12,color:"#6b7280",fontWeight:700,letterSpacing:.5}}>PT PLN (PERSERO) UPT SURABAYA — WARNOTO</div>
         <h2 style={{fontSize:17,fontWeight:800,margin:"4px 0 2px"}}>🏷️ {katalog.name}</h2>
         <div style={{fontSize:12,color:"#6b7280",marginBottom:14}}>No. Katalog: {katalog.katalog||"-"} • Satuan: {katalog.satuan||"-"} • {katalog.jenisBarang||"-"}</div>
         {katalog.fotoKeseluruhanUrl && (
           <img src={katalog.fotoKeseluruhanUrl} alt="Foto Material Keseluruhan" style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius:10,marginBottom:14,border:"1px solid #e5e7eb"}}/>
         )}
         <div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:10,padding:"10px 14px",marginBottom:16,textAlign:"center"}}>
-          <div style={{fontSize:11,color:"#047857",fontWeight:700}}>QTY STOK SAAT INI</div>
+          <div style={{fontSize:12,color:"#047857",fontWeight:700}}>QTY STOK SAAT INI</div>
           <div style={{fontSize:26,fontWeight:800,color:"#047857"}}>{fmtNum(qty)}</div>
         </div>
         <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8}}>📋 Riwayat Mutasi (TUG-2)</div>

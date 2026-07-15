@@ -92,13 +92,13 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
             ].map(s=>(
               <div key={s.label} style={{textAlign:"center",padding:"8px 6px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`}}>
                 <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
-                <div style={{fontSize:10,color:C.muted}}>{s.label}</div>
+                <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
               </div>
             ))}
           </div>
 
           <div style={{overflowX:"auto",maxHeight:420,overflowY:"auto",marginBottom:14,border:`1px solid ${C.border}`,borderRadius:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
                 <tr style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
                   <th style={{padding:"7px 8px",width:30}}></th>
@@ -122,9 +122,9 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                       </td>
                       <td style={{padding:"6px 8px",fontWeight:600,maxWidth:220}}>
                         {item.nama}
-                        {belumTerdaftar && <div style={{fontSize:9,fontWeight:800,color:"#7c3aed"}}>🆕 Belum terdaftar di Master Katalog</div>}
+                        {belumTerdaftar && <div style={{fontSize:12,fontWeight:800,color:"#7c3aed"}}>🆕 Belum terdaftar di Master Katalog</div>}
                       </td>
-                      <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:10}}>{item.katalogKode}</td>
+                      <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.katalogKode}</td>
                       <td style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>{fmtNum(item.qtySap)} {item.satuan}</td>
                       <td style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>
                         {belumTerdaftar ? <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span> : `${fmtNum(item.qtyApp)} ${item.satuan}`}
@@ -134,10 +134,10 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                       </td>
                       <td style={{padding:"6px 8px",textAlign:"center"}}>
                         {item.status==="AKURAT"
-                          ? <span style={{fontSize:10,fontWeight:700,color:C.green}}>✓ Akurat</span>
-                          : <span style={{fontSize:10,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.status==="APP_KURANG"?"App Kurang":"App Lebih"}</span>}
+                          ? <span style={{fontSize:12,fontWeight:700,color:C.green}}>✓ Akurat</span>
+                          : <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.status==="APP_KURANG"?"App Kurang":"App Lebih"}</span>}
                       </td>
-                      <td style={{padding:"6px 8px",fontSize:10,color:"#1d4ed8"}}>{item.rekomendasi ? REKOMENDASI_LABEL[item.rekomendasi] : "-"}</td>
+                      <td style={{padding:"6px 8px",fontSize:12,color:"#1d4ed8"}}>{item.rekomendasi ? REKOMENDASI_LABEL[item.rekomendasi] : "-"}</td>
                     </tr>
                   );
                 })}
@@ -162,7 +162,7 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",cursor:"pointer",background:"#f9fafb"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
               <div>
                 <div style={{fontWeight:800,fontSize:14}}>{fmtDate(session.uploadedAt)} — {session.summary.totalItem} item dibandingkan</div>
-                <div style={{fontSize:11,color:C.muted}}>{session.summary.akuratCount} akurat • {mismatch.length} selisih{mismatch.some(i=>i.approval==="PENDING")&&` • ${mismatch.filter(i=>i.approval==="PENDING").length} menunggu approval`}</div>
+                <div style={{fontSize:12,color:C.muted}}>{session.summary.akuratCount} akurat • {mismatch.length} selisih{mismatch.some(i=>i.approval==="PENDING")&&` • ${mismatch.filter(i=>i.approval==="PENDING").length} menunggu approval`}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontSize:22,fontWeight:900,color:session.summary.akuratPct>=90?C.green:session.summary.akuratPct>=70?C.yellow:C.red}}>{session.summary.akuratPct}%</span>
@@ -183,12 +183,12 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
                       <div>
                         <div style={{fontWeight:700,fontSize:13}}>{item.nama}</div>
-                        <div style={{fontSize:10,color:C.muted}}>No. Katalog: {item.katalogKode}{!item.katalogId && " — tidak ada di Master Katalog"}</div>
+                        <div style={{fontSize:12,color:C.muted}}>No. Katalog: {item.katalogKode}{!item.katalogId && " — tidak ada di Master Katalog"}</div>
                       </div>
-                      <span style={{fontSize:11,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626",whiteSpace:"nowrap"}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>
+                      <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626",whiteSpace:"nowrap"}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>
                     </div>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:6}}>SAP: {fmtNum(item.qtySap)} {item.satuan} • Aplikasi: {item.katalogId ? `${fmtNum(item.qtyApp)} ${item.satuan}` : <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span>}</div>
-                    <div style={{fontSize:11,fontWeight:600,color:"#1d4ed8",marginBottom:8}}>{REKOMENDASI_LABEL[item.rekomendasi]}</div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:6}}>SAP: {fmtNum(item.qtySap)} {item.satuan} • Aplikasi: {item.katalogId ? `${fmtNum(item.qtyApp)} ${item.satuan}` : <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span>}</div>
+                    <div style={{fontSize:12,fontWeight:600,color:"#1d4ed8",marginBottom:8}}>{REKOMENDASI_LABEL[item.rekomendasi]}</div>
                     {item.approval==="PENDING" ? (
                       hasRole(currentUser, "ASMAN") ? (
                         <div>
@@ -206,10 +206,10 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                           )}
                         </div>
                       ) : (
-                        <div style={{fontSize:11,fontWeight:700,color:"#92400e"}}>⏳ Menunggu approval Asman</div>
+                        <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>⏳ Menunggu approval Asman</div>
                       )
                     ) : (
-                      <div style={{fontSize:11,fontWeight:700,color:item.approval==="APPROVED"?C.green:C.red}}>
+                      <div style={{fontSize:12,fontWeight:700,color:item.approval==="APPROVED"?C.green:C.red}}>
                         {item.approval==="APPROVED"?"✓ Disetujui":"✕ Ditolak"} oleh Asman{item.catatan && ` — "${item.catatan}"`}
                       </div>
                     )}

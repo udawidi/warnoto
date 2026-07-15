@@ -35,7 +35,7 @@ export function SearchableSelect({ options, value, onChange, getLabel, getSearch
       {open && (
         <div style={{position:"absolute",zIndex:50,top:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:8,marginTop:2,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
           {value && (
-            <div onClick={()=>{onChange("");setOpen(false);setQuery("");}} style={{padding:"8px 10px",fontSize:11,color:C.muted,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>✕ Kosongkan pilihan</div>
+            <div onClick={()=>{onChange("");setOpen(false);setQuery("");}} style={{padding:"8px 10px",fontSize:12,color:C.muted,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>✕ Kosongkan pilihan</div>
           )}
           {filtered.length===0 && <div style={{padding:"12px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>{emptyText}</div>}
           {filtered.slice(0,50).map(o=>(
@@ -44,7 +44,7 @@ export function SearchableSelect({ options, value, onChange, getLabel, getSearch
               {renderOption?renderOption(o):getLabel(o)}
             </div>
           ))}
-          {filtered.length>50 && <div style={{padding:"6px 10px",fontSize:10,color:C.muted,textAlign:"center"}}>+{filtered.length-50} lainnya — ketik lebih spesifik untuk menyaring</div>}
+          {filtered.length>50 && <div style={{padding:"6px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>+{filtered.length-50} lainnya — ketik lebih spesifik untuk menyaring</div>}
         </div>
       )}
     </div>

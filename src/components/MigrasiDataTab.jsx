@@ -432,7 +432,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
     const pct = Math.max(1, applyProgressPct);
     return (
       <div style={{width:"100%",maxWidth:420,marginTop:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.accent,fontWeight:700,marginBottom:3}}>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.accent,fontWeight:700,marginBottom:3}}>
           <span>{applyProgress || "Memproses..."}</span>
           <span>{pct}%</span>
         </div>
@@ -554,7 +554,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
               <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",background:"white"}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.desc}</div>
-                  <div style={{fontSize:10,color:C.muted}}>No. Katalog {item.noKat} • {item.jenisBarang} • Qty {item.qty} {item.satuan} • {item.harga?("Rp "+fmtNum(item.harga)):"-"} • dari {item.sourceFile}</div>
+                  <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.noKat} • {item.jenisBarang} • Qty {item.qty} {item.satuan} • {item.harga?("Rp "+fmtNum(item.harga)):"-"} • dari {item.sourceFile}</div>
                 </div>
                 <button style={sty.btn("primary","sm")} onClick={()=>approveMigrasiPending(item.id)}>✅ Setujui</button>
                 <button style={sty.btn("danger","sm")} onClick={()=>rejectMigrasiPending(item.id)}>✕ Tolak</button>
@@ -572,7 +572,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
             </div>
             <button style={sty.btn("danger","sm")} onClick={clearAllMigrasiLocations}>🗑️ Kosongkan Semua ({locationReviewCandidates.length})</button>
           </div>
-          <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
             Baris-baris ini pernah dibuat migrasi lalu dengan lokasi ditebak otomatis (bug yang sudah diperbaiki) —
             sebagian mungkin sudah Anda konfirmasi/set manual, sebagian mungkin belum. Cek satu-satu:
             kalau lokasinya memang benar, klik "Pertahankan". Kalau bukan, klik "Kosongkan" lalu isi lokasi yang
@@ -588,7 +588,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
                 <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",background:"white"}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name||kat?.name}</div>
-                    <div style={{fontSize:10,color:C.muted}}>No. Katalog {s.katalog||kat?.katalog} • Qty {s.qty} • Lokasi saat ini: {lok?.kode||"-"}</div>
+                    <div style={{fontSize:12,color:C.muted}}>No. Katalog {s.katalog||kat?.katalog} • Qty {s.qty} • Lokasi saat ini: {lok?.kode||"-"}</div>
                   </div>
                   <button style={sty.btn("primary","sm")} onClick={()=>keepMigrasiLocation(s.id)}>✅ Pertahankan</button>
                   <button style={sty.btn("danger","sm")} onClick={()=>clearMigrasiLocation(s.id)}>🗑️ Kosongkan</button>
@@ -604,7 +604,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
         {["upload","preview","backup","done"].map((s,i)=>(
           <div key={s} style={{display:"flex",alignItems:"center",gap:4}}>
             <div style={{width:28,height:28,borderRadius:"50%",background:step===s?C.accent:["upload","preview","backup","done"].indexOf(step)>i?"#16a34a":"#e5e7eb",color:step===s?"white":["upload","preview","backup","done"].indexOf(step)>i?"white":"#9ca3af",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{i+1}</div>
-            <span style={{fontSize:11,fontWeight:step===s?700:400,color:step===s?C.accent:C.muted,textTransform:"capitalize"}}>{s==="backup"?"Backup & Apply":s}</span>
+            <span style={{fontSize:12,fontWeight:step===s?700:400,color:step===s?C.accent:C.muted,textTransform:"capitalize"}}>{s==="backup"?"Backup & Apply":s}</span>
             {i<3 && <span style={{color:C.border,marginLeft:4}}>→</span>}
           </div>
         ))}
@@ -653,7 +653,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
               {label:"⚠️ Jenis Barang Beda Sinyal",val:previewStats.sapResult.filter(r=>r.materialTypeMismatch).length,color:C.red},
             ].map(kpi=>(
               <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
-                <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
+                <div style={{fontSize:12,color:C.muted,marginBottom:4}}>{kpi.label}</div>
                 <div style={{fontSize:kpi.small?13:20,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
               </div>
             ))}
@@ -671,9 +671,9 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
           {previewStats.sapResult.some(r=>r.needsStockReview) && (
             <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
               <div style={{fontWeight:700,marginBottom:4,color:C.red}}>⚠️ Perlu Review Manual — Qty di luar "Unrestricted Use Stock"</div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Baris ini punya qty di Quality Inspection/Blocked/In Transit Stock — TIDAK otomatis ditambahkan ke Data Stok. Putuskan per baris: gabung ke Unrestricted, atau hapus barisnya dari daftar impor. Kalau dibiarkan, qty tambahan ini tetap diabaikan (cuma qty Unrestricted yang ikut masuk).</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Baris ini punya qty di Quality Inspection/Blocked/In Transit Stock — TIDAK otomatis ditambahkan ke Data Stok. Putuskan per baris: gabung ke Unrestricted, atau hapus barisnya dari daftar impor. Kalau dibiarkan, qty tambahan ini tetap diabaikan (cuma qty Unrestricted yang ikut masuk).</div>
               <div style={{maxHeight:220,overflowY:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead><tr style={{background:"#fef2f2"}}>{["No Katalog","Deskripsi","Unrestricted","Quality Insp.","Blocked","In Transit","Aksi"].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left"}}>{h}</th>)}</tr></thead>
                   <tbody>
                     {previewStats.sapResult.filter(r=>r.needsStockReview).map((r,i)=>(
@@ -698,17 +698,17 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
           {previewStats.sapResult.some(r=>r.plantMismatch) && (
             <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
               <div style={{fontWeight:700,color:C.red}}>⚠️ {previewStats.sapResult.filter(r=>r.plantMismatch).length} baris punya kode Plant selain 3611 (UPT Surabaya)</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:4}}>Data ini tetap ikut diproses sebagai UPT Surabaya — kalau ini sebenarnya milik UPT lain, hapus dulu barisnya dari file sebelum upload ulang.</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:4}}>Data ini tetap ikut diproses sebagai UPT Surabaya — kalau ini sebenarnya milik UPT lain, hapus dulu barisnya dari file sebelum upload ulang.</div>
             </div>
           )}
           {previewStats.sapResult.some(r=>r.materialTypeMismatch) && (
             <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
               <div style={{fontWeight:700,color:C.red}}>⚠️ {previewStats.sapResult.filter(r=>r.materialTypeMismatch).length} baris: Material Type dan panjang kode katalog beda sinyal</div>
-              <div style={{fontSize:11,color:C.muted,marginTop:4}}>Contoh: Material Type bilang ZCAD (Cadang) tapi kodenya bukan 10 digit, atau sebaliknya ZST1 (Persediaan) tapi kodenya 10 digit. Jenis barang yang dipakai sistem tetap ikut Material Type (kolom "Jenis" di tabel) — cek manual baris ini sebelum apply, siapa tahu ada data yang salah input.</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:4}}>Contoh: Material Type bilang ZCAD (Cadang) tapi kodenya bukan 10 digit, atau sebaliknya ZST1 (Persediaan) tapi kodenya 10 digit. Jenis barang yang dipakai sistem tetap ikut Material Type (kolom "Jenis" di tabel) — cek manual baris ini sebelum apply, siapa tahu ada data yang salah input.</div>
             </div>
           )}
           <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:16,maxHeight:350,overflowY:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:700}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:700}}>
               <thead style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
                 <tr>
                   {["No Katalog","Deskripsi","Jenis","Qty File","Qty Aplikasi","Harga","Match WARNOTO","Match MARA","Timpa?","Review"].map(h=>(
@@ -721,7 +721,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
                   <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r.needsStockReview||r.plantMismatch||r.materialTypeMismatch?"#fef2f2":!r.matchWarnoto?"#fefce8":"white"}}>
                     <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat}</td>
                     <td style={{padding:"5px 8px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.desc}</td>
-                    <td style={{padding:"5px 8px",fontSize:10}}>{r.jenisBarang}</td>
+                    <td style={{padding:"5px 8px",fontSize:12}}>{r.jenisBarang}</td>
                     <td style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
                     <td style={{padding:"5px 8px",textAlign:"right",color:r.qtyMatch===false?C.red:r.qtyMatch===true?C.green:C.muted,fontWeight:r.qtyMatch===false?700:400}}>
                       {r.matchWarnoto ? r.existingQty : "-"}
@@ -731,11 +731,11 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchMara?"✅":"-"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>
                       {!r.matchWarnoto ? (
-                        <span style={{fontSize:10,color:"#f59e0b",fontWeight:700}}>📋 Review Admin</span>
+                        <span style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>📋 Review Admin</span>
                       ) : r.qtyMatch ? (
-                        <span style={{fontSize:10,color:C.green,fontWeight:700}}>✅ Qty sama</span>
+                        <span style={{fontSize:12,color:C.green,fontWeight:700}}>✅ Qty sama</span>
                       ) : (
-                        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",fontSize:10,color:overwriteRows.has(r.noKat)?C.red:C.muted}}>
+                        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",fontSize:12,color:overwriteRows.has(r.noKat)?C.red:C.muted}}>
                           <input type="checkbox" checked={overwriteRows.has(r.noKat)} onChange={()=>toggleOverwriteRow(r.noKat)} />
                           Timpa
                         </label>
@@ -844,13 +844,13 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
           <p style={{fontSize:12,color:C.muted,marginBottom:8}}>Data histori dari sebelum cutover — tampil di TUG-15 dengan badge "MIGRASI", tidak mempengaruhi stok aktif.</p>
           <div style={{maxHeight:200,overflowY:"auto"}}>
             {migratedTug15History.slice(0,20).map((t,i)=>(
-              <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:11,display:"flex",gap:12}}>
+              <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:12,display:"flex",gap:12}}>
                 <span style={{fontWeight:700,color:C.accent}}>{t.id}</span>
                 <span style={{color:C.muted}}>{t.docType} — {fmtDateOnly(t.createdAt)}</span>
-                <span style={{padding:"1px 6px",borderRadius:4,background:"#f3f4f6",fontSize:10}}>MIGRASI</span>
+                <span style={{padding:"1px 6px",borderRadius:4,background:"#f3f4f6",fontSize:12}}>MIGRASI</span>
               </div>
             ))}
-            {migratedTug15History.length > 20 && <div style={{padding:8,color:C.muted,fontSize:11,textAlign:"center"}}>...dan {migratedTug15History.length-20} transaksi lainnya</div>}
+            {migratedTug15History.length > 20 && <div style={{padding:8,color:C.muted,fontSize:12,textAlign:"center"}}>...dan {migratedTug15History.length-20} transaksi lainnya</div>}
           </div>
         </div>
       )}

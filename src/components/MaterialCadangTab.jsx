@@ -362,7 +362,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
         {TABS.map(t=>(
           <button key={t.id} style={{padding:"8px 16px",borderRadius:8,border:`1px solid ${subTab===t.id?C.accent:C.border}`,background:subTab===t.id?C.accent:"white",color:subTab===t.id?"white":C.muted,fontWeight:700,fontSize:12,cursor:"pointer",position:"relative"}}
             onClick={()=>setSubTab(t.id)}>
-            {t.label}{t.badge>0 && <span style={{marginLeft:6,background:"#dc2626",color:"white",borderRadius:10,padding:"1px 6px",fontSize:10}}>{t.badge}</span>}
+            {t.label}{t.badge>0 && <span style={{marginLeft:6,background:"#dc2626",color:"white",borderRadius:10,padding:"1px 6px",fontSize:12}}>{t.badge}</span>}
           </button>
         ))}
       </div>
@@ -389,7 +389,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                   {label:"Estimasi Nilai Gap",val:"Rp "+fmtNum(summary.gapNilai),color:"#dc2626",small:true},
                 ].map(kpi=>(
                   <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:4}}>{kpi.label}</div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:4}}>{kpi.label}</div>
                     <div style={{fontSize:kpi.small?14:22,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
                   </div>
                 ))}
@@ -404,7 +404,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                   {label:"Data Confidence",val:summary.avgConfidence+"%",color:"#0f766e"},
                 ].map(kpi=>(
                   <div key={kpi.label} style={{...sty.card,borderLeft:`4px solid ${kpi.color}`,padding:12}}>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:4,fontWeight:700}}>{kpi.label}</div>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:4,fontWeight:700}}>{kpi.label}</div>
                     <div style={{fontSize:20,fontWeight:900,color:kpi.color}}>{kpi.val}</div>
                   </div>
                 ))}
@@ -412,7 +412,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
               <div style={{...sty.card,marginBottom:16}}>
                 <div style={{fontWeight:700,fontSize:14,marginBottom:12}}>🏆 Prioritas Tindakan (Top 10)</div>
                 <div style={{overflowX:"auto"}}>
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                     <thead>
                       <tr style={{background:"#f9fafb"}}>
                         {["No Katalog","Nama","Kelas","Policy","Stok","Ideal","Gap","Status","Nilai Gap"].map(h=>(
@@ -435,12 +435,12 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                             <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
                               <td style={{padding:"6px 8px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
                               <td style={{padding:"6px 8px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
-                              <td style={{padding:"6px 8px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{r.abcClass}</span></td>
-                              <td style={{padding:"6px 8px",fontSize:10,color:C.muted}}>{r.policy}</td>
+                              <td style={{padding:"6px 8px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:12}}>{r.abcClass}</span></td>
+                              <td style={{padding:"6px 8px",fontSize:12,color:C.muted}}>{r.policy}</td>
                               <td style={{padding:"6px 8px",fontWeight:700}}>{r.currentQty}</td>
                               <td style={{padding:"6px 8px",fontWeight:700}}>{r.recommendedQty}</td>
                               <td style={{padding:"6px 8px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
-                              <td style={{padding:"6px 8px"}}><span style={{color:statusColor,fontWeight:700,fontSize:10}}>{status}</span></td>
+                              <td style={{padding:"6px 8px"}}><span style={{color:statusColor,fontWeight:700,fontSize:12}}>{status}</span></td>
                               <td style={{padding:"6px 8px",color:r.gapQty>0?"#7c3aed":C.muted}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
                             </tr>
                           );
@@ -464,7 +464,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
             <div style={{...sty.card,textAlign:"center",padding:30,color:C.muted}}>Belum ada Health Index. Upload dan hitung data Material Cadang terlebih dahulu.</div>
           ) : (
             <div style={{...sty.card,padding:0,overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:1100}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1100}}>
                 <thead style={{background:C.sidebar,color:"white"}}>
                   <tr>
                     {["No Katalog","Nama Material","Health Index","Status","Confidence","Kelas","Policy","Stok","Ideal","Gap","Nilai Gap","AI Recommendation"].map(h=>(
@@ -481,10 +481,10 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                         <td style={{padding:"6px 10px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
                         <td style={{padding:"6px 10px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
                         <td style={{padding:"6px 10px",fontWeight:900,color:r.healthColor}}>{r.healthIndex}</td>
-                        <td style={{padding:"6px 10px"}}><span style={{padding:"2px 8px",borderRadius:999,background:r.healthBg,color:r.healthColor,fontWeight:800,fontSize:10}}>{r.healthStatus}</span></td>
+                        <td style={{padding:"6px 10px"}}><span style={{padding:"2px 8px",borderRadius:999,background:r.healthBg,color:r.healthColor,fontWeight:800,fontSize:12}}>{r.healthStatus}</span></td>
                         <td style={{padding:"6px 10px",fontWeight:700,color:(r.dataConfidence||0)<70?C.red:C.green}}>{r.dataConfidence}%</td>
                         <td style={{padding:"6px 10px",fontWeight:700}}>{r.abcClass}</td>
-                        <td style={{padding:"6px 10px",fontSize:10,color:C.muted}}>{r.policy}</td>
+                        <td style={{padding:"6px 10px",fontSize:12,color:C.muted}}>{r.policy}</td>
                         <td style={{padding:"6px 10px",fontWeight:700}}>{r.currentQty}</td>
                         <td style={{padding:"6px 10px",fontWeight:700}}>{r.recommendedQty}</td>
                         <td style={{padding:"6px 10px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
@@ -510,7 +510,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
           ) : (
             <div style={{display:"grid",gridTemplateColumns:"minmax(0,1.2fr) minmax(280px,.8fr)",gap:14}}>
               <div style={{...sty.card}}>
-                <div style={{fontSize:11,color:C.muted,fontWeight:800,textTransform:"uppercase",marginBottom:6}}>Executive Summary</div>
+                <div style={{fontSize:12,color:C.muted,fontWeight:800,textTransform:"uppercase",marginBottom:6}}>Executive Summary</div>
                 <div style={{fontSize:14,lineHeight:1.6,fontWeight:600,marginBottom:16}}>{latestAiInsight.executiveSummary}</div>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
                   <div>
@@ -527,8 +527,8 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                 <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>Recommended Actions</div>
                 {(latestAiInsight.recommendedActions||[]).slice(0,10).map((x,i)=><div key={i} style={{fontSize:12,padding:"7px 0",borderBottom:`1px solid ${C.border}`}}>{typeof x==="string"?x:JSON.stringify(x)}</div>)}
                 <div style={{fontWeight:800,fontSize:13,marginTop:16,marginBottom:8}}>Validation Needed</div>
-                {(latestAiInsight.validationNeeded||[]).length===0 ? <div style={{fontSize:12,color:C.muted}}>Tidak ada material yang ditandai wajib validasi.</div> : (latestAiInsight.validationNeeded||[]).slice(0,12).map((x,i)=><span key={i} style={{display:"inline-block",fontSize:11,fontWeight:700,color:"#92400e",background:"#fef3c7",borderRadius:999,padding:"3px 8px",margin:"0 5px 5px 0"}}>{typeof x==="string"?x:(x.noKatalog||JSON.stringify(x))}</span>)}
-                <div style={{fontSize:10,color:C.muted,marginTop:12}}>Status: {latestAiInsight.status || "-"} {latestAiInsight.errorMessage ? `- ${latestAiInsight.errorMessage}` : ""}</div>
+                {(latestAiInsight.validationNeeded||[]).length===0 ? <div style={{fontSize:12,color:C.muted}}>Tidak ada material yang ditandai wajib validasi.</div> : (latestAiInsight.validationNeeded||[]).slice(0,12).map((x,i)=><span key={i} style={{display:"inline-block",fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",borderRadius:999,padding:"3px 8px",margin:"0 5px 5px 0"}}>{typeof x==="string"?x:(x.noKatalog||JSON.stringify(x))}</span>)}
+                <div style={{fontSize:12,color:C.muted,marginTop:12}}>Status: {latestAiInsight.status || "-"} {latestAiInsight.errorMessage ? `- ${latestAiInsight.errorMessage}` : ""}</div>
               </div>
             </div>
           )}
@@ -549,7 +549,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                   <b>A2</b> — Kritis sedang → SL 95%<br/>
                   <b>B1/B2</b> — Penting → SL 90%<br/>
                   <b>C</b> — Tidak kritikal → tidak direkomendasikan sebagai cadang<br/>
-                  <span style={{color:C.muted,fontSize:11}}>Skor = (failure rate × 0.4) + (harga × 0.3) + (lead time × 0.3)</span>
+                  <span style={{color:C.muted,fontSize:12}}>Skor = (failure rate × 0.4) + (harga × 0.3) + (lead time × 0.3)</span>
                 </div>
               </div>
               <div>
@@ -558,7 +558,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                   <b>Mandatory</b> — ceil(2% × populasi)<br/>
                   <b>Economic</b> — ceil(penggantian 5 tahun ÷ 5)<br/>
                   <b>Optimum</b> — Poisson CDF invers pada service level target<br/>
-                  <span style={{color:C.muted,fontSize:11}}>λ = failure5y/5 × (leadTime/8760)</span>
+                  <span style={{color:C.muted,fontSize:12}}>λ = failure5y/5 × (leadTime/8760)</span>
                 </div>
               </div>
               <div>
@@ -605,13 +605,13 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                   {label:"Invalid",val:importPreview.stats.invalid,color:C.red},
                 ].map(s=>(
                   <div key={s.label} style={{padding:"8px 14px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,textAlign:"center"}}>
-                    <div style={{fontSize:11,color:C.muted}}>{s.label}</div>
+                    <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
                     <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
                   </div>
                 ))}
               </div>
               <div style={{overflowX:"auto",marginBottom:14,maxHeight:300,overflowY:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                   <thead style={{position:"sticky",top:0,background:C.sidebar,color:"white"}}>
                     <tr>
                       {["No Katalog","Nama Material","Cluster","Populasi","Failure","Penggantian","Lead Time","Status","Warning"].map(h=>(
@@ -630,9 +630,9 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                         <td style={{padding:"5px 8px",textAlign:"right"}}>{r.penggantian5y||0}</td>
                         <td style={{padding:"5px 8px",textAlign:"right"}}>{r.leadTime||0}h</td>
                         <td style={{padding:"5px 8px"}}>
-                          <span style={{padding:"2px 6px",borderRadius:4,fontSize:10,fontWeight:700,background:r.status==="MATCH"?"#dcfce7":r.status==="INVALID"?"#fef2f2":"#fef9c3",color:r.status==="MATCH"?C.green:r.status==="INVALID"?C.red:"#92400e"}}>{r.status}</span>
+                          <span style={{padding:"2px 6px",borderRadius:4,fontSize:12,fontWeight:700,background:r.status==="MATCH"?"#dcfce7":r.status==="INVALID"?"#fef2f2":"#fef9c3",color:r.status==="MATCH"?C.green:r.status==="INVALID"?C.red:"#92400e"}}>{r.status}</span>
                         </td>
-                        <td style={{padding:"5px 8px",fontSize:10,color:C.muted,maxWidth:180}}>{r.error||(r.warnings||[]).join(", ")||"-"}</td>
+                        <td style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:180}}>{r.error||(r.warnings||[]).join(", ")||"-"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -656,7 +656,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
             <div style={{...sty.card,textAlign:"center",padding:30,color:C.muted}}>Belum ada hasil analisis. Upload dan hitung di tab "Import & Hitung".</div>
           ) : (
             <div style={{...sty.card,padding:0,overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:900}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:900}}>
                 <thead style={{background:C.sidebar,color:"white"}}>
                   <tr>
                     {["No Katalog","Nama Material","Cluster","Kelas","Policy","Stok Saat Ini","Ideal","Gap","Status","Nilai Gap","Aksi"].map(h=>(
@@ -673,19 +673,19 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                       <tr key={i} style={{borderBottom:`1px solid ${C.border}`,cursor:"pointer"}} onClick={()=>setDetailItem(r)}>
                         <td style={{padding:"6px 10px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
                         <td style={{padding:"6px 10px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
-                        <td style={{padding:"6px 10px",fontSize:10}}>{r.cluster}</td>
-                        <td style={{padding:"6px 10px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:10}}>{r.abcClass}</span></td>
-                        <td style={{padding:"6px 10px",fontSize:10,color:C.muted}}>{r.policy}</td>
+                        <td style={{padding:"6px 10px",fontSize:12}}>{r.cluster}</td>
+                        <td style={{padding:"6px 10px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:12}}>{r.abcClass}</span></td>
+                        <td style={{padding:"6px 10px",fontSize:12,color:C.muted}}>{r.policy}</td>
                         <td style={{padding:"6px 10px",fontWeight:700}}>{r.currentQty}</td>
                         <td style={{padding:"6px 10px",fontWeight:700}}>{r.recommendedQty}</td>
                         <td style={{padding:"6px 10px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
-                        <td style={{padding:"6px 10px"}}><span style={{color:statusColor,fontWeight:700,fontSize:10}}>{status}</span></td>
+                        <td style={{padding:"6px 10px"}}><span style={{color:statusColor,fontWeight:700,fontSize:12}}>{status}</span></td>
                         <td style={{padding:"6px 10px",color:"#7c3aed"}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
                         <td style={{padding:"6px 10px"}} onClick={e=>e.stopPropagation()}>
                           {canEdit && r.treatment==="Material Cadang" && r.recommendedQty>0 && !hasPending && (
-                            <button style={{...sty.btn("primary","sm"),fontSize:10}} onClick={()=>setApplyConfirm(r)}>Apply Min Qty</button>
+                            <button style={{...sty.btn("primary","sm"),fontSize:12}} onClick={()=>setApplyConfirm(r)}>Apply Min Qty</button>
                           )}
-                          {hasPending && <span style={{fontSize:10,color:"#f59e0b",fontWeight:700}}>⏳ Pending</span>}
+                          {hasPending && <span style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>⏳ Pending</span>}
                         </td>
                       </tr>
                     );
@@ -710,8 +710,8 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                 <div key={h.id} style={{padding:12,borderRadius:8,border:`1px solid ${C.border}`,marginBottom:10}}>
                   <div style={{fontWeight:700}}>{h.namaBarang} — No. Katalog: {h.noKatalog}</div>
                   <div style={{fontSize:12,color:C.muted,marginTop:4}}>Kelas: {h.abcClass} | Policy: {h.policy} | Recommended minQty: <strong>{h.recommendedQty}</strong></div>
-                  {h.notes && <div style={{fontSize:11,color:C.muted,marginTop:4}}>Catatan: {h.notes}</div>}
-                  <div style={{fontSize:11,color:C.muted,marginTop:4}}>Diajukan: {new Date(h.requestedAt).toLocaleDateString("id")}</div>
+                  {h.notes && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Catatan: {h.notes}</div>}
+                  <div style={{fontSize:12,color:C.muted,marginTop:4}}>Diajukan: {new Date(h.requestedAt).toLocaleDateString("id")}</div>
                   {canApprove && (
                     <div style={{display:"flex",gap:8,marginTop:10}}>
                       <button style={sty.btn("primary","sm")} onClick={()=>handleApproveApply(h.id)}>Setuju & Apply Min Qty</button>
@@ -762,7 +762,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                 ["Gap",detailItem.gapQty>0?"−"+detailItem.gapQty:"0 (cukup)"],["Cumul Value %",detailItem.cumulativeValuePct+"%"],
               ].map(([k,v])=>(
                 <div key={k} style={{padding:"6px 8px",background:"#f9fafb",borderRadius:6}}>
-                  <div style={{fontSize:10,color:C.muted}}>{k}</div>
+                  <div style={{fontSize:12,color:C.muted}}>{k}</div>
                   <div style={{fontWeight:700,marginTop:2}}>{v}</div>
                 </div>
               ))}
@@ -770,13 +770,13 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
             <div style={{marginTop:12,padding:10,background:detailItem.healthBg||"#f8fafc",border:`1px solid ${detailItem.healthColor||C.border}`,borderRadius:8}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",marginBottom:8}}>
                 <div>
-                  <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>Health Index</div>
+                  <div style={{fontSize:12,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>Health Index</div>
                   <div style={{fontSize:24,fontWeight:900,color:detailItem.healthColor||C.text}}>{detailItem.healthIndex ?? "-"} / 100</div>
                 </div>
-                <span style={{padding:"4px 10px",borderRadius:999,background:"white",color:detailItem.healthColor||C.text,fontWeight:900,fontSize:11}}>{detailItem.healthStatus||"-"}</span>
+                <span style={{padding:"4px 10px",borderRadius:999,background:"white",color:detailItem.healthColor||C.text,fontWeight:900,fontSize:12}}>{detailItem.healthStatus||"-"}</span>
               </div>
               {detailItem.healthBreakdown && (
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8,fontSize:11}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:8,fontSize:12}}>
                   {Object.entries(detailItem.healthBreakdown).map(([k,v])=>(
                     <div key={k}><span style={{color:C.muted}}>{k}</span><div style={{fontWeight:800}}>{v}</div></div>
                   ))}
@@ -791,20 +791,20 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
               </div>
             )}
             {(detailItem.dataQualityFlags||[]).length > 0 && (
-              <div style={{marginTop:8,padding:8,background:"#fff7ed",borderRadius:6,fontSize:11,color:"#9a3412"}}>
+              <div style={{marginTop:8,padding:8,background:"#fff7ed",borderRadius:6,fontSize:12,color:"#9a3412"}}>
                 Data flags: {detailItem.dataQualityFlags.join(" | ")}
               </div>
             )}
             {canEdit && detailItem.treatment==="Material Cadang" && detailItem.recommendedQty>0 && (
               <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:14}}>
                 {mcData.applyHistory.find(h=>h.katalogId===detailItem.katalogId&&h.status==="PENDING_ASMAN")
-                  ? <span style={{fontSize:11,color:"#f59e0b",fontWeight:800}}>Pengajuan apply minQty sedang menunggu Asman</span>
+                  ? <span style={{fontSize:12,color:"#f59e0b",fontWeight:800}}>Pengajuan apply minQty sedang menunggu Asman</span>
                   : <button style={sty.btn("primary","sm")} onClick={()=>{ setApplyConfirm(detailItem); setDetailItem(null); }}>Ajukan Apply Min Qty</button>
                 }
               </div>
             )}
             {(detailItem.warnings||[]).length > 0 && (
-              <div style={{marginTop:12,padding:8,background:"#fef9c3",borderRadius:6,fontSize:11,color:"#92400e"}}>
+              <div style={{marginTop:12,padding:8,background:"#fef9c3",borderRadius:6,fontSize:12,color:"#92400e"}}>
                 ⚠️ {detailItem.warnings.join(" | ")}
               </div>
             )}

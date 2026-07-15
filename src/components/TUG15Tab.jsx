@@ -134,7 +134,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <button style={{...sty.btn("ghost","sm")}} onClick={()=>setFilter({dateFrom:"",dateTo:"",katalogId:"ALL",jenisBarang:"ALL",sapStatus:"ALL",docTypes:["TUG9","TUG8","TUG10","TUG3"]})}>↺ Reset Filter</button>
-          <span style={{fontSize:11,color:C.muted}}>{rows.length} baris ditemukan</span>
+          <span style={{fontSize:12,color:C.muted}}>{rows.length} baris ditemukan</span>
           <div style={{marginLeft:"auto",display:"flex",gap:8}}>
             <button style={{...sty.btn("ghost"),border:`1px solid #0ea5e9`,color:"#0ea5e9"}} onClick={handleSyncSupabase} disabled={rows.length===0||syncState.loading}>
               {syncState.loading?"⏳ Sinkron...":"☁️ Sync ke Supabase"}
@@ -155,8 +155,8 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
         </div>
       ) : (
         <div style={{overflowX:"auto"}}>
-          <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Preview {rows.length} baris — scroll kanan untuk lihat semua kolom</div>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:1050}}>
+          <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Preview {rows.length} baris — scroll kanan untuk lihat semua kolom</div>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1050}}>
             <thead>
               <tr style={{background:C.sidebar,color:"white"}}>
                 {["No","No Katalog","Deskripsi","Status SAP","Jenis","Satuan","Saldo Awal","Masuk","Keluar","Saldo Akhir","TUG/BA","Keterangan","Tgl Mutasi"].map(h=>(
@@ -170,18 +170,18 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
                 return (
                   <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb"}}>
                     <td style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{r.no}</td>
-                    <td style={{padding:"5px 8px",fontFamily:"monospace",fontSize:10}}>{r.katalog}</td>
+                    <td style={{padding:"5px 8px",fontFamily:"monospace",fontSize:12}}>{r.katalog}</td>
                     <td style={{padding:"5px 8px",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.deskripsi}</td>
-                    <td style={{padding:"5px 8px"}}><span style={{padding:"2px 6px",borderRadius:20,fontSize:10,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{r.sapStatus}</span></td>
-                    <td style={{padding:"5px 8px",fontSize:10}}>{r.jenisBarang||"-"}</td>
+                    <td style={{padding:"5px 8px"}}><span style={{padding:"2px 6px",borderRadius:20,fontSize:12,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{r.sapStatus}</span></td>
+                    <td style={{padding:"5px 8px",fontSize:12}}>{r.jenisBarang||"-"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center"}}>{r.satuan}</td>
                     <td style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{fmtNum(r.saldoAwal)}</td>
                     <td style={{padding:"5px 8px",textAlign:"center",color:C.green,fontWeight:r.masuk>0?700:400}}>{r.masuk>0?fmtNum(r.masuk):"-"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center",color:C.red,fontWeight:r.keluar>0?700:400}}>{r.keluar>0?fmtNum(r.keluar):"-"}</td>
                     <td style={{padding:"5px 8px",textAlign:"center",fontWeight:700}}>{fmtNum(r.saldoAkhir)}</td>
-                    <td style={{padding:"5px 8px",fontSize:10,color:"#0098da",whiteSpace:"nowrap"}}>{r.tugBaDoc}</td>
-                    <td style={{padding:"5px 8px",fontSize:10,color:C.muted,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.keterangan}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center",fontSize:10,whiteSpace:"nowrap"}}>{r.tanggalMutasi}</td>
+                    <td style={{padding:"5px 8px",fontSize:12,color:"#0098da",whiteSpace:"nowrap"}}>{r.tugBaDoc}</td>
+                    <td style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.keterangan}</td>
+                    <td style={{padding:"5px 8px",textAlign:"center",fontSize:12,whiteSpace:"nowrap"}}>{r.tanggalMutasi}</td>
                   </tr>
                 );
               })}

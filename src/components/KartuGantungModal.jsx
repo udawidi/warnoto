@@ -21,8 +21,8 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
             <h3 style={{fontSize:17,fontWeight:800}}>🏷️ Kartu Gantung Digital — TUG.2</h3>
             <p style={{fontSize:12,color:C.muted}}>No. Katalog: {katalog.katalog||"-"}</p>
             <div style={{display:"flex",gap:6,marginTop:4}}>
-              <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"#f3f4f6",color:"#374151"}}>{dominantJenis}</span>
-              {(()=>{const bs=getSAPBadgeStyle(katalog.katalog);return <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:bs.bg,color:bs.fg}}>{getSAPLabel(katalog.katalog)}</span>;})()}
+              <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#374151"}}>{dominantJenis}</span>
+              {(()=>{const bs=getSAPBadgeStyle(katalog.katalog);return <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg}}>{getSAPLabel(katalog.katalog)}</span>;})()}
             </div>
           </div>
           <button style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600}} onClick={onClose}>✕ Tutup</button>
@@ -38,10 +38,10 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
           <div>
             <div style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:14}}>
               <div style={{fontWeight:800,fontSize:14,marginBottom:4}}>{katalog.name}</div>
-              <div style={{fontSize:11,color:C.muted}}>Satuan: {katalog.satuan} • Lokasi: {lokasiTerkait.length>0?lokasiTerkait.join(", "):"Belum ada"}</div>
+              <div style={{fontSize:12,color:C.muted}}>Satuan: {katalog.satuan} • Lokasi: {lokasiTerkait.length>0?lokasiTerkait.join(", "):"Belum ada"}</div>
             </div>
             <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                 <thead>
                   <tr style={{background:C.sidebar,color:"white"}}>
                     <th style={{padding:"6px 8px",textAlign:"left"}}>TGL</th>
@@ -80,8 +80,8 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
               <div style={{border:`3px solid ${accent}`,borderRadius:10,padding:16,background:"white",width:260,textAlign:"center",marginBottom:16}}>
                 <img src={qrImgUrl} alt="QR Scan TUG-2" width={140} height={140} style={{display:"block",margin:"0 auto"}}/>
                 <div style={{fontSize:12,fontWeight:800,marginTop:10,lineHeight:1.3}}>{katalog.name}</div>
-                <div style={{fontSize:10,color:C.muted,marginTop:4}}>No. Katalog: {katalog.katalog||"-"}</div>
-                <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:accent,color:dominantJenis==="Pre Memory"?"#111":"white",border:dominantJenis==="Pre Memory"?`1px solid #d1d5db`:"none"}}>{dominantJenis}</span>
+                <div style={{fontSize:12,color:C.muted,marginTop:4}}>No. Katalog: {katalog.katalog||"-"}</div>
+                <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:accent,color:dominantJenis==="Pre Memory"?"#111":"white",border:dominantJenis==="Pre Memory"?`1px solid #d1d5db`:"none"}}>{dominantJenis}</span>
               </div>
               <button onClick={async()=>{
                 const lokMap={};
@@ -96,10 +96,10 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                 const html=await buildBarcodeSheetHTML([katalog],lokMap);
                 if(w){w.document.write(html);w.document.close();}
               }} style={{...sty.btn("primary"),marginBottom:12}}>🖨️ Cetak Label (Print / Save PDF)</button>
-              <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:14,maxWidth:320}}>
+              <div style={{fontSize:12,color:C.muted,textAlign:"center",marginBottom:14,maxWidth:320}}>
                 Klik "Cetak Label" untuk print/simpan PDF label 5×5 cm (QR + nama + lokasi). Scan QR dari HP untuk lihat riwayat TUG-2 material ini tanpa login.
               </div>
-              <div style={{fontSize:11,color:"#0369a1",background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:8,padding:"8px 10px",maxWidth:340,textAlign:"center",wordBreak:"break-all"}}>
+              <div style={{fontSize:12,color:"#0369a1",background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:8,padding:"8px 10px",maxWidth:340,textAlign:"center",wordBreak:"break-all"}}>
                 🔗 {scanUrl}
               </div>
             </div>

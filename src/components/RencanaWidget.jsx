@@ -23,12 +23,12 @@ export function RencanaWidget({ rencanaKedatanganList, C, sty, setTab }) {
         return (
           <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
-              <div style={{fontSize:11,fontWeight:600}}>{item.namaBarang}</div>
-              <div style={{fontSize:10,color:C.muted}}>{item.supplier} • {item.jumlah} {item.satuan}</div>
+              <div style={{fontSize:12,fontWeight:600}}>{item.namaBarang}</div>
+              <div style={{fontSize:12,color:C.muted}}>{item.supplier} • {item.jumlah} {item.satuan}</div>
             </div>
             <div style={{textAlign:"right"}}>
-              <div style={{fontSize:11,fontWeight:700,color:isLate?"#dc2626":"#16a34a"}}>{item.tanggalSerahTerima||"-"}</div>
-              {isLate && <div style={{fontSize:9,color:"#dc2626",fontWeight:700}}>⚠️ Terlambat</div>}
+              <div style={{fontSize:12,fontWeight:700,color:isLate?"#dc2626":"#16a34a"}}>{item.tanggalSerahTerima||"-"}</div>
+              {isLate && <div style={{fontSize:12,color:"#dc2626",fontWeight:700}}>⚠️ Terlambat</div>}
             </div>
           </div>
         );

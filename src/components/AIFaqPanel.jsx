@@ -75,9 +75,9 @@ export function AIFaqPanel({ sty, C, onSaved }) {
             <div key={`${log._table}_${log.id}`} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:8,background:"#fffbeb"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4}}>
                 <div style={{fontSize:12,fontWeight:700}}>{log.message_in}</div>
-                <span style={{fontSize:10,color:C.muted,whiteSpace:"nowrap"}}>{log._channel} • {log.display_name||log.telegram_username||log.phone_number||"-"}</span>
+                <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>{log._channel} • {log.display_name||log.telegram_username||log.phone_number||"-"}</span>
               </div>
-              <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Jawaban bot: "{(log.answer_summary||"").slice(0,150)}{(log.answer_summary||"").length>150?"...":""}"{log.feedback==="down" && " (ditandai 👎 oleh user)"}</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:6}}>Jawaban bot: "{(log.answer_summary||"").slice(0,150)}{(log.answer_summary||"").length>150?"...":""}"{log.feedback==="down" && " (ditandai 👎 oleh user)"}</div>
               {answeringId===`${log._table}_${log.id}` ? (
                 <div>
                   <textarea style={{...sty.input,minHeight:70,marginBottom:6}} placeholder="Tulis jawaban resmi yang benar..." value={answerDraft} onChange={e=>setAnswerDraft(e.target.value)}/>
@@ -98,7 +98,7 @@ export function AIFaqPanel({ sty, C, onSaved }) {
             <div key={f.id} style={{display:"flex",justifyContent:"space-between",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
               <div>
                 <div style={{fontSize:12,fontWeight:700}}>{f.pertanyaan}</div>
-                <div style={{fontSize:11,color:C.muted}}>{f.jawaban}</div>
+                <div style={{fontSize:12,color:C.muted}}>{f.jawaban}</div>
               </div>
               <button style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>deactivateFaq(f.id)}>🗑️ Nonaktifkan</button>
             </div>

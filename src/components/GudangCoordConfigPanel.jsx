@@ -34,12 +34,12 @@ export function GudangCoordConfigPanel({
         </div>
 
         {manualAddMode ? (
-          <div style={{fontSize:11,color:"#1d4ed8",fontWeight:700,marginBottom:8}}>Klik titik-titik di denah untuk menambah blok baru (bisa beberapa kali). Usulan akan muncul di panel untuk dikonfirmasi & dikirim ke TL.</div>
+          <div style={{fontSize:12,color:"#1d4ed8",fontWeight:700,marginBottom:8}}>Klik titik-titik di denah untuk menambah blok baru (bisa beberapa kali). Usulan akan muncul di panel untuk dikonfirmasi & dikirim ke TL.</div>
         ) : (
           <div style={{marginBottom:10}}>
-            <div style={{fontSize:11,fontWeight:700,color:C.muted,marginBottom:6}}>Atau, blok yang belum punya koordinat — klik untuk pilih, lalu klik titik di denah:</div>
+            <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Atau, blok yang belum punya koordinat — klik untuk pilih, lalu klik titik di denah:</div>
             {unassigned.length===0
-              ? <div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>Semua blok di sini sudah punya koordinat.</div>
+              ? <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Semua blok di sini sudah punya koordinat.</div>
               : <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                   {unassigned.map(l=>(
                     <button key={l.id} style={sty.btn(pendingMapLokasi===l.id?"danger":"ghost","sm")} onClick={()=>setPendingMapLokasi(pendingMapLokasi===l.id?null:l.id)}>
@@ -51,7 +51,7 @@ export function GudangCoordConfigPanel({
           </div>
         )}
 
-        {ocrNotReady && <div style={{fontSize:10,color:C.muted,marginBottom:8}}>⏳ OCR denah belum tersedia, jalankan ulang upload denah untuk membaca label otomatis.</div>}
+        {ocrNotReady && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>⏳ OCR denah belum tersedia, jalankan ulang upload denah untuk membaca label otomatis.</div>}
 
         <div style={{maxWidth:380,margin:"0 auto"}}>
           <div style={{position:"relative",cursor:(manualAddMode||pendingMapLokasi)?"crosshair":"default",width:"100%"}}
@@ -81,7 +81,7 @@ export function GudangCoordConfigPanel({
         {manualAddMode && (
           <button style={{...sty.btn("success","sm"),marginTop:10}} onClick={onFinishAdding}>💾 Save Blok</button>
         )}
-        <div style={{fontSize:10,color:C.muted,marginTop:6}}>💡 Klik titik yang sudah ada, lalu klik posisi baru di denah untuk memindahkan koordinatnya (titik jadi hijau saat aktif). Titik hijau putus-putus = blok baru draft (belum dikirim ke TL).</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:6}}>💡 Klik titik yang sudah ada, lalu klik posisi baru di denah untuk memindahkan koordinatnya (titik jadi hijau saat aktif). Titik hijau putus-putus = blok baru draft (belum dikirim ke TL).</div>
       </div>
     </div>
   );

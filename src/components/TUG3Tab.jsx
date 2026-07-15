@@ -25,7 +25,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       REJECTED: { label:"DITOLAK", bg:"#fee2e2", fg:"#991b1b" },
     };
     const m = map[stage] || { label:stage, bg:"#f3f4f6", fg:C.muted };
-    return <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
+    return <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
   }
 
   function openTug4Modal(txn) { setTug4Form({ timMutuId:"", lokasiPenyerahan:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan" }); setTug4Modal(txn); }
@@ -46,11 +46,11 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:800,fontSize:14}}>{t.dariSupplier}</div>
-                  <div style={{fontSize:11,color:"#0098da",fontWeight:700}}>{t.docNumbers.tug3}</div>
+                  <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers.tug3}</div>
                 </div>
                 {stageBadge(t.stage)}
               </div>
-              <div style={{fontSize:11,color:C.muted,display:"flex",gap:16,flexWrap:"wrap",marginBottom:8}}>
+              <div style={{fontSize:12,color:C.muted,display:"flex",gap:16,flexWrap:"wrap",marginBottom:8}}>
                 <span>📅 Diterima: {t.tanggalDiterima||"-"}</span>
                 <span>🚚 {t.denganKirim}</span>
                 <span>👷 Diajukan oleh {creator.name||"-"}</span>
@@ -62,10 +62,10 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 })}
               </div>
 
-              {t.approvedByTL && <div style={{fontSize:11,color:C.green,marginBottom:4}}>✅ TUG-3 Karantina disetujui TL: {tlUser.name} • {fmtDate(t.approvedAtTL)}</div>}
-              {t.approvedByManager && <div style={{fontSize:11,color:C.green,marginBottom:4}}>✅ TUG-4 disetujui Manager: {mgrUser.name} • {fmtDate(t.approvedAtManager)} {tm && `(Tim: ${tm.label})`}</div>}
-              {t.approvedByAsman && <div style={{fontSize:11,color:C.green,marginBottom:4}}>✅ TUG-3 Final disetujui Asman: {asmanUser.name} • {fmtDate(t.approvedAtAsman)}</div>}
-              {t.status==="REJECTED" && <div style={{fontSize:11,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
+              {t.approvedByTL && <div style={{fontSize:12,color:C.green,marginBottom:4}}>✅ TUG-3 Karantina disetujui TL: {tlUser.name} • {fmtDate(t.approvedAtTL)}</div>}
+              {t.approvedByManager && <div style={{fontSize:12,color:C.green,marginBottom:4}}>✅ TUG-4 disetujui Manager: {mgrUser.name} • {fmtDate(t.approvedAtManager)} {tm && `(Tim: ${tm.label})`}</div>}
+              {t.approvedByAsman && <div style={{fontSize:12,color:C.green,marginBottom:4}}>✅ TUG-3 Final disetujui Asman: {asmanUser.name} • {fmtDate(t.approvedAtAsman)}</div>}
+              {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
 
               {rejectingId===t.id && (
                 <div style={{marginBottom:10}}>
@@ -169,22 +169,22 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
               <div>
                 <label style={sty.label}>Foto Kendaraan</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoKendaraan:img})))} style={{fontSize:11,color:C.muted}}/>
+                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoKendaraan:img})))} style={{fontSize:12,color:C.muted}}/>
                 {finalForm.fotoKendaraan && <img src={finalForm.fotoKendaraan} alt="kendaraan" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
               </div>
               <div>
                 <label style={sty.label}>SIM / KTP</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoSimKtp:img})))} style={{fontSize:11,color:C.muted}}/>
+                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoSimKtp:img})))} style={{fontSize:12,color:C.muted}}/>
                 {finalForm.fotoSimKtp && <img src={finalForm.fotoSimKtp} alt="sim ktp" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
               </div>
               <div>
                 <label style={sty.label}>Surat Jalan</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoSuratJalanImg:img})))} style={{fontSize:11,color:C.muted}}/>
+                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoSuratJalanImg:img})))} style={{fontSize:12,color:C.muted}}/>
                 {finalForm.fotoSuratJalanImg && <img src={finalForm.fotoSuratJalanImg} alt="surat jalan" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
               </div>
               <div>
                 <label style={sty.label}>Foto Kontrak</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoKontrak:img})))} style={{fontSize:11,color:C.muted}}/>
+                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoKontrak:img})))} style={{fontSize:12,color:C.muted}}/>
                 {finalForm.fotoKontrak && <img src={finalForm.fotoKontrak} alt="kontrak" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
               </div>
             </div>

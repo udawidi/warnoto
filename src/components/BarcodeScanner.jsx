@@ -57,7 +57,7 @@ export function BarcodeScanner({ onDetect, onClose }) {
           </>
         )}
       </div>
-      <div style={{padding:14,background:"#111",color:"#9ca3af",fontSize:11,textAlign:"center"}}>Arahkan kamera ke barcode / QR code label barang</div>
+      <div style={{padding:14,background:"#111",color:"#9ca3af",fontSize:12,textAlign:"center"}}>Arahkan kamera ke barcode / QR code label barang</div>
     </div>
   );
 }

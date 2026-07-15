@@ -51,13 +51,13 @@ export function BarcodePrintModal({ katalogList, stocks, lokasiList, gudangList,
         <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:14 }}>
           {JENIS_BARANG.map((j) => {
             const on = jenisSel.has(j);
-            return <button key={j} onClick={()=>toggleJenis(j)} style={{ padding:"5px 12px", borderRadius:20, border:`1px solid ${on?C.accent:C.border}`, background:on?C.accent:"white", color:on?"white":C.muted, fontSize:11, fontWeight:700, cursor:"pointer" }}>{j}</button>;
+            return <button key={j} onClick={()=>toggleJenis(j)} style={{ padding:"5px 12px", borderRadius:20, border:`1px solid ${on?C.accent:C.border}`, background:on?C.accent:"white", color:on?"white":C.muted, fontSize:12, fontWeight:700, cursor:"pointer" }}>{j}</button>;
           })}
         </div>
         <div style={{ fontSize:12, fontWeight:700, marginBottom:6 }}>Status SAP</div>
         <div style={{ display:"flex", gap:6, marginBottom:16 }}>
           {[{id:"ALL",label:"Semua"},{id:"SAP",label:"SAP"},{id:"NONSAP",label:"Non-SAP"}].map((o)=>(
-            <button key={o.id} onClick={()=>setSapSel(o.id)} style={{ padding:"5px 14px", borderRadius:20, border:`1px solid ${sapSel===o.id?C.accent:C.border}`, background:sapSel===o.id?C.accent:"white", color:sapSel===o.id?"white":C.muted, fontSize:11, fontWeight:700, cursor:"pointer" }}>{o.label}</button>
+            <button key={o.id} onClick={()=>setSapSel(o.id)} style={{ padding:"5px 14px", borderRadius:20, border:`1px solid ${sapSel===o.id?C.accent:C.border}`, background:sapSel===o.id?C.accent:"white", color:sapSel===o.id?"white":C.muted, fontSize:12, fontWeight:700, cursor:"pointer" }}>{o.label}</button>
           ))}
         </div>
         <div style={{ background:C.bg, borderRadius:10, padding:"12px 14px", display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>

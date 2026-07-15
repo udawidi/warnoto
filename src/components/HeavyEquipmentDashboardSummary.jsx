@@ -70,7 +70,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
         <div>
           <div style={{fontSize:14,fontWeight:900}}>🚜 Ringkasan Alat Berat</div>
-          <div style={{fontSize:11,color:C.muted}}>Scope: <b>{scopeLabel}</b> — status peminjaman, ketersediaan &amp; kondisi alat.</div>
+          <div style={{fontSize:12,color:C.muted}}>Scope: <b>{scopeLabel}</b> — status peminjaman, ketersediaan &amp; kondisi alat.</div>
         </div>
         <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("heavyEquipment");}}>Buka Menu</button>
       </div>
@@ -81,7 +81,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
           <div key={c.key} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,padding:"10px 8px",background:"#f0f9ff",border:`1px solid #bae6fd`,borderRadius:10}}>
             <span style={{color:C.accent}}>{catIcons[c.key]}</span>
             <span style={{fontSize:20,fontWeight:900,color:C.accent}}>{c.count}</span>
-            <span style={{fontSize:10,fontWeight:700,color:C.muted,textAlign:"center"}}>{c.label}</span>
+            <span style={{fontSize:12,fontWeight:700,color:C.muted,textAlign:"center"}}>{c.label}</span>
           </div>
         ))}
       </div>
@@ -97,7 +97,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
           {label:"Perlu Tindakan", val:issueCount, color:issueCount?C.red:C.green},
         ].map(k=>(
           <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
-            <div style={{fontSize:10,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
+            <div style={{fontSize:12,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
             <div style={{fontSize:20,fontWeight:900,color:k.color}}>{k.val}</div>
           </div>
         ))}
@@ -112,7 +112,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
             const returnDate = getHeavyEquipmentLoanReturnDate(l);
             const jobName = getHeavyEquipmentLoanJobName(l);
             return (
-              <div key={l.id} style={{fontSize:11,display:"flex",gap:6,alignItems:"center",padding:"4px 8px",borderRadius:6,background:status==="OVERDUE"?"#fef2f2":"#fff7ed"}}>
+              <div key={l.id} style={{fontSize:12,display:"flex",gap:6,alignItems:"center",padding:"4px 8px",borderRadius:6,background:status==="OVERDUE"?"#fef2f2":"#fff7ed"}}>
                 <span style={{fontWeight:700,color:status==="OVERDUE"?C.red:"#c2410c",minWidth:54}}>{status==="OVERDUE"?"⚠ OVERDUE":"📌 Dipinjam"}</span>
                 <span style={{color:C.text}}>{l.equipmentId||"-"}</span>
                 <span style={{color:C.muted}}>→ {requesterUpt}</span>
@@ -121,7 +121,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
               </div>
             );
           })}
-          {(borrowedLoans.length+overdueLoans.length)>3&&<div style={{fontSize:11,color:C.muted,paddingLeft:8}}>+{borrowedLoans.length+overdueLoans.length-3} peminjaman lainnya</div>}
+          {(borrowedLoans.length+overdueLoans.length)>3&&<div style={{fontSize:12,color:C.muted,paddingLeft:8}}>+{borrowedLoans.length+overdueLoans.length-3} peminjaman lainnya</div>}
         </div>
       )}
     </div>

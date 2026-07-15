@@ -22,7 +22,7 @@ export function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganLis
           <div>
             <p style={{color:C.muted,fontSize:13}}>UPT Surabaya • {new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
           </div>
-          <span style={{padding:"4px 12px",borderRadius:20,background:"#dbeafe",color:"#1d4ed8",fontSize:11,fontWeight:700}}>UPT Surabaya</span>
+          <span style={{padding:"4px 12px",borderRadius:20,background:"#dbeafe",color:"#1d4ed8",fontSize:12,fontWeight:700}}>UPT Surabaya</span>
         </div>
       </div>
 
@@ -38,7 +38,7 @@ export function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganLis
           <div key={i} style={{...sty.card,borderTop:`3px solid ${s.color}`,padding:12}}>
             <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
             <div style={{fontSize:16,fontWeight:900,color:s.color}}>{s.val}</div>
-            <div style={{fontSize:10,color:C.muted,marginTop:2}}>{s.label}</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
           </div>
         ))}
       </div>
@@ -56,8 +56,8 @@ export function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganLis
               <h3 style={{fontSize:13,fontWeight:700,color:"#dc2626",marginBottom:10}}>🔴 Material Stok Kritis ({stokKritis.length})</h3>
               {stokKritis.slice(0,5).map((s,i)=>(
                 <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,display:"flex",justifyContent:"space-between"}}>
-                  <div><div style={{fontSize:11,fontWeight:600}}>{s.name}</div><div style={{fontSize:10,color:C.muted}}>{s.katalog}</div></div>
-                  <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:"#dc2626"}}>{fmtNum(s.qty)} {s.unit}</div><div style={{fontSize:10,color:C.muted}}>min: {fmtNum(s.minQty)}</div></div>
+                  <div><div style={{fontSize:12,fontWeight:600}}>{s.name}</div><div style={{fontSize:12,color:C.muted}}>{s.katalog}</div></div>
+                  <div style={{textAlign:"right"}}><div style={{fontSize:12,fontWeight:700,color:"#dc2626"}}>{fmtNum(s.qty)} {s.unit}</div><div style={{fontSize:12,color:C.muted}}>min: {fmtNum(s.minQty)}</div></div>
                 </div>
               ))}
             </div>
@@ -72,10 +72,10 @@ export function DashboardAsman({ stocks, txns, katalogList, rencanaKedatanganLis
               {akanHabis.slice(0,4).map((item,i)=>(
                 <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
                   <div style={{display:"flex",justifyContent:"space-between"}}>
-                    <div style={{fontSize:11,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.nama}</div>
-                    <span style={{fontSize:10,fontWeight:700,color:item.isKritis?"#dc2626":"#d97706",marginLeft:6}}>{item.badge}</span>
+                    <div style={{fontSize:12,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.nama}</div>
+                    <span style={{fontSize:12,fontWeight:700,color:item.isKritis?"#dc2626":"#d97706",marginLeft:6}}>{item.badge}</span>
                   </div>
-                  <div style={{fontSize:10,color:C.muted}}>{fmtNum(item.totalQty)} {item.satuan} • {item.estimasiHari===Infinity?"tidak ada data":`~${item.estimasiHari} hari`}</div>
+                  <div style={{fontSize:12,color:C.muted}}>{fmtNum(item.totalQty)} {item.satuan} • {item.estimasiHari===Infinity?"tidak ada data":`~${item.estimasiHari} hari`}</div>
                 </div>
               ))}
             </div>

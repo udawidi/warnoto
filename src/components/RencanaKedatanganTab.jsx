@@ -60,9 +60,9 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
           <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:8,padding:10,marginBottom:14}}>
             <div style={{fontSize:12,fontWeight:700,color:"#1d4ed8",marginBottom:6}}>🤖 Upload Surat Rencana Pengiriman Material dari Vendor — AI akan ekstrak otomatis</div>
             <input type="file" accept=".pdf" onChange={handlePdfUpload} style={{fontSize:12}}/>
-            {aiLoading && <div style={{fontSize:11,color:"#1d4ed8",marginTop:6}}>⏳ AI sedang membaca surat...</div>}
-            {aiError && <div style={{fontSize:11,color:C.red,marginTop:6}}>❌ {aiError}</div>}
-            <div style={{fontSize:10,color:C.muted,marginTop:4}}>Dokumen ini biasanya mencantumkan no. kontrak & tanggal rencana kirim/tiba barang. Setelah upload, review hasilnya di bawah dan edit jika perlu.</div>
+            {aiLoading && <div style={{fontSize:12,color:"#1d4ed8",marginTop:6}}>⏳ AI sedang membaca surat...</div>}
+            {aiError && <div style={{fontSize:12,color:C.red,marginTop:6}}>❌ {aiError}</div>}
+            <div style={{fontSize:12,color:C.muted,marginTop:4}}>Dokumen ini biasanya mencantumkan no. kontrak & tanggal rencana kirim/tiba barang. Setelah upload, review hasilnya di bawah dan edit jika perlu.</div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
             <div><label style={sty.label}>No. Kontrak</label><input style={sty.input} value={form.noKontrak} onChange={e=>setForm(f=>({...f,noKontrak:e.target.value}))}/></div>
@@ -133,7 +133,7 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
                 return (
                   <div key={i} style={{fontSize:12,padding:"3px 0",display:"flex",justifyContent:"space-between"}}>
                     <span>📦 {item.namaBarang} <b>x{item.jumlah}</b> {item.satuan}</span>
-                    {kat && <span style={{fontSize:10,color:"#0098da"}}>→ {kat.name}</span>}
+                    {kat && <span style={{fontSize:12,color:"#0098da"}}>→ {kat.name}</span>}
                   </div>
                 );
               })}

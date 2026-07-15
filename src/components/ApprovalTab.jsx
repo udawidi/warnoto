@@ -32,7 +32,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
     return (
       <div style={{display:"flex",justifyContent:"flex-end",alignItems:"center",gap:6,marginTop:8,marginBottom:12}}>
         <button style={{...sty.btn("ghost","sm")}} disabled={page<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
-        <span style={{fontSize:11,color:C.muted,padding:"0 4px"}}>Halaman {page} / {totalPages}</span>
+        <span style={{fontSize:12,color:C.muted,padding:"0 4px"}}>Halaman {page} / {totalPages}</span>
         <button style={{...sty.btn("ghost","sm")}} disabled={page>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Berikutnya →</button>
       </div>
     );
@@ -80,7 +80,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
     if (t.docType==="TUG10") return (t.stockItems||[]).map((si,i)=>{
       const nama = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
       const bs = statusMaterialBadgeStyle(si.statusMaterial);
-      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {nama} <b>x{si.qty}</b> <span style={{padding:"2px 6px",borderRadius:20,fontSize:10,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></div>;
+      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {nama} <b>x{si.qty}</b> <span style={{padding:"2px 6px",borderRadius:20,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></div>;
     });
     if (t.docType==="TUG5") return (t.stockItems||[]).map((si,i)=>{
       const kat = (katalogList||[]).find(k=>k.id===si.katalogId);
@@ -106,7 +106,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   // "Tambah/Ubah/Hapus Blok" terkesan ikut masuk ke approval transaksi TUG (keluhan user
   // 2026-07-06).
   function sectionHeading(icon, text) {
-    return <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.5,textTransform:"uppercase",margin:"14px 0 10px",paddingBottom:6,borderBottom:`2px solid ${C.border}`}}>{icon} {text}</div>;
+    return <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:0.5,textTransform:"uppercase",margin:"14px 0 10px",paddingBottom:6,borderBottom:`2px solid ${C.border}`}}>{icon} {text}</div>;
   }
 
   return (
@@ -129,34 +129,34 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
           <div key={t.id} className="approval-card" style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${stageColor}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div>
-                <div style={{fontSize:11,color:stageColor,fontWeight:800,textTransform:"uppercase"}}>{t.docType.replace("TUG","TUG-")} — {stageLabelOf(t)}</div>
+                <div style={{fontSize:12,color:stageColor,fontWeight:800,textTransform:"uppercase"}}>{t.docType.replace("TUG","TUG-")} — {stageLabelOf(t)}</div>
                 <div style={{fontSize:15,fontWeight:800}}>{t.namaPekerjaan||t.keteranganUmum||docNoOf(t)}</div>
-                <div style={{fontSize:11,color:"#0098da",fontWeight:700}}>{docNoOf(t)}</div>
-                {creator.name && <div style={{fontSize:11,color:C.muted}}>Diajukan: {creator.name} ({ROLES[creator.role]}) • {fmtDate(t.createdAt)}</div>}
+                <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{docNoOf(t)}</div>
+                {creator.name && <div style={{fontSize:12,color:C.muted}}>Diajukan: {creator.name} ({ROLES[creator.role]}) • {fmtDate(t.createdAt)}</div>}
               </div>
-              <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>
+              <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>
                 {isTUG8Draft?"DRAFT":isTUG7Draft?"DRAFT UIT":"PENDING"}
               </span>
             </div>
 
             {/* Info khusus per tipe */}
             {isTUG8Draft && (
-              <div style={{background:"#f3e8ff",border:`1px solid #c4b5fd`,borderRadius:6,padding:"6px 10px",fontSize:11,color:"#7c3aed",marginBottom:8}}>
+              <div style={{background:"#f3e8ff",border:`1px solid #c4b5fd`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#7c3aed",marginBottom:8}}>
                 📦 Draft TUG-8 dari TUG-7 {t.noReferensiTug7} — UPT Pengirim: {t.lokasiPekerjaan}. Konfirmasi untuk aktifkan ke antrian approval TUG-8 biasa.
               </div>
             )}
             {isTUG10 && (
-              <div style={{background:"#dcfce7",border:`1px solid #86efac`,borderRadius:6,padding:"6px 10px",fontSize:11,color:"#166534",marginBottom:8}}>
+              <div style={{background:"#dcfce7",border:`1px solid #86efac`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#166534",marginBottom:8}}>
                 ℹ️ Pengembalian material — stok akan BERTAMBAH saat disetujui.
               </div>
             )}
             {t.docType==="TUG5" && t.sourceType==="ULTG" && (
-              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:6,padding:"6px 10px",fontSize:11,color:"#1d4ed8",marginBottom:8}}>
+              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#1d4ed8",marginBottom:8}}>
                 🏘️ Dari ULTG {(ultgList||[]).find(u=>u.id===t.ultgId)?.nama||t.ultgId||"-"} — setelah disetujui, siap di-adopt Admin/TL UPT induk menjadi TUG-9.
               </div>
             )}
             {t.docType==="TUG5" && t.sourceType!=="ULTG" && (
-              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:6,padding:"6px 10px",fontSize:11,color:"#1d4ed8",marginBottom:8}}>
+              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#1d4ed8",marginBottom:8}}>
                 {t.jenisTransfer==="INTRACOMPANY"?"🔄 Intracompany — setelah approved akan generate draft TUG-7 di UIT":"🌐 Intercompany — setelah approved akan generate draft TUG-5 UIT"}
               </div>
             )}
@@ -219,11 +219,11 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
         <div key={imp.id} className="approval-card" style={{...sty.card,marginBottom:12,borderLeft:"4px solid #f59e0b"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
             <div>
-              <div style={{fontSize:11,color:"#92400e",fontWeight:800,textTransform:"uppercase"}}>Kapasitas Gudang — Menunggu Approval</div>
+              <div style={{fontSize:12,color:"#92400e",fontWeight:800,textTransform:"uppercase"}}>Kapasitas Gudang — Menunggu Approval</div>
               <div style={{fontWeight:800,fontSize:13,marginTop:2}}>{imp.sourceFile}</div>
-              <div style={{fontSize:11,color:C.muted}}>Diajukan {new Date(imp.importedAt).toLocaleString("id")} oleh {imp.importedBy}</div>
+              <div style={{fontSize:12,color:C.muted}}>Diajukan {new Date(imp.importedAt).toLocaleString("id")} oleh {imp.importedBy}</div>
             </div>
-            <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:"#fefce8",color:"#92400e"}}>⏳ Pending</span>
+            <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#fefce8",color:"#92400e"}}>⏳ Pending</span>
           </div>
           <div style={{display:"flex",gap:14,fontSize:12,marginBottom:10}}>
             <span>Total: <b>{imp.totalRows}</b></span>
@@ -231,7 +231,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
             <span style={{color:C.red}}>Invalid: <b>{imp.invalidRows}</b></span>
           </div>
           <div style={{overflowX:"auto",maxHeight:200,overflowY:"auto",marginBottom:10,border:`1px solid ${C.border}`,borderRadius:8}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead style={{background:"#f9fafb",position:"sticky",top:0}}>
                 <tr>{["UPT","Gudang","Sub Gudang","Luas Lahan","Terpakai","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left"}}>{h}</th>)}</tr>
               </thead>
@@ -248,7 +248,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                 ))}
               </tbody>
             </table>
-            {imp.records.length>50 && <div style={{fontSize:10,color:C.muted,padding:6,textAlign:"center"}}>+{imp.records.length-50} baris lainnya</div>}
+            {imp.records.length>50 && <div style={{fontSize:12,color:C.muted,padding:6,textAlign:"center"}}>+{imp.records.length-50} baris lainnya</div>}
           </div>
           {rejectingCapId===imp.id ? (
             <div style={{display:"flex",gap:8}}>
@@ -279,9 +279,9 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
           <div key={l.id} className="approval-card" style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.yellow}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
               <div>
-                <div style={{fontSize:11,color:"#92400e",fontWeight:800,textTransform:"uppercase"}}>Perubahan Lokasi/Blok</div>
+                <div style={{fontSize:12,color:"#92400e",fontWeight:800,textTransform:"uppercase"}}>Perubahan Lokasi/Blok</div>
                 <div style={{fontSize:13,fontWeight:700,marginTop:2}}>{aksiLabel}: {l.pendingAction==="EDIT"?l.pendingData?.kode:l.kode}</div>
-                <div style={{fontSize:11,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
+                <div style={{fontSize:12,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
               </div>
               <div style={{display:"flex",gap:6,flexShrink:0}}>
                 <button style={sty.btn("primary","sm")} onClick={()=>approveLokasiChange(l.id)}>✓ Setuju</button>

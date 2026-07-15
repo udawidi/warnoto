@@ -313,7 +313,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
                 </label>
               </div>
-              <div style={{fontSize:10,color:C.muted,marginTop:8}}>
+              <div style={{fontSize:12,color:C.muted,marginTop:8}}>
                 "Tambah Material" untuk barang yang belum pernah tercatat di mana pun. "Upload Usulan Pencocokan" untuk file review yang sudah disiapkan sebelumnya (kode MARA sudah dicocokkan, tinggal diverifikasi fisik).
               </div>
             </div>
@@ -328,15 +328,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </div>
                   <button title="Batalkan & tutup antrian ini" style={sty.btn("ghost","sm")} onClick={()=>{ if(window.confirm("Batalkan antrian ini? Baris yang belum diproses akan hilang dari daftar (material yang sudah tersimpan TIDAK ikut terhapus).")) setTambahQueue([]); }}>✕ Batal</button>
                 </div>
-                <div style={{fontSize:10,color:C.muted,marginBottom:10}}>
+                <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
                   Qty di file ini data lama (AppSheet) — bukan angka final. Tetap wajib dihitung fisik ulang & isi lokasi tiap kali diproses.
                 </div>
                 <div style={{maxHeight:280,overflowY:"auto"}}>
                   {tambahQueue.map(q=>(
                     <div key={q.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderBottom:`1px solid ${C.border}`,opacity:q.status!=="PENDING"?0.5:1}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:11,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.nama}</div>
-                        <div style={{fontSize:9,color:C.muted}}>
+                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.nama}</div>
+                        <div style={{fontSize:12,color:C.muted}}>
                           Katalog asli: {q.katalogAsli||"-"} • Qty file: {q.qtyFile||"-"} •{" "}
                           <span style={{fontWeight:700,color:q.skor==="KUAT"?"#166534":q.skor==="LEMAH"?"#92400e":"#991b1b"}}>{q.skor}</span>
                           {q.maraCode && ` (${q.maraCode})`}
@@ -348,7 +348,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           <button style={sty.btn("ghost","sm")} onClick={()=>skipQueueItem(q.id)}>Lewati</button>
                         </div>
                       ) : (
-                        <span style={{fontSize:10,fontWeight:700,color:q.status==="DONE"?C.green:C.muted,flexShrink:0}}>
+                        <span style={{fontSize:12,fontWeight:700,color:q.status==="DONE"?C.green:C.muted,flexShrink:0}}>
                           {q.status==="DONE"?"✅ Selesai":"⏭️ Dilewati"}
                         </span>
                       )}
@@ -374,11 +374,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleCSVUpload} disabled={csvLoading} style={{display:"none"}}/>
             </label>
             {activeOpname.sapUploadedAt && (
-              <div style={{fontSize:11,color:C.green,marginTop:6}}>
+              <div style={{fontSize:12,color:C.green,marginTop:6}}>
                 ✅ {activeOpname.totalRowsSAP} baris SAP dibaca • {items.length} item total • {fmtDate(activeOpname.sapUploadedAt)}
               </div>
             )}
-            <div style={{fontSize:10,color:C.muted,marginTop:6}}>
+            <div style={{fontSize:12,color:C.muted,marginTop:6}}>
               Format: CSV/XLSX export SAP MM (PEMAT_DDMMYYYY). Kolom yang dipakai: Material, Material Description, Base Unit of Measure, Unrestricted Use Stock, Valuation Type. Kalau file punya lebih dari 1 sheet dengan header sama, semua ikut terbaca.
             </div>
           </div>
@@ -390,7 +390,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <div style={{...sty.card,marginBottom:14,padding:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div style={{fontSize:12,fontWeight:700}}>Progress Pengisian: {prog.filled}/{prog.total} item ({prog.pct}%)</div>
-                <div style={{fontSize:11,color:selisihCount>0?C.red:C.green,fontWeight:700}}>
+                <div style={{fontSize:12,color:selisihCount>0?C.red:C.green,fontWeight:700}}>
                   {selisihCount>0?`⚠️ ${selisihCount} item selisih`:"✅ Belum ada selisih"}
                 </div>
               </div>
@@ -406,7 +406,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 ].map((s,i)=>(
                   <div key={i} style={{textAlign:"center",padding:"6px",borderRadius:6,background:"#f9fafb",border:`1px solid ${C.border}`}}>
                     <div style={{fontSize:16,fontWeight:800,color:s.color}}>{s.val}</div>
-                    <div style={{fontSize:9,color:C.muted}}>{s.label}</div>
+                    <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
                   </div>
                 ))}
               </div>
@@ -416,8 +416,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {validationErrors.length>0 && (
               <div style={{background:"#fee2e2",border:`1px solid #fca5a5`,borderRadius:8,padding:10,marginBottom:12}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#991b1b",marginBottom:4}}>❌ Perlu diperbaiki sebelum submit:</div>
-                {validationErrors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:11,color:"#991b1b"}}>• {e}</div>)}
-                {validationErrors.length>5 && <div style={{fontSize:11,color:"#991b1b"}}>... dan {validationErrors.length-5} lainnya</div>}
+                {validationErrors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:12,color:"#991b1b"}}>• {e}</div>)}
+                {validationErrors.length>5 && <div style={{fontSize:12,color:"#991b1b"}}>... dan {validationErrors.length-5} lainnya</div>}
               </div>
             )}
 
@@ -427,20 +427,20 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 {!isReadOnly ? (
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <button style={sty.btn("ghost","sm")} onClick={handleScanQty}>📷 Scan QR untuk cari baris</button>
-                    <span style={{fontSize:10,color:C.muted}}>Scan cuma membantu temukan & lompat ke barisnya — qty hasil hitung fisik tetap wajib diketik manual.</span>
+                    <span style={{fontSize:12,color:C.muted}}>Scan cuma membantu temukan & lompat ke barisnya — qty hasil hitung fisik tetap wajib diketik manual.</span>
                   </div>
                 ) : <div/>}
-                <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:C.muted}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}>
                   Tampilkan:
                   {[10,20,50].map(n=>(
                     <button key={n} onClick={()=>{setPageSize(n);setPage(0);}}
-                      style={{padding:"3px 9px",borderRadius:5,border:`1px solid ${pageSize===n?C.accent:C.border}`,background:pageSize===n?C.accent:"white",color:pageSize===n?"white":C.text,fontSize:11,fontWeight:pageSize===n?700:400,cursor:"pointer"}}>
+                      style={{padding:"3px 9px",borderRadius:5,border:`1px solid ${pageSize===n?C.accent:C.border}`,background:pageSize===n?C.accent:"white",color:pageSize===n?"white":C.text,fontSize:12,fontWeight:pageSize===n?700:400,cursor:"pointer"}}>
                       {n}
                     </button>
                   ))}
                 </div>
               </div>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                 <thead>
                   <tr style={{background:C.sidebar,color:"white"}}>
                     {!isMobile && <th style={{padding:"7px 8px",textAlign:"center",width:36}}>No</th>}
@@ -474,17 +474,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     const itemGudangId = lokasiList?.find(l=>l.id===item.lokasiId)?.gudangId || "";
                     return (
                       <tr key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none"}}>
-                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:10}}>{realIdx+1}</td>}
+                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
                         <td style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {item.namaBarang}
                           {item.statusItem==="TIDAK_ADA_DI_SISTEM" && (
-                            <div style={{fontSize:9,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
+                            <div style={{fontSize:12,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
                           )}
                           {item.statusItem==="MATERIAL_BARU_NONSAP" && (
-                            <div style={{fontSize:9,fontWeight:700,color:"#1e40af",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
+                            <div style={{fontSize:12,fontWeight:700,color:"#1e40af",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
                           )}
                         </td>
-                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:10}}>{item.noKatalog}</td>}
+                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.noKatalog}</td>}
                         <td style={{padding:"6px 8px",textAlign:"center"}}>{item.satuan}</td>
                         {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",fontWeight:600}}>{fmtNum(item.qtySistem)}</td>}
                         {isSAP && <td style={{padding:"6px 8px",textAlign:"center",color:item.qtySAP!=null?C.text:"#9ca3af"}}>{item.qtySAP!=null?fmtNum(item.qtySAP):"—"}</td>}
@@ -492,7 +492,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {!isReadOnly
                             ? <input type="number" inputMode="decimal" min="0" value={item.qtsFisik} ref={el=>{qtyInputRefs.current[realIdx]=el;}}
                                 onChange={e=>updateItem(realIdx,"qtsFisik",Number(e.target.value))}
-                                style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:4,fontSize:11,textAlign:"center"}}/>
+                                style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:4,fontSize:12,textAlign:"center"}}/>
                             : <span style={{fontWeight:700}}>{fmtNum(item.qtsFisik)}</span>}
                         </td>
                         <td style={{padding:"6px 8px",textAlign:"center",fontWeight:700,
@@ -500,7 +500,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
                         </td>
                         <td style={{padding:"6px 8px"}}>
-                          <span style={{padding:"2px 6px",borderRadius:10,fontSize:9,fontWeight:700,background:statusBadge.bg,color:statusBadge.fg}}>
+                          <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:statusBadge.bg,color:statusBadge.fg}}>
                             {statusBadge.label}
                           </span>
                         </td>
@@ -509,19 +509,19 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             {!isReadOnly ? (
                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
                                 <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); }}
-                                  style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius:4,fontSize:9}}>
+                                  style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius:4,fontSize:12}}>
                                   <option value="">-- Gudang --</option>
                                   {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                                 </select>
                                 <select value={item.lokasiId||""} onChange={e=>updateItem(realIdx,"lokasiId",e.target.value)}
                                   disabled={!itemGudangId && !item._gudangTmp}
-                                  style={{width:110,padding:"3px 4px",border:`1px solid ${!item.lokasiId?C.red:C.border}`,borderRadius:4,fontSize:9}}>
+                                  style={{width:110,padding:"3px 4px",border:`1px solid ${!item.lokasiId?C.red:C.border}`,borderRadius:4,fontSize:12}}>
                                   <option value="">-- Blok --</option>
                                   {(lokasiList||[]).filter(l=>l.gudangId===(itemGudangId||item._gudangTmp)).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                                 </select>
                               </div>
                             ) : (
-                              <span style={{fontSize:10}}>{lokasiList?.find(l=>l.id===item.lokasiId)?.kode || "-"}</span>
+                              <span style={{fontSize:12}}>{lokasiList?.find(l=>l.id===item.lokasiId)?.kode || "-"}</span>
                             )}
                           </td>
                         )}
@@ -530,8 +530,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             ? <input value={item.keterangan||""}
                                 onChange={e=>updateItem(realIdx,"keterangan",e.target.value)}
                                 placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
-                                style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius:4,fontSize:10}}/>
-                            : <span style={{fontSize:10,color:C.muted}}>{item.keterangan||"-"}</span>}
+                                style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius:4,fontSize:12}}/>
+                            : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
                         </td>
                         <td style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
@@ -570,14 +570,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     const pg = totalPages<=7?i:(page<=3?i:page>=totalPages-4?totalPages-7+i:page-3+i);
                     return (
                       <button key={pg} onClick={()=>setPage(pg)}
-                        style={{width:30,height:30,borderRadius:6,border:`1px solid ${pg===page?C.accent:C.border}`,background:pg===page?C.accent:"white",color:pg===page?"white":C.text,fontSize:11,cursor:"pointer",fontWeight:pg===page?700:400}}>
+                        style={{width:30,height:30,borderRadius:6,border:`1px solid ${pg===page?C.accent:C.border}`,background:pg===page?C.accent:"white",color:pg===page?"white":C.text,fontSize:12,cursor:"pointer",fontWeight:pg===page?700:400}}>
                         {pg+1}
                       </button>
                     );
                   })}
                 </div>
                 <button style={{...sty.btn("ghost","sm"),opacity:page===totalPages-1?0.4:1}} disabled={page===totalPages-1} onClick={()=>setPage(p=>p+1)}>Berikutnya →</button>
-                <span style={{fontSize:11,color:C.muted}}>Hal {page+1} dari {totalPages}</span>
+                <span style={{fontSize:12,color:C.muted}}>Hal {page+1} dari {totalPages}</span>
               </div>
             )}
 
@@ -614,9 +614,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         {isReadOnly && (
           <div style={{...sty.card,background:"#f0fdf4",marginTop:8}}>
             <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Status Approval</div>
-            {activeOpname.approvedByAsman && <div style={{fontSize:11,color:C.green}}>✅ Asman: {users.find(u=>u.id===activeOpname.approvedByAsman)?.name} • {fmtDate(activeOpname.approvedAtAsman)} {activeOpname.catatanAsman&&`— "${activeOpname.catatanAsman}"`}</div>}
-            {activeOpname.approvedByManager && <div style={{fontSize:11,color:C.green,marginTop:4}}>✅ Manager: {users.find(u=>u.id===activeOpname.approvedByManager)?.name} • {fmtDate(activeOpname.approvedAtManager)} {activeOpname.catatanManager&&`— "${activeOpname.catatanManager}"`}</div>}
-            {activeOpname.rejectReason && <div style={{fontSize:11,color:C.red,marginTop:4}}>❌ Ditolak: {activeOpname.rejectReason}</div>}
+            {activeOpname.approvedByAsman && <div style={{fontSize:12,color:C.green}}>✅ Asman: {users.find(u=>u.id===activeOpname.approvedByAsman)?.name} • {fmtDate(activeOpname.approvedAtAsman)} {activeOpname.catatanAsman&&`— "${activeOpname.catatanAsman}"`}</div>}
+            {activeOpname.approvedByManager && <div style={{fontSize:12,color:C.green,marginTop:4}}>✅ Manager: {users.find(u=>u.id===activeOpname.approvedByManager)?.name} • {fmtDate(activeOpname.approvedAtManager)} {activeOpname.catatanManager&&`— "${activeOpname.catatanManager}"`}</div>}
+            {activeOpname.rejectReason && <div style={{fontSize:12,color:C.red,marginTop:4}}>❌ Ditolak: {activeOpname.rejectReason}</div>}
           </div>
         )}
 
@@ -635,12 +635,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       <div style={{border:`3px solid ${C.accent}`,borderRadius:10,padding:16,background:"white",textAlign:"center",marginBottom:14}}>
                         <img src={qrImgUrl} alt="QR" width={160} height={160} style={{display:"block",margin:"0 auto"}}/>
                         <div style={{fontSize:13,fontWeight:800,marginTop:10}}>{qrResult.name}</div>
-                        <div style={{fontSize:11,color:C.muted,marginTop:4}}>Kode: {qrResult.katalog}</div>
-                        <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:10,fontWeight:700,background:"#dbeafe",color:"#1e40af"}}>Non-Stock — Pending Approval</span>
+                        <div style={{fontSize:12,color:C.muted,marginTop:4}}>Kode: {qrResult.katalog}</div>
+                        <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#dbeafe",color:"#1e40af"}}>Non-Stock — Pending Approval</span>
                       </div>
                     );
                   })()}
-                  <div style={{fontSize:11,color:C.muted,textAlign:"center",marginBottom:16}}>
+                  <div style={{fontSize:12,color:C.muted,textAlign:"center",marginBottom:16}}>
                     Screenshot/print gambar QR di atas, tempel ke barang fisik sekarang juga.
                   </div>
                   <button style={{...sty.btn("primary"),width:"100%",marginBottom:8}} onClick={()=>{ setTambahModal(false); setQrResult(null); setActiveQueueId(null); }}>
@@ -654,7 +654,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   {activeQueueId && (() => {
                     const q = tambahQueue.find(x=>x.id===activeQueueId);
                     return q ? (
-                      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:10,marginBottom:12,fontSize:11}}>
+                      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:10,marginBottom:12,fontSize:12}}>
                         📋 Dari file usulan — Katalog asli AppSheet: <b>{q.katalogAsli||"-"}</b>, Qty file (data lama, cek ulang fisik): <b>{q.qtyFile||"-"}</b>
                       </div>
                     ) : null;
@@ -663,19 +663,19 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     <label style={sty.label}>Nama Material *</label>
                     <input style={sty.input} value={tambahForm.nama} onChange={e=>{setTambahForm(f=>({...f,nama:e.target.value})); searchMaraForOpname(e.target.value);}} placeholder="Ketik nama, sistem cari otomatis ke MARA..."/>
                   </div>
-                  {maraLoading && <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Mencari ke MARA...</div>}
+                  {maraLoading && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Mencari ke MARA...</div>}
                   {!maraPicked && maraResults.length>0 && (
                     <div style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:10,maxHeight:160,overflowY:"auto"}}>
                       {maraResults.map(r=>(
                         <div key={r.kode_material} onClick={()=>{setMaraPicked(r); setMaraResults([]); setMaraSkip(false);}}
-                          style={{padding:"6px 8px",fontSize:11,borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}>
+                          style={{padding:"6px 8px",fontSize:12,borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}>
                           <b>{r.kode_material}</b> — {r.nama} ({r.satuan})
                         </div>
                       ))}
                     </div>
                   )}
                   {maraPicked ? (
-                    <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:10,marginBottom:10,fontSize:11}}>
+                    <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:10,marginBottom:10,fontSize:12}}>
                       ✅ Dipilih: <b>{maraPicked.kode_material}</b> — {maraPicked.nama}
                       <button style={{...sty.btn("ghost","sm"),marginLeft:8}} onClick={()=>setMaraPicked(null)}>Ganti</button>
                     </div>
@@ -753,9 +753,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       {/* Pending approval cards */}
       {pendingForMe.map(opn=>(
         <div key={opn.id} style={{...sty.card,borderLeft:`4px solid #f59e0b`,marginBottom:12}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#92400e",marginBottom:4}}>⏳ Menunggu Approval Kamu ({ROLES[currentUser.role]})</div>
+          <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:4}}>⏳ Menunggu Approval Kamu ({ROLES[currentUser.role]})</div>
           <div style={{fontWeight:800,fontSize:14,marginBottom:2}}>Opname {opn.semester} — {opn.jenisAlur}</div>
-          <div style={{fontSize:11,color:C.muted,marginBottom:10}}>
+          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
             {opn.items?.length||0} item • Selisih: {opn.items?.filter(i=>i.selisih!==0).length||0} item
           </div>
           <div style={{marginBottom:8}}>
@@ -778,7 +778,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       {/* Filter status */}
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         {["semua","DRAFT","PENDING_ASMAN","PENDING_MANAGER","SELESAI","DITOLAK"].map(s=>(
-          <button key={s} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"white",color:filterStatus===s?"white":C.muted,fontSize:11,cursor:"pointer"}}
+          <button key={s} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"white",color:filterStatus===s?"white":C.muted,fontSize:12,cursor:"pointer"}}
             onClick={()=>setFilterStatus(s)}>
             {s==="semua"?"Semua":statusLabel[s]||s}
           </button>
@@ -795,10 +795,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <div key={opn.id} style={{...sty.card,marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                 <div>
-                  <div style={{fontWeight:800,fontSize:14}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:11,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
-                  <div style={{fontSize:11,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
+                  <div style={{fontWeight:800,fontSize:14}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
+                  <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
                 </div>
-                <span style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
+                <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
                   {statusLabel[opn.status]||opn.status}
                 </span>
               </div>

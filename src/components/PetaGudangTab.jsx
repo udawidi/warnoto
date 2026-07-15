@@ -61,7 +61,7 @@ export function PetaGudangTab({ gudangList, subGudangList, lokasiList, stocks, s
           <div style={{fontSize:48,marginBottom:12}}>🗺️</div>
           <div style={{fontSize:14,fontWeight:700}}>Denah {gudang.nama} belum diupload</div>
           <div style={{fontSize:12,marginTop:4}}>Upload gambar denah (PNG/JPG) di Master Data → Master Gudang</div>
-          <div style={{fontSize:11,color:C.muted,marginTop:4}}>💡 Convert PDF denah ke gambar (screenshot/foto) sebelum upload</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:4}}>💡 Convert PDF denah ke gambar (screenshot/foto) sebelum upload</div>
         </div>
       )}
 
@@ -88,7 +88,7 @@ export function PetaGudangTab({ gudangList, subGudangList, lokasiList, stocks, s
               {label:"Total Item Tersimpan",val:totalItem,color:C.accent},
             ].map((s,i)=>(
               <div key={i} style={{...sty.card,padding:"8px 14px",display:"flex",flexDirection:"column",minWidth:110}}>
-                <div style={{fontSize:9,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{s.label}</div>
+                <div style={{fontSize:12,color:C.muted,fontWeight:700,textTransform:"uppercase"}}>{s.label}</div>
                 <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
               </div>
             ))}
@@ -123,24 +123,24 @@ export function PetaGudangTab({ gudangList, subGudangList, lokasiList, stocks, s
                     {/* Titik marker */}
                     <div style={{width:isHovered?20:14,height:isHovered?20:14,borderRadius:"50%",background:isPending?"#9ca3af":(isEmpty?"#9ca3af":"#dc2626"),border:isPending?"2px dashed white":"2px solid white",boxShadow:"0 2px 6px rgba(0,0,0,0.4)",transition:"all 0.15s"}}/>
                     {/* Label selalu tampil */}
-                    <div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:isPending?"rgba(146,64,14,0.9)":"rgba(0,0,0,0.75)",color:"white",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none"}}>
+                    <div style={{position:"absolute",top:-12,left:"50%",transform:"translateX(-50%)",background:isPending?"rgba(146,64,14,0.9)":"rgba(0,0,0,0.75)",color:"white",fontSize:12,fontWeight:700,padding:"1px 5px",borderRadius:3,whiteSpace:"nowrap",pointerEvents:"none"}}>
                       {l.kode}{isPending?" ⏳ Menunggu Approval":""}
                     </div>
                     {/* Popup saat hover/tap */}
                     {isHovered && (
                       <div style={{position:"absolute",top:32,left:"50%",transform:"translateX(-50%)",background:"white",border:`1px solid ${C.border}`,borderRadius:8,padding:10,minWidth:200,maxWidth:280,boxShadow:"0 4px 16px rgba(0,0,0,0.15)",zIndex:20}}>
                         <div style={{fontWeight:800,fontSize:12,marginBottom:6,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>📍 {l.kode} — {l.nama}</div>
-                        {isPending && <div style={{fontSize:10,color:"#92400e",fontWeight:700,marginBottom:6}}>⏳ Blok ini belum final, menunggu approval TL</div>}
+                        {isPending && <div style={{fontSize:12,color:"#92400e",fontWeight:700,marginBottom:6}}>⏳ Blok ini belum final, menunggu approval TL</div>}
                         {isEmpty
-                          ? <div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>Tidak ada barang di blok ini</div>
+                          ? <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Tidak ada barang di blok ini</div>
                           : stokList.slice(0,5).map((st,i)=>(
-                              <div key={i} style={{fontSize:11,padding:"2px 0",display:"flex",justifyContent:"space-between"}}>
+                              <div key={i} style={{fontSize:12,padding:"2px 0",display:"flex",justifyContent:"space-between"}}>
                                 <span style={{color:"#111",maxWidth:150,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{st.name}</span>
                                 <span style={{fontWeight:700,color:C.accent,marginLeft:8}}>{fmtNum(st.qty)} {st.unit}</span>
                               </div>
                             ))
                         }
-                        {stokList.length>5 && <div style={{fontSize:10,color:C.muted,marginTop:4}}>+{stokList.length-5} item lainnya</div>}
+                        {stokList.length>5 && <div style={{fontSize:12,color:C.muted,marginTop:4}}>+{stokList.length-5} item lainnya</div>}
                       </div>
                     )}
                   </div>
@@ -155,15 +155,15 @@ export function PetaGudangTab({ gudangList, subGudangList, lokasiList, stocks, s
                 <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>Legenda</div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                   <div style={{width:12,height:12,borderRadius:"50%",background:"#dc2626",border:"2px solid white",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
-                  <span style={{fontSize:11}}>Blok berisi barang</span>
+                  <span style={{fontSize:12}}>Blok berisi barang</span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                   <div style={{width:12,height:12,borderRadius:"50%",background:"#9ca3af",border:"2px solid white",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
-                  <span style={{fontSize:11}}>Blok kosong</span>
+                  <span style={{fontSize:12}}>Blok kosong</span>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{width:12,height:12,borderRadius:"50%",background:"#9ca3af",border:"2px dashed white",boxShadow:"0 1px 3px rgba(0,0,0,0.3)"}}/>
-                  <span style={{fontSize:11}}>Menunggu approval TL</span>
+                  <span style={{fontSize:12}}>Menunggu approval TL</span>
                 </div>
               </div>
               <div style={{...sty.card}}>
@@ -178,14 +178,14 @@ export function PetaGudangTab({ gudangList, subGudangList, lokasiList, stocks, s
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                           <div>
                             <div style={{fontSize:12,fontWeight:600}}>{l.kode}</div>
-                            <div style={{fontSize:10,color:C.muted}}>{l.nama||"-"}</div>
+                            <div style={{fontSize:12,color:C.muted}}>{l.nama||"-"}</div>
                           </div>
-                          <span style={{fontSize:10,fontWeight:700,color:n>0?C.accent:C.muted}}>{n} item</span>
+                          <span style={{fontSize:12,fontWeight:700,color:n>0?C.accent:C.muted}}>{n} item</span>
                         </div>
                       </div>
                     );
                   })}
-                  {blokTampil.length===0 && <div style={{fontSize:11,color:C.muted,textAlign:"center",padding:16}}>Tidak ada blok untuk ditampilkan</div>}
+                  {blokTampil.length===0 && <div style={{fontSize:12,color:C.muted,textAlign:"center",padding:16}}>Tidak ada blok untuk ditampilkan</div>}
                 </div>
               </div>
             </div>
@@ -208,7 +208,7 @@ export function PetaGudangTab({ gudangList, subGudangList, lokasiList, stocks, s
                 return (
                   <div key={sg.id} style={{...sty.card,padding:12}}>
                     <div style={{fontWeight:700,fontSize:13,marginBottom:2}}>{sg.nama}</div>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:8}}>
+                    <div style={{fontSize:12,color:C.muted,marginBottom:8}}>
                       {gudang.nama} • {blokSub.length} blok terpetakan • {blokBerisi} berisi barang
                       {sg.denahUploadedAt && <> • diupdate {fmtDate(sg.denahUploadedAt)}</>}
                     </div>

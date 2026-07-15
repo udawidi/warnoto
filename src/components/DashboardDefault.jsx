@@ -72,7 +72,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
           <div className="dashboard-overview__analysis" style={{...sty.card}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div style={{fontWeight:800,fontSize:13,color:"#7c3aed"}}>🔩 Material Cadang — Ringkasan Analisis</div>
-              <button style={{...sty.btn("ghost","sm"),fontSize:11}} onClick={()=>setTab("forecastStok")}>Lihat detail →</button>
+              <button style={{...sty.btn("ghost","sm"),fontSize:12}} onClick={()=>setTab("forecastStok")}>Lihat detail →</button>
             </div>
             <div style={{display:"flex",gap:20,flexWrap:"wrap",marginBottom:10}}>
               {[
@@ -83,12 +83,12 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
                 {label:"Est. Gap Nilai",val:"Rp "+fmtNum(gapVal),color:"#7c3aed"},
               ].map(k=>(
                 <div key={k.label}>
-                  <div style={{fontSize:10,color:C.muted}}>{k.label}</div>
+                  <div style={{fontSize:12,color:C.muted}}>{k.label}</div>
                   <div style={{fontSize:15,fontWeight:800,color:k.color}}>{k.val}</div>
                 </div>
               ))}
             </div>
-            {topGap.length>0 && <div style={{fontSize:11,color:C.muted}}>
+            {topGap.length>0 && <div style={{fontSize:12,color:C.muted}}>
               Prioritas: {topGap.map(r=><span key={r.noKat} style={{marginRight:8}}><b style={{color:C.red}}>{r.noKat}</b> gap {r.gapQty} pcs</span>)}
             </div>}
           </div>
@@ -107,12 +107,12 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
                 <div key={t.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:11,fontWeight:700}}>{r.noTugLabel}</div>
-                      <div style={{fontSize:11,color:C.text,marginTop:1}}>{r.pekerjaan}</div>
+                      <div style={{fontSize:12,fontWeight:700}}>{r.noTugLabel}</div>
+                      <div style={{fontSize:12,color:C.text,marginTop:1}}>{r.pekerjaan}</div>
                     </div>
                     <span style={sty.statusBadge(t.status)}>{t.status}</span>
                   </div>
-                  <div style={{fontSize:10,color:C.muted,marginTop:3}}>
+                  <div style={{fontSize:12,color:C.muted,marginTop:3}}>
                     📅 {r.tanggal} • 📍 {r.lokasiLabel} • 🏢 {r.pihakLabel}
                   </div>
                 </div>
@@ -149,7 +149,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
                     <div style={{fontSize:12,fontWeight:600}}>{r.jenis}</div>
                     <div style={{textAlign:"right"}}>
                       <div style={{fontSize:12,fontWeight:700}}>{dashModal==="nilai"?fmtRp(r.nilai):`${r.count} item`}</div>
-                      <div style={{fontSize:10,color:C.muted}}>{fmtNum(r.qty)} qty total</div>
+                      <div style={{fontSize:12,color:C.muted}}>{fmtNum(r.qty)} qty total</div>
                     </div>
                   </div>
                 ))}
@@ -163,11 +163,11 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
                   <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</div>
-                      <div style={{fontSize:10,color:C.muted}}>📍 {s.lokasi||"-"}</div>
+                      <div style={{fontSize:12,color:C.muted}}>📍 {s.lokasi||"-"}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0,marginLeft:8}}>
                       <div style={{fontSize:12,fontWeight:700,color:"#dc2626"}}>{fmtNum(s.qty)} / min {fmtNum(s.minQty)}</div>
-                      <div style={{fontSize:10,color:C.muted}}>{s.unit}</div>
+                      <div style={{fontSize:12,color:C.muted}}>{s.unit}</div>
                     </div>
                   </div>
                 ))}
@@ -183,7 +183,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
                     <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:600}}>{r.noTugLabel}</div>
-                        <div style={{fontSize:10,color:C.muted}}>{r.pekerjaan}</div>
+                        <div style={{fontSize:12,color:C.muted}}>{r.pekerjaan}</div>
                       </div>
                       <button style={sty.btn("primary","sm")} onClick={()=>{setDashModal(null);setTab("approval");}}>Review</button>
                     </div>

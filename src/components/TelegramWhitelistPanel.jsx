@@ -78,8 +78,8 @@ export function TelegramWhitelistPanel({ sty, C, currentUser }) {
         users.map(u=>(
           <div key={u.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
             <div>
-              <div style={{fontSize:12,fontWeight:700}}>{u.display_name} {!u.is_active && <span style={{fontSize:10,color:C.red,fontWeight:700}}>(nonaktif)</span>}</div>
-              <div style={{fontSize:11,color:C.muted}}>ID: {u.telegram_user_id}{u.telegram_username?` • ${u.telegram_username}`:""}{u.notes?` • ${u.notes}`:""}</div>
+              <div style={{fontSize:12,fontWeight:700}}>{u.display_name} {!u.is_active && <span style={{fontSize:12,color:C.red,fontWeight:700}}>(nonaktif)</span>}</div>
+              <div style={{fontSize:12,color:C.muted}}>ID: {u.telegram_user_id}{u.telegram_username?` • ${u.telegram_username}`:""}{u.notes?` • ${u.notes}`:""}</div>
             </div>
             <div style={{display:"flex",gap:6,flexShrink:0}}>
               <button style={sty.btn(u.is_active?"ghost":"success","sm")} onClick={()=>toggleActive(u)}>{u.is_active?"Nonaktifkan":"Aktifkan"}</button>

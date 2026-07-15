@@ -59,7 +59,7 @@ export function ExecOverview({ totalVal, kritisMaterials=[], forecastSoon=[], ap
                     {a.items.map((t,j)=>(
                       <div key={j} style={{fontSize:12,color:C.text,padding:"5px 0",borderTop:`1px solid ${C.border}`}}>• {t}</div>
                     ))}
-                    {a.more>0 && <div style={{fontSize:11,color:C.muted,padding:"6px 0 2px"}}>+{a.more} material lainnya…</div>}
+                    {a.more>0 && <div style={{fontSize:12,color:C.muted,padding:"6px 0 2px"}}>+{a.more} material lainnya…</div>}
                     <button onClick={a.go} style={{...sty.btn("primary","sm"),marginTop:10}}>{a.goLabel} →</button>
                   </div>
                 )}

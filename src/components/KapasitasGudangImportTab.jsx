@@ -284,7 +284,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
               {label:"Invalid",val:importPreview.invalid.length,color:C.red},
             ].map(s=>(
               <div key={s.label} style={{padding:"8px 14px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,textAlign:"center"}}>
-                <div style={{fontSize:11,color:C.muted}}>{s.label}</div>
+                <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
                 <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
               </div>
             ))}
@@ -297,18 +297,18 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
             if (uptsInPreview.length <= 1) return null;
             return (
               <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10,padding:"8px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8}}>
-                <span style={{fontSize:11,color:C.muted,fontWeight:700}}>File berisi {uptsInPreview.length} UPT — hapus cepat:</span>
+                <span style={{fontSize:12,color:C.muted,fontWeight:700}}>File berisi {uptsInPreview.length} UPT — hapus cepat:</span>
                 {uptsInPreview.map(u=>(
                   <span key={u} style={{display:"inline-flex",alignItems:"center",gap:4}}>
-                    <button style={{...sty.btn("ghost","sm"),padding:"3px 8px",fontSize:11}} onClick={()=>keepOnlyUpt(u)} title={`Hanya simpan ${u}, hapus sisanya`}>Hanya {u}</button>
-                    <button style={{...sty.btn("danger","sm"),padding:"3px 8px",fontSize:11}} onClick={()=>deletePreviewByUpt(u)} title={`Hapus semua baris ${u}`}>🗑️ {u}</button>
+                    <button style={{...sty.btn("ghost","sm"),padding:"3px 8px",fontSize:12}} onClick={()=>keepOnlyUpt(u)} title={`Hanya simpan ${u}, hapus sisanya`}>Hanya {u}</button>
+                    <button style={{...sty.btn("danger","sm"),padding:"3px 8px",fontSize:12}} onClick={()=>deletePreviewByUpt(u)} title={`Hapus semua baris ${u}`}>🗑️ {u}</button>
                   </span>
                 ))}
               </div>
             );
           })()}
           <div style={{overflowX:"auto",maxHeight:440,overflowY:"auto",marginBottom:14}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:1050}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1050}}>
               <thead style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
                 <tr>
                   {["UPT","Gudang","Sub Gudang","Luas Lahan (m²)","Terpakai (m²)","Utilization","Status","Warning","Aksi"].map(h=>(
@@ -318,7 +318,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
               </thead>
               <tbody>
                 {importPreview.records.map((r,i)=>{
-                  const cellStyle = {padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:11,width:"100%",background:"white"};
+                  const cellStyle = {padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:12,width:"100%",background:"white"};
                   return (
                   <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:!r._valid?"#fef2f2":r._warnings.length>0?"#fefce8":"white"}}>
                     <td style={{padding:"4px 6px"}}><input style={cellStyle} value={r.upt} onChange={e=>updatePreviewField(i,"upt",e.target.value.toUpperCase())} disabled={!canEdit}/></td>
@@ -327,8 +327,8 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
                     <td style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasLahanM2} onChange={e=>updatePreviewField(i,"luasLahanM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
                     <td style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasTerpakaiM2} onChange={e=>updatePreviewField(i,"luasTerpakaiM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
                     <td style={{padding:"5px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{(r.persentaseTerpakai*100).toFixed(1)}%</td>
-                    <td style={{padding:"5px 8px"}}><span style={{fontSize:10,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</span></td>
-                    <td style={{padding:"5px 8px",fontSize:10,color:C.muted,maxWidth:200}}>{[...r._errors,...r._warnings].join(", ")||"-"}</td>
+                    <td style={{padding:"5px 8px"}}><span style={{fontSize:12,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</span></td>
+                    <td style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:200}}>{[...r._errors,...r._warnings].join(", ")||"-"}</td>
                     <td style={{padding:"4px 6px"}}>{canEdit && <button style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={()=>deletePreviewRow(i)} title="Hapus baris ini">🗑️</button>}</td>
                   </tr>
                 );})}
@@ -344,7 +344,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
             </div>
           )}
           {importPreview.invalid.length > 0 && (
-            <div style={{color:C.red,fontSize:11,marginTop:6}}>Baris invalid ({importPreview.invalid.length}) akan diabaikan otomatis — perbaiki dulu di tabel jika ingin ikut disertakan.</div>
+            <div style={{color:C.red,fontSize:12,marginTop:6}}>Baris invalid ({importPreview.invalid.length}) akan diabaikan otomatis — perbaiki dulu di tabel jika ingin ikut disertakan.</div>
           )}
         </div>
       )}
@@ -362,10 +362,10 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
             <div key={imp.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`,fontSize:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div style={{fontWeight:700}}>{imp.sourceFile}</div>
-                <span style={{padding:"2px 8px",borderRadius:10,fontSize:10,fontWeight:700,background:statusMeta.bg,color:statusMeta.fg}}>{statusMeta.label}</span>
+                <span style={{padding:"2px 8px",borderRadius:10,fontSize:12,fontWeight:700,background:statusMeta.bg,color:statusMeta.fg}}>{statusMeta.label}</span>
               </div>
-              <div style={{color:C.muted,fontSize:11}}>{new Date(imp.importedAt).toLocaleString("id")} — {imp.validRows} valid / {imp.invalidRows} invalid</div>
-              {imp.status==="REJECTED" && imp.rejectReason && <div style={{color:C.red,fontSize:11,marginTop:2}}>Alasan: {imp.rejectReason}</div>}
+              <div style={{color:C.muted,fontSize:12}}>{new Date(imp.importedAt).toLocaleString("id")} — {imp.validRows} valid / {imp.invalidRows} invalid</div>
+              {imp.status==="REJECTED" && imp.rejectReason && <div style={{color:C.red,fontSize:12,marginTop:2}}>Alasan: {imp.rejectReason}</div>}
             </div>
           );})}
         </div>
