@@ -1091,6 +1091,14 @@
 .forecast-empty { display: flex; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; color: #64748b; }
 .forecast-empty strong { color: #334155; font-size: 12px; }
 .forecast-empty span { margin-top: 4px; font-size: 12px; }
+.forecast-pagination { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 11px; border-top: 1px solid #e2e8f0; }
+.forecast-pagination__size { display: flex; align-items: center; gap: 8px; color: #64748b; font-size: 12px; font-weight: 650; }
+.forecast-pagination__size select { min-height: 30px; padding: 4px 24px 4px 8px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #334155; font: inherit; font-size: 12px; }
+.forecast-pagination__nav { display: flex; align-items: center; gap: 6px; }
+.forecast-pagination__nav span { padding: 0 6px; color: #64748b; font-size: 12px; }
+.forecast-pagination__nav button { min-height: 28px; padding: 4px 9px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #334155; font-size: 12px; font-weight: 750; cursor: pointer; }
+.forecast-pagination__nav button:hover:not(:disabled) { border-color: #1d4ed8; color: #1d4ed8; }
+.forecast-pagination__nav button:disabled { border-color: #e2e8f0; background: #f8fafc; color: #cbd5e1; cursor: not-allowed; }
 .forecast-back { margin-bottom: 10px; padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 7px; background: #fff; color: #475569; font-size: 12px; font-weight: 750; cursor: pointer; }
 .forecast-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 10px; padding: 15px 17px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
 .forecast-detail-head__copy { display: flex; min-width: 0; flex-direction: column; }
@@ -1216,6 +1224,8 @@
   .forecast-overview__metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .forecast-detail-head { align-items: flex-start; flex-direction: column; }
   .forecast-status-filter { width: 100%; }
+  .forecast-pagination { flex-direction: column; align-items: flex-start; }
+  .forecast-pagination__nav { width: 100%; justify-content: space-between; }
   .ai-conversation__header { align-items: flex-start; flex-direction: column; }
   .ai-conversation__admin { justify-content: flex-start; }
 }

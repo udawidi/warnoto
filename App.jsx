@@ -403,6 +403,10 @@ export default function PLNWarehouse() {
   const [photoSearchResultMode, setPhotoSearchResultMode] = useState("bentuk"); // mode yang menghasilkan photoSearchResults (utk label hasil)
   const [photoSearchOcrText, setPhotoSearchOcrText] = useState(""); // teks nameplate terbaca (mode nameplate)
   const savingTxnRef = useRef(false); // cegah double-submit transaksi saat upload foto berjalan
+  const [savingTxn, setSavingTxn] = useState(false); // mirror React untuk tombol Ajukan (disabled + "Menyimpan...")
+  const [tug10Collapsed, setTug10Collapsed] = useState({}); // {idx:true} kartu barang retur yang diringkas
+  const [tug10Highlight, setTug10Highlight] = useState(null); // key field yang di-highlight setelah gagal validasi
+  const tug10Refs = useRef({}); // anchor scroll per seksi/field TUG-10
   const syncingPhotosRef = useRef(false); // cegah tumpang-tindih auto-sync foto transaksi pending
   const [pendingFoto, setPendingFoto] = useState({}); // foto yang baru dipilih tapi belum diklik "Simpan Foto" — {fotoNameplate, fotoKeseluruhan}
   const [lightboxImg, setLightboxImg] = useState(null); // src foto yang sedang di-overview full-screen
@@ -1439,7 +1443,7 @@ export default function PLNWarehouse() {
   }
 
   // ── Satpam CRUD ──
-  function openAddSatpam() { setSatpamForm({ id:"SP"+uid().slice(-6), name:"", telp:"" }); setSatpamModal("add"); }
+  function openAddSatpam() { setSatpamForm({ id:"SP"+uid().slice(-6), name:"", telp:"", gudangId:"" }); setSatpamModal("add"); }
   function openEditSatpam(sp) { setSatpamForm({...sp}); setSatpamModal("edit"); }
   async function saveSatpam() {
     if (!satpamForm.name?.trim()) { showToast("Nama Satpam tidak boleh kosong!","error"); return; }
@@ -2786,7 +2790,9 @@ export default function PLNWarehouse() {
         noBAPenggantian: "",
         // For TUG10 the flow is reversed: external party hands back to PLN
         menyerahkanNama: "",
-        lokasiTujuanId: "", // which Master Lokasi the returned items go into
+        gudangTujuanId: "", subGudangTujuanId: "", // cascade Gudang → Sub Gudang → Blok
+        lokasiTujuanId: "", // which Master Lokasi (Blok) the returned items go into
+        satpamId: "", // satpam gudang penyimpanan (Mengetahui di dokumen)
         fotoBAPengembalian: null,
       });
     } else if (docType === "TUG3") {
@@ -2858,7 +2864,7 @@ export default function PLNWarehouse() {
       return { ...tf, stockItems: [...tf.stockItems, { stockId:"", qty:1 }] };
     });
   }
-  function removeItemRow(i) { setTxnForm(tf => ({ ...tf, stockItems: tf.stockItems.filter((_,idx)=>idx!==i) })); }
+  function removeItemRow(i) { setTug10Collapsed({}); setTxnForm(tf => ({ ...tf, stockItems: tf.stockItems.filter((_,idx)=>idx!==i) })); }
   function updateItemRow(i, key, val) {
     setTxnForm(tf => {
       const items=[...tf.stockItems];
@@ -2873,12 +2879,46 @@ export default function PLNWarehouse() {
     });
   }
 
+  // Daftar syarat TUG-10 yang belum terpenuhi (dipakai checklist live + validasi submit).
+  // Tiap entri punya scrollKey (anchor di tug10Refs) supaya bisa di-scroll & di-highlight.
+  function tug10Missing(tf) {
+    if (!tf) return [];
+    const m = [];
+    if (!tf.namaPekerjaan?.trim()) m.push({ scrollKey:"namaPekerjaan", label:"Nama Pekerjaan" });
+    if (!tf.lokasiPekerjaan?.trim()) m.push({ scrollKey:"lokasiPekerjaan", label:"Lokasi Pekerjaan" });
+    if (!tf.menyerahkanNama?.trim()) m.push({ scrollKey:"menyerahkanNama", label:"Yang Menyerahkan" });
+    if (!tf.lokasiTujuanId) m.push({ scrollKey:"lokasiTujuanId", label:"Lokasi Penyimpanan (Blok)" });
+    (tf.stockItems||[]).forEach((si,idx)=>{
+      const n = idx+1;
+      const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
+      if (!barangOk) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih/nama barang` });
+      if (!(si.qty>0)) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: jumlah` });
+      if (!si.fotoBarangRetur) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto barang` });
+      if (si.statusMaterial==="Bongkaran ATTB (MTU)") {
+        if (!si.noSeri?.trim()) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: nomor seri (ATTB)` });
+        if (!si.fotoNameplate) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto nameplate (ATTB)` });
+      }
+    });
+    if ((tf.stockItems||[]).some(si=>si.statusMaterial==="Bongkaran ATTB (MTU)") && !tf.fotoBAPengembalian) {
+      m.push({ scrollKey:"fotoBAPengembalian", label:"Foto Surat BA Pengembalian (ada item ATTB)" });
+    }
+    return m;
+  }
+  function flagTug10Invalid(key) {
+    if (!key) return;
+    if (key.startsWith("item-")) { const idx = Number(key.split("-")[1]); setTug10Collapsed(c=>({...c,[idx]:false})); }
+    setTug10Highlight(key);
+    setTimeout(()=>{ tug10Refs.current[key]?.scrollIntoView({ behavior:"smooth", block:"center" }); }, 60);
+    setTimeout(()=> setTug10Highlight(h=> h===key?null:h), 3000);
+  }
+
   async function saveTxn() {
+    if (savingTxn) { showToast("Sedang menyimpan, tunggu sebentar...","info"); return; }
     const canCreateULTG = hasRole(currentUser, "ADMIN_ULTG") && txnForm?.docType==="TUG5";
     if (!hasRole(currentUser, ...CAN_CREATE) && !canCreateULTG && !editingDraftTxnId) { showToast("Role kamu tidak dapat mengajukan transaksi!","error"); return; }
     const docType = txnForm.docType;
 
-    if (docType !== "TUG3") {
+    if (docType !== "TUG3" && docType !== "TUG10") {
       if (!txnForm.namaPekerjaan.trim()) { showToast("Nama Pekerjaan wajib diisi!","error"); return; }
       if (!txnForm.lokasiPekerjaan.trim()) { showToast("Lokasi Pekerjaan wajib diisi!","error"); return; }
     }
@@ -2900,20 +2940,13 @@ export default function PLNWarehouse() {
     }
 
     if (docType === "TUG10") {
-      if (!txnForm.menyerahkanNama?.trim()) { showToast("Nama Pihak Yang Menyerahkan wajib diisi!","error"); return; }
-      if (!txnForm.lokasiTujuanId) { showToast("Pilih Lokasi Penyimpanan (Master Lokasi) untuk barang retur!","error"); return; }
+      const missing = tug10Missing(txnForm);
+      if (missing.length) {
+        flagTug10Invalid(missing[0].scrollKey);
+        showToast(`Belum lengkap — ${missing[0].label}${missing.length>1?` (dan ${missing.length-1} lainnya)`:""}`,"error");
+        return;
+      }
       const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
-      if (validItems.length === 0) { showToast("Minimal 1 barang retur harus diisi!","error"); return; }
-      for (const si of validItems) {
-        if (!si.fotoBarangRetur) { showToast(`Foto Barang wajib diupload untuk semua material retur (status: ${si.statusMaterial})!`,"error"); return; }
-        if (si.statusMaterial === "Bongkaran ATTB (MTU)") {
-          if (!si.noSeri?.trim()) { showToast("Nomor Seri Material wajib diisi untuk barang Bongkaran ATTB (MTU)!","error"); return; }
-          if (!si.fotoNameplate) { showToast("Foto Nameplate wajib diupload untuk barang Bongkaran ATTB (MTU)!","error"); return; }
-        }
-      }
-      if (txnForm.stockItems.some(si=>si.statusMaterial==="Bongkaran ATTB (MTU)") && !txnForm.fotoBAPengembalian) {
-        showToast("Upload Surat BA Pengembalian wajib untuk material Bongkaran ATTB (MTU)!","error"); return;
-      }
       await commitNewTxn(docType, { ...txnForm, stockItems: validItems });
       return;
     }
@@ -2947,6 +2980,7 @@ export default function PLNWarehouse() {
   async function commitNewTxn(docType, formData) {
     if (savingTxnRef.current) return;       // cegah double-submit saat upload foto berjalan
     savingTxnRef.current = true;
+    setSavingTxn(true);
     try {
     // Upload foto base64 ke Storage dulu → blob transaksi jadi ringan. Gagal upload
     // (offline) → foto tetap base64 + _fotoPending; transaksi & dokumen tetap jadi,
@@ -3052,7 +3086,7 @@ export default function PLNWarehouse() {
     setTxns(newTxns); setDocSeq(newSeq); setTxnModal(false);
     await saveToCloud({txns: newTxns, docSeq: newSeq});
     showToast(`Transaksi ${nt.docNumbers[docKey]} dibuat! Menunggu approval ${ROLES[requiredApprover]}. ⏳`);
-    } finally { savingTxnRef.current = false; }
+    } finally { savingTxnRef.current = false; setSavingTxn(false); }
   }
 
   function docKeyOf(txn) {
@@ -5026,31 +5060,48 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
             )}
 
-            {/* ── SUB-TAB: SATPAM ── */}
-            {stockSubTab==="satpam" && (
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
-                {satpamList.length===0 && <div style={{...sty.card,gridColumn:"1/-1",textAlign:"center",color:C.muted,padding:30}}>Belum ada data Satpam. {hasRole(currentUser, "ADMIN") && "Klik \"+ Tambah Satpam\" untuk menambahkan."}</div>}
-                {satpamList.map(sp=>(
-                  <div key={sp.id} style={{...sty.card,borderTop:`3px solid ${C.accent}`}}>
-                    <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
-                      {sp.foto
-                        ? <img src={sp.foto} alt={sp.name} style={{width:44,height:44,borderRadius:"50%",objectFit:"cover",border:`1px solid #bfdbfe`,flexShrink:0}}/>
-                        : <div style={{width:44,height:44,borderRadius:"50%",background:"#0b2559",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,flexShrink:0}}>{(sp.name||"?").trim().charAt(0).toUpperCase()}</div>}
-                      <div>
-                        <div style={{fontWeight:700,fontSize:14}}>{sp.name}</div>
-                        <div style={{fontSize:12,color:C.muted}}>{sp.id}{sp.telp ? ` • ${sp.telp}` : ""}</div>
+            {/* ── SUB-TAB: SATPAM (dikelompokkan per gudang) ── */}
+            {stockSubTab==="satpam" && (() => {
+              if (satpamList.length===0) return <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada data Satpam. {hasRole(currentUser, "ADMIN") && "Klik \"+ Tambah Satpam\" untuk menambahkan."}</div>;
+              const groups = [
+                ...gudangList.map(g=>({ id:g.id, nama:g.nama, list:satpamList.filter(sp=>sp.gudangId===g.id) })),
+                { id:"__none__", nama:"Belum di-assign gudang", list:satpamList.filter(sp=>!sp.gudangId || !gudangList.some(g=>g.id===sp.gudangId)) },
+              ].filter(grp=>grp.list.length>0);
+              const renderCard = sp => (
+                <div key={sp.id} style={{...sty.card,borderTop:`3px solid ${C.accent}`}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
+                    {sp.foto
+                      ? <img src={sp.foto} alt={sp.name} style={{width:44,height:44,borderRadius:"50%",objectFit:"cover",border:`1px solid #bfdbfe`,flexShrink:0}}/>
+                      : <div style={{width:44,height:44,borderRadius:"50%",background:"#0b2559",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,flexShrink:0}}>{(sp.name||"?").trim().charAt(0).toUpperCase()}</div>}
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14}}>{sp.name}</div>
+                      <div style={{fontSize:12,color:C.muted}}>{sp.id}{sp.telp ? ` • ${sp.telp}` : ""}</div>
+                    </div>
+                  </div>
+                  {hasRole(currentUser, "ADMIN") && (
+                    <div style={{display:"flex",gap:6}}>
+                      <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditSatpam(sp)}>✏️ Edit</button>
+                      <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>deleteSatpam(sp.id)}>🗑️ Hapus</button>
+                    </div>
+                  )}
+                </div>
+              );
+              return (
+                <div style={{display:"flex",flexDirection:"column",gap:18}}>
+                  {groups.map(grp=>(
+                    <div key={grp.id}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,fontSize:13,fontWeight:800,color:grp.id==="__none__"?C.muted:C.accent}}>
+                        <span>{grp.id==="__none__"?"⚠️":"🏢"} {grp.nama}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:C.muted,background:"#eef2ff",borderRadius:20,padding:"1px 8px"}}>{grp.list.length}</span>
+                      </div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+                        {grp.list.map(renderCard)}
                       </div>
                     </div>
-                    {hasRole(currentUser, "ADMIN") && (
-                      <div style={{display:"flex",gap:6}}>
-                        <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditSatpam(sp)}>✏️ Edit</button>
-                        <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>deleteSatpam(sp.id)}>🗑️ Hapus</button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* ── SUB-TAB: TIM MUTU (2 paket tetap, hanya bisa diedit anggotanya) ── */}
             {stockSubTab==="timmutu" && (
@@ -6412,6 +6463,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               <input style={sty.input} value={satpamForm.telp||""} onChange={e=>setSatpamForm(sf=>({...sf,telp:e.target.value}))} placeholder="08xxxxxxxxxx"/>
             </div>
             <div style={{marginBottom:12}}>
+              <label style={sty.label}>Bertugas di Gudang (opsional)</label>
+              <select style={sty.select} value={satpamForm.gudangId||""} onChange={e=>setSatpamForm(sf=>({...sf,gudangId:e.target.value}))}>
+                <option value="">-- Belum di-assign gudang --</option>
+                {gudangList.map(g=>{ const up=uptList.find(u=>u.id===g.uptId); return <option key={g.id} value={g.id}>{g.nama}{up?` — ${up.nama}`:""}</option>; })}
+              </select>
+              <div style={{fontSize:12,color:C.muted,marginTop:4}}>Nama satpam akan muncul di dokumen TUG-10 sesuai gudang tempat barang disimpan.</div>
+            </div>
+            <div style={{marginBottom:12}}>
               <label style={sty.label}>Foto (opsional)</label>
               <div style={{display:"flex",gap:12,alignItems:"center"}}>
                 <div style={{width:96,height:96,borderRadius:12,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -7246,7 +7305,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               <label style={sty.label}>Satpam Bertugas (Mengetahui di Surat Jalan)</label>
               <select style={sty.select} value={txnForm.satpamId||""} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
                 <option value="">-- Pilih Satpam --</option>
-                {satpamList.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}
+                {gudangList.map(g=>{ const list=satpamList.filter(sp=>sp.gudangId===g.id); return list.length===0?null:(
+                  <optgroup key={g.id} label={g.nama}>{list.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
+                ); })}
+                {(() => { const list=satpamList.filter(sp=>!sp.gudangId || !gudangList.some(g=>g.id===sp.gudangId)); return list.length===0?null:(
+                  <optgroup label="Belum di-assign gudang">{list.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
+                ); })()}
               </select>
               {satpamList.length===0 && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Belum ada data Satpam. Tambahkan di menu Master Data → tab Satpam.</div>}
             </div>
@@ -7332,7 +7396,22 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       )}
 
       {/* TXN MODAL - TUG10 FORM (incoming material / return to warehouse) */}
-      {txnModal && txnForm && txnForm.docType==="TUG10" && (
+      {txnModal && txnForm && txnForm.docType==="TUG10" && (() => {
+        const hl = key => tug10Highlight===key ? { boxShadow:"0 0 0 2px #dc2626", borderRadius:8 } : {};
+        const setRef = key => el => { tug10Refs.current[key] = el; };
+        const isLegacyGud = txnForm.gudangTujuanId==="__legacy__";
+        const hasLegacyBlok = lokasiList.some(l=>!l.gudangId);
+        const tug10Subs = subGudangList.filter(sg=>sg.gudangId===txnForm.gudangTujuanId);
+        const tug10Bloks = isLegacyGud
+          ? lokasiList.filter(l=>!l.gudangId)
+          : (!txnForm.gudangTujuanId ? [] : lokasiList.filter(l=>l.gudangId===txnForm.gudangTujuanId && (tug10Subs.length===0 || (l.subGudangId||"")===(txnForm.subGudangTujuanId||""))));
+        const gudSatpams = satpamList.filter(sp=>sp.gudangId && sp.gudangId===txnForm.gudangTujuanId);
+        const selGud = gudangList.find(g=>g.id===txnForm.gudangTujuanId);
+        const selSub = subGudangList.find(sg=>sg.id===txnForm.subGudangTujuanId);
+        const selBlok = lokasiList.find(l=>l.id===txnForm.lokasiTujuanId);
+        const breadcrumb = [selGud?.nama || (isLegacyGud?"Legacy (tanpa gudang)":null), selSub?.nama, selBlok?.kode].filter(Boolean).join(" › ");
+        const missingList = tug10Missing(txnForm);
+        return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
@@ -7344,43 +7423,103 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             </div>
             <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Transaksi akan PENDING sampai disetujui TL Logistik / Asman. Stok akan BERTAMBAH saat disetujui.</div>
 
+            {!hasRole(currentUser, ...CAN_CREATE) && (
+              <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#991b1b",marginBottom:16,fontWeight:600}}>🚫 Role kamu ({ROLES[currentUser?.role]||currentUser?.role||"-"}) tidak bisa mengajukan TUG-10 — hubungi Admin Gudang / TL Logistik.</div>
+            )}
+
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DATA PEKERJAAN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
               <div><label style={sty.label}>Pekerjaan (jenis)</label><input style={sty.input} value={txnForm.pekerjaan} onChange={e=>setTxnForm(tf=>({...tf,pekerjaan:e.target.value}))} placeholder="cth: Penggantian"/></div>
               <div><label style={sty.label}>No. BA Penggantian</label><input style={sty.input} value={txnForm.noBAPenggantian} onChange={e=>setTxnForm(tf=>({...tf,noBAPenggantian:e.target.value}))} placeholder="0266/PT-SD/VI/2026"/></div>
-              <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Pekerjaan *</label><input style={sty.input} value={txnForm.namaPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,namaPekerjaan:e.target.value}))} placeholder="cth: Pengembalian Material Relay GIS Darmo dan GIS Waru"/></div>
-              <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Lokasi Pekerjaan *</label><input style={sty.input} value={txnForm.lokasiPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,lokasiPekerjaan:e.target.value}))} placeholder="cth: GIS Darmo dan GIS Waru"/></div>
+              <div ref={setRef("namaPekerjaan")} style={{gridColumn:"1/-1",...hl("namaPekerjaan")}}><label style={sty.label}>Nama Pekerjaan *</label><input style={sty.input} value={txnForm.namaPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,namaPekerjaan:e.target.value}))} placeholder="cth: Pengembalian Material Relay GIS Darmo dan GIS Waru"/></div>
+              <div ref={setRef("lokasiPekerjaan")} style={{gridColumn:"1/-1",...hl("lokasiPekerjaan")}}><label style={sty.label}>Lokasi Pekerjaan *</label><input style={sty.input} value={txnForm.lokasiPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,lokasiPekerjaan:e.target.value}))} placeholder="cth: GIS Darmo dan GIS Waru"/></div>
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>PIHAK & LOKASI PENYIMPANAN</div>
-            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
-              <div>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>
+              <div ref={setRef("menyerahkanNama")} style={{...hl("menyerahkanNama")}}>
                 <label style={sty.label}>Yang Menyerahkan *</label>
-                <input style={sty.input} value={txnForm.menyerahkanNama} onChange={e=>setTxnForm(tf=>({...tf,menyerahkanNama:e.target.value}))}/>
+                <input style={sty.input} value={txnForm.menyerahkanNama} onChange={e=>setTxnForm(tf=>({...tf,menyerahkanNama:e.target.value}))} placeholder="cth: PT. Mitra Jaya"/>
               </div>
               <div>
-                <label style={sty.label}>Lokasi Penyimpanan di Gudang (Master Lokasi) *</label>
-                <select style={sty.select} value={txnForm.lokasiTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,lokasiTujuanId:e.target.value}))}>
-                  <option value="">-- Pilih Lokasi --</option>
-                  {lokasiList.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan?`— ${l.keterangan}`:""}</option>)}
+                <label style={sty.label}>Gudang Penyimpanan *</label>
+                <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>{ const gid=e.target.value; setTxnForm(tf=>{ const cand=satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangTujuanId:gid, subGudangTujuanId:"", lokasiTujuanId:"", satpamId: cand.length===1?cand[0].id:""}; }); }}>
+                  <option value="">-- Pilih Gudang --</option>
+                  {gudangList.map(g=>{ const up=uptList.find(u=>u.id===g.uptId); return <option key={g.id} value={g.id}>{g.nama}{up?` — ${up.nama}`:""}</option>; })}
+                  {hasLegacyBlok && <option value="__legacy__">Blok tanpa gudang (legacy)</option>}
                 </select>
-                {lokasiList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Blok Lokasi. Tambahkan dulu di menu Master Data → Master Gudang.</div>}
+                {gudangList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Master Gudang. Tambahkan dulu di Master Data → Master Gudang.</div>}
               </div>
+              {!isLegacyGud && tug10Subs.length>0 && (
+                <div>
+                  <label style={sty.label}>Sub Gudang</label>
+                  <select style={sty.select} value={txnForm.subGudangTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,subGudangTujuanId:e.target.value,lokasiTujuanId:""}))}>
+                    <option value="">— Tanpa Sub Gudang —</option>
+                    {tug10Subs.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
+                  </select>
+                </div>
+              )}
+              <div ref={setRef("lokasiTujuanId")} style={{...hl("lokasiTujuanId")}}>
+                <label style={sty.label}>Blok Penyimpanan *</label>
+                <select style={sty.select} value={txnForm.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>setTxnForm(tf=>({...tf,lokasiTujuanId:e.target.value}))}>
+                  <option value="">{txnForm.gudangTujuanId?"-- Pilih Blok --":"Pilih gudang dulu"}</option>
+                  {tug10Bloks.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan?`— ${l.keterangan}`:""}</option>)}
+                </select>
+                {txnForm.gudangTujuanId && tug10Bloks.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada blok pada pilihan ini. Tambahkan di Master Data → Master Gudang.</div>}
+              </div>
+              <div style={{gridColumn:isMobile?"auto":"1/-1"}}>
+                <label style={sty.label}>Satpam Gudang (Mengetahui)</label>
+                <select style={sty.select} value={txnForm.satpamId||""} disabled={!txnForm.gudangTujuanId||isLegacyGud} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
+                  <option value="">{(!txnForm.gudangTujuanId||isLegacyGud)?"Pilih gudang dulu":"-- Pilih Satpam --"}</option>
+                  {(gudSatpams.length>0?gudSatpams:(txnForm.gudangTujuanId&&!isLegacyGud?satpamList:[])).map(sp=><option key={sp.id} value={sp.id}>{sp.name}{gudSatpams.length===0?" (gudang lain)":""}</option>)}
+                </select>
+                {txnForm.gudangTujuanId && !isLegacyGud && gudSatpams.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
+              </div>
+              {breadcrumb && <div style={{gridColumn:isMobile?"auto":"1/-1",fontSize:12,color:C.accent,fontWeight:700,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"6px 10px"}}>📍 {breadcrumb}</div>}
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / MATERIAL RETUR</div>
             <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Pilih dari katalog yang sudah ada, atau daftarkan barang baru langsung di sini.</div>
-            {txnForm.stockItems.map((si,idx)=>(
-              <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:"#f9fafb"}}>
+            {txnForm.stockItems.map((si,idx)=>{
+              const n = idx+1;
+              const isAttb = si.statusMaterial==="Bongkaran ATTB (MTU)";
+              const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
+              const qtyOk = si.qty>0;
+              const fotoOk = !!si.fotoBarangRetur;
+              const seriOk = !isAttb || !!si.noSeri?.trim();
+              const nameplateOk = !isAttb || !!si.fotoNameplate;
+              const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk;
+              const collapsed = complete && tug10Collapsed[idx];
+              const kat = si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId) : null;
+              const namaDisplay = si.katalogMode==="existing" ? (kat?.name||"-") : (si.namaBaru||"(barang baru)");
+              const satuanDisplay = si.katalogMode==="existing" ? (kat?.satuan||"") : (si.satuanBaru||"");
+              const bs = statusMaterialBadgeStyle(si.statusMaterial);
+              const hint = txt => <div style={{fontSize:12,color:"#be185d",marginTop:4}}>{txt}</div>;
+              return (
+              <div key={idx} ref={setRef(`item-${idx}`)} style={{border:`1px solid ${complete?"#bbf7d0":C.border}`,borderRadius:10,padding:12,marginBottom:10,background:complete?"#f6fefb":"#f9fafb",...hl(`item-${idx}`)}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:collapsed?0:8,flexWrap:"wrap"}}>
+                  <span style={{fontSize:12,fontWeight:800,color:C.accent}}>Barang #{n}</span>
+                  <span style={{fontSize:12,fontWeight:700,padding:"1px 8px",borderRadius:20,background:bs.bg,color:bs.fg}}>{si.statusMaterial}</span>
+                  {complete && <span style={{fontSize:12,color:"#16a34a",fontWeight:700}}>✓ Lengkap</span>}
+                  <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+                    {complete && <button type="button" style={{...sty.btn("ghost","sm")}} onClick={()=>setTug10Collapsed(c=>({...c,[idx]:!c[idx]}))}>{collapsed?"▼ Buka":"▲ Ringkas"}</button>}
+                    {txnForm.stockItems.length>1 && <button type="button" title="Hapus barang retur ini" style={{...sty.btn("danger","sm")}} onClick={()=>removeItemRow(idx)}>✕</button>}
+                  </div>
+                </div>
+
+                {collapsed ? (
+                  <div onClick={()=>setTug10Collapsed(c=>({...c,[idx]:false}))} style={{cursor:"pointer",fontSize:12,color:C.text,paddingTop:6}}>
+                    <b>{namaDisplay}</b> · {fmtNum(si.qty)} {satuanDisplay}{si.noAsset?` · Asset ${si.noAsset}`:""} · 📷 Foto ✓{isAttb?" · Nameplate ✓":""}
+                  </div>
+                ) : (<>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
                   <button type="button" style={{...sty.btn(si.katalogMode==="existing"?"primary":"ghost","sm"),flex:1}} onClick={()=>updateItemRow(idx,"katalogMode","existing")}>📑 Dari Katalog</button>
                   <button type="button" style={{...sty.btn(si.katalogMode==="new"?"primary":"ghost","sm"),flex:1}} onClick={()=>updateItemRow(idx,"katalogMode","new")}>✨ Barang Baru</button>
-                  {txnForm.stockItems.length>1 && <button type="button" title="Hapus barang retur ini" style={{...sty.btn("danger","sm")}} onClick={()=>removeItemRow(idx)}>✕</button>}
                 </div>
 
                 {si.katalogMode==="existing" ? (
                   <div style={{marginBottom:8}}>
-                    <label style={sty.label}>Pilih Barang</label>
+                    <label style={sty.label}>Pilih Barang *</label>
                     <SearchableSelect
                       options={katalogList}
                       value={si.katalogId}
@@ -7390,10 +7529,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       placeholder="-- Cari & pilih dari Master Katalog --"
                       sty={sty} C={C} isMobile={isMobile}
                     />
+                    {!barangOk && hint("Wajib: pilih barang dari katalog.")}
                   </div>
                 ) : (
                   <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-                    <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: Relay CCP Bongkaran"/></div>
+                    <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru *</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: Relay CCP Bongkaran"/>{!barangOk && hint("Wajib: isi nama barang baru.")}</div>
                     <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)}/></div>
                     <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: BH, pcs, unit"/></div>
                     <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
@@ -7401,7 +7541,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 )}
 
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-                  <div><label style={sty.label}>Jumlah</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/></div>
+                  <div><label style={sty.label}>Jumlah *</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/>{!qtyOk && hint("Wajib: jumlah harus lebih dari 0.")}</div>
                   <div><label style={sty.label}>Nomor Asset</label><input style={sty.input} value={si.noAsset} onChange={e=>updateItemRow(idx,"noAsset",e.target.value)}/></div>
                 </div>
 
@@ -7409,53 +7549,74 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <label style={sty.label}>Status Material</label>
                   <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8}}>
                     {STATUS_MATERIAL_RETUR.map(sm=>{
-                      const bs = statusMaterialBadgeStyle(sm);
+                      const smbs = statusMaterialBadgeStyle(sm);
                       const active = si.statusMaterial===sm;
                       return (
-                        <button key={sm} type="button" style={{flex:1,padding:"8px",borderRadius:8,border:`2px solid ${active?bs.fg:C.border}`,background:active?bs.bg:"white",color:active?bs.fg:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>updateItemRow(idx,"statusMaterial",sm)}>{sm}</button>
+                        <button key={sm} type="button" style={{flex:1,padding:"8px",borderRadius:8,border:`2px solid ${active?smbs.fg:C.border}`,background:active?smbs.bg:"white",color:active?smbs.fg:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>updateItemRow(idx,"statusMaterial",sm)}>{sm}</button>
                       );
                     })}
                   </div>
                   {si.statusMaterial==="Bongkaran" && <div style={{fontSize:12,color:"#854d0e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "Bongkaran".</div>}
-                  {si.statusMaterial==="Bongkaran ATTB (MTU)" && <div style={{fontSize:12,color:"#92400e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "ATTB". Wajib lengkapi data tambahan di bawah.</div>}
+                  {isAttb && <div style={{fontSize:12,color:"#92400e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "ATTB". Wajib lengkapi data tambahan di bawah.</div>}
                 </div>
 
-                <div style={{background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:8,padding:10,marginBottom:si.statusMaterial==="Bongkaran ATTB (MTU)"?8:0}}>
+                <div style={{background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:8,padding:10,marginBottom:isAttb?8:0}}>
                   <label style={sty.label}>Foto Barang * (wajib untuk semua status)</label>
-                  <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoBarangRetur",img))} style={{fontSize:12,color:C.text,width:"100%"}}/>
-                  {si.fotoBarangRetur && <img src={si.fotoBarangRetur} alt="barang" style={{width:isMobile?"100%":120,height:isMobile?140:80,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                  <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
+                    {si.fotoBarangRetur && <img src={si.fotoBarangRetur} alt="barang" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius:6}}/>}
+                    <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {si.fotoBarangRetur?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoBarangRetur",img))}/></label>
+                    {si.fotoBarangRetur && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>updateItemRow(idx,"fotoBarangRetur",null)}>Hapus</button>}
+                  </div>
+                  {!fotoOk && hint("Wajib: unggah foto barang.")}
                 </div>
 
-                {si.statusMaterial==="Bongkaran ATTB (MTU)" && (
+                {isAttb && (
                   <div style={{background:"#fffbeb",border:`1px solid #fde68a`,borderRadius:8,padding:10}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>📋 Data Tambahan Wajib — Bongkaran ATTB (MTU)</div>
-                    <div style={{marginBottom:8}}><label style={sty.label}>Nomor Seri Material *</label><input style={sty.input} value={si.noSeri} onChange={e=>updateItemRow(idx,"noSeri",e.target.value)} placeholder="cth: SN-2024-001"/></div>
+                    <div style={{marginBottom:8}}><label style={sty.label}>Nomor Seri Material *</label><input style={sty.input} value={si.noSeri} onChange={e=>updateItemRow(idx,"noSeri",e.target.value)} placeholder="cth: SN-2024-001"/>{!seriOk && hint("Wajib: isi nomor seri material.")}</div>
                     <div>
                       <label style={sty.label}>Foto Nameplate *</label>
-                      <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoNameplate",img))} style={{fontSize:12,color:C.text,width:"100%"}}/>
-                      {si.fotoNameplate && <img src={si.fotoNameplate} alt="nameplate" style={{width:isMobile?"100%":120,height:isMobile?140:80,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                      <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
+                        {si.fotoNameplate && <img src={si.fotoNameplate} alt="nameplate" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius:6}}/>}
+                        <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {si.fotoNameplate?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoNameplate",img))}/></label>
+                        {si.fotoNameplate && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>updateItemRow(idx,"fotoNameplate",null)}>Hapus</button>}
+                      </div>
+                      {!nameplateOk && hint("Wajib: unggah foto nameplate.")}
                     </div>
                   </div>
                 )}
+                </>)}
               </div>
-            ))}
-            <button type="button" style={{...sty.btn("ghost","sm"),marginBottom:14}} onClick={addItemRow}>+ Tambah Barang Retur Lain</button>
+              );
+            })}
+            <button type="button" style={{width:"100%",padding:"11px",marginBottom:14,border:`2px dashed ${C.accent}`,borderRadius:10,background:"#eef2ff",color:C.accent,fontWeight:800,fontSize:13,cursor:"pointer"}} onClick={addItemRow}>+ Tambah Barang Retur Lain</button>
 
             {txnForm.stockItems.some(si=>si.statusMaterial==="Bongkaran ATTB (MTU)") && (
-              <div style={{marginBottom:16}}>
+              <div ref={setRef("fotoBAPengembalian")} style={{marginBottom:16,...hl("fotoBAPengembalian")}}>
                 <label style={sty.label}>Upload Surat BA Pengembalian * (foto)</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoBAPengembalian:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoBAPengembalian && <img src={txnForm.fotoBAPengembalian} alt="BA Pengembalian" style={{width:isMobile?"100%":120,height:isMobile?140:80,objectFit:"cover",borderRadius:6,marginTop:6,border:`1px solid ${C.border}`}}/>}
+                <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
+                  {txnForm.fotoBAPengembalian && <img src={txnForm.fotoBAPengembalian} alt="BA Pengembalian" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`}}/>}
+                  <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {txnForm.fotoBAPengembalian?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoBAPengembalian:img})))}/></label>
+                  {txnForm.fotoBAPengembalian && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>setTxnForm(tf=>({...tf,fotoBAPengembalian:null}))}>Hapus</button>}
+                </div>
+                {!txnForm.fotoBAPengembalian && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Wajib karena ada material Bongkaran ATTB (MTU).</div>}
               </div>
             )}
 
+            <div style={{border:`1px solid ${missingList.length?"#fecaca":"#bbf7d0"}`,background:missingList.length?"#fef2f2":"#f0fdf4",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12}}>
+              {missingList.length===0
+                ? <div style={{color:"#166534",fontWeight:800}}>✅ Siap diajukan</div>
+                : <div style={{color:"#be185d"}}><b>Kurang:</b> {missingList.map(m=>m.label).join(" · ")}</div>}
+            </div>
+
             <div style={sty.stickyFooter}>
-              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTxnModal(false)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={saveTxn}>📤 Ajukan TUG-10</button>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}}>Batal</button>
+              <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1,cursor:savingTxn?"wait":"pointer"}} onClick={saveTxn}>{savingTxn?"⏳ Menyimpan...":"📤 Ajukan TUG-10"}</button>
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* TXN MODAL - TUG3 FORM (Karantina — penerimaan barang tahap 1) */}
       {txnModal && txnForm && txnForm.docType==="TUG3" && (
@@ -7564,7 +7725,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <div style={{color:"white",fontWeight:700,fontSize:14}}>📄 Dokumen {dp.docType.replace("TUG","TUG-")} — {dp.docNumbers?.[docKeyOf(dp)]||dp.id}</div>
             <div style={{display:"flex",gap:8}}>
               <button style={{...sty.btn("success"),padding:"7px 16px"}} onClick={()=>{
-                if (dp.docType==="TUG10") downloadTUG10HTML(dp, katalogList, lokasiList, users, showToast);
+                if (dp.docType==="TUG10") downloadTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast);
                 else if (dp.docType==="TUG3") downloadTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, showToast);
                 else if (dp.docType==="TUG5") downloadTUG5HTML(dp, katalogList, uitList, users, showToast, ultgList);
                 else if (dp.docType==="TUG7") downloadTUG7HTML(dp, katalogList, uitList, uptList, users, showToast);
@@ -7576,7 +7737,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           <div style={{flex:1,background:"#e5e7eb",overflow:"hidden"}}>
             <iframe
               title="Document Preview"
-              srcDoc={dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList)}
+              srcDoc={dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList)}
               style={{width:"100%",height:"100%",border:"none"}}
             />
           </div>

@@ -27,6 +27,10 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, txns, fo
   const [search, setSearch] = useState("");
   const [sortMode, setSortMode] = useState("priority");
   const [mlForecasts, setMlForecasts] = useState({});
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  useEffect(() => { setPage(1); }, [statusFilter, search, sortMode, pageSize]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -108,6 +112,9 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, txns, fo
       if (sortMode==="days") return (a.risk.days===Infinity?Number.MAX_SAFE_INTEGER:a.risk.days)-(b.risk.days===Infinity?Number.MAX_SAFE_INTEGER:b.risk.days);
       return RISK_PRIORITY[a.risk.key]-RISK_PRIORITY[b.risk.key] || (a.risk.days-b.risk.days);
     });
+  const totalPages = Math.max(1, Math.ceil(visibleList.length/pageSize));
+  const pageClamped = Math.min(page, totalPages);
+  const pagedList = visibleList.slice((pageClamped-1)*pageSize, pageClamped*pageSize);
 
   function formatDays(days) {
     if (days===Infinity) return "Belum ada data";
@@ -224,7 +231,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, txns, fo
             <table className="forecast-table">
               <thead><tr><th>Material</th><th>Status</th><th>Stok saat ini</th><th>Estimasi heuristik</th><th>Prediksi ML</th><th>Validasi</th><th>Aksi</th></tr></thead>
               <tbody>
-                {visibleList.map(entry=><tr key={entry.kat.id} onClick={()=>openDetail(entry)}>
+                {pagedList.map(entry=><tr key={entry.kat.id} onClick={()=>openDetail(entry)}>
                   <td><strong>{entry.kat.name}</strong><span>{entry.kat.katalog} · {entry.kat.satuan}</span></td>
                   <td><span className={`forecast-risk is-${entry.risk.key}`}>{entry.risk.label}</span></td>
                   <td><strong>{fmtNum(entry.totalQty)}</strong><span>{entry.kat.satuan}</span></td>
@@ -235,6 +242,22 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, txns, fo
                 </tr>)}
               </tbody>
             </table>
+            {visibleList.length > 0 && (
+              <div className="forecast-pagination">
+                <div className="forecast-pagination__size">
+                  Tampilkan
+                  <select value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}>
+                    {[20,50,100].map(n=><option key={n} value={n}>{n}</option>)}
+                  </select>
+                  item per halaman — {visibleList.length} total
+                </div>
+                <div className="forecast-pagination__nav">
+                  <button disabled={pageClamped<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+                  <span>Halaman {pageClamped} / {totalPages}</span>
+                  <button disabled={pageClamped>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Berikutnya →</button>
+                </div>
+              </div>
+            )}
             {enriched.length===0 && <div className="forecast-empty"><strong>Belum ada data stok untuk dianalisis</strong><span>Material akan muncul setelah data stok tersedia.</span></div>}
             {enriched.length>0 && visibleList.length===0 && <div className="forecast-empty"><strong>Tidak ada material yang sesuai</strong><span>Ubah filter atau kata pencarian untuk melihat data lain.</span></div>}
           </div>

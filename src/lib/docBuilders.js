@@ -191,13 +191,20 @@ ${hasAnyAttachment ? `
 // Single-page document matching the uploaded format_TUG_10.pdf layout.
 // Signature roles are reversed vs TUG-9: external party hands material
 // back, internal SPV/TL Log receives it, Asman still signs "Mengetahui".
-export function buildTUG10HTML(txn, katalogList, lokasiList, users) {
+export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, gudangList, subGudangList) {
   const docs = txn.docNumbers;
   const asmanUser = users.find(u => u.role === "ASMAN") || {};
   const actualApprover = users.find(u=>u.id===txn.approvedBy) || {};
   // "Yang Menerima" is internal SPV/TL Log (whoever holds that role / actually approved if TL)
   const penerimaUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u=>u.role==="TL")||{});
   const lokTujuan = (lokasiList||[]).find(l => l.id === txn.lokasiTujuanId) || {};
+  // Jalur lokasi berjenjang: Gudang › Sub Gudang › Kode Blok (fallback ke field txn kalau blok legacy)
+  const gudTujuan = (gudangList||[]).find(g => g.id === (lokTujuan.gudangId || txn.gudangTujuanId)) || {};
+  const subGudTujuan = (subGudangList||[]).find(sg => sg.id === (lokTujuan.subGudangId || txn.subGudangTujuanId)) || {};
+  const lokPath = [gudTujuan.nama, subGudTujuan.nama, lokTujuan.kode].filter(Boolean).join(" › ") || (lokTujuan.kode || "-");
+  // Satpam gudang yang mengetahui penyimpanan barang retur
+  const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
+  const gudLabel = (gudTujuan.nama || "").toUpperCase();
 
   const itemRows = txn.stockItems.map(si => {
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : si.namaBaru;
@@ -286,13 +293,14 @@ table.items td{padding:6px 6px;border-bottom:1px solid #ddd;font-size:10px}
   <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
     <tr><td class="label" style="width:160px">Perkiraan Pembebanan</td><td class="colon">:</td><td>${txn.perkiraanPembebanan||"-"}</td></tr>
     <tr><td class="label">Kode Perkiraan</td><td class="colon">:</td><td>${txn.kodePerkiraan||"-"}</td></tr>
-    <tr><td class="label">Disimpan di Lokasi</td><td class="colon">:</td><td>${lokTujuan.kode||"-"}</td></tr>
+    <tr><td class="label">Disimpan di Lokasi</td><td class="colon">:</td><td>${lokPath}</td></tr>
     <tr><td class="label">Tanggal</td><td class="colon">:</td><td>${fmtDateOnly(txn.approvedAt||Date.now())}</td></tr>
   </table>
 
   <div class="sig-row">
     <div class="sig-col">Mengetahui,<br>${asmanUser.jabatan||"ASMAN KONS UPT " + UPT}<div class="sig-space"></div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
     <div class="sig-col">Yang Menerima,<br>${penerimaUser.jabatan||"SPV LOG UPT " + UPT}<div class="sig-space"></div><div class="sig-name">${penerimaUser.name||"....................."}</div></div>
+    <div class="sig-col">Mengetahui,<br>SATPAM GUDANG${gudLabel?` ${gudLabel}`:""}<div class="sig-space"></div><div class="sig-name">${satpamUser.name||"....................."}</div></div>
     <div class="sig-col">Yang Menyerahkan<div class="sig-space"></div><div class="sig-name">${txn.menyerahkanNama||"....................."}</div></div>
   </div>
   ${txn.requiredApprover==="TL" ? `<div style="font-size:9px;color:#16a34a;text-align:center;margin-top:6px;font-style:italic">* Disetujui oleh TL Logistik, Asman Konstruksi turut menyetujui sesuai ketentuan internal</div>` : ""}
@@ -320,8 +328,8 @@ ${hasAttachments ? `
 </body></html>`;
 }
 
-export function downloadTUG10HTML(txn, katalogList, lokasiList, users, showToast) {
-  const html = buildTUG10HTML(txn, katalogList, lokasiList, users);
+export function downloadTUG10HTML(txn, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast) {
+  const html = buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, gudangList, subGudangList);
   const blob = new Blob([html], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
