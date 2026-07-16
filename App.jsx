@@ -160,12 +160,25 @@ TOOL M = Tool Mechanic (Perangkat Kerja Mekanik); TOOL S = Tool Safety (Perangka
 TRF = Transformer (Trafo); UG = Under Ground / ST (Saluran Tanah/Bawah Tanah)
 WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 
+// Cache profil user di localStorage supaya layar "Memuat sesi..." tidak menunggu
+// network — dipakai sebagai initial state currentUser/authLoading (lihat effect
+// onAuthStateChange di bawah), profil sebenarnya tetap di-refresh dari Supabase.
+const PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
+function readCachedProfile() {
+  try {
+    // Hanya pakai cache kalau memang ada sesi Supabase tersimpan di browser ini
+    const hasAuthToken = Object.keys(localStorage).some(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+    if (!hasAuthToken) return null;
+    return JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+  } catch { return null; }
+}
+
 // ════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════
 export default function PLNWarehouse() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authLoading, setAuthLoading] = useState(true); // true selama cek sesi Supabase Auth yang tersimpan
+  const [currentUser, setCurrentUser] = useState(readCachedProfile);
+  const [authLoading, setAuthLoading] = useState(() => !readCachedProfile()); // true hanya kalau belum ada cache profil
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
   const [loginErr, setLoginErr] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
@@ -923,17 +936,27 @@ export default function PLNWarehouse() {
   // tab baru, dst), dan dengarkan event login/logout — satu listener ini
   // menangani SEMUA transisi auth (initial load, login manual, logout),
   // supaya currentUser & users selalu konsisten dari satu sumber.
+  // Pola cache-first: currentUser sudah terisi dari localStorage sebelum effect
+  // ini jalan (lihat readCachedProfile di atas) supaya "Memuat sesi..." tidak
+  // menunggu network; profil di-refresh di latar belakang lewat callback ini,
+  // dan kalau sesi ternyata tidak valid/tidak ada, user otomatis logout + cache dibuang.
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); return; }
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    // Callback TIDAK async — supabase-js memperingatkan callback async di
+    // onAuthStateChange bisa deadlock lock auth internal. Kerjaan async
+    // dilempar ke handleAuthSession (fire-and-forget).
+    async function handleAuthSession(session) {
       if (session?.user) {
         const { data: profile, error: profErr } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
         if (profErr || !profile) {
           setLoginErr("Akun ini belum punya profil (hubungi Admin). Logout otomatis.");
           await supabase.auth.signOut();
           setCurrentUser(null); setUsers([]);
+          try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
         } else {
-          setCurrentUser({ id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, ultgId: profile.ultg_id, uitId: profile.uit_id });
+          const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, ultgId: profile.ultg_id, uitId: profile.uit_id };
+          setCurrentUser(userObj);
+          try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(userObj)); } catch {}
           // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
           // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
           supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
@@ -942,8 +965,12 @@ export default function PLNWarehouse() {
         }
       } else {
         setCurrentUser(null); setUsers([]);
+        try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
       }
       setAuthLoading(false);
+    }
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      handleAuthSession(session);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
