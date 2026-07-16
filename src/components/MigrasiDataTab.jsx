@@ -556,8 +556,10 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
                   <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.desc}</div>
                   <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.noKat} • {item.jenisBarang} • Qty {item.qty} {item.satuan} • {item.harga?("Rp "+fmtNum(item.harga)):"-"} • dari {item.sourceFile}</div>
                 </div>
-                <button style={sty.btn("primary","sm")} onClick={()=>approveMigrasiPending(item.id)}>✅ Setujui</button>
-                <button style={sty.btn("danger","sm")} onClick={()=>rejectMigrasiPending(item.id)}>✕ Tolak</button>
+                <span className="approval-actions approval-actions--compact">
+                  <button className="approval-btn--approve" onClick={()=>approveMigrasiPending(item.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button>
+                  <button className="approval-btn--reject" onClick={()=>rejectMigrasiPending(item.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                </span>
               </div>
             ))}
           </div>

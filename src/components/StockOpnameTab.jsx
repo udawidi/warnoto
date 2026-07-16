@@ -764,13 +764,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           {rejectingId===opn.id
             ? <div style={{display:"flex",gap:8}}>
                 <input style={{...sty.input,flex:1}} placeholder="Alasan penolakan (wajib)..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
-                <button style={sty.btn("danger")} onClick={()=>{rejectOpname(opn,rejectReason);setRejectingId(null);setRejectReason("");}}>Konfirmasi Tolak</button>
-                <button style={sty.btn("ghost")} onClick={()=>setRejectingId(null)}>Batal</button>
+                <div className="approval-actions">
+                  <button className="approval-btn--danger" onClick={()=>{rejectOpname(opn,rejectReason);setRejectingId(null);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
+                  <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                </div>
               </div>
             : <div style={{display:"flex",gap:8}}>
                 <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);setActiveTab("detail");}}>🔍 Review Detail</button>
-                <button style={sty.btn("success")} onClick={()=>{opn.status==="PENDING_ASMAN"?approveOpname_Asman(opn,catatanApproval):approveOpname_Manager(opn,catatanApproval);setCatatanApproval("");}}>✅ Setujui</button>
-                <button style={{...sty.btn("ghost"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>setRejectingId(opn.id)}>❌ Tolak</button>
+                <div className="approval-actions">
+                  <button className="approval-btn--approve" onClick={()=>{opn.status==="PENDING_ASMAN"?approveOpname_Asman(opn,catatanApproval):approveOpname_Manager(opn,catatanApproval);setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button>
+                  <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                </div>
               </div>}
         </div>
       ))}

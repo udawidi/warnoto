@@ -713,25 +713,25 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
                   {h.notes && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Catatan: {h.notes}</div>}
                   <div style={{fontSize:12,color:C.muted,marginTop:4}}>Diajukan: {new Date(h.requestedAt).toLocaleDateString("id")}</div>
                   {canApprove && (
-                    <div style={{display:"flex",gap:8,marginTop:10}}>
-                      <button style={sty.btn("primary","sm")} onClick={()=>handleApproveApply(h.id)}>Setuju & Apply Min Qty</button>
-                      <button style={sty.btn("danger","sm")} onClick={()=>handleRejectApply(h.id, "Ditolak Asman")}>Tolak</button>
+                    <div className="approval-actions approval-actions--compact" style={{marginTop:10}}>
+                      <button className="approval-btn--approve" onClick={()=>handleApproveApply(h.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju & Apply Min Qty</button>
+                      <button className="approval-btn--reject" onClick={()=>handleRejectApply(h.id, "Ditolak Asman")}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                     </div>
                   )}
                   {false && canApprove && (
-                    <div style={{display:"flex",gap:8,marginTop:10}}>
-                      <button style={sty.btn("primary","sm")} onClick={async ()=>{
+                    <div className="approval-actions approval-actions--compact" style={{marginTop:10}}>
+                      <button className="approval-btn--approve" onClick={async ()=>{
                         const updated = {...mcData, applyHistory: mcData.applyHistory.map(x=>x.id===h.id?{...x,status:"APPROVED_APPLIED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
                         setMaterialCadangData(updated);
                         await saveToCloud({materialCadangData:updated});
                         showToast("Apply minQty disetujui.", "success");
-                      }}>✅ Setuju</button>
-                      <button style={sty.btn("danger","sm")} onClick={async ()=>{
+                      }}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                      <button className="approval-btn--reject" onClick={async ()=>{
                         const updated = {...mcData, applyHistory: mcData.applyHistory.map(x=>x.id===h.id?{...x,status:"REJECTED",decidedBy:currentUser.id,decidedAt:Date.now()}:x)};
                         setMaterialCadangData(updated);
                         await saveToCloud({materialCadangData:updated});
                         showToast("Pengajuan ditolak.", "success");
-                      }}>❌ Tolak</button>
+                      }}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                     </div>
                   )}
                 </div>

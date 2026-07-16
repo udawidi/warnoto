@@ -77,15 +77,15 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 {/* Stage 1: TL approves Karantina */}
                 {t.stage==="PENDING_TL" && hasRole(currentUser, "TL") && (
                   rejectingId===t.id ? (
-                    <>
-                      <button style={{...sty.btn("danger","sm")}} onClick={()=>{rejectTUG3_TL(t,reason); setRejectingId(null); setReason("");}}>Konfirmasi Tolak</button>
-                      <button style={{...sty.btn("ghost","sm")}} onClick={()=>setRejectingId(null)}>Batal</button>
-                    </>
+                    <span className="approval-actions">
+                      <button className="approval-btn--danger" onClick={()=>{rejectTUG3_TL(t,reason); setRejectingId(null); setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
+                      <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                    </span>
                   ) : (
-                    <>
-                      <button style={sty.btn("success","sm")} onClick={()=>approveTUG3_TL(t)}>✅ Setujui TUG-3 Karantina</button>
-                      <button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button>
-                    </>
+                    <span className="approval-actions">
+                      <button className="approval-btn--approve" onClick={()=>approveTUG3_TL(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-3 Karantina</button>
+                      <button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                    </span>
                   )
                 )}
                 {/* Stage 2a: Admin/TL fills TUG-4 form */}
@@ -95,15 +95,15 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 {/* Stage 2b: Manager approves TUG-4 */}
                 {t.stage==="PENDING_MANAGER" && hasRole(currentUser, "MANAGER") && (
                   rejectingId===t.id ? (
-                    <>
-                      <button style={{...sty.btn("danger","sm")}} onClick={()=>{rejectTUG4_Manager(t,reason); setRejectingId(null); setReason("");}}>Konfirmasi Tolak</button>
-                      <button style={{...sty.btn("ghost","sm")}} onClick={()=>setRejectingId(null)}>Batal</button>
-                    </>
+                    <span className="approval-actions">
+                      <button className="approval-btn--danger" onClick={()=>{rejectTUG4_Manager(t,reason); setRejectingId(null); setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
+                      <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                    </span>
                   ) : (
-                    <>
-                      <button style={sty.btn("success","sm")} onClick={()=>approveTUG4_Manager(t)}>✅ Setujui TUG-4</button>
-                      <button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button>
-                    </>
+                    <span className="approval-actions">
+                      <button className="approval-btn--approve" onClick={()=>approveTUG4_Manager(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-4</button>
+                      <button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                    </span>
                   )
                 )}
                 {/* Stage 3a: Admin/TL completes final lampiran */}
@@ -113,15 +113,15 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 {/* Stage 3b: Asman approves final */}
                 {t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
                   rejectingId===t.id ? (
-                    <>
-                      <button style={{...sty.btn("danger","sm")}} onClick={()=>{rejectTUG3Final_Asman(t,reason); setRejectingId(null); setReason("");}}>Konfirmasi Tolak</button>
-                      <button style={{...sty.btn("ghost","sm")}} onClick={()=>setRejectingId(null)}>Batal</button>
-                    </>
+                    <span className="approval-actions">
+                      <button className="approval-btn--danger" onClick={()=>{rejectTUG3Final_Asman(t,reason); setRejectingId(null); setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
+                      <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                    </span>
                   ) : (
-                    <>
-                      <button style={sty.btn("success","sm")} onClick={()=>approveTUG3Final_Asman(t)}>✅ Setujui Final (Stok Masuk)</button>
-                      <button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button>
-                    </>
+                    <span className="approval-actions">
+                      <button className="approval-btn--approve" onClick={()=>approveTUG3Final_Asman(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui Final (Stok Masuk)</button>
+                      <button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                    </span>
                   )
                 )}
                 {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-3</button>}

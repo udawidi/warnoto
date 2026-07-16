@@ -400,8 +400,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
                   {isActive&&isPendingHeavyEquipmentLoan(loan)&&canApproveHeavyEquipmentLoan(currentUser,loan)&&(
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                       {rejectingId===loan.id
-                        ?<><input style={{...sty.input,flex:"1 1 160px"}} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Alasan penolakan"/><button style={sty.btn("danger","sm")} onClick={()=>{rejectLoan(loan.id,reason);setRejectingId(null);setReason("");}}>Tolak</button><button style={sty.btn("ghost","sm")} onClick={()=>{setRejectingId(null);setReason("");}}>Batal</button></>
-                        :<><button style={sty.btn("success","sm")} onClick={()=>approveLoan(loan.id)}>Setujui</button><button style={sty.btn("danger","sm")} onClick={()=>setRejectingId(loan.id)}>Tolak</button></>}
+                        ?<><input style={{...sty.input,flex:"1 1 160px"}} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Alasan penolakan"/><span className="approval-actions approval-actions--compact"><button className="approval-btn--danger" onClick={()=>{rejectLoan(loan.id,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button><button className="approval-btn--cancel" onClick={()=>{setRejectingId(null);setReason("");}}>Batal</button></span></>
+                        :<span className="approval-actions approval-actions--compact"><button className="approval-btn--approve" onClick={()=>approveLoan(loan.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button><button className="approval-btn--reject" onClick={()=>setRejectingId(loan.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>}
                     </div>
                   )}
                   {isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&hasRole(currentUser, "ADMIN","TL","ASMAN")&&(

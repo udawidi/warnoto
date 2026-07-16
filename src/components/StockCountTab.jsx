@@ -194,14 +194,14 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                         <div>
                           <input style={{...sty.input,fontSize:12,marginBottom:6}} placeholder="Catatan (opsional)" value={catatanDraft[item.id]||""} onChange={e=>setCatatanDraft(d=>({...d,[item.id]:e.target.value}))}/>
                           {rejectingItemId===item.id ? (
-                            <div style={{display:"flex",gap:8}}>
-                              <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>{rejectStockCountItem(session.id, item.id, catatanDraft[item.id]); setRejectingItemId(null);}}>❌ Konfirmasi Tolak</button>
-                              <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>setRejectingItemId(null)}>Batal</button>
+                            <div className="approval-actions approval-actions--compact">
+                              <button className="approval-btn--danger" onClick={()=>{rejectStockCountItem(session.id, item.id, catatanDraft[item.id]); setRejectingItemId(null);}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
+                              <button className="approval-btn--cancel" onClick={()=>setRejectingItemId(null)}>Batal</button>
                             </div>
                           ) : (
-                            <div style={{display:"flex",gap:8}}>
-                              <button style={{...sty.btn("success","sm"),flex:1}} onClick={()=>approveStockCountItem(session.id, item.id, catatanDraft[item.id])}>✓ Setuju</button>
-                              <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>setRejectingItemId(item.id)}>✕ Tolak</button>
+                            <div className="approval-actions approval-actions--compact">
+                              <button className="approval-btn--approve" onClick={()=>approveStockCountItem(session.id, item.id, catatanDraft[item.id])}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                              <button className="approval-btn--reject" onClick={()=>setRejectingItemId(item.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                             </div>
                           )}
                         </div>

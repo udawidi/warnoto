@@ -78,13 +78,13 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
                 rejectingId===t.id
-                  ? <><button style={sty.btn("danger","sm")} onClick={()=>{rejectTUG5_Asman(t,reason);setRejectingId(null);setReason("");}}>Konfirmasi Tolak</button><button style={sty.btn("ghost","sm")} onClick={()=>setRejectingId(null)}>Batal</button></>
-                  : <><button style={sty.btn("success","sm")} onClick={()=>approveTUG5_Asman(t)}>✅ Setujui (Asman)</button><button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button></>
+                  ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Asman(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
+                  : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Asman(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Asman)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
               )}
               {t.stage==="PENDING_MANAGER" && hasRole(currentUser, "MANAGER") && (
                 rejectingId===t.id
-                  ? <><button style={sty.btn("danger","sm")} onClick={()=>{rejectTUG5_Manager(t,reason);setRejectingId(null);setReason("");}}>Konfirmasi Tolak</button><button style={sty.btn("ghost","sm")} onClick={()=>setRejectingId(null)}>Batal</button></>
-                  : <><button style={sty.btn("success","sm")} onClick={()=>approveTUG5_Manager(t)}>✅ Setujui (Manager) → Generate {t.jenisTransfer==="INTRACOMPANY"?"TUG-7":"TUG-5 UIT"}</button><button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button></>
+                  ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Manager(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
+                  : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Manager(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager) → Generate {t.jenisTransfer==="INTRACOMPANY"?"TUG-7":"TUG-5 UIT"}</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
               )}
               {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>}
             </div>
@@ -150,8 +150,8 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {canApprove && (
                     rejectingId===t.id
-                      ? <><button style={sty.btn("danger","sm")} onClick={()=>{rejectTUG5_MgrULTG(t,reason);setRejectingId(null);setReason("");}}>Konfirmasi Tolak</button><button style={sty.btn("ghost","sm")} onClick={()=>setRejectingId(null)}>Batal</button></>
-                      : <><button style={sty.btn("success","sm")} onClick={()=>approveTUG5_MgrULTG(t)}>✅ Setujui (Manager ULTG)</button><button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button></>
+                      ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_MgrULTG(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
+                      : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_MgrULTG(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager ULTG)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
                   )}
                   {canAdopt && (
                     <button style={sty.btn("primary","sm")} onClick={async()=>{ const draft = await adoptTUG5ULTG(t); if(draft) openDraftTug9(draft); }}>📋 Adopt → Buat Draft TUG-9</button>
@@ -204,8 +204,8 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   )}
                   {t.stage==="PENDING_MGR_LOGISTIK" && hasRole(currentUser, "MGR_LOGISTIK_UIT") && (
                     rejectingId===t.id
-                      ? <><button style={sty.btn("danger","sm")} onClick={()=>{rejectTUG7_MgrLogistik(t,reason);setRejectingId(null);setReason("");}}>Konfirmasi Tolak</button><button style={sty.btn("ghost","sm")} onClick={()=>setRejectingId(null)}>Batal</button></>
-                      : <><button style={sty.btn("success","sm")} onClick={()=>approveTUG7_MgrLogistik(t)}>✅ Setujui TUG-7 → Generate Draft TUG-8</button><button style={{...sty.btn("ghost","sm"),border:`1px solid ${C.red}`,color:C.red}} onClick={()=>{setRejectingId(t.id);setReason("");}}>❌ Tolak</button></>
+                      ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG7_MgrLogistik(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
+                      : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG7_MgrLogistik(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-7 → Generate Draft TUG-8</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
                   )}
                   {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat TUG-7</button>}
                 </div>
@@ -237,7 +237,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               </div>
               <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",borderRadius:6,padding:"6px 10px",marginBottom:8}}>⚠️ Draft ini perlu dikonfirmasi oleh Admin Gudang / TL UPT Pengirim sebelum masuk antrian approval TUG-8.</div>
               {hasRole(currentUser, "ADMIN","TL") && (
-                <button style={sty.btn("success","sm")} onClick={()=>konfirmasiDraftTUG8(t)}>✅ Konfirmasi — Aktifkan TUG-8 ini</button>
+                <div className="approval-actions"><button className="approval-btn--approve" onClick={()=>konfirmasiDraftTUG8(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Konfirmasi — Aktifkan TUG-8 ini</button></div>
               )}
             </div>
           ))}

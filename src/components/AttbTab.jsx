@@ -489,10 +489,10 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center"}}>
                         {canManage && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"5px 8px"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>✏️</button>}
                         {canApproveThis && (
-                          <>
-                            <button style={sty.btn("success","sm")} onClick={()=>approveToKI(item.id)}>Approve</button>
-                            <button style={sty.btn("danger","sm")} onClick={()=>{setRejectingId(item.id);setRejectReason("");}}>Tolak</button>
-                          </>
+                          <span className="approval-actions approval-actions--compact">
+                            <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Approve</button>
+                            <button className="approval-btn--reject" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                          </span>
                         )}
                         {/* Kontrol Lanjut / Belum Lanjut — compact segmented, aktif di Tahap 1 (Usulan AE.1)
                             & Tahap 2 (AE.1 s.d AE.4). Tahap 3-4 cuma tombol Lanjut. */}
@@ -527,9 +527,9 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                         {rejectingId===item.id && (
                           <div>
                             <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
-                            <div style={{display:"flex",gap:6,marginTop:6}}>
-                              <button style={sty.btn("ghost","sm")} onClick={()=>setRejectingId(null)}>Batal</button>
-                              <button style={sty.btn("danger","sm")} onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}>Tolak</button>
+                            <div className="approval-actions approval-actions--compact" style={{marginTop:6}}>
+                              <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                              <button className="approval-btn--danger" onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                             </div>
                           </div>
                         )}

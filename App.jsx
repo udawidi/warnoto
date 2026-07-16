@@ -5954,9 +5954,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
                           <div style={{fontSize:12,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
                         </div>
-                        <div style={{display:"flex",gap:6}}>
-                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
-                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
+                        <div className="approval-actions approval-actions--compact">
+                          <button className="approval-btn--approve" onClick={()=>approveStockMove(s.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                          <button className="approval-btn--reject" onClick={()=>rejectStockMove(s.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                         </div>
                       </div>
                     );
@@ -5982,9 +5982,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
                           <div style={{fontSize:12,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
                         </div>
-                        <div style={{display:"flex",gap:6}}>
-                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockMove(s.id)}>✓ Setuju</button>
-                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockMove(s.id)}>✕ Tolak</button>
+                        <div className="approval-actions approval-actions--compact">
+                          <button className="approval-btn--approve" onClick={()=>approveStockMove(s.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                          <button className="approval-btn--reject" onClick={()=>rejectStockMove(s.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                         </div>
                       </div>
                     );
@@ -6012,9 +6012,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                             Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.editRequestedAt)}
                           </div>
                         </div>
-                        <div style={{display:"flex",gap:6}}>
-                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockEdit(s.id)}>✓ Setuju</button>
-                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockEdit(s.id)}>✕ Tolak</button>
+                        <div className="approval-actions approval-actions--compact">
+                          <button className="approval-btn--approve" onClick={()=>approveStockEdit(s.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                          <button className="approval-btn--reject" onClick={()=>rejectStockEdit(s.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                         </div>
                       </div>
                     );
@@ -6039,9 +6039,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
                           <div style={{fontSize:12,color:C.muted}}>Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.deleteRequestedAt)}</div>
                         </div>
-                        <div style={{display:"flex",gap:6}}>
-                          <button style={sty.btn("primary","sm")} onClick={()=>approveStockDelete(s.id)}>✓ Setuju</button>
-                          <button style={sty.btn("danger","sm")} onClick={()=>rejectStockDelete(s.id)}>✕ Tolak</button>
+                        <div className="approval-actions approval-actions--compact">
+                          <button className="approval-btn--approve" onClick={()=>approveStockDelete(s.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                          <button className="approval-btn--reject" onClick={()=>rejectStockDelete(s.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                         </div>
                       </div>
                     );
@@ -6070,12 +6070,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <div style={{fontSize:12,color:C.muted}}>{getHeavyEquipmentLoanStartDate(l)} s/d {getHeavyEquipmentLoanReturnDate(l)} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(l.requestedAt)}</div>
                           <div style={{fontSize:12,color:C.text,marginTop:2}}>{getHeavyEquipmentLoanJobName(l)}{l.keperluan ? ` • ${l.keperluan}` : ""}</div>
                         </div>
-                        <div style={{display:"flex",gap:6,flexShrink:0}}>
-                          <button style={sty.btn("primary","sm")} onClick={()=>approveHeavyEquipmentLoan(l.id)}>✓ Setuju</button>
-                          <button style={sty.btn("danger","sm")} onClick={()=>{
+                        <div className="approval-actions approval-actions--compact" style={{flexShrink:0}}>
+                          <button className="approval-btn--approve" onClick={()=>approveHeavyEquipmentLoan(l.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                          <button className="approval-btn--reject" onClick={()=>{
                             const rejectReason = window.prompt("Alasan penolakan peminjaman alat?");
                             if (rejectReason) rejectHeavyEquipmentLoan(l.id, rejectReason);
-                          }}>✕ Tolak</button>
+                          }}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                         </div>
                       </div>
                     );
@@ -6104,12 +6104,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                           <div style={{fontSize:12,fontWeight:700}}>Opname {opn.semester} — {opn.jenisAlur}</div>
                           <div style={{fontSize:12,color:C.muted}}>{opn.items?.length||0} item • Selisih: {selisihCount} item • Diajukan oleh {pengaju?.name||"?"} • {fmtDate(opn.submittedAt)}</div>
                         </div>
-                        <div style={{display:"flex",gap:6,flexShrink:0}}>
-                          <button style={sty.btn("primary","sm")} onClick={()=>hasRole(currentUser, "ASMAN")?approveOpname_Asman(opn,""):approveOpname_Manager(opn,"")}>✓ Setuju</button>
-                          <button style={sty.btn("danger","sm")} onClick={()=>{
+                        <div className="approval-actions approval-actions--compact" style={{flexShrink:0}}>
+                          <button className="approval-btn--approve" onClick={()=>hasRole(currentUser, "ASMAN")?approveOpname_Asman(opn,""):approveOpname_Manager(opn,"")}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                          <button className="approval-btn--reject" onClick={()=>{
                             const reason = window.prompt("Alasan penolakan Stock Opname ini?");
                             if (reason) rejectOpname(opn, reason);
-                          }}>✕ Tolak</button>
+                          }}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                         </div>
                       </div>
                     );
@@ -6135,12 +6135,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         <div style={{fontSize:12,fontWeight:700}}>{item.nama}</div>
                         <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.katalogKode} • SAP {fmtNum(item.qtySap)} vs Aplikasi {item.katalogId?fmtNum(item.qtyApp):"Tidak terdaftar"} {item.satuan} • Selisih {item.selisih>0?"+":""}{fmtNum(item.selisih)} ({item.selisihPct}%) • {fmtDate(session.uploadedAt)}</div>
                       </div>
-                      <div style={{display:"flex",gap:6,flexShrink:0}}>
-                        <button style={sty.btn("primary","sm")} onClick={()=>approveStockCountItem(session.id, item.id, "")}>✓ Setuju</button>
-                        <button style={sty.btn("danger","sm")} onClick={()=>{
+                      <div className="approval-actions approval-actions--compact" style={{flexShrink:0}}>
+                        <button className="approval-btn--approve" onClick={()=>approveStockCountItem(session.id, item.id, "")}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                        <button className="approval-btn--reject" onClick={()=>{
                           const reason = window.prompt("Alasan penolakan temuan Stock Count ini?");
                           if (reason) rejectStockCountItem(session.id, item.id, reason);
-                        }}>✕ Tolak</button>
+                        }}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                       </div>
                     </div>
                   ))}
@@ -6966,9 +6966,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 );
               })}
             </div>
-            <div style={{display:"flex",gap:10}}>
-              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setCapacityReviewImportId(null);setCapacityReviewCandidates([]);setCapacityReviewDecisions({});}}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={confirmCapacityApproval}>✅ Konfirmasi & Lanjutkan Approve</button>
+            <div className="approval-actions">
+              <button className="approval-btn--cancel" onClick={()=>{setCapacityReviewImportId(null);setCapacityReviewCandidates([]);setCapacityReviewDecisions({});}}>Batal</button>
+              <button className="approval-btn--approve" onClick={confirmCapacityApproval}><span className="approval-btn__ic" aria-hidden="true">✓</span>Konfirmasi & Lanjutkan Approve</button>
             </div>
           </div>
         </div>
