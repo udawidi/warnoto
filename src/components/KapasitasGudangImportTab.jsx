@@ -3,6 +3,7 @@ import { useState } from "react";
 import { KAPASITAS_LABEL, UIT, UPT } from "../constants.js";
 import { parseIndoNumber } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
+import { logAudit } from "../lib/audit.js";
 import * as XLSX from "xlsx";
 
 // Convert Excel serial date → string YYYY-MM-DD
@@ -249,6 +250,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
     const newImports = [...gudangCapacityImports, importRecord];
     setGudangCapacityImports(newImports);
     await saveToCloud({ gudangCapacityImports: newImports });
+    logAudit(currentUser, "IMPORT", "gudang_capacity", batchId, {rows: toPublish.length, sourceFile: importPreview.fileName});
     setImportPreview(null);
     showToast(`Diajukan ke Asman untuk approval (${toPublish.length} record). Lihat status di menu Approval.`, "success");
   }

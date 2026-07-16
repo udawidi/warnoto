@@ -7,6 +7,7 @@ import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, R
 import { supabase, SUPABASE_URL, SUPABASE_KEY, usernameToAuthEmail } from "./src/supabaseClient.js";
 import { CLOUD } from "./src/lib/cloud.js";
 import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
+import { logAudit } from "./src/lib/audit.js";
 import { C, makeSty } from "./src/theme.js";
 import { generateDocNumbers, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML } from "./src/lib/docBuilders.js";
@@ -36,6 +37,7 @@ import { StockCountTab } from "./src/components/StockCountTab.jsx";
 import { RencanaKedatanganTab } from "./src/components/RencanaKedatanganTab.jsx";
 import { KapasitasGudangTab } from "./src/components/KapasitasGudangTab.jsx";
 import { AIAgentPage } from "./src/components/AIAgentPage.jsx";
+import { AuditLogPage } from "./src/components/AuditLogPage.jsx";
 import { HeavyEquipmentTabV2 } from "./src/components/HeavyEquipmentTabV2.jsx";
 import { AttbTab } from "./src/components/AttbTab.jsx";
 import { TUG5Tab } from "./src/components/TUG5Tab.jsx";
@@ -880,6 +882,7 @@ export default function PLNWarehouse() {
     if (error || !data?.ok) { showToast(data?.error || error?.message || "Gagal menyimpan perubahan akun.","error"); return; }
     setAkunModal(null);
     await reloadUsers();
+    logAudit(currentUser, "UPDATE", "akun", f.username, {nama:f.name, role:f.role});
     showToast("✅ Akun berhasil diperbarui!");
   }
   async function submitAkunBaru() {
@@ -903,6 +906,7 @@ export default function PLNWarehouse() {
     if (error || !data?.ok) { showToast(data?.error || error?.message || "Gagal mendaftarkan akun.","error"); return; }
     setAkunResult({username: f.username.trim().toLowerCase(), password: f.password});
     await reloadUsers();
+    logAudit(currentUser, "CREATE", "akun", f.username.trim().toLowerCase(), {nama:f.name, role:f.role});
     showToast("✅ Akun berhasil didaftarkan!");
   }
 
@@ -933,6 +937,7 @@ export default function PLNWarehouse() {
     setGantiPasswordBusy(false);
     if (updateErr) { showToast("Gagal mengubah password: "+updateErr.message,"error"); return; }
     setGantiPasswordModal(false);
+    logAudit(currentUser, "UPDATE", "akun", currentUser.username, {gantiPassword:true});
     showToast("✅ Password berhasil diubah!");
   }
 
@@ -949,7 +954,7 @@ export default function PLNWarehouse() {
     // Callback TIDAK async — supabase-js memperingatkan callback async di
     // onAuthStateChange bisa deadlock lock auth internal. Kerjaan async
     // dilempar ke handleAuthSession (fire-and-forget).
-    async function handleAuthSession(session) {
+    async function handleAuthSession(session, event) {
       if (session?.user) {
         const { data: profile, error: profErr } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
         if (profErr || !profile) {
@@ -961,6 +966,10 @@ export default function PLNWarehouse() {
           const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, ultgId: profile.ultg_id, uitId: profile.uit_id };
           setCurrentUser(userObj);
           try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(userObj)); } catch {}
+          // LOGIN dicatat cuma untuk login manual (SIGNED_IN) — bukan INITIAL_SESSION
+          // (buka tab/reload dgn sesi tersimpan) atau TOKEN_REFRESHED (refresh token
+          // tiap jam), supaya audit log tidak dibanjiri entri yang bukan aksi user nyata.
+          if (event === "SIGNED_IN") logAudit(userObj, "LOGIN", "auth");
           // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
           // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
           supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
@@ -974,7 +983,7 @@ export default function PLNWarehouse() {
       setAuthLoading(false);
     }
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      handleAuthSession(session);
+      handleAuthSession(session, _event);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
@@ -1040,6 +1049,7 @@ export default function PLNWarehouse() {
     else nk = [...katalogList, {...katalogClean, createdAt:Date.now()}];
     setKatalogList(nk); setKatalogModal(null);
     await saveToCloud({katalogList: nk});
+    logAudit(currentUser, katalogModal==="edit"?"UPDATE":"CREATE", "katalog", katalogClean.katalog||katalogClean.id, {kode:katalogClean.katalog, nama:katalogClean.name});
     showToast(katalogModal==="edit" ? "Master Katalog diupdate!" : "Katalog barang baru ditambahkan!");
   }
   async function searchMaraCatalog(q) {
@@ -1105,6 +1115,7 @@ export default function PLNWarehouse() {
         done += chunk.length;
         setMaraUploadProgress(`Mengupload... ${done.toLocaleString()} / ${total.toLocaleString()}`);
       }
+      logAudit(currentUser, "IMPORT", "mara_catalog", null, {rows: done});
       showToast(`✅ ${done.toLocaleString()} material MARA berhasil disimpan ke database.`, "success");
       setMaraUploadProgress(null);
     } catch(e) {
@@ -1122,7 +1133,9 @@ export default function PLNWarehouse() {
       warning: "Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
         const nk = katalogList.filter(x=>x.id!==id);
-        setKatalogList(nk); await saveToCloud({katalogList: nk}); showToast("Katalog dihapus.");
+        setKatalogList(nk); await saveToCloud({katalogList: nk});
+        logAudit(currentUser, "DELETE", "katalog", k?.katalog||id, {nama:k?.name});
+        showToast("Katalog dihapus.");
       }
     });
   }
@@ -1171,6 +1184,7 @@ export default function PLNWarehouse() {
     }
     setLokasiList(nl); setLokasiModal(null);
     await syncLokasi(nl);
+    logAudit(currentUser, lokasiModal==="edit"?"UPDATE":"CREATE", "lokasi", lokasiForm.kode, {kode:lokasiForm.kode});
     showToast(lokasiModal==="edit" ? "Master Lokasi diupdate!" : "Lokasi gudang baru ditambahkan!");
   }
   // Buka popup konfirmasi hapus blok gudang (bukan langsung hapus) —
@@ -1185,6 +1199,7 @@ export default function PLNWarehouse() {
     const nl = lokasiList.filter(x=>x.id!==l.id);
     setLokasiList(nl); setLokasiDeleteConfirm(null);
     await syncLokasi(nl);
+    logAudit(currentUser, "DELETE", "lokasi", l.kode, {kode:l.kode});
     showToast("Lokasi dihapus.");
   }
 
@@ -1203,6 +1218,7 @@ export default function PLNWarehouse() {
     const nh = [{ id:`AH-${uid().slice(-8)}`, decidedBy:currentUser.id, decidedAt:Date.now(), ...entry }, ...approvalHistoryList].slice(0, 300);
     setApprovalHistoryList(nh);
     await saveToCloud({approvalHistoryList: nh});
+    logAudit(currentUser, entry.decision==="REJECTED"?"REJECT":"APPROVE", entry.docType || entry.type || "approval", entry.refId ?? null, entry);
   }
 
   // Approve/reject pengajuan perubahan blok lokasi (khusus role TL)
@@ -1328,6 +1344,7 @@ export default function PLNWarehouse() {
     else ns = [...stocks, {...stockForm, createdAt:Date.now()}];
     setStocks(ns); setStockModal(null);
     await saveToCloud({stocks: ns});
+    logAudit(currentUser, stockModal==="edit"?"UPDATE":"CREATE", "stocks", stockForm.id, {katalogId:stockForm.katalogId, lokasiId:stockForm.lokasiId, wentToApproval});
     showToast(wentToApproval ? "📨 Perubahan qty/harga/jenis diajukan! Menunggu approval TL." : (stockModal==="edit" ? "Data Stok diupdate!" : "Data Stok baru ditambahkan!"));
   }
   // Upload langsung foto Nameplate/Keseluruhan dari modal detail (klik baris Data Stok) — khusus Admin/TL
@@ -1436,7 +1453,9 @@ export default function PLNWarehouse() {
   async function deleteStock(id) {
     if (!window.confirm("Hapus baris stok ini?")) return;
     const ns = stocks.filter(s=>s.id!==id);
-    setStocks(ns); await saveToCloud({stocks: ns}); showToast("Data Stok dihapus.");
+    setStocks(ns); await saveToCloud({stocks: ns});
+    logAudit(currentUser, "DELETE", "stocks", id);
+    showToast("Data Stok dihapus.");
   }
 
   // Approve/reject pengajuan Edit (qty/harga/jenis) Data Stok — khusus TL
@@ -1485,6 +1504,7 @@ export default function PLNWarehouse() {
     else nsp = [...satpamList, {...satpamForm, createdAt:Date.now()}];
     setSatpamList(nsp); setSatpamModal(null);
     await syncMasterTable("satpam", nsp);
+    logAudit(currentUser, satpamModal==="edit"?"UPDATE":"CREATE", "satpam", satpamForm.id, {nama:satpamForm.name});
     showToast(satpamModal==="edit" ? "Data Satpam diupdate!" : "Satpam baru ditambahkan!");
   }
   async function deleteSatpam(id) {
@@ -1495,7 +1515,9 @@ export default function PLNWarehouse() {
       warning: "Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
         const nsp = satpamList.filter(x=>x.id!==id);
-        setSatpamList(nsp); await syncMasterTable("satpam", nsp); showToast("Satpam dihapus.");
+        setSatpamList(nsp); await syncMasterTable("satpam", nsp);
+        logAudit(currentUser, "DELETE", "satpam", id, {nama:s?.name});
+        showToast("Satpam dihapus.");
       }
     });
   }
@@ -1506,6 +1528,7 @@ export default function PLNWarehouse() {
     const ntm = timMutuList.map(t=>t.id===timMutuForm.id?{...timMutuForm}:t);
     setTimMutuList(ntm); setTimMutuModal(null);
     await syncMasterTable("tim_mutu", ntm);
+    logAudit(currentUser, "UPDATE", "tim_mutu", timMutuForm.id);
     showToast("Paket Tim Mutu diupdate!");
   }
 
@@ -1517,6 +1540,7 @@ export default function PLNWarehouse() {
     const nu = uitModal==="add" ? [...uitList, uitForm] : uitList.map(u=>u.id===uitForm.id?uitForm:u);
     setUitList(nu); setUitModal(null);
     await syncMasterTable("uit", nu);
+    logAudit(currentUser, uitModal==="add"?"CREATE":"UPDATE", "uit", uitForm.id, {nama:uitForm.nama, kode:uitForm.kode});
     showToast(uitModal==="add"?"UIT ditambahkan!":"UIT diupdate!");
   }
   async function deleteUIT(id) {
@@ -1528,7 +1552,9 @@ export default function PLNWarehouse() {
       warning: uptCount>0 ? `Tindakan ini tidak bisa dibatalkan dan ada ${uptCount} UPT yang masih terhubung ke UIT ini.` : "Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
         const nu = uitList.filter(x=>x.id!==id);
-        setUitList(nu); await syncMasterTable("uit", nu); showToast("UIT dihapus.");
+        setUitList(nu); await syncMasterTable("uit", nu);
+        logAudit(currentUser, "DELETE", "uit", id, {nama:u?.nama});
+        showToast("UIT dihapus.");
       }
     });
   }
@@ -1543,6 +1569,7 @@ export default function PLNWarehouse() {
     const nu = ultgModal==="add" ? [...ultgList, ultgForm] : ultgList.map(u=>u.id===ultgForm.id?ultgForm:u);
     setUltgList(nu); setUltgModal(null);
     await syncUltg(nu);
+    logAudit(currentUser, ultgModal==="add"?"CREATE":"UPDATE", "ultg", ultgForm.id, {nama:ultgForm.nama, kode:ultgForm.kode});
     showToast(ultgModal==="add"?"ULTG ditambahkan!":"ULTG diupdate!");
   }
   async function deleteULTG(id) {
@@ -1553,7 +1580,9 @@ export default function PLNWarehouse() {
       warning: "Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
         const nu = ultgList.filter(x=>x.id!==id);
-        setUltgList(nu); await syncUltg(nu); showToast("ULTG dihapus.");
+        setUltgList(nu); await syncUltg(nu);
+        logAudit(currentUser, "DELETE", "ultg", id, {nama:u?.nama});
+        showToast("ULTG dihapus.");
       }
     });
   }
@@ -1567,6 +1596,7 @@ export default function PLNWarehouse() {
     const nu = uptModal==="add" ? [...uptList, uptForm] : uptList.map(u=>u.id===uptForm.id?uptForm:u);
     setUptList(nu); setUptModal(null);
     await syncUpt(nu);
+    logAudit(currentUser, uptModal==="add"?"CREATE":"UPDATE", "upt", uptForm.id, {nama:uptForm.nama, kode:uptForm.kode});
     showToast(uptModal==="add"?"UPT ditambahkan!":"UPT diupdate!");
   }
   async function deleteUPT(id) {
@@ -1578,7 +1608,9 @@ export default function PLNWarehouse() {
       warning: ultgCount>0 ? `Tindakan ini tidak bisa dibatalkan dan ada ${ultgCount} ULTG yang masih terhubung ke UPT ini.` : "Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
         const nu = uptList.filter(x=>x.id!==id);
-        setUptList(nu); await syncUpt(nu); showToast("UPT dihapus.");
+        setUptList(nu); await syncUpt(nu);
+        logAudit(currentUser, "DELETE", "upt", id, {nama:u?.nama});
+        showToast("UPT dihapus.");
       }
     });
   }
@@ -1863,6 +1895,7 @@ export default function PLNWarehouse() {
     const ng = gudangModal==="add" ? [...gudangList, gudangForm] : gudangList.map(g=>g.id===gudangForm.id?gudangForm:g);
     setGudangList(ng); setGudangModal(null);
     await syncGudang(ng);
+    logAudit(currentUser, gudangModal==="add"?"CREATE":"UPDATE", "gudang", gudangForm.id, {nama:gudangForm.nama});
     showToast(gudangModal==="add"?"Gudang ditambahkan!":"Gudang diupdate!");
   }
   // Step 1 wizard: simpan data gudang lalu lanjut ke Step 2 (upload denah) tanpa menutup modal
@@ -1872,6 +1905,7 @@ export default function PLNWarehouse() {
     const ng = exists ? gudangList.map(g=>g.id===gudangForm.id?gudangForm:g) : [...gudangList, gudangForm];
     setGudangList(ng);
     await syncGudang(ng);
+    logAudit(currentUser, exists?"UPDATE":"CREATE", "gudang", gudangForm.id, {nama:gudangForm.nama});
     setGudangWizardStep(2);
   }
   async function deleteGudang(id) {
@@ -1883,7 +1917,9 @@ export default function PLNWarehouse() {
       warning: `Tindakan ini tidak bisa dibatalkan dan ada ${blokCount} Blok Lokasi terkait yang akan kehilangan koordinat denah.`,
       onConfirm: async () => {
         const ng = gudangList.filter(x=>x.id!==id);
-        setGudangList(ng); await syncGudang(ng); showToast("Gudang dihapus.");
+        setGudangList(ng); await syncGudang(ng);
+        logAudit(currentUser, "DELETE", "gudang", id, {nama:g?.nama});
+        showToast("Gudang dihapus.");
       }
     });
   }
@@ -2507,6 +2543,7 @@ export default function PLNWarehouse() {
     const next = heavyEquipmentList.map(eq => eq.id === equipmentId ? { ...eq, ...updates, ...(updates.foto!==undefined ? {fotoUpdatedAt:Date.now(), fotoUpdatedBy:currentUser.id} : {}) } : eq);
     setHeavyEquipmentList(next);
     await saveToCloud({heavyEquipmentList: next});
+    logAudit(currentUser, "UPDATE", "heavy_equipment", equipmentId, {nama:alat.nama});
     showToast("✅ Data alat berat disimpan.");
   }
   async function createHeavyEquipmentLoan(form) {
@@ -2728,6 +2765,7 @@ export default function PLNWarehouse() {
       const next = [...keptList, ...newItems];
       setAttbList(next);
       await saveToCloud({attbList: next});
+      logAudit(currentUser, "IMPORT", "attb", null, {rows: newItems.length, skipped, removed: removedCount});
     }
     showToast(`✅ Import ATTB selesai: ${newItems.length} item ditambahkan${removedCount>0?`, ${removedCount} data lama (Waktu ${waktu}) ditimpa`:""}${skipped>0?`, ${skipped} dilewati (sudah ada di batch lain)`:""}.`);
     return { created: newItems.length, skipped, removed: removedCount };
@@ -2737,6 +2775,7 @@ export default function PLNWarehouse() {
     const next = attbList.filter(a=>a.id!==id);
     setAttbList(next);
     await saveToCloud({attbList: next});
+    logAudit(currentUser, "DELETE", "attb", id);
     showToast("Item ATTB dihapus.", "error");
   }
   function setMaterialPhoto(stockId, dataUrl) {
@@ -3051,6 +3090,7 @@ export default function PLNWarehouse() {
       setTxns(newTxnsU); setDocSeq(newSeqU); setTxnModal(false);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
       await saveToCloud({txns: newTxnsU, docSeq: newSeqU});
+      logAudit(currentUser, "CREATE", "txns", nt5u.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
       showToast(`${nt5u.docNumbers.tug5} dibuat! Menunggu approval Manager ULTG. ⏳`);
       return;
     }
@@ -3076,6 +3116,7 @@ export default function PLNWarehouse() {
       setTxns(newTxns5); setDocSeq(newSeq5); setTxnModal(false);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
       await saveToCloud({txns: newTxns5, docSeq: newSeq5});
+      logAudit(currentUser, "CREATE", "txns", nt5.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
       showToast(`${nt5.docNumbers.tug5} dibuat! Menunggu approval Asman Konstruksi. ⏳`);
       return;
     }
@@ -3102,6 +3143,7 @@ export default function PLNWarehouse() {
       setTxns(newTxns3); setDocSeq(newSeq3); setTxnModal(false);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
       await saveToCloud({txns: newTxns3, docSeq: newSeq3});
+      logAudit(currentUser, "CREATE", "txns", nt3.docNumbers.tug3, { docType, jumlahBarang: (formData.stockItems||[]).length });
       showToast(`Transaksi ${nt3.docNumbers.tug3} dibuat! Menunggu approval TL Logistik (TUG-3 Karantina). ⏳`);
       return;
     }
@@ -3123,6 +3165,7 @@ export default function PLNWarehouse() {
     setTxns(newTxns); setDocSeq(newSeq); setTxnModal(false);
     setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
     await saveToCloud({txns: newTxns, docSeq: newSeq});
+    logAudit(currentUser, "CREATE", "txns", nt.docNumbers[docKey], { docType, jumlahBarang: (formData.stockItems||[]).length });
     showToast(`Transaksi ${nt.docNumbers[docKey]} dibuat! Menunggu approval ${ROLES[requiredApprover]}. ⏳`);
     } catch (err) {
       console.error("commitNewTxn gagal:", err);
@@ -3164,6 +3207,7 @@ export default function PLNWarehouse() {
       });
       setTxns(newTxns); setStocks(newStocks);
       await saveToCloud({stocks: newStocks, txns: newTxns});
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI!`);
       return;
     }
@@ -3202,6 +3246,7 @@ export default function PLNWarehouse() {
       const newTxns = txns.map(t => t.id===txn.id ? { ...t, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated } : t);
       setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
       await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog});
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah. (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah.`);
       return;
     }
@@ -3214,6 +3259,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers[docKeyOf(txn)], {stage: txn.stage||null, alasan: reason});
     showToast(`❌ ${txn.docNumbers[docKeyOf(txn)]} DITOLAK.`, "error");
   }
 
@@ -3231,6 +3277,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_TUG4", approvedByTL:currentUser.id, approvedAtTL:Date.now(), requiredApprover:"MANAGER" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"MENUNGGU_TUG4"});
     showToast(`✅ ${txn.docNumbers.tug3} disetujui TL Logistik! Lanjut ke tahap TUG-4 (Pemeriksaan Mutu).`);
   }
   async function rejectTUG3_TL(txn, reason) {
@@ -3239,6 +3286,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug3, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug3} DITOLAK oleh TL Logistik.`, "error");
   }
 
@@ -3258,6 +3306,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_FINAL", approvedByManager:currentUser.id, approvedAtManager:Date.now(), requiredApprover:"ASMAN" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug4, {stage:"MENUNGGU_FINAL"});
     showToast(`✅ ${txn.docNumbers.tug4} disetujui Manager! Lanjut ke tahap finalisasi TUG-3.`);
   }
   async function rejectTUG4_Manager(txn, reason) {
@@ -3266,6 +3315,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug4, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug4} DITOLAK oleh Manager.`, "error");
   }
 
@@ -3310,6 +3360,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"APPROVED", status:"APPROVED", approvedByAsman:currentUser.id, approvedAtAsman:Date.now() } : t);
     setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
     await saveToCloud({txns: newTxns, stocks: newStocks, katalogList: newKatalog});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"APPROVED"});
     showToast(`✅ ${txn.docNumbers.tug3} DISETUJUI FINAL! Stok bertambah ke gudang.`);
   }
   async function rejectTUG3Final_Asman(txn, reason) {
@@ -3318,6 +3369,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug3, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug3} DITOLAK oleh Asman Konstruksi (tahap final).`, "error");
   }
 
@@ -3333,6 +3385,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"PENDING_MANAGER", requiredApprover:"MANAGER", approvedByAsman:currentUser.id, approvedAtAsman:Date.now()} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"PENDING_MANAGER"});
     showToast(`✅ ${txn.docNumbers.tug5} disetujui Asman! Menunggu approval Manager.`);
   }
   async function rejectTUG5_Asman(txn, reason) {
@@ -3340,6 +3393,7 @@ export default function PLNWarehouse() {
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug5, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug5} DITOLAK oleh Asman.`, "error");
   }
 
@@ -3376,6 +3430,7 @@ export default function PLNWarehouse() {
       const newSeq = seq + 1;
       setTxns(allTxns); setDocSeq(newSeq);
       await saveToCloud({txns: allTxns, docSeq: newSeq});
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:newTug7.docNumbers.tug7});
       showToast(`✅ ${txn.docNumbers.tug5} DISETUJUI! Draft TUG-7 otomatis dibuat untuk UIT. 📋`);
     } else {
       // INTERCOMPANY — generate draft TUG-5 UIT (untuk dikirim ke UIT lain)
@@ -3403,6 +3458,7 @@ export default function PLNWarehouse() {
       const newSeq = seq + 1;
       setTxns(allTxns); setDocSeq(newSeq);
       await saveToCloud({txns: allTxns, docSeq: newSeq});
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:draftTug5UIT.docNumbers.tug5});
       showToast(`✅ ${txn.docNumbers.tug5} DISETUJUI! Draft TUG-5 UIT (Intercompany) dibuat — cetak & kirim manual ke UIT tujuan. 📄`);
     }
   }
@@ -3411,6 +3467,7 @@ export default function PLNWarehouse() {
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug5, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug5} DITOLAK oleh Manager.`, "error");
   }
 
@@ -3429,6 +3486,7 @@ export default function PLNWarehouse() {
     const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"APPROVED_ULTG", status:"APPROVED", approvedByMgrUltg:currentUser.id, approvedAtMgrUltg:Date.now()} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED_ULTG"});
     showToast(`✅ ${txn.docNumbers.tug5} disetujui! Menunggu di-adopt oleh Admin/TL UPT.`);
   }
   async function rejectTUG5_MgrULTG(txn, reason) {
@@ -3436,6 +3494,7 @@ export default function PLNWarehouse() {
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug5, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug5} DITOLAK oleh Manager ULTG.`, "error");
   }
   // Admin/TL UPT induk "mengadopsi" pengajuan ULTG → auto-create draft TUG-9 (editable, stok dipilih sendiri)
@@ -3547,6 +3606,7 @@ export default function PLNWarehouse() {
     const newSeq = seq + 1;
     setTxns(allTxns); setDocSeq(newSeq);
     await saveToCloud({txns: allTxns, docSeq: newSeq});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug7, {stage:"APPROVED", generated:newTug8Draft.docNumbers.tug8});
     showToast(`✅ TUG-7 DISETUJUI! Draft TUG-8 otomatis muncul di UPT ${uptPengirim?.nama||"Pengirim"}. 📦`);
   }
   async function rejectTUG7_MgrLogistik(txn, reason) {
@@ -3554,6 +3614,7 @@ export default function PLNWarehouse() {
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug7, {stage:"REJECTED", alasan:reason});
     showToast(`❌ TUG-7 DITOLAK oleh Manager Logistik UIT.`, "error");
   }
 
@@ -3567,6 +3628,7 @@ export default function PLNWarehouse() {
       asmanAutoApproved:false, createdBy:currentUser.id,
     } : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug8, {stage:"KONFIRMASI_DRAFT"});
     showToast(`✅ Draft TUG-8 dikonfirmasi! Status: PENDING, menunggu approval ${ROLES[requiredApprover]}.`);
   }
 
@@ -4176,7 +4238,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   ];
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
-  const masterPageTitle = stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi":stockSubTab==="akun"?"Kelola Akun":stockSubTab==="migrasi"?"Migrasi Data SAP / Non-SAP":"Master Gudang";
+  const masterPageTitle = stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi":stockSubTab==="akun"?"Kelola Akun":stockSubTab==="migrasi"?"Migrasi Data SAP / Non-SAP":stockSubTab==="auditLog"?"Audit Log":"Master Gudang";
   const pageMeta = {
     dashboard: {eyebrow:"Operations Overview",title:hasRole(currentUser,"MANAGER")?"Dashboard Eksekutif":hasRole(currentUser,"ASMAN")?"Dashboard Operasional":"Dashboard Gudang"},
     stock: {eyebrow:"Inventory Control",title:"Data Stok Gudang"},
@@ -4334,7 +4396,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                         {id:"timmutu",icon:<SidebarIcon name="users" size={16}/>,label:"Tim Mutu"},
                         {id:"organisasi",icon:<SidebarIcon name="organization" size={16}/>,label:"Struktur Organisasi"},
                         {id:"gudang",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Master Gudang"},
-        ...(hasRole(currentUser, "ADMIN") ? [{id:"akun",icon:<SidebarIcon name="user" size={16}/>,label:"Kelola Akun"},{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"}] : []),
+        ...(hasRole(currentUser, "ADMIN") ? [{id:"akun",icon:<SidebarIcon name="user" size={16}/>,label:"Kelola Akun"},{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"},{id:"auditLog",icon:<SidebarIcon name="shield" size={16}/>,label:"Audit Log"}] : []),
                       ].map(sub=>{
                         const subActive = isActive && stockSubTab===sub.id;
                         return (
@@ -5660,6 +5722,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 setTxns={setTxns}
                 showToast={showToast}
               />
+            )}
+
+            {/* ── SUB-TAB: AUDIT LOG (ADMIN only) ── */}
+            {stockSubTab==="auditLog" && hasRole(currentUser, "ADMIN") && (
+              <AuditLogPage sty={sty} C={C}/>
             )}
           </div>
         )}

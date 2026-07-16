@@ -5,6 +5,7 @@ import { supabase } from "../supabaseClient.js";
 import { fmtDateOnly, parseIndoNumber } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { normalizeKatalog } from "../lib/sap.js";
+import { logAudit } from "../lib/audit.js";
 import * as XLSX from "xlsx";
 
 // ════════════════════════════════════════════════════════════════════
@@ -404,6 +405,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
         migratedTug15History: migHistory,
         migrasiPendingReview: updatedPendingReview,
       });
+      logAudit(currentUser, "IMPORT", "migrasi", null, {rows: newPendingReview.length, sourceFile: sapFile || ""});
 
       setApplyProgressPct(100);
       setApplyProgress("✅ Selesai.");
