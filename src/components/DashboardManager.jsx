@@ -9,7 +9,7 @@ import { HeavyEquipmentDashboardSummary } from "./HeavyEquipmentDashboardSummary
 import { AttbDashboardSummary } from "./AttbDashboardSummary.jsx";
 import { DashboardAnalitikSection } from "./DashboardAnalitikSection.jsx";
 
-export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser, attbList, attbBongkaranPool }) {
+export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser, attbList, attbBongkaranPool, isMobile }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiCadang = stocks.filter(s=>s.jenisBarang==="Cadang").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   const nilaiPersediaan = stocks.filter(s=>s.jenisBarang==="Persediaan").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
@@ -23,13 +23,13 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
     <div>
       {/* Header Eksekutif */}
       <div style={{background:"linear-gradient(135deg,#003087,#0098da)",borderRadius:12,padding:"20px 24px",marginBottom:20,color:"white"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+        <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:"flex-start",gap:isMobile?16:12}}>
           <div>
             <div style={{fontSize:12,opacity:0.7,fontWeight:600,textTransform:"uppercase",letterSpacing:1,marginBottom:4}}>PT PLN (Persero) UIT-JBM</div>
             <div style={{fontSize:20,fontWeight:900}}>Dashboard Eksekutif Material</div>
             <div style={{fontSize:12,opacity:0.8,marginTop:4}}>{new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
           </div>
-          <div style={{textAlign:"right"}}>
+          <div style={{textAlign:isMobile?"left":"right",width:isMobile?"100%":"auto"}}>
             <div style={{fontSize:12,opacity:0.7,marginBottom:4}}>Total Nilai Inventori (UPT Surabaya)</div>
             <div style={{fontSize:26,fontWeight:900,marginBottom:8}}>{fmtRp(nilaiTotal)}</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
@@ -118,7 +118,7 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
         <div style={{fontSize:12,color:C.muted,marginTop:8}}>* Data real hanya tersedia untuk UPT Surabaya (Fase 1). UPT lain akan terhubung di Fase 2.</div>
       </div>
 
-      <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"2fr 1fr",gap:16,marginBottom:16}}>
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
           {/* Compliance — TUG pending lama */}

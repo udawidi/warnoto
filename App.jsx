@@ -4600,6 +4600,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
             currentUser={currentUser}
             attbList={attbList} attbBongkaranPool={attbBongkaranPool}
+            isMobile={isMobile}
           />
           )}
           </>
@@ -4619,6 +4620,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans}
             currentUser={currentUser}
             attbList={attbList} attbBongkaranPool={attbBongkaranPool}
+            isMobile={isMobile}
           />
           )}
           </>
@@ -5721,7 +5723,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 {users.length===0 ? (
                   <div style={{textAlign:"center",color:C.muted,padding:30}}>Belum ada akun terdaftar.</div>
                 ) : (
-                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                  <table style={{width:"100%",minWidth:640,borderCollapse:"collapse",fontSize:12}}>
                     <thead>
                       <tr style={{borderBottom:`2px solid ${C.border}`,textAlign:"left"}}>
                         <th style={{padding:"8px 6px"}}>Nama</th>
@@ -5747,6 +5750,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             )}
@@ -6388,10 +6392,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* STOCK MODAL (Data Stok = junction of Katalog x Lokasi) */}
       {stockModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{stockModal==="edit"?"Edit Data Stok":"Tambah Data Stok Baru"}</span><button onClick={()=>setStockModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12}}>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={sty.label}>Barang (dari Master Katalog)</label>
                 <select style={sty.select} value={stockForm.katalogId||""} onChange={e=>setStockForm(sf=>({...sf,katalogId:e.target.value}))}>
@@ -6454,8 +6458,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* MASTER KATALOG MODAL */}
       {katalogModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{katalogModal==="edit"?"Edit Master Katalog":"Tambah Katalog Barang Baru"}</span><button onClick={()=>setKatalogModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             {/* MARA Referensi Search */}
             <div style={{marginBottom:16,background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12}}>
@@ -6502,7 +6506,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
             </div>
             <div style={{marginBottom:12}}><label style={sty.label}>Nama Barang</label><input style={{...sty.input,...(katalogForm._maraLocked?{background:"#f3f4f6",color:C.muted}:{})}} disabled={!!katalogForm._maraLocked} value={katalogForm.name||""} onChange={e=>setKatalogForm(kf=>({...kf,name:e.target.value}))}/></div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:12}}>
               <div>
                 <label style={sty.label}>Kategori</label>
                 {katalogForm._maraLocked ? (
@@ -6524,7 +6528,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* USULAN BLOK DARI DENAH — popup terpusat, supaya tidak perlu scroll naik-turun ke peta */}
       {hasRole(currentUser, "ADMIN") && ocrSuggestGudangId && ocrSuggestions.length>0 && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100}}>
-          <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"85vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"85dvh",overflowY:"auto"}}>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>📋 Usulan Blok dari Denah {ocrSuggestSubGudangId?"(Sub Gudang)":"(Gudang)"} ({ocrSuggestions.length})</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Lengkapi data tiap usulan, lalu konfirmasi untuk mengirim ke approval TL.</p>
             <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
@@ -6539,7 +6543,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <label style={sty.label}>Nama Area <span style={{color:C.red}}>*wajib</span></label>
                     <input style={sty.input} value={s.kode} placeholder="cth: Rak A-1" onChange={e=>updateOcrSuggestion(s.id,{kode:e.target.value})}/>
                   </div>
-                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
                     <div>
                       <label style={sty.label}>Jenis Area Penyimpanan</label>
                       <select style={sty.select} value={s.jenisArea||"Rak Tertutup"} onChange={e=>updateOcrSuggestion(s.id,{jenisArea:e.target.value})}>
@@ -6569,8 +6573,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* MASTER LOKASI MODAL */}
       {lokasiModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:420,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{lokasiModal==="edit"?"Edit Master Lokasi":"Tambah Lokasi Gudang Baru"}</span><button onClick={()=>setLokasiModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             {gudangList.length===0 ? (
               <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Belum ada Master Gudang. Tambahkan Gudang dulu di menu "Master Data" → "Master Gudang" sebelum bisa mengisi Blok — data harus berjenjang: Gudang dulu, baru Blok.</div>
@@ -6650,8 +6654,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* SATPAM MODAL */}
       {satpamModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:400,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:400,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{satpamModal==="edit"?"Edit Satpam":"Tambah Satpam Baru"}</span><button onClick={()=>setSatpamModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Nama Satpam</label>
@@ -6694,8 +6698,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* TIM MUTU MODAL — edit anggota paket tetap (tidak bisa tambah/hapus paket) */}
       {timMutuModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:420,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>Edit {timMutuForm.label}</span><button onClick={()=>setTimMutuModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Paket tim ini tetap (tidak bisa diganti namanya) — hanya anggotanya yang bisa diedit.</p>
             <div style={{marginBottom:12}}>
@@ -6730,7 +6734,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* CARI DENGAN FOTO — modal upload foto query untuk visual search Data Stok */}
       {photoSearchOpen && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}} onClick={()=>!photoSearchLoading&&setPhotoSearchOpen(false)}>
-          <div style={{...sty.card,width:420,maxWidth:"100%"}} onClick={e=>e.stopPropagation()}>
+          <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontWeight:800,fontSize:16,marginBottom:6}}>📷 Cari Barang dengan Foto</div>
             {/* Pilih cara mencari: kemiripan bentuk visual (Cohere) atau baca teks nameplate (OCR.space) */}
             <div style={{display:"flex",gap:8,marginBottom:10}}>
@@ -6810,7 +6814,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}} onClick={()=>{setStockDetailId(null); setPendingFoto({});}}>
-            <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
                 <div>
                   <h3 style={{fontSize:16,fontWeight:800}}>{st.name}</h3>
@@ -6845,7 +6849,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* LIGHTBOX — overview foto full-screen, klik foto kecil mana saja di Data Stok */}
       {lightboxImg && (
         <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20,cursor:"zoom-out"}}>
-          <img src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90vh",objectFit:"contain",borderRadius:8}}/>
+          <img src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90dvh",objectFit:"contain",borderRadius:8}}/>
           <button style={{position:"fixed",top:20,right:20,background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontSize:14}} onClick={()=>setLightboxImg(null)}>✕ Tutup</button>
         </div>
       )}
@@ -6853,7 +6857,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* PETA MINI MODAL — dari card Data Stok */}
       {petaMiniDetail && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
-          <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
               <div>
                 <h3 style={{fontSize:16,fontWeight:800}}>📍 Lokasi di Peta Gudang</h3>
@@ -6902,8 +6906,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* GUDANG MODAL — mode "edit" satu langkah; mode "add" wizard 3 langkah (Data → Denah → Blok) */}
       {gudangModal==="edit" && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:460,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:20}}>Edit Gudang</h3>
             <div style={{marginBottom:12}}><label style={sty.label}>Kode Gudang</label><input style={sty.input} value={gudangForm.kode||""} onChange={e=>setGudangForm(f=>({...f,kode:e.target.value}))} placeholder="cth: GTK"/></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Nama Gudang</label><input style={sty.input} value={gudangForm.nama||""} onChange={e=>setGudangForm(f=>({...f,nama:e.target.value}))} placeholder="cth: Gudang Ketintang"/></div>
@@ -6929,8 +6933,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       )}
 
       {gudangModal==="add" && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:540,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:540,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={{display:"flex",gap:6,marginBottom:18}}>
               {[1,2,3].map(n=>(
                 <div key={n} style={{flex:1,height:4,borderRadius:4,background:gudangWizardStep>=n?C.accent:C.border}}/>
@@ -7050,7 +7054,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           penulisan nama gudang di Excel bikin duplikat. */}
       {capacityReviewImportId && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
-          <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>🔎 Konfirmasi Gudang Baru</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>
               {capacityReviewCandidates.length} nama Gudang di file ini tidak cocok dengan Gudang yang sudah ada.
@@ -7105,8 +7109,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* MATURITY ASSESSMENT MODAL — input manual Admin untuk Dashboard */}
       {maturityModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:460,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <h3 style={{fontSize:18,fontWeight:800,marginBottom:20}}>🏆 Asesmen Maturity Level Baru</h3>
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Level (1-5)</label>
@@ -7131,8 +7135,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       )}
 
       {uitModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:440,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:440,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{uitModal==="edit"?"Edit UIT":"Tambah UIT Baru"}</span><button onClick={()=>setUitModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Kode UIT</label><input style={sty.input} value={uitForm.kode||""} onChange={e=>setUitForm(f=>({...f,kode:e.target.value}))} placeholder="cth: UIT-JBM"/></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Nama Lengkap UIT</label><input style={sty.input} value={uitForm.nama||""} onChange={e=>setUitForm(f=>({...f,nama:e.target.value}))} placeholder="cth: PT PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI"/></div>
@@ -7144,8 +7148,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* UPT MODAL */}
       {uptModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:440,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:440,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{uptModal==="edit"?"Edit UPT":"Tambah UPT Baru"}</span><button onClick={()=>setUptModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Kode UPT</label><input style={sty.input} value={uptForm.kode||""} onChange={e=>setUptForm(f=>({...f,kode:e.target.value}))} placeholder="cth: UPT-MLG"/></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Nama UPT</label><input style={sty.input} value={uptForm.nama||""} onChange={e=>setUptForm(f=>({...f,nama:e.target.value}))} placeholder="cth: UPT Malang"/></div>
@@ -7164,8 +7168,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* ULTG MODAL */}
       {ultgModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:440,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:440,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{ultgModal==="edit"?"Edit ULTG":"Tambah ULTG Baru"}</span><button onClick={()=>setUltgModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Kode ULTG</label><input style={sty.input} value={ultgForm.kode||""} onChange={e=>setUltgForm(f=>({...f,kode:e.target.value}))} placeholder="cth: ULTG-SBU"/></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Nama ULTG</label><input style={sty.input} value={ultgForm.nama||""} onChange={e=>setUltgForm(f=>({...f,nama:e.target.value}))} placeholder="cth: ULTG Surabaya Utara"/></div>
@@ -7183,8 +7187,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* KELOLA AKUN MODAL — daftarkan user baru (ADMIN only) */}
       {akunModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:460,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             {akunResult ? (
               <>
                 <h3 style={{fontSize:18,fontWeight:800,marginBottom:14}}>✅ Akun Berhasil Didaftarkan</h3>
@@ -7309,8 +7313,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* GANTI PASSWORD MODAL — self-service, semua role, akun sendiri */}
       {gantiPasswordModal && (
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000}}>
-          <div style={{...sty.card,width:400,maxWidth:"100%"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:400,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>🔑 Ganti Password</span><button onClick={()=>setGantiPasswordModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Password Lama</label>
@@ -7335,7 +7339,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* TXN MODAL - TUG5 FORM */}
       {txnModal && txnForm && txnForm.docType==="TUG5" && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
-          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-5 — Daftar Permintaan Barang</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
@@ -7480,7 +7484,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
       {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
-          <div style={{...sty.card,width:680,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:680,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir {txnForm.docType.replace("TUG","TUG-")} — {txnForm.docType==="TUG9"?"Bon Pemakaian":"Pemakaian Unit Lain"}</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
@@ -7629,7 +7633,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         const missingList = tug10Missing(txnForm);
         return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
-          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-10 — Bon Pengembalian</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
@@ -7837,7 +7841,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* TXN MODAL - TUG3 FORM (Karantina — penerimaan barang tahap 1) */}
       {txnModal && txnForm && txnForm.docType==="TUG3" && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
-          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-3 Karantina — Bon Penerimaan</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>

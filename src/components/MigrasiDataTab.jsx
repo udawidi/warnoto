@@ -786,8 +786,8 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
             <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
               <div style={{fontWeight:700,marginBottom:4,color:C.red}}>⚠️ Perlu Review Manual — Qty di luar "Unrestricted Use Stock"</div>
               <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Baris ini punya qty di Quality Inspection/Blocked/In Transit Stock — TIDAK otomatis ditambahkan ke Data Stok. Putuskan per baris: gabung ke Unrestricted, atau hapus barisnya dari daftar impor. Kalau dibiarkan, qty tambahan ini tetap diabaikan (cuma qty Unrestricted yang ikut masuk).</div>
-              <div style={{maxHeight:220,overflowY:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <div style={{maxHeight:220,overflowY:"auto",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                <table style={{width:"100%",minWidth:640,borderCollapse:"collapse",fontSize:12}}>
                   <thead><tr style={{background:"#fef2f2"}}>{["No Katalog","Deskripsi","Unrestricted","Quality Insp.","Blocked","In Transit","Aksi"].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left"}}>{h}</th>)}</tr></thead>
                   <tbody>
                     {previewStats.sapResult.filter(r=>r.needsStockReview).map((r,i)=>(
