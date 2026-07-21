@@ -718,33 +718,42 @@ export default function PLNWarehouse() {
     // selesai. Di localhost nyaris tidak kelihatan (round-trip cepat), tapi di Vercel kalau
     // user refresh (F5) sesaat setelah input, request yang masih in-flight ikut terputus dan
     // perubahan hilang saat reload (kejadian: lokasi item ATTB hilang lagi setelah F5).
-    const syncPromises = [];
-    if (overrides.katalogList !== undefined) syncPromises.push(syncMasterTable("katalog", kat));
-    if (overrides.stocks !== undefined) syncPromises.push(syncMasterTable("stocks", s, item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null })));
+    // Tiap task dicatat dengan label manusiawi (bukan cuma promise polos) supaya kalau
+    // ada yang gagal, user bisa diberi tahu bagian mana yang gagal (lihat pengecekan
+    // failedLabels di bawah) — ditemukan bug nyata 2026-07-21: syncMasterTable() bisa
+    // return false (network error/RLS/dll) tapi hasilnya tidak pernah dicek, jadi toast
+    // "berhasil" tetap muncul meski data sebenarnya gagal tersimpan ke Supabase.
+    const syncTasks = [];
+    if (overrides.katalogList !== undefined) syncTasks.push({ label: "Master Katalog", promise: syncMasterTable("katalog", kat) });
+    if (overrides.stocks !== undefined) syncTasks.push({ label: "Data Stok", promise: syncMasterTable("stocks", s, item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null })) });
     // Kapasitas Gudang — sebelumnya localStorage/CLOUD-only, sekarang auto-backup
     // ke Supabase tiap kali berubah (lihat schema.sql section 10-11).
-    if (overrides.gudangCapacityList !== undefined) syncPromises.push(syncMasterTable("warehouse_capacity", gcap));
-    if (overrides.gudangCapacityImports !== undefined) syncPromises.push(syncMasterTable("warehouse_capacity_imports", gcapi));
+    if (overrides.gudangCapacityList !== undefined) syncTasks.push({ label: "Kapasitas Gudang", promise: syncMasterTable("warehouse_capacity", gcap) });
+    if (overrides.gudangCapacityImports !== undefined) syncTasks.push({ label: "Import Kapasitas Gudang", promise: syncMasterTable("warehouse_capacity_imports", gcapi) });
     // Alat Berat/Peminjaman UPT — sebelumnya localStorage/CLOUD-only (ditemukan saat
     // audit 2026-07-06), sekarang auto-backup ke Supabase tiap kali berubah (lihat
     // schema.sql section 21).
-    if (overrides.heavyEquipmentList !== undefined) syncPromises.push(syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null })));
-    if (overrides.heavyEquipmentLoans !== undefined) syncPromises.push(syncMasterTable("heavy_equipment_loans", hel, l => ({
+    if (overrides.heavyEquipmentList !== undefined) syncTasks.push({ label: "Alat Berat", promise: syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null })) });
+    if (overrides.heavyEquipmentLoans !== undefined) syncTasks.push({ label: "Peminjaman Alat Berat", promise: syncMasterTable("heavy_equipment_loans", hel, l => ({
       equipment_id: l.equipmentId || null,
       status: l.status || null,
       owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
       requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
-    })));
+    })) });
     // ATTB (pipeline penghapusan aset material) — auto-backup ke Supabase tiap kali
     // berubah, pola sama seperti heavy_equipment (lihat schema.sql section 23).
-    if (overrides.attbList !== undefined) syncPromises.push(syncMasterTable("attb_list", attb, e => ({ upt: e.upt || null, stage: e.stage || null })));
+    if (overrides.attbList !== undefined) syncTasks.push({ label: "ATTB", promise: syncMasterTable("attb_list", attb, e => ({ upt: e.upt || null, stage: e.stage || null })) });
     // Stock Opname & Stock Count — sebelumnya localStorage/CLOUD-only, ditemukan 2026-07-07
     // (widget akurasi Dashboard "hilang" kalau dibuka dari device/browser lain karena datanya
     // memang tidak pernah keluar dari localStorage device asal). Sekarang auto-backup ke
     // Supabase tiap kali berubah, pola sama seperti heavy_equipment (schema.sql section 22).
-    if (overrides.opnameList !== undefined) syncPromises.push(syncMasterTable("stock_opname", opn, o => ({ status: o.status || null })));
-    if (overrides.stockCountList !== undefined) syncPromises.push(syncMasterTable("stock_count", sc));
-    await Promise.all(syncPromises);
+    if (overrides.opnameList !== undefined) syncTasks.push({ label: "Stock Opname", promise: syncMasterTable("stock_opname", opn, o => ({ status: o.status || null })) });
+    if (overrides.stockCountList !== undefined) syncTasks.push({ label: "Stock Count", promise: syncMasterTable("stock_count", sc) });
+    const syncResults = await Promise.all(syncTasks.map(task => task.promise));
+    const failedLabels = syncTasks.filter((task, i) => syncResults[i] === false).map(task => task.label);
+    if (failedLabels.length > 0) {
+      showToast(`⚠️ Sebagian data gagal tersimpan ke cloud (${failedLabels.join(", ")}). Coba simpan ulang atau cek koneksi.`, "error");
+    }
 
     // Auto-sync warnoto_state + RAG (bot WA/Telegram) kalau ada perubahan stocks/txns —
     // debounced 90 detik supaya tidak spam Cohere embed API tiap 1 saveToCloud.
