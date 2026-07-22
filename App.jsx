@@ -237,7 +237,9 @@ export default function PLNWarehouse() {
   const [cloudSaving, setCloudSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
-  const [tab, setTab] = useState("dashboard");
+  const [tab, setTab] = useState(() => {
+    try { return sessionStorage.getItem("warnoto_tab") || "dashboard"; } catch { return "dashboard"; }
+  });
   const [dashTab, setDashTab] = useState("ringkasan"); // ringkasan terpadu | overview gudang
   const [search, setSearch] = useState("");
   const [filterJenis, setFilterJenis] = useState("ALL");
@@ -897,6 +899,7 @@ export default function PLNWarehouse() {
 
   async function handleLogout() {
     if (supabase) await supabase.auth.signOut();
+    try { sessionStorage.removeItem("warnoto_tab"); } catch {}
     setCurrentUser(null); setUsers([]);
   }
 
@@ -1070,6 +1073,12 @@ export default function PLNWarehouse() {
   useEffect(() => {
     if (currentUser && tab !== "dashboard" && !can(currentUser, "menu." + tab, rolePerms)) setTab("dashboard");
   }, [tab, currentUser, rolePerms]);
+
+  // Simpan tab aktif ke sessionStorage supaya refresh halaman tetap di menu yang
+  // sama (per-tab-browser, sama seperti pola Mode Demo di src/lib/demo.js).
+  useEffect(() => {
+    try { sessionStorage.setItem("warnoto_tab", tab); } catch {}
+  }, [tab]);
 
   // Auto-sync foto transaksi yang belum ter-upload (mis. submit saat offline di
   // gudang). Dicoba saat app load, saat daftar transaksi berubah, dan saat koneksi
