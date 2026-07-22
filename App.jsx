@@ -18,7 +18,7 @@ import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentSt
 import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, ATTB_FIELDS_BY_JENIS, ATTB_ALASAN_PENGHAPUSBUKUAN, ATTB_WAKTU_USULAN_OPTIONS, ATTB_CORE_FIELDS, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, parseAttbCurrency, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "./src/lib/attb.js";
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
-import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, seedMasterTableIfEmpty, syncMaterialCadangRows, loadWarehouseCapacity, syncWarehouseCapacity, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, seedMasterTableIfEmpty, syncMaterialCadangRows, loadWarehouseCapacity, syncWarehouseCapacity, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
 import { TelegramWhitelistPanel } from "./src/components/TelegramWhitelistPanel.jsx";
@@ -710,7 +710,15 @@ export default function PLNWarehouse() {
   // tim_mutu/uit/upt/gudang/lokasi), ditulis langsung oleh masing-masing
   // fungsi CRUD-nya lewat syncMasterTable(). saveToCloud tetap menangani sisa
   // data yang belum dimigrasi (stocks, katalog, txns, dst).
-  const saveToCloud = useCallback(async (overrides = {}) => {
+  // Param kedua `hints` (opsional, backward-compatible): kalau caller TAHU persis
+  // baris mana saja yang berubah (mis. update lokasi 1 item Data Stok), ia bisa
+  // memberi `{ stocksChangedRows: [...] }` / `{ katalogChangedRows: [...] }` supaya
+  // sync ke Supabase cuma mengirim baris itu (syncMasterTableRows, ringan) alih-alih
+  // seluruh tabel (syncMasterTable, yang untuk `stocks` bisa ~18.7MB gara-gara foto
+  // base64 di jsonb). TANPA hint, perilaku PERSIS SAMA seperti sebelumnya (full sync,
+  // termasuk reconciliation-delete) — hint HANYA dipakai untuk kasus "beberapa baris
+  // spesifik berubah", BUKAN untuk kasus yang butuh deteksi baris terhapus.
+  const saveToCloud = useCallback(async (overrides = {}, hints = {}) => {
     const s = overrides.stocks ?? stateRef.current.stocks;
     const t = overrides.txns ?? stateRef.current.txns;
     const seq = overrides.docSeq ?? stateRef.current.docSeq;
@@ -770,9 +778,24 @@ export default function PLNWarehouse() {
     // failedLabels di bawah) — ditemukan bug nyata 2026-07-21: syncMasterTable() bisa
     // return false (network error/RLS/dll) tapi hasilnya tidak pernah dicek, jadi toast
     // "berhasil" tetap muncul meski data sebenarnya gagal tersimpan ke Supabase.
+    const extraColsStocks = item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null });
     const syncTasks = [];
-    if (overrides.katalogList !== undefined) syncTasks.push({ label: "Master Katalog", promise: syncMasterTable("katalog", kat) });
-    if (overrides.stocks !== undefined) syncTasks.push({ label: "Data Stok", promise: syncMasterTable("stocks", s, item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null })) });
+    if (overrides.katalogList !== undefined) {
+      // Kalau caller kasih hint baris katalog yang berubah → sync ringan (cuma baris itu),
+      // tanpa reconciliation-delete. Kalau tidak → full sync seperti biasa (aman untuk
+      // kasus yang butuh deteksi baris terhapus).
+      const katHint = hints.katalogChangedRows;
+      syncTasks.push({ label: "Master Katalog", promise: (Array.isArray(katHint) && katHint.length > 0)
+        ? syncMasterTableRows("katalog", katHint)
+        : syncMasterTable("katalog", kat) });
+    }
+    if (overrides.stocks !== undefined) {
+      // Idem untuk Data Stok — ini kasus utama optimasi (tabel `stocks` paling berat).
+      const stocksHint = hints.stocksChangedRows;
+      syncTasks.push({ label: "Data Stok", promise: (Array.isArray(stocksHint) && stocksHint.length > 0)
+        ? syncMasterTableRows("stocks", stocksHint, extraColsStocks)
+        : syncMasterTable("stocks", s, extraColsStocks) });
+    }
     // Kapasitas Gudang — sebelumnya localStorage/CLOUD-only, sekarang auto-backup
     // ke Supabase tiap kali berubah (lihat schema.sql section 10-11).
     if (overrides.gudangCapacityList !== undefined) syncTasks.push({ label: "Kapasitas Gudang", promise: syncWarehouseCapacity(gcap) });
@@ -1140,7 +1163,8 @@ export default function PLNWarehouse() {
     if (katalogModal==="edit") nk = katalogList.map(k=>k.id===katalogForm.id?{...katalogClean}:k);
     else nk = [...katalogList, {...katalogClean, createdAt:Date.now()}];
     setKatalogList(nk); setKatalogModal(null);
-    await saveToCloud({katalogList: nk});
+    // Cuma 1 baris katalog berubah (edit/tambah id===katalogForm.id) — sync ringan baris itu.
+    await saveToCloud({katalogList: nk}, {katalogChangedRows: nk.filter(k=>k.id===katalogForm.id)});
     logAudit(currentUser, katalogModal==="edit"?"UPDATE":"CREATE", "katalog", katalogClean.katalog||katalogClean.id, {kode:katalogClean.katalog, nama:katalogClean.name});
     showToast(katalogModal==="edit" ? "Master Katalog diupdate!" : "Katalog barang baru ditambahkan!");
   }
@@ -1352,7 +1376,7 @@ export default function PLNWarehouse() {
     const lokSel = lokasiList.find(l=>l.id===st.pendingLokasiId);
     const lokAsal = lokasiList.find(l=>l.id===st.lokasiId);
     const ns = stocks.map(s=>s.id===id ? {...s, lokasiId:st.pendingLokasiId, lokasi:lokSel?.kode||"-", lokasiMovePending:false, pendingLokasiId:null, pendingLokasiKode:null, moveApprovedBy:currentUser.id, moveApprovedAt:Date.now()} : s);
-    setStocks(ns); await saveToCloud({stocks:ns});
+    setStocks(ns); await saveToCloud({stocks:ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     await logApprovalHistory({type:"STOCK_MOVE", decision:"APPROVED", title:`${st.name}: ${lokAsal?.kode||"—"} → ${st.pendingLokasiKode}`, requestedBy:st.moveRequestedBy, requestedAt:st.moveRequestedAt});
     showToast(`✅ Pemindahan blok ${st.name} disetujui.`);
   }
@@ -1362,7 +1386,7 @@ export default function PLNWarehouse() {
     const lokAsal = lokasiList.find(l=>l.id===st.lokasiId);
     await logApprovalHistory({type:"STOCK_MOVE", decision:"REJECTED", title:`${st.name}: ${lokAsal?.kode||"—"} → ${st.pendingLokasiKode}`, requestedBy:st.moveRequestedBy, requestedAt:st.moveRequestedAt});
     const ns = stocks.map(s=>s.id===id ? {...s, lokasiMovePending:false, pendingLokasiId:null, pendingLokasiKode:null} : s);
-    setStocks(ns); await saveToCloud({stocks:ns});
+    setStocks(ns); await saveToCloud({stocks:ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     showToast(`❌ Pemindahan blok ${st.name} ditolak.`);
   }
 
@@ -1435,7 +1459,8 @@ export default function PLNWarehouse() {
     }
     else ns = [...stocks, {...stockForm, createdAt:Date.now()}];
     setStocks(ns); setStockModal(null);
-    await saveToCloud({stocks: ns});
+    // Hanya 1 baris berubah (edit/tambah baris id===stockForm.id) — sync ringan cuma baris itu.
+    await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===stockForm.id)});
     logAudit(currentUser, stockModal==="edit"?"UPDATE":"CREATE", "stocks", stockForm.id, {katalogId:stockForm.katalogId, lokasiId:stockForm.lokasiId, wentToApproval});
     showToast(wentToApproval ? "📨 Perubahan qty/harga/jenis diajukan! Menunggu approval TL." : (stockModal==="edit" ? "Data Stok diupdate!" : "Data Stok baru ditambahkan!"));
   }
@@ -1443,7 +1468,8 @@ export default function PLNWarehouse() {
   async function updateStockFoto(id, field, img) {
     let ns = stocks.map(s=>s.id===id?{...s,[field]:img}:s);
     setStocks(ns);
-    await saveToCloud({stocks: ns});
+    // Foto = payload paling berat; cuma 1 baris berubah → sync ringan baris itu saja.
+    await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     showToast(`📷 ${field==="fotoNameplate"?"Foto Nameplate":"Foto Keseluruhan"} diperbarui!`);
     // Nameplate: OCR teksnya sekali & cache di fotoNameplateOcr, supaya foto ini
     // ikut jadi pembanding di pencarian foto mode Nameplate tanpa OCR ulang tiap cari.
@@ -1452,7 +1478,7 @@ export default function PLNWarehouse() {
         const text = await ocrSpaceOCR(img);
         ns = ns.map(s=>s.id===id?{...s,fotoNameplateOcr:text}:s);
         setStocks(ns);
-        await saveToCloud({stocks: ns});
+        await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
       } catch (e) {
         // Senyap: user tak perlu tahu soal OCR. Foto tetap tersimpan; kalau OCR
         // gagal, foto ini nanti ikut disapu ulang oleh auto-OCR latar belakang.
@@ -1471,7 +1497,8 @@ export default function PLNWarehouse() {
       if (!updates.size) return;
       const ns = stateRef.current.stocks.map(s => updates.has(s.id) ? {...s, fotoNameplateOcr: updates.get(s.id)} : s);
       setStocks(ns);
-      await saveToCloud({ stocks: ns });
+      // Cuma baris ber-`updates` yang berubah (bukan seluruh tabel) → sync ringan baris itu saja.
+      await saveToCloud({ stocks: ns }, {stocksChangedRows: ns.filter(s => updates.has(s.id))});
       updates.clear();
     };
     // `== null` (bukan sekadar falsy): foto yang sudah di-OCR tapi hasilnya kosong
@@ -1555,7 +1582,7 @@ export default function PLNWarehouse() {
     const st = stocks.find(s=>s.id===id);
     if (!st || !st.editPending) return;
     const ns = stocks.map(s=>s.id===id ? {...s, ...s.pendingEditData, editPending:false, pendingEditData:null, editApprovedBy:currentUser.id, editApprovedAt:Date.now()} : s);
-    setStocks(ns); await saveToCloud({stocks: ns});
+    setStocks(ns); await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     await logApprovalHistory({type:"STOCK_EDIT", decision:"APPROVED", title:`Edit ${st.name}: qty ${fmtNum(st.qty)}→${fmtNum(st.pendingEditData.qty)}, harga Rp${fmtNum(st.price)}→Rp${fmtNum(st.pendingEditData.price)}, jenis ${st.jenisBarang}→${st.pendingEditData.jenisBarang}`, requestedBy:st.editRequestedBy, requestedAt:st.editRequestedAt});
     showToast(`✅ Perubahan ${st.name} disetujui.`);
   }
@@ -1563,7 +1590,7 @@ export default function PLNWarehouse() {
     const st = stocks.find(s=>s.id===id);
     if (!st || !st.editPending) return;
     const ns = stocks.map(s=>s.id===id ? {...s, editPending:false, pendingEditData:null} : s);
-    setStocks(ns); await saveToCloud({stocks: ns});
+    setStocks(ns); await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     await logApprovalHistory({type:"STOCK_EDIT", decision:"REJECTED", title:`Edit ${st.name} ditolak`, requestedBy:st.editRequestedBy, requestedAt:st.editRequestedAt});
     showToast(`❌ Perubahan ${st.name} ditolak.`);
   }
@@ -1581,7 +1608,7 @@ export default function PLNWarehouse() {
     const st = stocks.find(s=>s.id===id);
     if (!st || !st.deletePending) return;
     const ns = stocks.map(s=>s.id===id ? {...s, deletePending:false, deleteRequestedBy:null, deleteRequestedAt:null} : s);
-    setStocks(ns); await saveToCloud({stocks: ns});
+    setStocks(ns); await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     await logApprovalHistory({type:"STOCK_DELETE", decision:"REJECTED", title:`Hapus ${st.name} ditolak`, requestedBy:st.deleteRequestedBy, requestedAt:st.deleteRequestedAt});
     showToast(`❌ Penghapusan ${st.name} ditolak.`);
   }
@@ -2462,7 +2489,8 @@ export default function PLNWarehouse() {
     const nk = [...katalogList, newKatalog];
     const ns = [...stocks, newStock];
     setKatalogList(nk); setStocks(ns);
-    await saveToCloud({ katalogList: nk, stocks: ns });
+    // Cuma 1 baris katalog & 1 baris stok baru ditambah — sync ringan baris itu saja.
+    await saveToCloud({ katalogList: nk, stocks: ns }, {katalogChangedRows: [newKatalog], stocksChangedRows: [newStock]});
     return newKatalog;
   }
 
@@ -3298,7 +3326,8 @@ export default function PLNWarehouse() {
         return { ...s, qty: s.qty - item.qty };
       });
       setTxns(newTxns); setStocks(newStocks);
-      await saveToCloud({stocks: newStocks, txns: newTxns});
+      // Cuma baris stok yang ada di txn.stockItems yang berubah qty-nya (bukan seluruh tabel).
+      await saveToCloud({stocks: newStocks, txns: newTxns}, {stocksChangedRows: newStocks.filter(s => txn.stockItems.some(si=>si.stockId===s.id))});
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI!`);
       return;
@@ -3314,6 +3343,10 @@ export default function PLNWarehouse() {
       let newStocks = [...stocks];
       let nextKatNum = newKatalog.length + 1;
       let nextStkNum = newStocks.length + 1;
+      // Lacak baris stok & katalog yang benar-benar berubah/ditambah di transaksi ini,
+      // supaya sync ke Supabase cuma mengirim baris itu (bukan seluruh tabel `stocks`).
+      const touchedStockIds = new Set();
+      const touchedKatalogIds = new Set();
 
       txn.stockItems.forEach(si => {
         const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
@@ -3322,22 +3355,29 @@ export default function PLNWarehouse() {
           const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===txn.lokasiTujuanId);
           if (existingRow) {
             newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty } : s);
+            touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
             newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, createdAt:Date.now() });
+            touchedStockIds.add(newId);
           }
         } else {
           // Brand-new item: register into Master Katalog first
           const newKatId = `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
           newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
+          touchedKatalogIds.add(newKatId);
           const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
           newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, createdAt:Date.now() });
+          touchedStockIds.add(newStkId);
         }
       });
 
       const newTxns = txns.map(t => t.id===txn.id ? { ...t, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated } : t);
       setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-      await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog});
+      await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog}, {
+        stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
+        katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
+      });
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah. (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah.`);
       return;
@@ -3429,6 +3469,10 @@ export default function PLNWarehouse() {
     let newStocks = [...stocks];
     let nextKatNum = newKatalog.length + 1;
     let nextStkNum = newStocks.length + 1;
+    // Lacak baris stok & katalog yang benar-benar berubah/ditambah (pola sama TUG-10) —
+    // sync ke Supabase cuma mengirim baris itu, bukan seluruh tabel `stocks`.
+    const touchedStockIds = new Set();
+    const touchedKatalogIds = new Set();
 
     txn.stockItems.forEach(si => {
       const lokasiId = si.lokasiTujuanId || txn.stockItems[0]?.lokasiTujuanId;
@@ -3437,21 +3481,28 @@ export default function PLNWarehouse() {
         const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===lokasiId);
         if (existingRow) {
           newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty } : s);
+          touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
           newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.harga||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
+          touchedStockIds.add(newId);
         }
       } else {
         const newKatId = `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
         newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
+        touchedKatalogIds.add(newKatId);
         const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
         newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId, qty:si.qty, minQty:0, price:si.harga||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
+        touchedStockIds.add(newStkId);
       }
     });
 
     const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"APPROVED", status:"APPROVED", approvedByAsman:currentUser.id, approvedAtAsman:Date.now() } : t);
     setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-    await saveToCloud({txns: newTxns, stocks: newStocks, katalogList: newKatalog});
+    await saveToCloud({txns: newTxns, stocks: newStocks, katalogList: newKatalog}, {
+      stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
+      katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
+    });
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"APPROVED"});
     showToast(`✅ ${txn.docNumbers.tug3} DISETUJUI FINAL! Stok bertambah ke gudang.`);
   }
@@ -4980,7 +5031,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                 // Gudang ini ternyata tidak punya Blok terdaftar sama sekali.
                                 const ns = stocks.map(s=>s.id===st.id?{...s, gudangId: v||null}:s);
                                 setStocks(ns);
-                                await saveToCloud({stocks:ns});
+                                await saveToCloud({stocks:ns}, {stocksChangedRows: ns.filter(s=>s.id===st.id)});
                               }}>
                               <option value="">-- Pilih Gudang --</option>
                               {visibleGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
@@ -5021,7 +5072,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                   }
                                   const ns = stocks.map(s=>s.id===st.id?updated:s);
                                   setStocks(ns);
-                                  await saveToCloud({stocks:ns});
+                                  // Update lokasi/blok 1 barang — cuma baris ini yang berubah (sync ringan, bukan 212 baris ~18.7MB).
+                                  await saveToCloud({stocks:ns}, {stocksChangedRows: [updated]});
                                   showToast(msg);
                                 }}>
                                 <option value="">-- Pilih Blok --</option>
@@ -5055,7 +5107,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                                   }
                                   const ns = stocks.map(s=>s.id===st.id?updated:s);
                                   setStocks(ns);
-                                  await saveToCloud({stocks:ns});
+                                  // Update lokasi/blok 1 barang — cuma baris ini yang berubah (sync ringan, bukan 212 baris ~18.7MB).
+                                  await saveToCloud({stocks:ns}, {stocksChangedRows: [updated]});
                                   showToast(msg);
                                 }}>
                                 <option value="">-- Pilih Blok --</option>

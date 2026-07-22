@@ -127,6 +127,37 @@ export async function syncMasterTable(table, list, extraCols) {
   return true;
 }
 
+// Sync RINGAN: upsert HANYA baris yang diberikan (`rows`), TANPA langkah
+// reconciliation-delete. Dipakai untuk kasus "1–beberapa baris SPESIFIK yang jelas
+// berubah" (mis. update lokasi 1 item Data Stok) supaya payload yang dikirim cuma
+// baris itu saja — bukan seluruh tabel seperti syncMasterTable (yang untuk tabel
+// `stocks` bisa ~18.7MB karena beberapa baris menyimpan foto base64 besar di jsonb
+// `data`, jadi update 1 baris ikut mengirim ulang semua 200+ baris).
+//
+// SENGAJA TIDAK melakukan reconciliation-delete: tujuannya bukan mendeteksi/menghapus
+// baris yang hilang dari state, cuma menulis baris yang memang berubah. Untuk kasus
+// yang BUTUH deteksi baris terhapus (bulk delete/opname), tetap pakai syncMasterTable
+// penuh — JANGAN pakai fungsi ini. Karena tidak pernah delete, guard "list kosong"
+// di syncMasterTable (PENGAMANAN KRITIS terhadap wipe massal) tidak relevan di sini:
+// `rows` kosong cuma berarti tidak ada yang perlu ditulis → return true.
+export async function syncMasterTableRows(table, rows, extraCols) {
+  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
+  if (!supabase) return false;
+  if (!rows?.length) return true; // tidak ada baris berubah → tidak ada yang perlu ditulis
+  // Dedupe by id (keep-last) — sama seperti syncMasterTable: upsert().onConflict("id")
+  // GAGAL (error 21000) kalau id yang sama muncul >1 kali dalam satu batch.
+  const dedupedRows = [...new Map(rows.map(item => [item.id, item])).values()];
+  const upsertRows = dedupedRows.map(item => ({
+    id: item.id,
+    data: item,
+    created_at: item.createdAt ?? Date.now(),
+    ...(extraCols ? extraCols(item) : {}),
+  }));
+  const { error } = await supabase.from(table).upsert(upsertRows, { onConflict: "id" });
+  if (error) { console.error(`syncMasterTableRows upsert(${table}): ${error.message}`, error); return false; }
+  return true;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // KAPASITAS GUDANG — load/sync KHUSUS (tabel warehouse_capacity)
 // ────────────────────────────────────────────────────────────────────

@@ -26,3 +26,5 @@ playwright-report/
 
 # Graphify tool output (graph.json + cache, data turunan yang bisa di-generate ulang) — jangan commit.
 graphify-out/
+
+__pycache__/
