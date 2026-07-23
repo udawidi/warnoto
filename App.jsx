@@ -223,6 +223,7 @@ export default function PLNWarehouse() {
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
   const [loginErr, setLoginErr] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false); // tombol Logout busy — cegah user refresh di tengah signOut yang bisa lambat
 
   const [users, setUsers] = useState([]); // di-fetch dari tabel "profiles" Supabase setelah login (lihat effect onAuthStateChange)
   const [rolePerms, setRolePerms] = useState({}); // override izin per role dari tabel role_permissions ({role: {key:bool}}); {} = pakai DEFAULT_PERMS
@@ -1056,9 +1057,25 @@ export default function PLNWarehouse() {
   }
 
   async function handleLogout() {
-    if (supabase) await supabase.auth.signOut();
-    try { sessionStorage.removeItem("warnoto_tab"); } catch {}
-    setCurrentUser(null); setUsers([]);
+    setLoggingOut(true);
+    try {
+      if (supabase) await supabase.auth.signOut();
+      try { sessionStorage.removeItem("warnoto_tab"); } catch {}
+      // Bersihkan cache SECARA LANGSUNG di sini, jangan hanya menunggu listener
+      // onAuthStateChange (async, jalan setelah signOut selesai). Kalau signOut ke
+      // server self-host lambat/timeout dan user keburu refresh, sesi belum putus →
+      // refresh = login lagi. Dobel-hapus dengan listener AMAN (removeItem key yang
+      // sudah tidak ada tidak error).
+      try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
+      try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+      try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+      setCurrentUser(null); setUsers([]);
+    } finally {
+      // Kalau logout sukses, currentUser=null me-render app ke form login (komponen ini
+      // unmount, state tidak sempat balik). finally ini menjaga tombol tidak stuck "Keluar..."
+      // kalau signOut gagal di tengah jalan.
+      setLoggingOut(false);
+    }
   }
 
   async function reloadUsers() {
@@ -1219,6 +1236,7 @@ export default function PLNWarehouse() {
         setCurrentUser(null); setUsers([]);
         try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
         try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // cegah kebocoran data antar user di device sama
+        try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // idem, master data Fase 2
       }
       setAuthLoading(false);
     }
@@ -4852,7 +4870,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <div className="app-account__unit">{UPT}</div>
                   <button role="menuitem" onClick={()=>{setAccountMenuOpen(false);openGantiPassword();}}><SidebarIcon name="key" size={17}/><span>Ganti Password</span></button>
                   <button role="menuitem" onClick={()=>{setAccountMenuOpen(false);isDemoMode()?exitDemoMode():enterDemoMode();}}><span aria-hidden="true">🧪</span><span>{isDemoMode()?"Keluar Mode Demo":"Mode Demo (TUG)"}</span></button>
-                  <button role="menuitem" className="is-danger" onClick={()=>{setAccountMenuOpen(false);handleLogout();}}><SidebarIcon name="logout" size={17}/><span>Logout</span></button>
+                  {/* Menu SENGAJA tidak ditutup di sini: dibiarkan terbuka supaya label "Keluar..." + disabled
+                      terlihat selama signOut() berjalan (bisa lambat di server self-host). Saat logout sukses
+                      seluruh header unmount ke form login; kalau gagal, finally di handleLogout mengaktifkan tombol lagi. */}
+                  <button role="menuitem" className="is-danger" disabled={loggingOut} onClick={()=>handleLogout()}><SidebarIcon name="logout" size={17}/><span>{loggingOut?"Keluar...":"Logout"}</span></button>
                 </div>
               )}
             </div>
