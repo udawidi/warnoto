@@ -805,6 +805,35 @@
 /* Varian compact — baris list ringkas (mis. Perubahan Lokasi/Blok) */
 .approval-actions.approval-actions--compact button { flex: 0 0 auto; min-height: 36px; padding: 7px 12px; font-size: 12px; border-radius: 9px; }
 .approval-actions--compact .approval-btn__ic { width: 17px; height: 17px; font-size: 12px; }
+
+/* Maturity audit header/list primitives. Kept here so the refactored
+   component retains its navy banner and keyboard/hover affordance. */
+.maturity-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 104px;
+  margin-bottom: 20px;
+  padding: 18px 22px;
+  border: 1px solid rgba(147,197,253,.2);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0b2559 0%, #123a7a 58%, #1d4ed8 100%);
+  color: #fff;
+  box-shadow: 0 12px 28px -20px rgba(15,23,42,.7);
+}
+.maturity-aspect-row {
+  border-top: 1px solid transparent;
+  border-bottom: 1px solid transparent;
+  transition: background-color .16s ease, border-color .16s ease;
+}
+.maturity-aspect-row:hover,
+.maturity-aspect-row:focus-visible {
+  background: rgba(59,130,246,.08) !important;
+  border-top-color: rgba(147,197,253,.35);
+  border-bottom-color: rgba(147,197,253,.35);
+  outline: none;
+}
 @media (max-width: 768px) {
   .approval-actions button { flex: 1 1 auto; min-height: 44px; }
 }
@@ -1776,6 +1805,8 @@
 [data-theme="dark"] .approval-btn--reject:hover { background: rgba(248,113,113,.12); border-color: #ef4444; }
 [data-theme="dark"] .approval-btn--cancel { background: #1e293b; color: #cbd5e1; border-color: #475569; }
 [data-theme="dark"] .approval-btn--cancel:hover { background: #334155; }
+[data-theme="dark"] .operations-segments button { border-color: #334155; background: #1e293b; color: #cbd5e1; }
+[data-theme="dark"] .operations-segments button.is-active { border-color: var(--segment-color,#3b82f6); background: var(--segment-color,#3b82f6); color: #fff; }
 
 /* Pak War (.ai-*) — panel & bubble berlatar terang */
 [data-theme="dark"] .ai-conversation { border-color: #334155; background: #1e293b; }

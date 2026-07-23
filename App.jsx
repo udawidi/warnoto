@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS } from "./src/constants.js";
-import { supabase, SUPABASE_URL, SUPABASE_KEY, usernameToAuthEmail } from "./src/supabaseClient.js";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError } from "./src/supabaseClient.js";
 import { CLOUD } from "./src/lib/cloud.js";
 import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
 import { logAudit } from "./src/lib/audit.js";
@@ -174,14 +174,20 @@ WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 // Cache profil user di localStorage supaya layar "Memuat sesi..." tidak menunggu
 // network — dipakai sebagai initial state currentUser/authLoading (lihat effect
 // onAuthStateChange di bawah), profil sebenarnya tetap di-refresh dari Supabase.
-const PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
+const PROFILE_CACHE_KEY = "warnoto_profile_cache_v2";
+const LEGACY_PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
 function readCachedProfile() {
   try {
-    // Hanya pakai cache kalau memang ada sesi Supabase tersimpan di browser ini
-    const hasAuthToken = Object.keys(localStorage).some(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
-    if (!hasAuthToken) return null;
-    return JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+    // Hanya pakai cache bila token untuk endpoint self-host yang tepat masih ada.
+    // Token sb-* lain (mis. Supabase Cloud lama) tidak pernah boleh membuka aplikasi.
+    if (!localStorage.getItem(SUPABASE_AUTH_STORAGE_KEY)) return null;
+    const cached = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+    return cached?.endpoint === SUPABASE_URL ? cached.profile || null : null;
   } catch { return null; }
+}
+
+function writeCachedProfile(profile) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ endpoint: SUPABASE_URL, profile })); } catch {}
 }
 
 // Reader cache generik (sinkron, langsung localStorage) untuk lazy-initializer
@@ -521,32 +527,20 @@ export default function PLNWarehouse() {
       // mendorongnya ke server (mencegah cache basi menimpa data benar di server saat fetch
       // gagal — mis. Supabase pause/resume/network blip). Di akhir loadCloud diperingatkan via toast.
       const loadFailures = [];
-      const cs = await CLOUD.get("pln_stocks_v4");
-      const ckat = await CLOUD.get("pln_katalog_v4");
-      const clokLocal = await CLOUD.get("pln_lokasi_v4");
-      const ct = await CLOUD.get("pln_txns_v3");
-      const cseq = await CLOUD.get("pln_docseq_v3");
-      const crk = await CLOUD.get("pln_rencana_v1");
-      const copn = await CLOUD.get("pln_opname_v1");
-      const csc = await CLOUD.get("pln_stockcount_v1");
-      const cah = await CLOUD.get("pln_approval_history_v1");
-      const cma = await CLOUD.get("pln_maturity_v1");
-      const cmau = await CLOUD.get("pln_maturity_audits_v1");
-      const che = await CLOUD.get("pln_heavy_equipment_v1");
-      const chel = await CLOUD.get("pln_heavy_equipment_loans_v1");
-      const cattb = await CLOUD.get("pln_attb_v1");
-      const cmcd = await CLOUD.get("pln_material_cadang_v1");
-      const cmch = await CLOUD.get("pln_material_cadang_health_v1");
-      const cmcai = await CLOUD.get("pln_material_cadang_ai_insights_v1");
-      const cgcap = await CLOUD.get("pln_gudang_capacity_v1");
-      const cgcapi = await CLOUD.get("pln_gudang_capacity_imports_v1");
-      const cmig = await CLOUD.get("pln_migrated_tug15_v1");
-      const cmpr = await CLOUD.get("pln_migrasi_pending_review_v1");
+      // Semua cache dibaca paralel. Pada browser dengan window.storage asinkron ini
+      // menghilangkan waterfall sebelum request REST bahkan dimulai.
+      const [cs, ckat, clokLocal, ct, cseq, crk, copn, csc, cah, cma, cmau, che, chel, cattb, cmcd, cmch, cmcai, cgcap, cgcapi, cmig, cmpr] = await Promise.all([
+        CLOUD.get("pln_stocks_v4"), CLOUD.get("pln_katalog_v4"), CLOUD.get("pln_lokasi_v4"), CLOUD.get("pln_txns_v3"), CLOUD.get("pln_docseq_v3"),
+        CLOUD.get("pln_rencana_v1"), CLOUD.get("pln_opname_v1"), CLOUD.get("pln_stockcount_v1"), CLOUD.get("pln_approval_history_v1"), CLOUD.get("pln_maturity_v1"),
+        CLOUD.get("pln_maturity_audits_v1"), CLOUD.get("pln_heavy_equipment_v1"), CLOUD.get("pln_heavy_equipment_loans_v1"), CLOUD.get("pln_attb_v1"),
+        CLOUD.get("pln_material_cadang_v1"), CLOUD.get("pln_material_cadang_health_v1"), CLOUD.get("pln_material_cadang_ai_insights_v1"),
+        CLOUD.get("pln_gudang_capacity_v1"), CLOUD.get("pln_gudang_capacity_imports_v1"), CLOUD.get("pln_migrated_tug15_v1"), CLOUD.get("pln_migrasi_pending_review_v1"),
+      ]);
 
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote] = await Promise.all([
+      const masterLoads = [
         loadMasterTable("uit"),
         loadMasterTable("upt"),
         loadMasterTable("ultg"),
@@ -564,7 +558,18 @@ export default function PLNWarehouse() {
         loadMasterTable("stock_opname"),
         loadMasterTable("stock_count"),
         loadMasterTable("attb_list"),
-      ]);
+      ];
+
+      // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
+      // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
+      // tidak-menulis yang ada di bawah.
+      const [initialLokasi, initialKatalog, initialStocks] = await Promise.all([masterLoads[5], masterLoads[8], masterLoads[9]]);
+      if (initialLokasi !== null) setLokasiList(initialLokasi?.length ? dedupeById(initialLokasi).list : (clokLocal || DEFAULT_LOKASI));
+      if (initialKatalog !== null) setKatalogList(initialKatalog?.some(k => k.name) ? dedupeById(initialKatalog.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
+      if (initialStocks !== null) setStocks(initialStocks?.length ? dedupeById(initialStocks).list : (cs || DEFAULT_STOCKS));
+      setLoading(false);
+
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote] = await Promise.all(masterLoads);
       const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
       if (cs && ckat && clok) {
@@ -1074,24 +1079,36 @@ export default function PLNWarehouse() {
     // currentUser di-set oleh listener onAuthStateChange (lihat effect di bawah),
     // bukan di sini — supaya restore sesi (reload halaman) dan login manual
     // lewat jalur yang sama persis, tidak ada logic yang didobel.
-    if (error) setLoginErr("Username atau password salah.");
+    if (error) setLoginErr(describeLoginError(error));
+  }
+
+  function clearLocalAuthState() {
+    try { sessionStorage.removeItem("warnoto_tab"); } catch {}
+    try { localStorage.removeItem(PROFILE_CACHE_KEY); localStorage.removeItem(LEGACY_PROFILE_CACHE_KEY); } catch {}
+    try { localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY); } catch {}
+    try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+    try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+    setCurrentUser(null); setUsers([]);
   }
 
   async function handleLogout() {
     setLoggingOut(true);
+    // Putuskan akses UI/cache lebih dulu. Bila self-host sedang lambat, refresh
+    // setelah klik Logout tetap tidak dapat memulihkan token atau data pengguna lama.
+    clearLocalAuthState();
     try {
-      if (supabase) await supabase.auth.signOut();
-      try { sessionStorage.removeItem("warnoto_tab"); } catch {}
-      // Bersihkan cache SECARA LANGSUNG di sini, jangan hanya menunggu listener
-      // onAuthStateChange (async, jalan setelah signOut selesai). Kalau signOut ke
-      // server self-host lambat/timeout dan user keburu refresh, sesi belum putus →
-      // refresh = login lagi. Dobel-hapus dengan listener AMAN (removeItem key yang
-      // sudah tidak ada tidak error).
-      try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
-      try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
-      try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
-      setCurrentUser(null); setUsers([]);
+      if (supabase) {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("logout timeout")), 5000)),
+        ]);
+      }
+    } catch (err) {
+      // Token sudah dibuang secara lokal; kegagalan revoke server tidak boleh
+      // membuat pengguna tampak masih login.
+      console.warn("Logout server tidak selesai, sesi lokal tetap dibersihkan.", err);
     } finally {
+      if (supabase) await supabase.auth.signOut({ scope:"local" }).catch(() => {});
       // Kalau logout sukses, currentUser=null me-render app ke form login (komponen ini
       // unmount, state tidak sempat balik). finally ini menjaga tombol tidak stuck "Keluar..."
       // kalau signOut gagal di tengah jalan.
@@ -1230,18 +1247,28 @@ export default function PLNWarehouse() {
     // dilempar ke handleAuthSession (fire-and-forget).
     async function handleAuthSession(session, event) {
       if (session?.user) {
-        const { data: profile, error: profErr } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
-        if (profErr || !profile) {
+        let profile = null;
+        let profErr = null;
+        // Error jaringan/proxy saat bootstrap bukan bukti bahwa profil hilang.
+        // Retry singkat lalu pertahankan cache dan sesi; logout hanya bila query
+        // sukses tapi memang tidak menemukan profil, atau Auth mengirim sesi kosong.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const result = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+          profile = result.data;
+          profErr = result.error;
+          if (!profErr) break;
+          if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 350));
+        }
+        if (profErr) {
+          console.warn("Profil sesi belum dapat dimuat; mempertahankan sesi/cache.", profErr);
+        } else if (!profile) {
           setLoginErr("Akun ini belum punya profil (hubungi Admin). Logout otomatis.");
           await supabase.auth.signOut();
-          setCurrentUser(null); setUsers([]);
-          try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
-          try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // cegah kebocoran data antar user di device sama
-          try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // idem, master data Fase 2
+          clearLocalAuthState();
         } else {
           const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, ultgId: profile.ultg_id, uitId: profile.uit_id, gudangIds: profile.gudang_ids };
           setCurrentUser(userObj);
-          try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(userObj)); } catch {}
+          writeCachedProfile(userObj);
           // LOGIN dicatat cuma untuk login manual (SIGNED_IN) — bukan INITIAL_SESSION
           // (buka tab/reload dgn sesi tersimpan) atau TOKEN_REFRESHED (refresh token
           // tiap jam), supaya audit log tidak dibanjiri entri yang bukan aksi user nyata.
@@ -1254,10 +1281,7 @@ export default function PLNWarehouse() {
           reloadRolePerms();
         }
       } else {
-        setCurrentUser(null); setUsers([]);
-        try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
-        try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // cegah kebocoran data antar user di device sama
-        try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // idem, master data Fase 2
+        clearLocalAuthState();
       }
       setAuthLoading(false);
     }
@@ -4180,9 +4204,10 @@ export default function PLNWarehouse() {
         if (error) throw error;
         onProgress?.(Math.min(i+BATCH, chunks.length), chunks.length);
       }
-      // Hapus chunk lama yang sumbernya sudah tidak ada lagi (katalog/txn/FAQ terhapus)
+      // Hapus hanya chunk lama milik sinkron browser (katalog/txn/FAQ). Chunk
+      // `mutasi` dibuat nightly_sync.mjs dan tidak boleh ikut terhapus di sini.
       const currentIds = new Set(chunks.map(c=>c.id));
-      const { data: existing } = await supabase.from("rag_chunks").select("id");
+      const { data: existing } = await supabase.from("rag_chunks").select("id").in("source_type", ["katalog", "txn", "faq"]);
       const toDelete = (existing||[]).filter(r=>!currentIds.has(r.id)).map(r=>r.id);
       if (toDelete.length) await supabase.from("rag_chunks").delete().in("id", toDelete);
       setRagLastSync(Date.now());

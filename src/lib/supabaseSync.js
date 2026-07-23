@@ -9,9 +9,17 @@ import { getSAPStatus } from "./sap.js";
 import { syncMasterTable } from "./masterSync.js";
 import { isDemoMode } from "./demo.js";
 
-const SYNCED_KEYS_STORAGE = "warnoto_synced_tug15_keys";
+// Marker sync harus mengikuti endpoint. Jangan baca marker global lama: marker
+// dari Supabase Cloud tidak boleh menekan recheck idempoten ke self-host baru.
+function endpointScopedStorageKey(baseKey) {
+  let host = "unconfigured";
+  try { host = new URL(SUPABASE_URL).hostname; } catch {}
+  return `${baseKey}::${host}`;
+}
 
-const FOTO_SYNCED_HASHES_STORAGE = "warnoto_synced_foto_hashes";
+const SYNCED_KEYS_STORAGE = endpointScopedStorageKey("warnoto_synced_tug15_keys");
+
+const FOTO_SYNCED_HASHES_STORAGE = endpointScopedStorageKey("warnoto_synced_foto_hashes");
 
 const TXN_PHOTO_SLOTS = [
   { field: "fotoKendaraan",         bucket: "tug-photos",       maxBytes: 1_000_000 },

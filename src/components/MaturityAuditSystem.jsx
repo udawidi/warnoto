@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRight, CaretLeft, Sparkle, CheckCircle, Info } from "@phosphor-icons/react";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 
 // CATATAN PORT: Integrasi Google Drive DITUNDA (keputusan user). Helper
@@ -26,72 +27,22 @@ const MATURITY_LEVELS = { 1: "Basic", 2: "Developing", 3: "Defined", 4: "Managed
 const MATURITY_WORKFLOW_LABEL = { DRAFT: "Draft", SELF_ASSESSMENT: "Self Assessment (UPT)", REVIEW_UIT: "Review UIT", REVISION: "Revisi", FINAL: "Nilai Final (Pusat)" };
 const MATURITY_WORKFLOW_COLOR = { DRAFT: "#64748b", SELF_ASSESSMENT: "#3b82f6", REVIEW_UIT: "#f59e0b", REVISION: "#ef4444", FINAL: "#1d4ed8" };
 
+// Icon set diselaraskan ke @phosphor-icons/react (dipakai app-wide di 3 varian
+// dashboard). Dibungkus di bawah nama lama `Icons.*` supaya seluruh call-site
+// (<Icons.Chart /> dst) tidak berubah — murni ganti glyph, bukan logika.
+// Warna ikut `currentColor` sehingga otomatis theme-aware lewat prop warna induk.
 const Icons = {
-  Chart: () => (
-    <svg style={{ width: 18, height: 18 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2" />
-    </svg>
-  ),
-  Folder: () => (
-    <svg style={{ width: 18, height: 18 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-    </svg>
-  ),
-  Activity: () => (
-    <svg style={{ width: 18, height: 18 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-    </svg>
-  ),
-  Upload: () => (
-    <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-    </svg>
-  ),
-  File: () => (
-    <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-    </svg>
-  ),
-  Check: () => (
-    <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-    </svg>
-  ),
-  ChevronRight: () => (
-    <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-    </svg>
-  ),
-  ChevronLeft: () => (
-    <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-    </svg>
-  ),
-  Lock: () => (
-    <svg style={{ width: 12, height: 12 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-    </svg>
-  ),
-  Sparkles: () => (
-    <svg style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-    </svg>
-  ),
-  AutoCheck: () => (
-    <svg style={{ width: 13, height: 13 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  ),
-  Info: () => (
-    <svg style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-    </svg>
-  ),
-  ThreeD: () => (
-    <svg style={{ width: 16, height: 16 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-    </svg>
-  )
+  Chart: (p) => <ChartBar size={18} weight="fill" {...p} />,
+  Folder: (p) => <FolderSimple size={18} weight="fill" {...p} />,
+  Activity: (p) => <Pulse size={18} weight="bold" {...p} />,
+  Upload: (p) => <UploadSimple size={14} weight="bold" {...p} />,
+  File: (p) => <FileText size={14} {...p} />,
+  Check: (p) => <Check size={14} weight="bold" {...p} />,
+  ChevronRight: (p) => <CaretRight size={14} weight="bold" {...p} />,
+  ChevronLeft: (p) => <CaretLeft size={14} weight="bold" {...p} />,
+  Sparkles: (p) => <Sparkle size={16} weight="fill" {...p} />,
+  AutoCheck: (p) => <CheckCircle size={13} weight="fill" {...p} />,
+  Info: (p) => <Info size={16} weight="bold" {...p} />,
 };
 
 // =========================================================================
@@ -152,9 +103,9 @@ export function MaturityAuditEditor({
     width: 36,
     height: 36,
     borderRadius: "50%",
-    border: `1.5px solid ${active ? color : "#cbd5e1"}`,
+    border: `1.5px solid ${active ? color : C.border}`,
     background: active ? color : "transparent",
-    color: active ? "white" : "#475569",
+    color: active ? "white" : C.muted,
     fontWeight: 800,
     fontSize: 13,
     cursor: "pointer",
@@ -221,100 +172,15 @@ export function MaturityAuditEditor({
 
   return (
     <div style={{ maxWidth: 1040, margin: "0 auto", paddingBottom: 40 }}>
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        .matlev-card {
-          background: #ffffff;
-          border: 1px solid #e2e8f0;
-          border-radius: 16px;
-          padding: 22px;
-          box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04), 0 2px 8px -1px rgba(15, 23, 42, 0.02);
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .matlev-card:hover {
-          box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 16px -6px rgba(15, 23, 42, 0.08);
-          border-color: #cbd5e1;
-        }
-        .segment-tab {
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          color: #64748b;
-          position: relative;
-        }
-        .segment-tab:hover {
-          color: #1e3a8a !important;
-          background: rgba(30, 58, 138, 0.04) !important;
-        }
-        .aspect-row-card {
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-          border-left: 4px solid transparent;
-          border-bottom: 1px solid #f1f5f9;
-        }
-        .aspect-row-card:hover {
-          background: rgba(30, 58, 138, 0.02) !important;
-          border-left-color: #1e3a8a !important;
-          transform: translateX(4px);
-        }
-        .upload-dashed-btn {
-          transition: all 0.15s ease;
-        }
-        .upload-dashed-btn:hover {
-          background: #f1f5f9 !important;
-          border-color: #94a3b8 !important;
-          color: #0f172a !important;
-        }
-        .glass-header {
-          background: linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 16px;
-          padding: 22px 28px;
-          margin-bottom: 24px;
-          color: white;
-          box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.2);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          flex-wrap: wrap;
-          gap: 16px;
-          transition: all 0.3s ease;
-        }
-        .score-pill-badge {
-          width: 50px;
-          padding: 6px 2px;
-          border-radius: 8px;
-          border: 1px solid #e2e8f0;
-          text-align: center;
-          background: #f8fafc;
-          transition: all 0.2s ease;
-        }
-        .custom-bullet-list {
-          list-style: none;
-          padding-left: 0 !important;
-        }
-        .custom-bullet-list li {
-          position: relative;
-          padding-left: 18px;
-          margin-bottom: 8px;
-        }
-        .custom-bullet-list li::before {
-          content: "•";
-          color: #3b82f6;
-          font-weight: bold;
-          font-size: 16px;
-          position: absolute;
-          left: 4px;
-          top: -2px;
-        }
-      ` }} />
-
-      {/* Main Header */}
-      <div className="glass-header">
-        <div>
-          <span style={{ fontSize: 9, fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "1.5px" }}>MATLEV AUDIT SYSTEM</span>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: "white", margin: "2px 0", letterSpacing: "-0.5px" }}>Input Evidence Audit {currentUptName}</h2>
-          <p style={{ fontSize: 12, color: "#cbd5e1", margin: 0 }}>Area kerja pengelolaan kelengkapan bukti fisik dan penilaian skor kematangan.</p>
+      {/* Main Header — banner navy korporat selaras .kpi-banner / .operations-hero--summary-only */}
+      <div className="maturity-hero">
+        <div style={{ minWidth: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: "rgba(219,234,254,.85)", textTransform: "uppercase", letterSpacing: "1px" }}>MATLEV AUDIT SYSTEM</span>
+          <h2 style={{ fontSize: 18, fontWeight: 900, color: "#fff", margin: "3px 0 0", letterSpacing: "-0.2px" }}>Input Evidence Audit {currentUptName}</h2>
+          <p style={{ fontSize: 12, color: "rgba(219,234,254,.82)", margin: "5px 0 0", lineHeight: 1.45 }}>Area kerja pengelolaan kelengkapan bukti fisik dan penilaian skor kematangan.</p>
         </div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ padding: "4px 12px", borderRadius: 6, background: "rgba(255, 255, 255, 0.15)", color: "white", fontSize: 11, fontWeight: 700, border: "1px solid rgba(255, 255, 255, 0.2)", backdropFilter: "blur(4px)" }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+          <span style={{ padding: "5px 13px", borderRadius: 999, background: `${MATURITY_WORKFLOW_COLOR[status]}26`, color: "#fff", fontSize: 12, fontWeight: 800, letterSpacing: ".3px", border: `1px solid ${MATURITY_WORKFLOW_COLOR[status]}66`, boxShadow: `inset 0 0 0 1px ${MATURITY_WORKFLOW_COLOR[status]}33` }}>
             {MATURITY_WORKFLOW_LABEL[status]}
           </span>
         </div>
@@ -323,36 +189,36 @@ export function MaturityAuditEditor({
       <div>
         {/* Metric Cards Grid */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
-          <div className="matlev-card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#eff6ff", color: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ ...sty.card, display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${C.accent}1a`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Icons.Chart />
             </div>
-            <div>
-              <span style={{ fontSize: 9, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Skor Terlihat (View)</span>
-              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2 }}>{overallScoreVal > 0 ? overallScoreVal.toFixed(2) : "0.00"}</strong>
-              <span style={{ fontSize: 9, color: C.muted }}>Penilaian role {activeRoleType.toUpperCase()}</span>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Skor Terlihat (View)</span>
+              <strong style={{ fontSize: 22, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{overallScoreVal > 0 ? overallScoreVal.toFixed(2) : "0.00"}</strong>
+              <span style={{ fontSize: 12, color: C.muted }}>Penilaian role {activeRoleType.toUpperCase()}</span>
             </div>
           </div>
-          <div className="matlev-card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#eff6ff", color: "#1d4ed8", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ ...sty.card, display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${C.accent}1a`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Icons.Folder />
             </div>
-            <div style={{ flex: 1 }}>
-              <span style={{ fontSize: 9, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Kelengkapan Dokumen</span>
-              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2 }}>{completedAspectsCount}/{AUDIT_ASPECTS.length} Aspek</strong>
-              <div style={{ height: 4, background: "#f1f5f9", borderRadius: 2, marginTop: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(completedAspectsCount / AUDIT_ASPECTS.length) * 100}%`, background: "#1d4ed8", borderRadius: 2 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Kelengkapan Dokumen</span>
+              <strong style={{ fontSize: 22, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{completedAspectsCount}/{AUDIT_ASPECTS.length} Aspek</strong>
+              <div style={{ height: 4, background: C.border, borderRadius: 2, marginTop: 4, overflow: "hidden" }}>
+                <div style={{ height: "100%", width: `${(completedAspectsCount / AUDIT_ASPECTS.length) * 100}%`, background: C.accent, borderRadius: 2 }} />
               </div>
             </div>
           </div>
-          <div className="matlev-card" style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: "#fffbeb", color: "#f59e0b", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <div style={{ ...sty.card, display: "flex", alignItems: "center", gap: 14 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: `${C.yellow}1f`, color: C.yellow, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Icons.Activity />
             </div>
-            <div>
-              <span style={{ fontSize: 9, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Progress Review</span>
-              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2 }}>{uitReviewedCount}/{AUDIT_ASPECTS.length}</strong>
-              <span style={{ fontSize: 9, color: C.muted }}>{pusatReviewedCount} Disetujui Pusat</span>
+            <div style={{ minWidth: 0 }}>
+              <span style={{ fontSize: 12, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Progress Review</span>
+              <strong style={{ fontSize: 22, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{uitReviewedCount}/{AUDIT_ASPECTS.length}</strong>
+              <span style={{ fontSize: 12, color: C.muted }}>{pusatReviewedCount} Disetujui Pusat</span>
             </div>
           </div>
         </div>
@@ -369,11 +235,11 @@ export function MaturityAuditEditor({
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12, transform: is3D ? "translateZ(8px)" : "none" }}>
                 <div>
-                  <span style={{ fontSize: 10, color: C.accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>Upload Evidence Wajib</span>
+                  <span style={{ fontSize: 12, color: C.accent, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>Upload Evidence Wajib</span>
                   <h3 style={{ fontSize: 15, fontWeight: 800, color: C.text, margin: "2px 0" }}>{activeAspect.id} {activeAspect.title}</h3>
-                  <span style={{ fontSize: 11, color: C.muted }}>Lengkapi dokumen bukti untuk penentuan level akhir.</span>
+                  <span style={{ fontSize: 12, color: C.muted }}>Lengkapi dokumen bukti untuk penentuan level akhir.</span>
                 </div>
-                <button style={{ ...sty.btn("ghost", "sm"), border: `1.5px solid #cbd5e1`, borderRadius: 8, background: "white", padding: "6px 12px", display: "flex", alignItems: "center", gap: 6, color: "#334155" }} onClick={() => setActiveAspectId(null)}>
+                <button style={{ ...sty.btn("ghost", "sm"), border: `1.5px solid ${C.border}`, borderRadius: 8, background: C.surface, padding: "6px 12px", display: "flex", alignItems: "center", gap: 6, color: C.text }} onClick={() => setActiveAspectId(null)}>
                   <Icons.ChevronLeft /> Kembali ke Daftar Aspek
                 </button>
               </div>
@@ -401,9 +267,9 @@ export function MaturityAuditEditor({
                         <Icons.File />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "1px" }}>BERKAS EVIDENCE OFFICIAL</div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "1px" }}>BERKAS EVIDENCE OFFICIAL</div>
                         <div style={{ fontSize: 14, fontWeight: 800, color: "white" }}>Upload File Bukti Fisik / Foto Evidence Audit</div>
-                        <div style={{ fontSize: 11, color: "#dbeafe", marginTop: 2 }}>Pilih file foto, PDF, atau dokumen pendukung dari komputer. File tersimpan lokal pada perangkat ini.</div>
+                        <div style={{ fontSize: 12, color: "#dbeafe", marginTop: 2 }}>Pilih file foto, PDF, atau dokumen pendukung dari komputer. File tersimpan lokal pada perangkat ini.</div>
                       </div>
                     </div>
                   </div>
@@ -415,8 +281,8 @@ export function MaturityAuditEditor({
                     const targetFolderPath = `${currentUptName} / ${activeCategory.label} / Aspek ${activeAspect.id} / ${eviItem.label}`;
                     return (
                       <div key={eviItem.id} style={{
-                        background: isAutoFilled ? "#f0fdf4" : (C.surface || "#ffffff"),
-                        border: `1.5px solid ${isAutoFilled ? "#86efac" : isUploaded ? "#93c5fd" : "#cbd5e1"}`,
+                        background: isAutoFilled ? `${C.green}14` : C.surface,
+                        border: `1.5px solid ${isAutoFilled ? C.green : isUploaded ? C.accent : C.border}`,
                         borderRadius: 12,
                         padding: "16px 18px",
                         display: "flex",
@@ -432,8 +298,8 @@ export function MaturityAuditEditor({
                               width: 30,
                               height: 30,
                               borderRadius: "50%",
-                              background: isAutoFilled ? "#16a34a" : isUploaded ? "#2563eb" : "#f1f5f9",
-                              color: isUploaded ? "white" : "#64748b",
+                              background: isAutoFilled ? C.green : isUploaded ? C.accent : C.border,
+                              color: isUploaded ? "white" : C.muted,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
@@ -441,7 +307,7 @@ export function MaturityAuditEditor({
                               fontWeight: 800,
                               flexShrink: 0,
                               marginTop: 2,
-                              border: `1.5px solid ${isAutoFilled ? "#16a34a" : isUploaded ? "#2563eb" : "#cbd5e1"}`
+                              border: `1.5px solid ${isAutoFilled ? C.green : isUploaded ? C.accent : C.border}`
                             }}>
                               {isUploaded ? <Icons.Check /> : eviIdx + 1}
                             </div>
@@ -450,13 +316,13 @@ export function MaturityAuditEditor({
                                 <span style={{ fontSize: 13, fontWeight: 800, color: C.text, lineHeight: 1.3 }}>{eviItem.label}</span>
                                 {isAutoFilled && (
                                   <span style={{
-                                    fontSize: 9,
+                                    fontSize: 12,
                                     fontWeight: 800,
                                     padding: "2px 8px",
                                     borderRadius: 20,
-                                    background: "#dcfce7",
-                                    color: "#15803d",
-                                    border: "1px solid #86efac",
+                                    background: `${C.green}22`,
+                                    color: C.green,
+                                    border: `1px solid ${C.green}55`,
                                     letterSpacing: "0.3px",
                                     textTransform: "uppercase",
                                     whiteSpace: "nowrap"
@@ -466,10 +332,10 @@ export function MaturityAuditEditor({
                                 )}
                               </div>
                               <div style={{
-                                fontSize: 11,
-                                color: "#0369a1",
-                                background: "#f0f9ff",
-                                border: "1px solid #bae6fd",
+                                fontSize: 12,
+                                color: C.accent,
+                                background: `${C.accent}12`,
+                                border: `1px solid ${C.accent}33`,
                                 padding: "3px 10px",
                                 borderRadius: 6,
                                 marginTop: 6,
@@ -480,19 +346,19 @@ export function MaturityAuditEditor({
                                 minWidth: 0,
                                 boxSizing: "border-box"
                               }}>
-                                <span style={{ fontWeight: 800, fontSize: 10, color: "#0284c7", flexShrink: 0 }}>📍 Sub-Bagian Target:</span>
-                                <span style={{ fontWeight: 700, color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{targetFolderPath}</span>
+                                <span style={{ fontWeight: 800, fontSize: 12, color: C.accent, flexShrink: 0 }}>📍 Sub-Bagian Target:</span>
+                                <span style={{ fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{targetFolderPath}</span>
                               </div>
                             </div>
                           </div>
 
                           {canScoreUPT && !isAutoFilled && (
-                            <label className="upload-dashed-btn" style={{
+                            <label style={{
                               padding: "8px 18px",
                               borderRadius: 10,
-                              background: uploadingItems[eviItem.id] ? "#fffbeb" : isUploaded ? "#ffffff" : "linear-gradient(135deg, #2563eb, #1d4ed8)",
-                              color: uploadingItems[eviItem.id] ? "#b45309" : isUploaded ? "#334155" : "#ffffff",
-                              border: `1.5px solid ${uploadingItems[eviItem.id] ? "#fde68a" : isUploaded ? "#cbd5e1" : "#1d4ed8"}`,
+                              background: uploadingItems[eviItem.id] ? "#fffbeb" : isUploaded ? C.surface : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                              color: uploadingItems[eviItem.id] ? "#b45309" : isUploaded ? C.text : "#ffffff",
+                              border: `1.5px solid ${uploadingItems[eviItem.id] ? "#fde68a" : isUploaded ? C.border : "#1d4ed8"}`,
                               fontSize: 12,
                               fontWeight: 800,
                               cursor: uploadingItems[eviItem.id] ? "wait" : "pointer",
@@ -556,10 +422,10 @@ export function MaturityAuditEditor({
                             <div style={{
                               padding: "6px 12px",
                               borderRadius: 8,
-                              background: "#dcfce7",
-                              color: "#15803d",
-                              border: "1.5px solid #86efac",
-                              fontSize: 11,
+                              background: `${C.green}22`,
+                              color: C.green,
+                              border: `1.5px solid ${C.green}55`,
+                              fontSize: 12,
                               fontWeight: 800,
                               display: "flex",
                               alignItems: "center",
@@ -572,7 +438,7 @@ export function MaturityAuditEditor({
                           )}
                         </div>
 
-                        <div style={{ borderTop: "1px dashed #e2e8f0", paddingTop: 8 }}>
+                        <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
                           {isUploaded ? (
                             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                               {itemFiles.map((f, fi) => {
@@ -584,13 +450,13 @@ export function MaturityAuditEditor({
                                     display: "flex",
                                     alignItems: "center",
                                     gap: 6,
-                                    background: isAutoFilled ? "#dcfce7" : "#eff6ff",
-                                    border: `1.5px solid ${isAutoFilled ? "#86efac" : "#bfdbfe"}`,
+                                    background: isAutoFilled ? `${C.green}1f` : `${C.accent}14`,
+                                    border: `1.5px solid ${isAutoFilled ? `${C.green}55` : `${C.accent}44`}`,
                                     padding: "4px 10px",
                                     borderRadius: 8,
-                                    fontSize: 11
+                                    fontSize: 12
                                   }}>
-                                    <span style={{ color: isAutoFilled ? "#16a34a" : "#2563eb" }}>
+                                    <span style={{ color: isAutoFilled ? C.green : C.accent }}>
                                       <Icons.File />
                                     </span>
                                     <a
@@ -598,7 +464,7 @@ export function MaturityAuditEditor({
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       style={{
-                                        color: "#0f172a",
+                                        color: C.text,
                                         fontWeight: 700,
                                         maxWidth: 240,
                                         overflow: "hidden",
@@ -611,7 +477,7 @@ export function MaturityAuditEditor({
                                       {f.name}
                                     </a>
                                     <span style={{
-                                       fontSize: 9,
+                                       fontSize: 12,
                                        color: f.isDrive ? "#0284c7" : "#b45309",
                                        background: f.isDrive ? "#e0f2fe" : "#fef3c7",
                                        padding: "1px 6px",
@@ -636,13 +502,13 @@ export function MaturityAuditEditor({
                                 );
                               })}
                               {isAutoFilled && itemFiles[0]?.meta && (
-                                <div style={{ fontSize: 10, color: "#15803d", marginTop: 2, width: "100%" }}>
+                                <div style={{ fontSize: 12, color: C.green, marginTop: 2, width: "100%" }}>
                                   {itemFiles[0].meta}
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div style={{ fontSize: 11, color: "#94a3b8", fontStyle: "italic" }}>
+                            <div style={{ fontSize: 12, color: C.muted, fontStyle: "italic" }}>
                               Belum melampirkan berkas bukti fisik.
                             </div>
                           )}
@@ -654,17 +520,21 @@ export function MaturityAuditEditor({
 
                 {/* Right Column */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-                  <div className="matlev-card">
-                    <h4 style={{ fontSize: 11, fontWeight: 800, color: C.text, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <div style={{ ...sty.card }}>
+                    <h4 style={{ fontSize: 12, fontWeight: 800, color: C.text, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       <Icons.Info /> Catatan Evidence
                     </h4>
-                    <ul className="custom-bullet-list" style={{ margin: 0, fontSize: 11, color: C.muted, lineHeight: 1.5 }}>
-                      {activeAspect.catatan.map((n, ni) => <li key={ni}>{n}</li>)}
+                    <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 12, color: C.muted, lineHeight: 1.5, display: "flex", flexDirection: "column", gap: 6 }}>
+                      {activeAspect.catatan.map((n, ni) => (
+                        <li key={ni} style={{ position: "relative", paddingLeft: 16 }}>
+                          <span style={{ position: "absolute", left: 2, top: 0, color: C.accent, fontWeight: 700 }}>•</span>{n}
+                        </li>
+                      ))}
                     </ul>
                   </div>
 
-                  <div className="matlev-card">
-                    <h4 style={{ fontSize: 11, fontWeight: 800, color: C.text, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <div style={{ ...sty.card }}>
+                    <h4 style={{ fontSize: 12, fontWeight: 800, color: C.text, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       <Icons.Activity /> Penentuan Level
                     </h4>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -674,18 +544,18 @@ export function MaturityAuditEditor({
                         return (
                           <div key={lvlIdx} style={{
                             padding: "10px 12px",
-                            border: `1.5px solid ${isActive ? "#3b82f6" : "#f1f5f9"}`,
+                            border: `1.5px solid ${isActive ? C.accent : C.border}`,
                             borderRadius: 8,
-                            background: isActive ? "#eff6ff" : "transparent",
-                            borderLeft: isActive ? `3px solid #3b82f6` : `1.5px solid #f1f5f9`,
-                            fontSize: 11,
+                            background: isActive ? `${C.accent}14` : "transparent",
+                            borderLeft: isActive ? `3px solid ${C.accent}` : `1.5px solid ${C.border}`,
+                            fontSize: 12,
                             color: isActive ? C.text : C.muted,
                             fontWeight: isActive ? 600 : 400,
                             transition: "all 0.15s ease"
                           }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <strong>Level {lvlNum}</strong>
-                              {isActive && <span style={{ background: "#3b82f6", color: "white", padding: "1px 5px", borderRadius: 4, fontSize: 8, fontWeight: 800 }}>TERVERIFIKASI</span>}
+                              {isActive && <span style={{ background: C.accent, color: "white", padding: "1px 6px", borderRadius: 4, fontSize: 12, fontWeight: 800 }}>TERVERIFIKASI</span>}
                             </div>
                             <div style={{ marginTop: 2, lineHeight: 1.3 }}>{lvlText.replace(/^Level \d:\s*/, "")}</div>
                           </div>
@@ -694,20 +564,20 @@ export function MaturityAuditEditor({
                     </div>
                   </div>
 
-                  <div className="matlev-card" style={{ background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                  <div style={{ ...sty.card, background: C.bg }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                      <span style={{ color: "#3b82f6" }}><Icons.Sparkles /></span>
-                      <h4 style={{ fontSize: 11, fontWeight: 800, color: C.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>Rekomendasi AI</h4>
+                      <span style={{ color: C.accent }}><Icons.Sparkles /></span>
+                      <h4 style={{ fontSize: 12, fontWeight: 800, color: C.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>Rekomendasi AI</h4>
                     </div>
-                    <p style={{ margin: 0, fontSize: 11, color: C.muted, lineHeight: 1.4 }}>{activeAspect.aiNote}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: C.muted, lineHeight: 1.4 }}>{activeAspect.aiNote}</p>
                   </div>
 
                   {(canScoreUIT || canScorePusat || statusSkorUIT > 0 || statusSkorPusat > 0) && (
-                    <div className="matlev-card" style={{ borderLeft: `3px solid ${C.yellow}` }}>
-                      <h4 style={{ fontSize: 11, fontWeight: 800, color: C.text, margin: "0 0 10px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Skoring Evaluasi</h4>
+                    <div style={{ ...sty.card, borderLeft: `3px solid ${C.yellow}` }}>
+                      <h4 style={{ fontSize: 12, fontWeight: 800, color: C.text, margin: "0 0 10px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Skoring Evaluasi</h4>
 
                       <div style={{ marginBottom: 12 }}>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Skor UIT:</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Skor UIT:</div>
                         {canScoreUIT ? (
                           <div style={{ display: "flex", gap: 4 }}>
                             {[1, 2, 3, 4, 5].map(v => (
@@ -727,7 +597,7 @@ export function MaturityAuditEditor({
                       </div>
 
                       <div>
-                        <div style={{ fontSize: 11, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Skor Pusat:</div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Skor Pusat:</div>
                         {canScorePusat ? (
                           <div style={{ display: "flex", gap: 4 }}>
                             {[1, 2, 3, 4, 5].map(v => (
@@ -754,37 +624,15 @@ export function MaturityAuditEditor({
         })() : (
           // Category List View
           <div>
-            <div style={{
-              display: "flex",
-              background: "#f1f5f9",
-              borderRadius: 12,
-              padding: 4,
-              marginBottom: 24,
-              overflowX: "auto",
-              border: "1px solid #e2e8f0",
-              boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)"
-            }}>
+            <div className="operations-segments" style={{ marginBottom: 20 }}>
               {AUDIT_CATEGORIES.map(cat => {
                 const isActive = expandedAspek === cat.id;
                 return (
                   <button
                     key={cat.id}
-                    className="segment-tab"
+                    className={isActive ? "is-active" : ""}
                     onClick={() => { setExpandedAspek(cat.id); setAspectPage(1); }}
-                    style={{
-                      flex: 1,
-                      padding: "8px 14px",
-                      borderRadius: 8,
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      background: isActive ? "#ffffff" : "transparent",
-                      color: isActive ? "#1e3a8a" : "#64748b",
-                      boxShadow: isActive ? "0 2px 6px rgba(15, 23, 42, 0.08)" : "none",
-                      border: "none",
-                      whiteSpace: "nowrap",
-                      transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)"
-                    }}
+                    style={{ "--segment-color": C.accent, flex: 1, justifyContent: "center", whiteSpace: "nowrap" }}
                   >{cat.label}</button>
                 );
               })}
@@ -792,10 +640,10 @@ export function MaturityAuditEditor({
 
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2.1fr 1fr", gap: 20, marginBottom: 20 }}>
               {/* Left Column: Aspect list */}
-              <div className="matlev-card" style={{ padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-                <div style={{ padding: "14px 18px", borderBottom: "1px solid #e2e8f0", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
-                  <strong style={{ fontSize: 13, color: "#0b2559", fontWeight: 800 }}>{activeCategory.label}</strong>
-                  <span style={{ fontSize: 11, color: C.muted }}>Halaman {aspectPage} dari {totalPages} — {categoryAspects.length} Aspek</span>
+              <div style={{ ...sty.card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+                <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                  <strong style={{ fontSize: 13, color: C.text, fontWeight: 800 }}>{activeCategory.label}</strong>
+                  <span style={{ fontSize: 12, color: C.muted }}>Halaman {aspectPage} dari {totalPages} — {categoryAspects.length} Aspek</span>
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column" }}>
@@ -809,11 +657,16 @@ export function MaturityAuditEditor({
                     const isAspectAutoFilled = filesCount > 0 && aspectAllFiles.every(f => f.auto === true);
 
                     const badgeBox = (val, lbl) => (
-                      <div className="score-pill-badge" style={{
-                        background: val > 0 ? "transparent" : "#f8fafc",
+                      <div style={{
+                        width: 50,
+                        padding: "6px 2px",
+                        borderRadius: 8,
+                        border: `1px solid ${C.border}`,
+                        textAlign: "center",
+                        background: val > 0 ? "transparent" : C.bg,
                       }}>
-                        <div style={{ fontSize: 8, color: C.muted, textTransform: "uppercase", fontWeight: 800 }}>{lbl}</div>
-                        <div style={{ fontSize: 11, fontWeight: 900, color: val > 0 ? C.text : C.muted, marginTop: 1 }}>
+                        <div style={{ fontSize: 12, color: C.muted, textTransform: "uppercase", fontWeight: 800 }}>{lbl}</div>
+                        <div style={{ fontSize: 12, fontWeight: 900, color: val > 0 ? C.text : C.muted, marginTop: 1, fontVariantNumeric: "tabular-nums" }}>
                           {val > 0 ? val : "—"}
                         </div>
                       </div>
@@ -822,7 +675,7 @@ export function MaturityAuditEditor({
                     return (
                       <div
                         key={aspect.id}
-                        className="aspect-row-card"
+                        className="maturity-aspect-row"
                         onClick={() => setActiveAspectId(aspect.id)}
                         role="button"
                         tabIndex={0}
@@ -835,7 +688,7 @@ export function MaturityAuditEditor({
                           padding: isMobile ? "12px 14px" : "14px 18px",
                           gap: isMobile ? 10 : 14,
                           cursor: "pointer",
-                          background: isAspectAutoFilled ? "#f0fdf4" : "transparent",
+                          background: isAspectAutoFilled ? `${C.green}12` : "transparent",
                           userSelect: "none"
                         }}
                       >
@@ -844,7 +697,7 @@ export function MaturityAuditEditor({
                             width: 4,
                             height: 28,
                             borderRadius: 2,
-                            background: isAspectAutoFilled ? "#16a34a" : filesCount >= reqCount ? "#3b82f6" : "#f59e0b",
+                            background: isAspectAutoFilled ? C.green : filesCount >= reqCount ? C.accent : C.yellow,
                             flexShrink: 0
                           }} />
                           <div style={{ marginLeft: 4, flex: 1 }}>
@@ -852,13 +705,13 @@ export function MaturityAuditEditor({
                               <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 800, color: C.text }}>{aspect.id} {aspect.title}</span>
                               {isAspectAutoFilled && (
                                 <span style={{
-                                  fontSize: 9,
+                                  fontSize: 12,
                                   fontWeight: 800,
                                   padding: "1px 6px",
                                   borderRadius: 20,
-                                  background: "#dcfce7",
-                                  color: "#15803d",
-                                  border: "1px solid #86efac",
+                                  background: `${C.green}22`,
+                                  color: C.green,
+                                  border: `1px solid ${C.green}55`,
                                   textTransform: "uppercase",
                                   letterSpacing: "0.3px",
                                   display: "inline-flex",
@@ -869,7 +722,7 @@ export function MaturityAuditEditor({
                                 </span>
                               )}
                             </div>
-                            <div style={{ fontSize: 10, color: C.muted, marginTop: 2, fontWeight: 500 }}>{aspect.subtext}</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginTop: 2, fontWeight: 500 }}>{aspect.subtext}</div>
                           </div>
                         </div>
 
@@ -885,12 +738,16 @@ export function MaturityAuditEditor({
                           <div style={{ display: "flex", gap: 6 }}>
                             {badgeBox(itemUptScore, "upt")}
                             {badgeBox(itemUitScore, "uit")}
-                            <div className="score-pill-badge" style={{
+                            <div style={{
                               width: 52,
-                              background: itemPusatScore > 0 ? "transparent" : "#f8fafc"
+                              padding: "6px 2px",
+                              borderRadius: 8,
+                              border: `1px solid ${C.border}`,
+                              textAlign: "center",
+                              background: itemPusatScore > 0 ? "transparent" : C.bg
                             }}>
-                              <div style={{ fontSize: 8, color: C.muted, textTransform: "uppercase", fontWeight: 800 }}>Final</div>
-                              <div style={{ fontSize: 10, fontWeight: 900, color: itemPusatScore > 0 ? C.text : C.muted, marginTop: 1, wordBreak: "break-all" }}>
+                              <div style={{ fontSize: 12, color: C.muted, textTransform: "uppercase", fontWeight: 800 }}>Final</div>
+                              <div style={{ fontSize: 12, fontWeight: 900, color: itemPusatScore > 0 ? C.text : C.muted, marginTop: 1, wordBreak: "break-all", fontVariantNumeric: "tabular-nums" }}>
                                 {itemPusatScore > 0 ? itemPusatScore : "Belum"}
                               </div>
                             </div>
@@ -905,21 +762,20 @@ export function MaturityAuditEditor({
                             style={{
                               padding: "6px 12px",
                               borderRadius: 8,
-                              background: "#eff6ff",
-                              color: "#1d4ed8",
-                              border: "1.5px solid #bfdbfe",
-                              fontSize: 11,
+                              background: `${C.accent}14`,
+                              color: C.accent,
+                              border: `1.5px solid ${C.accent}44`,
+                              fontSize: 12,
                               fontWeight: 800,
                               cursor: "pointer",
                               display: "inline-flex",
                               alignItems: "center",
                               gap: 4,
-                              whiteSpace: "nowrap",
-                              boxShadow: "0 1px 2px rgba(29, 78, 216, 0.1)"
+                              whiteSpace: "nowrap"
                             }}
                           >
                             <span>Kelola Evidence</span>
-                            <span style={{ fontSize: 13 }}>➔</span>
+                            <Icons.ChevronRight />
                           </button>
                         </div>
                       </div>
@@ -927,16 +783,16 @@ export function MaturityAuditEditor({
                   })}
                 </div>
 
-                <div style={{ padding: "10px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", background: "#f8fafc", borderTop: "1px solid #e2e8f0" }}>
-                  <span style={{ fontSize: 11, color: C.muted, fontWeight: 600 }}>Halaman {aspectPage} dari {totalPages}</span>
+                <div style={{ padding: "10px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", background: C.bg, borderTop: `1px solid ${C.border}` }}>
+                  <span style={{ fontSize: 12, color: C.muted, fontWeight: 600 }}>Halaman {aspectPage} dari {totalPages}</span>
                   <div style={{ display: "flex", gap: 6 }}>
                     {aspectPage > 1 && (
-                      <button style={{ ...sty.btn("ghost", "sm"), padding: "4px 10px", border: `1.5px solid #cbd5e1`, borderRadius: 6, background: "white", display: "flex", alignItems: "center", gap: 4 }} onClick={() => setAspectPage(p => p - 1)}>
+                      <button style={{ ...sty.btn("ghost", "sm"), padding: "4px 10px", border: `1.5px solid ${C.border}`, borderRadius: 6, background: C.surface, color: C.text, display: "flex", alignItems: "center", gap: 4 }} onClick={() => setAspectPage(p => p - 1)}>
                         <Icons.ChevronLeft /> Sebelum
                       </button>
                     )}
                     {aspectPage < totalPages && (
-                      <button style={{ ...sty.btn("ghost", "sm"), padding: "4px 10px", border: `1.5px solid #cbd5e1`, borderRadius: 6, background: "white", display: "flex", alignItems: "center", gap: 4 }} onClick={() => setAspectPage(p => p + 1)}>
+                      <button style={{ ...sty.btn("ghost", "sm"), padding: "4px 10px", border: `1.5px solid ${C.border}`, borderRadius: 6, background: C.surface, color: C.text, display: "flex", alignItems: "center", gap: 4 }} onClick={() => setAspectPage(p => p + 1)}>
                         Berikut <Icons.ChevronRight />
                       </button>
                     )}
@@ -945,22 +801,22 @@ export function MaturityAuditEditor({
               </div>
 
               {/* Right Column: Category Scores overview */}
-              <div className="matlev-card" style={{ height: "fit-content" }}>
-                <h4 style={{ fontSize: 12, fontWeight: 800, color: "#0b2559", margin: "0 0 14px 0", borderBottom: "1px solid #e2e8f0", paddingBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Skor Per Kategori</h4>
+              <div style={{ ...sty.card, height: "fit-content" }}>
+                <h4 style={{ fontSize: 12, fontWeight: 800, color: C.text, margin: "0 0 14px 0", borderBottom: `1px solid ${C.border}`, paddingBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Skor Per Kategori</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {AUDIT_CATEGORIES.map(cat => {
                     const catScore = getCategoryScore(cat.id, activeRoleType);
                     return (
                       <div key={cat.id}>
-                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: C.text, marginBottom: 4, fontWeight: 600 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.text, marginBottom: 4, fontWeight: 600 }}>
                           <span>{cat.label}</span>
-                          <strong style={{ color: catScore > 0 ? "#1d4ed8" : C.muted }}>{catScore > 0 ? catScore.toFixed(2) : "0.00"}</strong>
+                          <strong style={{ color: catScore > 0 ? C.accent : C.muted, fontVariantNumeric: "tabular-nums" }}>{catScore > 0 ? catScore.toFixed(2) : "0.00"}</strong>
                         </div>
-                        <div style={{ height: 5, borderRadius: 2, background: "#f1f5f9", overflow: "hidden" }}>
+                        <div style={{ height: 5, borderRadius: 2, background: C.border, overflow: "hidden" }}>
                           <div style={{
                             height: "100%",
                             width: `${(catScore / 5) * 100}%`,
-                            background: catScore >= 4 ? "#1d4ed8" : catScore >= 2.5 ? "#f59e0b" : "#3b82f6",
+                            background: catScore >= 4 ? C.green : catScore >= 2.5 ? C.yellow : C.accent,
                             borderRadius: 2,
                             transition: "width 0.4s ease-out"
                           }} />
@@ -971,35 +827,35 @@ export function MaturityAuditEditor({
                 </div>
 
                 {/* Penilaian Matlev Weighted Calculation Table */}
-                <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px dashed #cbd5e1" }}>
-                  <h5 style={{ fontSize: 11, fontWeight: 800, color: "#1e3a8a", margin: "0 0 10px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Penilaian Matlev (A + B)</h5>
-                  <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse", borderRadius: 12, overflow: "hidden", border: "1px solid #cbd5e1", boxShadow: "0 4px 6px rgba(15,23,42,0.01)" }}>
+                <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px dashed ${C.border}` }}>
+                  <h5 style={{ fontSize: 12, fontWeight: 800, color: C.text, margin: "0 0 10px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>Penilaian Matlev (A + B)</h5>
+                  <table style={{ width: "100%", fontSize: 12, borderCollapse: "collapse", borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`, boxShadow: "0 4px 6px rgba(15,23,42,0.01)" }}>
                     <thead>
                       <tr style={{ background: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)", textAlign: "left", color: "white" }}>
-                        <th style={{ padding: "8px 10px", border: "1px solid #cbd5e1", fontWeight: 800 }}>Item</th>
-                        <th style={{ padding: "8px 10px", border: "1px solid #cbd5e1", fontWeight: 800, textAlign: "right" }}>Nilai Level</th>
+                        <th style={{ padding: "8px 10px", border: `1px solid ${C.border}`, fontWeight: 800 }}>Item</th>
+                        <th style={{ padding: "8px 10px", border: `1px solid ${C.border}`, fontWeight: 800, textAlign: "right" }}>Nilai Level</th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
-                        <td style={{ padding: "8px 10px", border: "1px solid #cbd5e1", background: "#ffffff", fontWeight: 700, color: "#334155" }}>
+                        <td style={{ padding: "8px 10px", border: `1px solid ${C.border}`, background: C.surface, fontWeight: 700, color: C.text }}>
                           Gudang Persediaan (A)
                         </td>
-                        <td style={{ padding: "8px 10px", border: "1px solid #cbd5e1", fontWeight: 800, textAlign: "right", background: "#f8fafc", color: "#1e3a8a" }}>
+                        <td style={{ padding: "8px 10px", border: `1px solid ${C.border}`, fontWeight: 800, textAlign: "right", background: C.bg, color: C.accent, fontVariantNumeric: "tabular-nums" }}>
                           {matlevScoreA.toFixed(2)}
                         </td>
                       </tr>
                       <tr>
-                        <td style={{ padding: "8px 10px", border: "1px solid #cbd5e1", background: "#ffffff", fontWeight: 700, color: "#334155" }}>
+                        <td style={{ padding: "8px 10px", border: `1px solid ${C.border}`, background: C.surface, fontWeight: 700, color: C.text }}>
                           Gudang MRWI (B)
                         </td>
-                        <td style={{ padding: "8px 10px", border: "1px solid #cbd5e1", fontWeight: 800, textAlign: "right", background: "#f8fafc", color: "#1e3a8a" }}>
+                        <td style={{ padding: "8px 10px", border: `1px solid ${C.border}`, fontWeight: 800, textAlign: "right", background: C.bg, color: C.accent, fontVariantNumeric: "tabular-nums" }}>
                           {matlevScoreB.toFixed(2)}
                         </td>
                       </tr>
-                      <tr style={{ fontWeight: 900, background: "#eff6ff" }}>
-                        <td style={{ padding: "8px 10px", border: "1px solid #cbd5e1", color: "#1e3a8a" }}>Total (A + B)</td>
-                        <td style={{ padding: "8px 10px", border: "1px solid #cbd5e1", textAlign: "right", color: "#1e3a8a", fontSize: 12 }}>
+                      <tr style={{ fontWeight: 900, background: `${C.accent}14` }}>
+                        <td style={{ padding: "8px 10px", border: `1px solid ${C.border}`, color: C.accent }}>Total (A + B)</td>
+                        <td style={{ padding: "8px 10px", border: `1px solid ${C.border}`, textAlign: "right", color: C.accent, fontSize: 12, fontVariantNumeric: "tabular-nums" }}>
                           {matlevTotalScore.toFixed(2)}
                         </td>
                       </tr>
@@ -1009,28 +865,28 @@ export function MaturityAuditEditor({
               </div>
             </div>
 
-            {/* Action buttons */}
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.border}`, transform: is3D ? "translateZ(5px)" : "none" }}>
+            {/* Action buttons — kelas approval-btn baku app-wide */}
+            <div className="approval-actions" style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
               {isEdit && audit.id && deleteMaturityAudit && hasRole(currentUser, "ADMIN", "SUPERADMIN", "TL") && (
-                <button style={{ ...sty.btn("ghost"), flex: "0 0 auto", borderRadius: 10, border: `1.5px solid #fca5a5`, background: "#fef2f2", color: "#dc2626", fontWeight: 800, marginRight: "auto" }} onClick={() => deleteMaturityAudit(audit.id)}>Hapus Audit Ini</button>
+                <button className="approval-btn--danger" style={{ marginRight: "auto" }} onClick={() => deleteMaturityAudit(audit.id)}>Hapus Audit Ini</button>
               )}
-              <button style={{ ...sty.btn("ghost"), flex: "0 0 auto", borderRadius: 10, border: `1.5px solid #cbd5e1`, background: "white", color: "#334155" }} onClick={() => setMaturityAuditModal(null)}>Batal</button>
+              <button className="approval-btn--cancel" onClick={() => setMaturityAuditModal(null)}>Batal</button>
               {canScoreUPT && (
                 <>
-                  <button style={{ ...sty.btn("ghost"), flex: "0 0 auto", borderRadius: 10, border: `1.5px solid #cbd5e1`, background: "white", color: "#334155" }} disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
-                  <button style={{ ...sty.btn("primary"), flex: "0 0 auto", borderRadius: 10 }} disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "SELF_ASSESSMENT")}>Kirim Hasil ke UIT</button>
+                  <button className="approval-btn--cancel" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
+                  <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "SELF_ASSESSMENT")}>Kirim Hasil ke UIT</button>
                 </>
               )}
               {canScoreUIT && (
                 <>
-                  <button style={{ ...sty.btn("ghost"), flex: "0 0 auto", borderRadius: 10, border: `1.5px solid #cbd5e1`, background: "white", color: "#334155" }} disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  <button style={{ ...sty.btn("primary"), flex: "0 0 auto", borderRadius: 10 }} disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "FINAL")}>Kirim Hasil ke Pusat</button>
+                  <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
+                  <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "FINAL")}>Kirim Hasil ke Pusat</button>
                 </>
               )}
               {canScorePusat && (
                 <>
-                  <button style={{ ...sty.btn("ghost"), flex: "0 0 auto", borderRadius: 10, border: `1.5px solid #cbd5e1`, background: "white", color: "#334155" }} disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  <button style={{ ...sty.btn("primary"), flex: "0 0 auto", borderRadius: 10 }} disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
+                  <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
+                  <button className="approval-btn--approve" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
                 </>
               )}
             </div>
@@ -1223,21 +1079,21 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
   const handlePrint = () => window.print();
 
   const tdBase = {
-    border: `1px solid ${BORDER_CLR}`,
+    border: `1px solid ${C.border}`,
     padding: "10px 14px",
     verticalAlign: "middle",
     fontSize: 12,
     lineHeight: 1.5,
-    color: "#334155"
+    color: C.text
   };
   const thBase = {
     ...tdBase,
-    background: SUBHDR_BG,
-    color: "#475569",
+    background: C.bg,
+    color: C.muted,
     fontWeight: 800,
     textAlign: "center",
     padding: "12px 14px",
-    fontSize: 11,
+    fontSize: 12,
     textTransform: "uppercase",
     letterSpacing: "0.5px"
   };
@@ -1255,7 +1111,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
             marginBottom: "16px",
             border: "none",
             backgroundColor: "transparent",
-            color: "#1d4ed8",
+            color: C.accent,
             cursor: "pointer",
             fontSize: "14px",
             fontWeight: "600"
@@ -1266,33 +1122,26 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
       )}
 
       {/* ── Metadata ── */}
-      <div style={{
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 16,
-        padding: "20px 24px",
-        marginBottom: 20,
-        boxShadow: "0 4px 10px rgba(15, 23, 42, 0.02)"
-      }}>
-        <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>
+      <div style={{ ...sty.card, marginBottom: 20 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>
           Data Pengisian
         </div>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr 1fr", gap: 16 }}>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#475569", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Periode Bulan</label>
-            <select style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, color: "#0f172a", background: "white", outline: "none" }} value={bulan} onChange={e => setBulan(Number(e.target.value))}>
+            <label style={sty.label}>Periode Bulan</label>
+            <select style={sty.select} value={bulan} onChange={e => setBulan(Number(e.target.value))}>
               {MONTH_LABELS.map((m, i) => <option key={i} value={i}>{m}</option>)}
             </select>
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#475569", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Tahun</label>
-            <input style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, color: "#0f172a", background: "white", outline: "none", boxSizing: "border-box" }} type="number" min={2020} max={2099} value={tahun}
+            <label style={sty.label}>Tahun</label>
+            <input style={sty.input} type="number" min={2020} max={2099} value={tahun}
               onChange={e => setTahun(Number(e.target.value))} />
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#475569", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Gudang / Lokasi</label>
+            <label style={sty.label}>Gudang / Lokasi</label>
             {lokasiList.length > 0 ? (
-              <select style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, color: "#0f172a", background: "white", outline: "none" }} value={gudang} onChange={e => setGudang(e.target.value)}>
+              <select style={sty.select} value={gudang} onChange={e => setGudang(e.target.value)}>
                 <option value="">-- Pilih Gudang --</option>
                 {lokasiList.map(l => (
                   <option key={l.id} value={l.id}>
@@ -1301,21 +1150,21 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                 ))}
               </select>
             ) : (
-              <input style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, color: "#0f172a", background: "white", outline: "none", boxSizing: "border-box" }} placeholder="Nama gudang..." value={gudang}
+              <input style={sty.input} placeholder="Nama gudang..." value={gudang}
                 onChange={e => setGudang(e.target.value)} />
             )}
           </div>
           <div>
-            <label style={{ fontSize: 11, fontWeight: 800, color: "#475569", display: "block", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Nama Auditor</label>
-            <input style={{ width: "100%", padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, color: "#0f172a", background: "white", outline: "none", boxSizing: "border-box" }} placeholder="Nama auditor..." value={auditor}
+            <label style={sty.label}>Nama Auditor</label>
+            <input style={sty.input} placeholder="Nama auditor..." value={auditor}
               onChange={e => setAuditor(e.target.value)} />
           </div>
         </div>
       </div>
 
       {/* ── Main Table ── */}
-      <div style={{ overflowX: "auto", borderRadius: 16, border: "1px solid #e2e8f0", boxShadow: "0 4px 10px rgba(15,23,42,0.03)", marginBottom: 20 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, background: "white" }}>
+      <div style={{ ...sty.card, padding: 0, overflowX: "auto", marginBottom: 20 }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 680, background: C.surface }}>
           <thead>
             <tr>
               <td colSpan={4} style={{
@@ -1340,20 +1189,20 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
               const rows = cat.indicators.length;
               return cat.indicators.map((ind, ii) => (
                 <tr key={`${cat.id}-${ii}`}
-                  style={{ background: ii % 2 === 0 ? "white" : "#f8fafc" }}>
+                  style={{ background: ii % 2 === 0 ? C.surface : C.bg }}>
                   {ii === 0 && (
                     <td rowSpan={rows} style={{
                       ...tdBase,
-                      background: "#f1f5f9",
+                      background: C.bg,
                       fontWeight: 800,
                       textAlign: "center",
                       whiteSpace: "pre-line",
-                      fontSize: 12.5,
-                      color: "#1e3a8a",
+                      fontSize: 13,
+                      color: C.text,
                       verticalAlign: "middle",
                     }}>
                       {cat.label}
-                      <div style={{ marginTop: 8, fontSize: 10, color: "#64748b", fontWeight: 700 }}>
+                      <div style={{ marginTop: 8, fontSize: 12, color: C.muted, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
                         {catChecked}/{rows}
                       </div>
                     </td>
@@ -1361,17 +1210,17 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                   {ii === 0 && (
                     <td rowSpan={rows} style={{
                       ...tdBase,
-                      fontSize: 11.5,
-                      color: "#475569",
+                      fontSize: 12,
+                      color: C.muted,
                       fontStyle: "italic",
-                      background: "#f8fafc",
+                      background: C.bg,
                       verticalAlign: "top",
                       paddingTop: 12,
                     }}>
                       {cat.definition}
                     </td>
                   )}
-                  <td style={{ ...tdBase, color: "#334155" }}>{ind}</td>
+                  <td style={{ ...tdBase, color: C.text }}>{ind}</td>
                   <td style={{ ...tdBase, textAlign: "center" }}>
                     <button
                       onClick={() => toggle(cat.id, ii)}
@@ -1379,8 +1228,8 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                       style={{
                         width: 24, height: 24,
                         borderRadius: 6,
-                        border: `2px solid ${checks[cat.id][ii] ? "#10b981" : "#cbd5e1"}`,
-                        background: checks[cat.id][ii] ? "#10b981" : "white",
+                        border: `2px solid ${checks[cat.id][ii] ? C.green : C.border}`,
+                        background: checks[cat.id][ii] ? C.green : C.surface,
                         cursor: "pointer",
                         display: "inline-flex",
                         alignItems: "center",
@@ -1408,8 +1257,8 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                 textAlign: "center",
                 fontWeight: 800,
                 fontSize: 12,
-                background: "#f1f5f9",
-                color: "#1e3a8a",
+                background: C.bg,
+                color: C.text,
                 letterSpacing: "0.5px",
                 textTransform: "uppercase"
               }}>
@@ -1420,6 +1269,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                 textAlign: "center",
                 fontWeight: 900,
                 fontSize: 14,
+                fontVariantNumeric: "tabular-nums",
                 background: scorePct >= 80 ? "#d1fae5" : scorePct >= 60 ? "#dbeafe" : scorePct >= 40 ? "#fef9c3" : "#fee2e2",
                 color: scorePct >= 80 ? "#065f46" : scorePct >= 60 ? "#1e3a8a" : scorePct >= 40 ? "#713f12" : "#991b1b",
               }}>
@@ -1431,26 +1281,19 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
       </div>
 
       {/* ── Score Summary Bar ── */}
-      <div style={{
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 16,
-        padding: "20px 24px",
-        marginBottom: 20,
-        boxShadow: "0 4px 10px rgba(15, 23, 42, 0.02)"
-      }}>
+      <div style={{ ...sty.card, marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "0.5px" }}>
             Progres Pengisian Checklist
           </div>
           <div style={{
-            fontSize: 20, fontWeight: 900,
-            color: scorePct >= 80 ? "#10b981" : scorePct >= 60 ? "#3b82f6" : scorePct >= 40 ? "#f59e0b" : "#ef4444",
+            fontSize: 20, fontWeight: 900, fontVariantNumeric: "tabular-nums",
+            color: scorePct >= 80 ? C.green : scorePct >= 60 ? C.accent : scorePct >= 40 ? C.yellow : C.red,
           }}>
             {scorePct.toFixed(2)}%
           </div>
         </div>
-        <div style={{ height: 8, borderRadius: 4, background: "#f1f5f9", overflow: "hidden", marginBottom: 16 }}>
+        <div style={{ height: 8, borderRadius: 4, background: C.border, overflow: "hidden", marginBottom: 16 }}>
           <div style={{
             width: `${scorePct}%`, height: "100%", borderRadius: 4, transition: "width .4s ease-out",
             background: scorePct >= 80 ? "linear-gradient(90deg, #10b981, #34d399)" : scorePct >= 60 ? "linear-gradient(90deg, #3b82f6, #60a5fa)" : scorePct >= 40 ? "linear-gradient(90deg, #f59e0b, #fbbf24)" : "linear-gradient(90deg, #ef4444, #f87171)",
@@ -1464,18 +1307,18 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
             return (
               <div key={cat.id} style={{
                 textAlign: "center",
-                background: "#f8fafc",
-                border: "1px solid #e2e8f0",
+                background: C.bg,
+                border: `1px solid ${C.border}`,
                 borderRadius: 12,
                 padding: "10px 8px"
               }}>
-                <div style={{ fontSize: 10, fontWeight: 800, color: "#1e3a8a", marginBottom: 6, whiteSpace: "pre-line", minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: C.text, marginBottom: 6, whiteSpace: "pre-line", minHeight: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   {cat.label.replace("\n", " ")}
                 </div>
-                <div style={{ height: 4, borderRadius: 2, background: "#e2e8f0", overflow: "hidden", marginBottom: 4 }}>
-                  <div style={{ width: `${p}%`, height: "100%", background: "#1e3a8a", transition: "width .3s" }} />
+                <div style={{ height: 4, borderRadius: 2, background: C.border, overflow: "hidden", marginBottom: 4 }}>
+                  <div style={{ width: `${p}%`, height: "100%", background: C.accent, transition: "width .3s" }} />
                 </div>
-                <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700 }}>{c}/{n} ({p}%)</div>
+                <div style={{ fontSize: 12, color: C.muted, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{c}/{n} ({p}%)</div>
               </div>
             );
           })}
@@ -1483,15 +1326,8 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
       </div>
 
       {/* ── Catatan ── */}
-      <div style={{
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 16,
-        padding: "20px 24px",
-        marginBottom: 20,
-        boxShadow: "0 4px 10px rgba(15, 23, 42, 0.02)"
-      }}>
-        <label style={{ fontSize: 11, fontWeight: 800, color: "#475569", display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+      <div style={{ ...sty.card, marginBottom: 20 }}>
+        <label style={{ fontSize: 12, fontWeight: 800, color: C.muted, display: "block", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
           Catatan / Temuan / Tindak Lanjut
         </label>
         <textarea
@@ -1499,25 +1335,18 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
           onChange={e => setCatatan(e.target.value)}
           rows={3}
           placeholder="Tuliskan temuan, rekomendasi perbaikan, atau rencana tindak lanjut..."
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 13, color: "#0f172a", outline: "none", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }}
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, background: C.surface, outline: "none", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }}
         />
       </div>
 
       {/* ── Upload 3 Sampling Foto ── */}
-      <div style={{
-        background: "white",
-        border: "1px solid #e2e8f0",
-        borderRadius: 16,
-        padding: "20px 24px",
-        marginBottom: 20,
-        boxShadow: "0 4px 10px rgba(15, 23, 42, 0.02)"
-      }}>
+      <div style={{ ...sty.card, marginBottom: 20 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 3 }}>
               📷 Sampling Foto Implementasi 5S di Gudang
             </div>
-            <div style={{ fontSize: 11, color: C.muted }}>
+            <div style={{ fontSize: 12, color: C.muted }}>
               Upload <strong>3 foto</strong> kondisi nyata penerapan 5S di area gudang. Foto ini akan otomatis dilampirkan sebagai evidence poin <strong>4.5</strong> saat Simpan.
             </div>
           </div>
@@ -1570,7 +1399,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                       padding: "20px 8px 7px 8px",
                       display: "flex", justifyContent: "space-between", alignItems: "flex-end",
                     }}>
-                      <div style={{ color: "white", fontSize: 10, fontWeight: 700, maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <div style={{ color: "white", fontSize: 12, fontWeight: 700, maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         Foto {slot + 1} — {photo.name}
                       </div>
                       <button
@@ -1588,7 +1417,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                     <div style={{
                       position: "absolute", top: 7, left: 7,
                       background: "#1e3a8a", color: "white",
-                      borderRadius: 6, padding: "2px 7px", fontSize: 10, fontWeight: 800,
+                      borderRadius: 6, padding: "2px 7px", fontSize: 12, fontWeight: 800,
                     }}>
                       {slot + 1}/3
                     </div>
@@ -1596,8 +1425,8 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                 ) : (
                   <label style={{ cursor: samplePhotos.length >= 3 ? "not-allowed" : "pointer", textAlign: "center", padding: 16, display: "block", width: "100%" }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
-                    <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>Foto Sampling {slot + 1}</div>
-                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Foto Sampling {slot + 1}</div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
                       {samplePhotos.length <= slot ? "Klik untuk unggah" : "—"}
                     </div>
                     {samplePhotos.length === slot && (
@@ -1624,7 +1453,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
             }} />
           </div>
           <div style={{
-            fontSize: 11, fontWeight: 700,
+            fontSize: 12, fontWeight: 700,
             color: samplePhotos.length === 3 ? "#059669" : C.muted,
           }}>
             {samplePhotos.length}/3 foto {samplePhotos.length === 3 ? "✓ Lengkap" : ""}
