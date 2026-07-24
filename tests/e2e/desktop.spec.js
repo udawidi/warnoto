@@ -141,4 +141,33 @@ test.describe("WARNOTO desktop preservation smoke", () => {
     await expect(page.locator('input[type="file"]:not(:disabled)')).toHaveCount(0);
     await expect(page.getByText("Upload bukti sementara nonaktif", { exact:true }).first()).toBeVisible();
   });
+
+  test("inspection does not report success while canonical persistence is unavailable", async ({ isolatedPage:page }) => {
+    await openApp(page);
+    await openRoute(page, {
+      tab:"inspeksiMaterial",
+      menuPath:["Inspeksi Material"],
+      readySelector:'.app-shell[data-current-tab="inspeksiMaterial"]',
+    });
+
+    await page.getByPlaceholder("Contoh: CT;150kV;K;150-300/1A;5P20;36kV;N").fill("Material Inspeksi E2E");
+    await page.getByRole("button", { name:/Simpan & Buat Berita Acara/ }).click();
+    await expect(page.getByText("Gagal menyimpan inspeksi ke server. Form dan data foto tetap terbuka untuk dicoba lagi.", { exact:true })).toBeVisible();
+    await expect(page.getByText("Berita Acara Visual Inspeksi MTU", { exact:true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name:/Simpan & Buat Berita Acara/ })).toBeVisible();
+  });
+
+  test("inspection menu permission does not grant inspection mutation", async ({ isolatedPage:page }) => {
+    await openApp(page);
+    const permissions = await page.evaluate(async () => {
+      const { can } = await import(new URL("/src/lib/perms.js", location.href).href);
+      const manager = { id:"e2e-manager", role:"MANAGER" };
+      const overrides = { MANAGER: { "menu.inspeksiMaterial": true } };
+      return {
+        menu: can(manager, "menu.inspeksiMaterial", overrides),
+        mutate: can(manager, "aksi.kelolaInspeksi", overrides),
+      };
+    });
+    expect(permissions).toEqual({ menu:true, mutate:false });
+  });
 });

@@ -19,6 +19,7 @@ export const PERM_MENUS = [
   { key: "menu.attb", label: "ATTB" },
   { key: "menu.opname", label: "Stock Opname & Count" },
   { key: "menu.maturity", label: "Penilaian Maturity" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
   { key: "menu.rencana", label: "Rencana Kedatangan" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
   { key: "menu.ai", label: "Pak War (AI)" },
@@ -27,6 +28,7 @@ export const PERM_MENUS = [
 export const PERM_AKSI = [
   { key: "aksi.buatTransaksi", label: "Buat Transaksi TUG" },
   { key: "aksi.kelolaMaster", label: "Kelola Master Data" },
+  { key: "aksi.kelolaInspeksi", label: "Kelola Inspeksi Material" },
   { key: "aksi.import", label: "Import Data (Excel)" },
   { key: "aksi.kelolaAkun", label: "Kelola Akun" },
 ];
@@ -56,9 +58,9 @@ const FULL_MENUS = menus(
 export const DEFAULT_PERMS = {
   // ULTG create (TUG-5) tetap lewat jalur canCreateULTG terpisah di App.jsx,
   // jadi aksi.buatTransaksi ADMIN_ULTG sengaja false di sini (perilaku tak berubah).
-  ADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true },
-  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.import": true },
-  ASMAN: { ...FULL_MENUS },
+  ADMIN: { ...FULL_MENUS, "menu.inspeksiMaterial": true, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.kelolaInspeksi": true, "aksi.import": true, "aksi.kelolaAkun": true },
+  TL: { ...FULL_MENUS, "menu.inspeksiMaterial": true, "aksi.buatTransaksi": true, "aksi.kelolaInspeksi": true, "aksi.import": true },
+  ASMAN: { ...FULL_MENUS, "menu.inspeksiMaterial": true, "aksi.kelolaInspeksi": true },
   MANAGER: { ...FULL_MENUS },
   ADMIN_UIT: { ...FULL_MENUS },
   MGR_LOGISTIK_UIT: { ...FULL_MENUS },

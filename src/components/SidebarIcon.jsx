@@ -24,6 +24,7 @@ export function SidebarIcon({name, size=18, strokeWidth=1.9}) {
     attb: <><path d="M4 7h16v13H4z"/><path d="M3 4h18v3H3zM9 11h6"/></>,
     opname: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 9h6M9 13h6M9 17h4"/></>,
     maturity: <><path d="M4 17a8 8 0 0 1 16 0"/><path d="M12 17l4.5-4.5"/><circle cx="12" cy="17" r="1.3"/><path d="M4.5 13.5 6 14M19.5 13.5 18 14M12 9v1.6"/></>,
+    inspeksiMaterial: <><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 12l2 2 4-4"/></>,
     capacity: <><path d="M3 21V8l9-5 9 5v13"/><path d="M7 21v-8h10v8M7 9h.01M12 9h.01M17 9h.01"/></>,
     forecast: <><path d="M3 20h18M5 17l4-5 4 3 6-8"/><path d="M15 7h4v4"/></>,
     ai: <><rect x="5" y="6" width="14" height="13" rx="3"/><path d="M9 11h.01M15 11h.01M9 15h6M12 2v4M8 2h8M3 10v5M21 10v5"/></>,

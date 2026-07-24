@@ -21,6 +21,7 @@ import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage,
 import { computeForecast } from "./src/lib/forecast.js";
 import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, syncMaterialCadangRows, loadWarehouseCapacity, syncWarehouseCapacity, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
 import { loadMaturityAssessments, loadMaturityAudits, upsertMaturityAssessment, upsertMaturityAudit, upsertMaturityAssessments, upsertMaturityAudits, deleteMaturityAuditRow } from "./src/lib/maturitySync.js";
+import { createMaterialInspection, loadMaterialInspections } from "./src/lib/materialInspectionSync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
 import { TelegramWhitelistPanel } from "./src/components/TelegramWhitelistPanel.jsx";
@@ -56,6 +57,7 @@ import { BarcodePrintModal } from "./src/components/BarcodePrintModal.jsx";
 import { KartuGantungModal } from "./src/components/KartuGantungModal.jsx";
 import { TUG15Tab } from "./src/components/TUG15Tab.jsx";
 import { MaterialCadangTab } from "./src/components/MaterialCadangTab.jsx";
+import { InspeksiMaterialCadangTab } from "./src/components/InspeksiMaterialCadangTab.jsx";
 import { ForecastStokPage } from "./src/components/ForecastStokPage.jsx";
 import { ApprovalTab } from "./src/components/ApprovalTab.jsx";
 import { SidebarNavItem } from "./src/components/SidebarNavItem.jsx";
@@ -265,6 +267,7 @@ export default function PLNWarehouse() {
   const [approvalHistoryList, setApprovalHistoryList] = useState([]); // log keputusan approval (Lokasi/Blok, Pemindahan Stok, dkk) — TUG tetap diturunkan dari txns
   const [maturityAssessments, setMaturityAssessments] = useState(() => readCachedList("pln_maturity_v1") ?? []); // cache fallback read-only; DB adalah canonical
   const [maturityAudits, setMaturityAudits] = useState(() => readCachedList("pln_maturity_audits_v1") ?? []); // cache fallback read-only; DB adalah canonical
+  const [materialInspections, setMaterialInspections] = useState(() => readCachedList("pln_material_inspections_v1") ?? []); // cache fallback; DB self-host adalah canonical
   const [heavyEquipmentList, setHeavyEquipmentList] = useState(() => readCachedList("pln_heavy_equipment_v1") ?? []);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState(() => readCachedList("pln_heavy_equipment_loans_v1") ?? []);
   const [attbList, setAttbList] = useState(() => readCachedList("pln_attb_v1") ?? []);
@@ -916,6 +919,30 @@ export default function PLNWarehouse() {
     }
     loadCloud();
   }, [authLoading, currentUser?.id]);
+
+  // Inspeksi material punya tabel typed sendiri. Cache hanya dipakai ketika
+  // jaringan gagal; data lokal tidak pernah di-bootstrap ke server otomatis.
+  useEffect(() => {
+    if (authLoading || !currentUser) return;
+    let active = true;
+    loadMaterialInspections().then(rows => {
+      if (!active || rows === null) return;
+      setMaterialInspections(rows);
+      CLOUD.set("pln_material_inspections_v1", rows);
+    });
+    return () => { active = false; };
+  }, [authLoading, currentUser?.id]);
+
+  async function saveMaterialInspection(entry, photoInputs) {
+    const saved = await createMaterialInspection(entry, photoInputs);
+    if (!saved) return null;
+    setMaterialInspections(current => {
+      const next = [saved, ...current.filter(item => item.id !== saved.id)];
+      CLOUD.set("pln_material_inspections_v1", next);
+      return next;
+    });
+    return saved;
+  }
 
   // saveToCloud now takes an overrides object. Any field not passed falls back
   // to the latest React state via stateRef (always up to date, avoids stale
@@ -4865,6 +4892,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"ATTB",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"maturity",icon:<SidebarIcon name="maturity"/>,label:"Penilaian Maturity"},
+    {id:"inspeksiMaterial",icon:<SidebarIcon name="inspeksiMaterial"/>,label:"Inspeksi Material"},
     {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
@@ -4881,6 +4909,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     heavyEquipment: {eyebrow:"Fleet Operations",title:"Alat Berat & Peminjaman"},
     attb: {eyebrow:"Asset Disposal Governance",title:"ATTB — Penghapusan Aset"},
     maturity: {eyebrow:"Warehouse Maturity Audit",title:"Penilaian Maturity Gudang"},
+    inspeksiMaterial: {eyebrow:"Inventory Health Check",title:"Inspeksi Material Cadang"},
     opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
     rencana: {eyebrow:"Inbound Planning",title:"Rencana Kedatangan Barang"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
@@ -6578,6 +6607,22 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             askConfirmDelete={askConfirmDelete}
             bongkaranPool={attbBongkaranPool}
             handleImg={handleImg}
+          />
+        )}
+
+        {tab==="inspeksiMaterial" && (
+          <InspeksiMaterialCadangTab
+            stocks={stocks}
+            katalogList={katalogList}
+            lokasiList={lokasiList}
+            materialInspections={materialInspections}
+            currentUser={currentUser}
+            C={C}
+            sty={sty}
+            isMobile={isMobile}
+            showToast={showToast}
+            canMutate={can(currentUser, "aksi.kelolaInspeksi", rolePerms)}
+            onSaveInspection={saveMaterialInspection}
           />
         )}
 
