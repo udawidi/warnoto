@@ -2,7 +2,7 @@
 import { useState, useEffect, Fragment } from "react";
 import { UIT, UPT } from "../constants.js";
 import { hasRole } from "../lib/roles.js";
-import { getLokasiPetaInfo } from "../lib/masterSync.js";
+import { getLokasiPetaInfo, subGudangKodeMap } from "../lib/masterSync.js";
 import { ATTB_CORE_FIELDS, ATTB_FIELDS_BY_JENIS, ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "../lib/attb.js";
 import * as XLSX from "xlsx";
 import { OperationsHero } from "./OperationsHero.jsx";
@@ -27,11 +27,16 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
       satuan: p.satuan || "",
       keterangan: `Eks Bongkaran ATTB (MTU) dari ${p.tug10No}${p.namaPekerjaan?` — ${p.namaPekerjaan}`:""}`,
       sourceTug10Key: p.key,
-      foto: p.foto || null, // pakai foto dari input TUG-10 (foto barang/nameplate)
+      // Preserve both TUG-10 photos on the promoted ATTB record.  `foto` is
+      // retained as a backwards-compatible thumbnail for older records.
+      fotoKeseluruhan: p.fotoKeseluruhan || p.foto || null,
+      fotoNameplate: p.fotoNameplate || null,
+      foto: p.fotoKeseluruhan || p.foto || p.fotoNameplate || null,
     });
   }
   const [attbGudangFilter, setAttbGudangFilter] = useState({}); // per-item id -> gudangId (utk filter dropdown Sub Gudang & Blok)
   const [attbSubGudangFilter, setAttbSubGudangFilter] = useState({}); // per-item id -> subGudangId (utk filter dropdown Blok)
+  const subGudangCodes = subGudangKodeMap(subGudangList);
   // Resolve lokasi master-data yang tersimpan di item -> objek {lok, gdg, sg, petaInfo, teks}
   // untuk tampilan + tombol peta. Pola sama Data Stok, tapi ATTB juga simpan gudangId/subGudangId
   // sendiri (independen dari lokasiId/Blok) — ditemukan 2026-07-10: beberapa Sub Gudang (mis.
@@ -78,6 +83,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [previewId, setPreviewId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [belumLanjutId, setBelumLanjutId] = useState(null);
@@ -215,6 +221,31 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
     );
   }
 
+  const previewItem = previewId ? attbList.find(a=>a.id===previewId) : null;
+  // Older promoted records only persisted `foto`.  Rehydrate missing photo
+  // fields from the live TUG-10 pool when the source key is still available.
+  const previewSource = previewItem?.sourceTug10Key
+    ? bongkaranPool.find(p=>p.key===previewItem.sourceTug10Key)
+    : null;
+  const previewPhotos = previewItem ? {
+    keseluruhan: previewItem.fotoKeseluruhan || previewSource?.fotoKeseluruhan || previewItem.foto || null,
+    nameplate: previewItem.fotoNameplate || previewSource?.fotoNameplate || null,
+  } : { keseluruhan:null, nameplate:null };
+  const formatPreviewValue = (field, value) => {
+    if (value == null || value === "") return "";
+    if (["nilaiPerolehan","nilaiBuku","nilaiTaksiranKJPP","estimasiRpPerKg","estimasiNilaiTaksiran"].includes(field.key)) {
+      const n = Number(value); return Number.isFinite(n) ? `Rp ${n.toLocaleString("id-ID")}` : String(value);
+    }
+    if (/^https?:\/\//i.test(String(value).trim())) return <a href={String(value).trim()} target="_blank" rel="noreferrer">{String(value).trim()}</a>;
+    return String(value);
+  };
+  const previewFieldGroups = (item) => {
+    const groups = [{ title:"Data Inti", fields:ATTB_CORE_FIELDS }, { title:ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset, fields:ATTB_FIELDS_BY_JENIS[item.jenisAset]||[] }];
+    const stageFields = [ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS];
+    for (let i=0; i<=attbStageIndex(item.stage)-1; i++) groups.push({ title:`Tahap ${i+2}`, fields:stageFields[i] });
+    return groups.map(g=>({...g, fields:g.fields.filter(f=>item[f.key]!==undefined&&item[f.key]!==null&&item[f.key]!=="")})).filter(g=>g.fields.length);
+  };
+
   async function submitAdd() {
     await createItem(addForm);
     setAddForm(emptyAddForm);
@@ -247,8 +278,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
         ) : null}
       />
 
-      {/* Pipeline 5 tahap ATTB — kartu berurutan dihubungkan panah (proses maju
-          menuju lelang). Klik kartu untuk memfilter tabel per tahap. */}
+      {/* Pipeline ATTB: source + five stages + KI. Klik kartu untuk memfilter tabel. */}
       <div className="operations-section-heading"><div><span>Process Pipeline</span><h2>Tahapan Penghapusan</h2></div><small>Klik tahap untuk memfilter daftar</small></div>
       <div className="operations-segments">
         <button className={stageFilter==="ALL"?"is-active":""} onClick={()=>setStageFilter("ALL")} style={{"--segment-color":C.accent}}>
@@ -260,44 +290,38 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           </button>
         )}
       </div>
-      <div className="attb-pipeline">
+      <div className="attb-pipeline" aria-label="Pipeline penghapusan ATTB">
         {/* Pra-tahap: Material Bongkaran ATTB (MTU) dari TUG-10 — sumber kandidat sebelum AE.1 */}
         {(()=>{ const active = stageFilter==="SUMBER"; const color="#6b7280"; return (
           <Fragment key="SUMBER">
-            <button className="attb-stage-card is-source" onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
+            <button className={`attb-stage-card is-source${active?" is-active":""}`} onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
               style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px dashed ${active?color:"#cbd5e1"}`,background:active?color:"#f8fafc",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <span className="attb-stage-code">SRC</span>
-                <span style={{fontSize:18,fontWeight:900,color:active?"white":color}}>{bongkaranBelum.length}</span>
+                <span style={{fontSize:20,fontWeight:900,color:active?"white":color}}>{bongkaranBelum.length}</span>
               </div>
               <span style={{fontSize:12,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>Material Bongkaran<br/>(TUG-10)</span>
             </button>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 1px",color:C.muted,fontSize:17,fontWeight:900,alignSelf:"center"}}>→</div>
           </Fragment>
         ); })()}
         {ATTB_STAGES.map((s,i)=>{
           const active = stageFilter===s.code;
           const color = stageColor(s.code);
-          const isLast = i===ATTB_STAGES.length-1;
           return (
             <Fragment key={s.code}>
-              <button className="attb-stage-card" onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
+              <button className={`attb-stage-card${active?" is-active":""}`} onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
                 style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px solid ${active?color:C.border}`,background:active?color:"white",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,background:active?"rgba(255,255,255,0.25)":color+"22",color:active?"white":color}}>{i+1}</span>
-                  <span style={{fontSize:18,fontWeight:900,color:active?"white":color}}>{stageCounts[s.code]||0}</span>
+                  <span style={{fontSize:20,fontWeight:900,color:active?"white":color}}>{stageCounts[s.code]||0}</span>
                 </div>
                 <span style={{fontSize:12,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>{s.label}</span>
               </button>
-              {!isLast && (
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 1px",color:C.muted,fontSize:17,fontWeight:900,alignSelf:"center"}}>→</div>
-              )}
             </Fragment>
           );
         })}
         {/* Tujuan akhir proses */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 1px",color:C.green,fontSize:17,fontWeight:900,alignSelf:"center"}}>→</div>
-        <div className="attb-stage-card" style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"10px 14px",minWidth:90,borderRadius:12,border:`2px dashed ${C.green}`,background:"#f0fdf4",alignSelf:"center"}}>
+        <div className="attb-pipeline__end">
           <span className="attb-stage-code">KI</span>
           <span style={{fontSize:12,fontWeight:800,color:C.green,textAlign:"center",lineHeight:1.2}}>LELANG<br/>oleh KI</span>
         </div>
@@ -386,178 +410,169 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
 
       <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Menampilkan <b style={{color:C.text}}>{filteredList.length}</b> item</div>
 
-      {/* Tampilan tabel horizontal, pola sama dengan Data Stok (header biru,
-          baris ringkas, border kiri berwarna per tahap). Form Tolak/Belum Lanjut
-          muncul sebagai baris expand di bawah baris item terkait. */}
-      <div className="operations-table-card mobile-card-table attb-card-table" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:12}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+      {/* Tabel desktop — format identik Data Stok Gudang */}
+      <div className="attb-table-wrap">
+      <div className="operations-table-card" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:0,boxShadow:"none",borderRadius:0}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
           <thead>
             <tr style={{background:C.sidebar,color:"white"}}>
-              {["Nomor AT/ATTB","Jenis / UPT","Deskripsi","Lokasi","Nilai Perolehan","Nilai Buku","Status","Tahap","Aksi"].map(h=>(
-                <th key={h} style={{padding:"8px 6px",textAlign:h==="Aksi"?"center":h.startsWith("Nilai")?"right":"left",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
+              {["Foto","Nama Barang","Kategori","Qty / Nilai","Lokasi","Status","Aksi"].map(h=>(
+                <th key={h} style={{padding:"10px 12px",textAlign:h==="Aksi"?"center":"left",fontSize:13,whiteSpace:"nowrap"}}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredList.length===0 && (
-              <tr className="mobile-card-table__row"><td colSpan={9} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
+              <tr><td colSpan={7} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
             )}
             {pagedList.map(item=>{
               const canApproveThis = isPendingAttbApproval(item) && canApproveAttb(currentUser, item);
               const borderColor = item.lanjutBelumLanjut ? "#f59e0b" : stageColor(item.stage);
+              const loc = resolveLokasiMaster(item);
+              const selGudangId = attbGudangFilter[item.id] ?? item.gudangId ?? loc?.gdg?.id ?? "";
+              const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
+              const selSubGudangId = attbSubGudangFilter[item.id] ?? item.subGudangId ?? loc?.sg?.id ?? "";
+              const blokOptions = lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0||(l.subGudangId||"")===selSubGudangId));
+              const canLihatPeta = !!loc?.petaInfo;
+              const jenisColor = {MATERIAL:"#3b82f6",PERALATAN_LISTRIK:"#8b5cf6",KENDARAAN:"#f59e0b",BANGUNAN:"#10b981",SALURAN_AIR:"#06b6d4",JALAN:"#64748b"}[item.jenisAset]||C.muted;
+              // Status badge mirip "SAP — Persediaan"
+              const stageLbl = attbStageLabel(item.stage);
+              const stageClr = stageColor(item.stage);
+              const locationParts = [
+                { short: loc?.gdg?.kode || loc?.gdg?.nama, full: loc?.gdg?.nama },
+                { short: loc?.sg?.kode || loc?.sg?.nama, full: loc?.sg?.nama },
+                { short: loc?.lok?.kode || loc?.lok?.nama, full: loc?.lok?.nama },
+              ].filter(part=>part.short);
+              const locationTitle = locationParts.length ? locationParts.map(part=>part.full || part.short).join(" / ") : "Lokasi belum diatur";
+              const locationGudang = loc?.gdg?.kode || loc?.gdg?.nama;
+              const locationSub = loc?.sg && `SG: ${loc.sg.kode || subGudangCodes[loc.sg.id] || loc.sg.nama}`;
+              const locationBlok = loc?.lok && `Blok: ${loc.lok.kode || loc.lok.nama}`;
               return (
                 <Fragment key={item.id}>
-                  <tr className="mobile-card-table__row" style={{borderBottom:`1px solid ${C.border}`,"--row-accent":borderColor}}>
-                    <td className="mobile-card-table__title" style={{padding:"6px 8px"}}>
-                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        <div style={{width:30,height:30,flexShrink:0,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:C.bg || "#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          {item.foto ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:13,color:C.muted || "#9ca3af"}}>📦</span>}
-                        </div>
-                        <div style={{minWidth:0,flex:1}}>
-                          <div style={{fontWeight:700,color:C.text,fontSize:11,whiteSpace:"nowrap"}}>{item.nomorATTB || item.nomorAT || item.id}</div>
-                          {item.waktuUsulanPenghapusan && <div style={{fontSize:10,color:C.muted,marginTop:1,whiteSpace:"nowrap"}}>🕘 {item.waktuUsulanPenghapusan}</div>}
-                        </div>
+                  <tr className="attb-preview-trigger" onClick={()=>setPreviewId(item.id)} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
+                    {/* Foto */}
+                    <td style={{padding:"8px 12px",width:52}}>
+                      <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {item.foto
+                          ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          : <span style={{fontSize:18,color:"#9ca3af"}}>📦</span>}
                       </div>
                     </td>
-                    <td data-label="Jenis / UPT" style={{padding:"6px 8px"}}>
-                      <div style={{fontWeight:600,fontSize:11,whiteSpace:"nowrap"}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
-                      <div style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>{item.upt}</div>
+                    {/* Nama Barang — ATTB No + AT kode di bawah (mirip Nama + kode SAP) */}
+                    <td style={{padding:"8px 12px",maxWidth:200}}>
+                      <div style={{fontWeight:700,color:C.text,fontSize:13,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.description||item.nomorATTB||"-"}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
+                        <span style={{fontSize:11,color:C.muted}}>📋 {item.nomorATTB||item.nomorAT||item.id}</span>
+                      </div>
                     </td>
-                    <td data-label="Deskripsi" style={{padding:"6px 8px"}}>
-                      <div style={{fontWeight:600,color:C.text,fontSize:11,lineHeight:1.35,wordBreak:"break-word"}}>{item.description||"-"}</div>
-                      {item.bay && <div style={{fontSize:10,color:C.muted,marginTop:1}}>⚡ Asal: {item.bay}</div>}
-                      {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:10,color:C.red,marginTop:1}}>Ditolak: {item.alasanTolak}</div>}
+                    {/* Kategori — badge jenis + UPT + waktu usulan */}
+                    <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:2}}>
+                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,background:jenisColor+"22",color:jenisColor,whiteSpace:"nowrap"}}>
+                          {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}
+                        </span>
+                        {item.bay && <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{item.bay}</span>}
+                      </div>
+                      <div style={{fontSize:11,color:C.muted}}>{item.upt}</div>
                     </td>
-                    <td data-label="Lokasi" onClick={e=>e.stopPropagation()} style={{padding:"6px 8px"}}>
-                      {(()=>{
-                        const loc = resolveLokasiMaster(item);
-                        const selGudangId = attbGudangFilter[item.id] ?? item.gudangId ?? loc?.gdg?.id ?? "";
-                        const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
-                        const selSubGudangId = attbSubGudangFilter[item.id] ?? item.subGudangId ?? loc?.sg?.id ?? "";
-                        const blokOptions = lokasiList.filter(l => {
-                          if (selGudangId && l.gudangId !== selGudangId) return false;
-                          if (selSubGudangId && l.subGudangId && l.subGudangId !== selSubGudangId) return false;
-                          return true;
-                        });
-                        const canLihatPeta = !!loc?.petaInfo;
+                    {/* Qty / Nilai — nilai perolehan + waktu usulan di bawah */}
+                    <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                      <div style={{fontWeight:700,color:C.text,fontSize:13}}>
+                        {item.nilaiPerolehan ? `Rp ${Number(item.nilaiPerolehan).toLocaleString("id-ID")}` : "Rp 0"}
+                      </div>
+                      {item.waktuUsulanPenghapusan && <div style={{fontSize:11,color:C.muted,marginTop:1}}>{item.waktuUsulanPenghapusan}</div>}
+                    </td>
+                    {/* Lokasi — ringkas dan read-only; pengeditan tetap melalui Edit/modal */}
+                    <td style={{padding:"8px 12px",minWidth:180,maxWidth:230}} title={locationTitle} aria-label={`Lokasi: ${locationTitle}`}>
+                      <div style={{fontSize:12,color:locationGudang?C.text:C.muted,fontStyle:locationGudang?"normal":"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {locationGudang || "—"}
+                      </div>
+                      {(locationSub || locationBlok) && (
+                        <div style={{display:"flex",gap:6,marginTop:2,fontSize:11,color:C.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {locationSub && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationSub}</span>}
+                          {locationBlok && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationBlok}</span>}
+                        </div>
+                      )}
+                    </td>
+                    {/* Status — format identik dengan "SAP — Persediaan" */}
+                    <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                      {(() => {
+                        let bg = "#dbeafe";
+                        let fg = "#1d4ed8";
+                        let label = `ATTB — ${stageLbl}`;
 
-                        if (canManage) {
-                          return (
-                            <div style={{display:"flex",flexDirection:"column",gap:5,width:"100%"}}>
-                              {/* Level 1: Gudang */}
-                              <select value={selGudangId} style={{...sty.select,fontSize:11,padding:"5px 8px",minHeight:"unset",width:"100%",textOverflow:"ellipsis"}}
-                                onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); saveEdit(item.id, { gudangId: v||null, subGudangId: null, lokasiId: null }); }}>
-                                <option value="">-- Pilih Gudang --</option>
-                                {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
-                              </select>
-
-                              {/* Level 2: Sub Gudang */}
-                              <select value={selSubGudangId} style={{...sty.select,fontSize:11,padding:"5px 8px",minHeight:"unset",width:"100%",textOverflow:"ellipsis"}}
-                                onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id, { subGudangId: v||null, lokasiId: null }); }}>
-                                <option value="">-- Pilih Sub Gudang --</option>
-                                {(subsForGudang.length > 0 ? subsForGudang : subGudangList).map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
-                              </select>
-
-                              {/* Level 3: Blok Gudang + Pin Peta */}
-                              <div style={{display:"flex",gap:4,alignItems:"center",width:"100%"}}>
-                                <select value={item.lokasiId||""} style={{...sty.select,fontSize:11,padding:"5px 8px",minHeight:"unset",flex:1,minWidth:0,textOverflow:"ellipsis"}}
-                                  onChange={e=>setAttbLokasi(item, e.target.value)}>
-                                  <option value="">-- Pilih Blok Gudang --</option>
-                                  {blokOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
-                                </select>
-                                <button title={canLihatPeta?"Lihat di Peta Gudang":!item.lokasiId?"Blok belum diisi":"Blok ini belum diplot di denah / denah belum diupload"}
-                                  style={{...sty.btn("ghost","sm"),padding:"4px 7px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5,flexShrink:0}}
-                                  onClick={()=>{ if(canLihatPeta){ setPetaMiniDetail && setPetaMiniDetail({stock:item, lokasi:loc.lok, gudang:loc.gdg, petaInfo:loc.petaInfo}); } else { showToast(!item.lokasiId?"Blok/Lokasi belum diisi.":"Blok ini belum diplot koordinatnya di denah (atur di Master Data → Master Gudang).","error"); } }}>📍</button>
-                              </div>
-                            </div>
-                          );
+                        if (item.lanjutBelumLanjut) {
+                          bg = "#fef2f2"; // merah (Cadang)
+                          fg = "#ef4444";
+                          label = "ATTB — Ditahan";
+                        } else if (item.approvalStatus === "DRAFT") {
+                          bg = "#f3f4f6"; // abu (Draft)
+                          fg = "#6b7280";
+                          label = "ATTB — Draft";
+                        } else if (item.approvalStatus === "PENDING_ASMAN") {
+                          bg = "#fef9c3"; // kuning (Pending)
+                          fg = "#a16207";
+                          label = "ATTB — Pending";
                         }
-                        return (
-                          <div>
-                            {loc ? <div style={{fontWeight:600,color:C.text,fontSize:12}}>📍 {loc.teks}</div> : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Belum diisi</div>}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td data-label="Nilai Perolehan" style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>{item.nilaiPerolehan?Number(item.nilaiPerolehan).toLocaleString("id-ID"):"—"}</td>
-                    <td data-label="Nilai Buku" style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap",color:item.nilaiBuku?C.text:C.muted}}>{item.nilaiBuku?Number(item.nilaiBuku).toLocaleString("id-ID"):"—"}</td>
-                    <td data-label="Status" style={{padding:"6px 6px"}}>
-                      <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:800,background:C.bg || "#f3f4f6",color:C.text || "#475569",border:`1px solid ${C.border || "#cbd5e1"}`,whiteSpace:"nowrap"}}>{item.approvalStatus||"DRAFT"}</span>
-                    </td>
-                    <td data-label="Tahap" style={{padding:"6px 6px",maxWidth:110}}>
-                      {(()=>{
-                        const shortLabels = { USULAN_AE1:"Usulan AE.1", AE1_AE4:"AE.1 s.d AE.4", CEK_DEKOM:"Cek Dekom", CEK_KJPP:"Cek KJPP", LELANG:"Lelang" };
-                        const shortTxt = shortLabels[item.stage] || attbStageLabel(item.stage);
-                        return (
-                          <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
-                            <span title={attbStageLabel(item.stage)} style={{padding:"2px 7px",borderRadius:6,fontSize:10,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{shortTxt}</span>
-                            {item.lanjutBelumLanjut && <span title={`Belum Lanjut: ${item.keteranganTidakLanjut||"-"}`} style={{padding:"2px 6px",borderRadius:6,fontSize:10,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap",cursor:"help"}}>⏸ Ditahan</span>}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                    <td data-label="Aksi" style={{padding:"10px 12px",minWidth:170}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"center",justifyContent:"center"}}>
-                        {canManage && (
-                          <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"4px 10px",borderRadius:10,display:"inline-flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>
-                            ✏️
-                          </button>
-                        )}
 
-                        {canApproveThis && (
-                          <span className="approval-actions approval-actions--compact">
-                            <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Approve</button>
-                            <button className="approval-btn--reject" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                        return (
+                          <span style={{ padding: "2px 7px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color: fg, whiteSpace: "nowrap" }}>
+                            {label}
                           </span>
+                        );
+                      })()}
+                    </td>
+                    {/* Aksi — persis Data Stok: Edit | Hapus | inline action buttons */}
+                    <td onClick={e => e.stopPropagation()} style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                      <div className="table-actions">
+                        {canManage && (
+                          <button className="table-action-button" title="Edit data ATTB"
+                            onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>Edit</button>
                         )}
-
-                        {/* Kontrol Lanjut / Belum Lanjut — compact segmented, aktif di Tahap 1 (Usulan AE.1) & Tahap 2 (AE.1 s.d AE.4) */}
-                        {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
-                          <div style={{display:"inline-flex",borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
-                            <button title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
-                              style={{border:"none",cursor:"pointer",padding:"6px 12px",fontSize:12,fontWeight:800,background:"rgba(34, 197, 94, 0.15)",color:C.green,whiteSpace:"nowrap"}}>▶ Lanjut</button>
-                            <button title={item.lanjutBelumLanjut?"Sedang Belum Lanjut — klik untuk lanjutkan lagi":"Tandai Belum Lanjut"}
-                              onClick={()=>{ if(item.lanjutBelumLanjut){ resumeBelumLanjut(item); } else { setBelumLanjutId(item.id); setBelumLanjutNote(""); } }}
-                              style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"6px 12px",fontSize:12,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"rgba(245, 158, 11, 0.15)",color:item.lanjutBelumLanjut?"white":(C.yellow || "#d97706"),whiteSpace:"nowrap"}}>{item.lanjutBelumLanjut?"⏸ Ditahan":"⏸ Belum"}</button>
-                          </div>
-                        )}
-
-                        {canManage && ["CEK_DEKOM","CEK_KJPP"].includes(item.stage) && (
-                          <button style={sty.btn("ghost","sm")} onClick={()=>advanceStage(item.id)}>▶ Lanjut</button>
-                        )}
-
                         {canDelete && (
-                          <button title="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 9px",borderRadius:10,display:"inline-flex",alignItems:"center",justifyContent:"center"}}
-                            onClick={()=>askConfirmDelete && askConfirmDelete({
-                              title:"Hapus Item ATTB?",
-                              message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,
-                              warning:"Data item ATTB ini akan dihapus permanen dari daftar & database. Tindakan ini tidak bisa di-undo.",
-                              confirmLabel:"🗑️ Ya, Hapus",
-                              onConfirm:()=>deleteItem(item.id),
-                            })}>🗑️</button>
+                          <button className="table-action-button is-danger" title="Hapus data ATTB"
+                            onClick={()=>askConfirmDelete&&askConfirmDelete({title:"Hapus Item ATTB?",message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,warning:"Data akan dihapus permanen.",confirmLabel:"🗑️ Ya, Hapus",onConfirm:()=>deleteItem(item.id)})}>Hapus</button>
+                        )}
+                        {canApproveThis && (
+                          <>
+                            <button className="table-action-button" title="Approve" onClick={()=>approveToKI(item.id)}>Approve</button>
+                            <button className="table-action-button is-danger" title="Tolak" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}>Tolak</button>
+                          </>
+                        )}
+                        {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
+                          <>
+                            <button className="table-action-button" title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}>Lanjut</button>
+                            <button className="table-action-button" title={item.lanjutBelumLanjut ? "Lanjutkan" : "Tandai Belum Lanjut"}
+                              onClick={()=>{ if(item.lanjutBelumLanjut){ resumeBelumLanjut(item); } else { setBelumLanjutId(item.id); setBelumLanjutNote(""); } }}>
+                              {item.lanjutBelumLanjut ? "Lanjutkan" : "Tahan"}
+                            </button>
+                          </>
+                        )}
+                        {canManage && ["CEK_DEKOM","CEK_KJPP"].includes(item.stage) && (
+                          <button className="table-action-button" title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}>Lanjut</button>
+                        )}
+                        {canLihatPeta && (
+                          <button className="table-action-button is-icon" title="Lihat di Peta Gudang"
+                            onClick={()=>setPetaMiniDetail&&setPetaMiniDetail({stock:item,lokasi:loc.lok,gudang:loc.gdg,petaInfo:loc.petaInfo})}>📍</button>
                         )}
                       </div>
                     </td>
                   </tr>
                   {(rejectingId===item.id || belumLanjutId===item.id) && (
-                    <tr className="mobile-card-table__row" style={{"--row-accent":borderColor}}>
-                      <td colSpan={9} style={{padding:"8px 10px",background:"#fef2f2"}}>
+                    <tr style={{borderLeft:`3px solid ${borderColor}`}}>
+                      <td colSpan={7} style={{padding:"10px 12px",background:"#fef2f2"}}>
                         {rejectingId===item.id && (
-                          <div>
-                            <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
-                            <div className="approval-actions approval-actions--compact" style={{marginTop:6}}>
-                              <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
-                              <button className="approval-btn--danger" onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
-                            </div>
+                          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                            <textarea style={{...sty.input,minHeight:44,flex:1}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
+                            <button style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>setRejectingId(null)}>Batal</button>
+                            <button style={{...sty.btn("danger","sm"),flexShrink:0}} onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}>Tolak</button>
                           </div>
                         )}
                         {belumLanjutId===item.id && (
-                          <div>
-                            <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan Belum Lanjut..." value={belumLanjutNote} onChange={e=>setBelumLanjutNote(e.target.value)}/>
-                            <div style={{display:"flex",gap:6,marginTop:6}}>
-                              <button style={sty.btn("ghost","sm")} onClick={()=>setBelumLanjutId(null)}>Batal</button>
-                              <button style={sty.btn("danger","sm")} onClick={async()=>{await markBelumLanjut(item.id, belumLanjutNote);setBelumLanjutId(null);}}>Simpan</button>
-                            </div>
+                          <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                            <textarea style={{...sty.input,minHeight:44,flex:1}} placeholder="Alasan Belum Lanjut..." value={belumLanjutNote} onChange={e=>setBelumLanjutNote(e.target.value)}/>
+                            <button style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>setBelumLanjutId(null)}>Batal</button>
+                            <button style={{...sty.btn("danger","sm"),flexShrink:0}} onClick={async()=>{await markBelumLanjut(item.id, belumLanjutNote);setBelumLanjutId(null);}}>Simpan</button>
                           </div>
                         )}
                       </td>
@@ -569,6 +584,137 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           </tbody>
         </table>
       </div>
+      </div>{/* end attb-table-wrap */}
+
+
+      {/* Mobile Card Layout — visible hanya di < 768px via CSS */}
+      <div className="attb-mobile-cards">
+        {filteredList.length===0 && (
+          <div style={{padding:24,textAlign:"center",color:C.muted,fontSize:12}}>Belum ada item ATTB untuk filter ini.</div>
+        )}
+        {pagedList.map(item=>{
+          const borderColor = item.lanjutBelumLanjut ? "#f59e0b" : stageColor(item.stage);
+          const loc = resolveLokasiMaster(item);
+          const canApproveThis = isPendingAttbApproval(item) && canApproveAttb(currentUser, item);
+          const selGudangId = attbGudangFilter[item.id] ?? item.gudangId ?? loc?.gdg?.id ?? "";
+          const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
+          const selSubGudangId = attbSubGudangFilter[item.id] ?? item.subGudangId ?? loc?.sg?.id ?? "";
+          const blokOptions = lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0||(l.subGudangId||"")===selSubGudangId));
+          return (
+            <Fragment key={item.id}>
+            <div className="attb-mobile-card attb-preview-trigger" role="button" tabIndex={0} onClick={()=>setPreviewId(item.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setPreviewId(item.id);}}} style={{borderLeft:`4px solid ${borderColor}`}}>
+              {/* Header: foto + nomor + badge tahap */}
+              <div className="attb-mobile-card__header">
+                {item.foto
+                  ? <img src={item.foto} alt="foto" className="attb-mobile-card__foto"/>
+                  : <div className="attb-mobile-card__foto-placeholder">📦</div>}
+                <div className="attb-mobile-card__id">
+                  <div style={{fontWeight:700,fontSize:13,color:C.text}}>{item.nomorATTB||item.nomorAT||item.id}</div>
+                  {item.waktuUsulanPenghapusan && <div style={{fontSize:11,color:C.muted}}>{item.waktuUsulanPenghapusan}</div>}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end",flexShrink:0}}>
+                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
+                  {item.lanjutBelumLanjut && <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}>⏸ Ditahan</span>}
+                </div>
+              </div>
+              {/* Body: deskripsi, jenis, lokasi, nilai */}
+              <div className="attb-mobile-card__body">
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{item.description||"-"}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset} · {item.upt}</div>
+                {item.bay && <div style={{fontSize:12,color:C.muted}}>⚡ Asal: {item.bay}</div>}
+                {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:12,color:C.red,marginTop:2}}>Ditolak: {item.alasanTolak}</div>}
+                <div className="attb-mobile-card__row" onClick={e=>e.stopPropagation()} style={{flexDirection:"column",alignItems:"stretch",gap:6,marginTop:6,marginBottom:6}}>
+                  <div style={{fontSize:12,fontWeight:600,color:C.text,display:"flex",alignItems:"center",gap:4}}>📍 Lokasi Penyimpanan:</div>
+                  {canManage ? (
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <select value={selGudangId} style={{...sty.select,fontSize:12,padding:"6px 8px",width:"100%"}}
+                        onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); saveEdit(item.id,{gudangId:v||null,subGudangId:null,lokasiId:null}); }}>
+                        <option value="">— Pilih Gudang —</option>
+                        {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+                      </select>
+                      
+                      <div style={{display:"flex",gap:6}}>
+                        <select value={selSubGudangId}
+                          disabled={!selGudangId || subsForGudang.length === 0}
+                          style={{...sty.select,fontSize:12,padding:"6px 8px",flex:1}}
+                          onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id,{subGudangId:v||null,lokasiId:null}); }}>
+                          <option value="">{subsForGudang.length > 0 ? "— Sub Gudang —" : "— Tanpa Sub —"}</option>
+                          {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
+                        </select>
+                        <select value={item.lokasiId||""}
+                          disabled={!selGudangId}
+                          style={{...sty.select,fontSize:12,padding:"6px 8px",flex:1}}
+                          onChange={e=>setAttbLokasi(item, e.target.value)}>
+                          <option value="">— Blok —</option>
+                          {blokOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  ) : (
+                    <span style={{fontSize:12,color:loc?C.text:C.muted,fontStyle:loc?"normal":"italic"}}>
+                      {loc ? loc.teks : "Belum diisi"}
+                    </span>
+                  )}
+                </div>
+                <div className="attb-mobile-card__row">
+                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{item.approvalStatus||"DRAFT"}</span>
+                  {item.nilaiPerolehan && <span style={{fontSize:12,color:C.muted}}>Perolehan: <b style={{color:C.text}}>{Number(item.nilaiPerolehan).toLocaleString("id-ID")}</b></span>}
+                </div>
+              </div>
+              {/* Actions */}
+              <div className="attb-mobile-card__actions" onClick={e=>e.stopPropagation()}>
+                {canManage && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"5px 9px"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>✏️</button>}
+                {canApproveThis && (
+                  <span className="approval-actions approval-actions--compact">
+                    <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Approve</button>
+                    <button className="approval-btn--reject" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                  </span>
+                )}
+                {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
+                  <div style={{display:"inline-flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                    <button title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
+                      style={{border:"none",cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:"#dcfce7",color:C.green,whiteSpace:"nowrap"}}>▶ Lanjut</button>
+                    <button title={item.lanjutBelumLanjut?"Sedang Belum Lanjut — klik untuk lanjutkan lagi":"Tandai Belum Lanjut"}
+                      onClick={()=>{ if(item.lanjutBelumLanjut){ resumeBelumLanjut(item); } else { setBelumLanjutId(item.id); setBelumLanjutNote(""); } }}
+                      style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"#fffbeb",color:item.lanjutBelumLanjut?"white":"#92400e",whiteSpace:"nowrap"}}>{item.lanjutBelumLanjut?"⏸ Ditahan":"⏸ Belum"}</button>
+                  </div>
+                )}
+                {canManage && ["CEK_DEKOM","CEK_KJPP"].includes(item.stage) && (
+                  <button style={sty.btn("ghost","sm")} onClick={()=>advanceStage(item.id)}>▶ Lanjut</button>
+                )}
+                {canDelete && (
+                  <button title="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 8px"}}
+                    onClick={()=>askConfirmDelete&&askConfirmDelete({title:"Hapus Item ATTB?",message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,warning:"Data akan dihapus permanen dari daftar & database. Tindakan ini tidak bisa di-undo.",confirmLabel:"🗑️ Ya, Hapus",onConfirm:()=>deleteItem(item.id)})}>🗑️</button>
+                )}
+              </div>
+            </div>
+            {/* Inline reject / belum lanjut form untuk mobile card */}
+            {(rejectingId===item.id || belumLanjutId===item.id) && (
+              <div style={{background:"#fef2f2",border:`1px solid #fecaca`,borderRadius:10,padding:"10px 12px",marginTop:-8,marginBottom:10}}>
+                {rejectingId===item.id && (
+                  <div>
+                    <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
+                    <div className="approval-actions approval-actions--compact" style={{marginTop:6}}>
+                      <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                      <button className="approval-btn--danger" onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                    </div>
+                  </div>
+                )}
+                {belumLanjutId===item.id && (
+                  <div>
+                    <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan Belum Lanjut..." value={belumLanjutNote} onChange={e=>setBelumLanjutNote(e.target.value)}/>
+                    <div style={{display:"flex",gap:6,marginTop:6}}>
+                      <button style={sty.btn("ghost","sm")} onClick={()=>setBelumLanjutId(null)}>Batal</button>
+                      <button style={sty.btn("danger","sm")} onClick={async()=>{await markBelumLanjut(item.id, belumLanjutNote);setBelumLanjutId(null);}}>Simpan</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            </Fragment>
+          );
+        })}
+      </div>{/* end attb-mobile-cards */}
 
       {filteredList.length > 0 && (
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,flexWrap:"wrap",gap:10}}>
@@ -743,7 +889,39 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Data Inti</div>
               {ATTB_CORE_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
               {(ATTB_FIELDS_BY_JENIS[item.jenisAset]||[]).map(f=>renderField(f, editForm, setEditForm))}
-              <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>📍 Lokasi/Blok Gudang diatur langsung di kolom Lokasi pada tabel (pilih Gudang → Blok), lengkap dengan tombol lihat di peta.</div>
+
+              {/* Lokasi Penyimpanan — dipindah ke sini dari kolom tabel supaya tabel lebih ringkas */}
+              <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Lokasi Penyimpanan</div>
+              <div style={{marginBottom:6}}>
+                <label style={sty.label}>Gudang</label>
+                <select style={sty.select} value={editForm.gudangId||""} onChange={e=>{ const v=e.target.value; setEditForm(f=>({...f,gudangId:v||null,subGudangId:null,lokasiId:null})); }}>
+                  <option value="">-- Pilih Gudang --</option>
+                  {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+                </select>
+              </div>
+              {editForm.gudangId && subGudangList.filter(sg=>sg.gudangId===editForm.gudangId).length>0 && (
+                <div style={{marginBottom:6}}>
+                  <label style={sty.label}>Sub Gudang</label>
+                  <select style={sty.select} value={editForm.subGudangId||""} onChange={e=>{ const v=e.target.value; setEditForm(f=>({...f,subGudangId:v||null,lokasiId:null})); }}>
+                    <option value="">-- Pilih Sub Gudang --</option>
+                    {subGudangList.filter(sg=>sg.gudangId===editForm.gudangId).map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
+                  </select>
+                </div>
+              )}
+              {editForm.gudangId && (()=>{
+                const subs = subGudangList.filter(sg=>sg.gudangId===editForm.gudangId);
+                const blokOpts = lokasiList.filter(l=>l.gudangId===editForm.gudangId && (subs.length===0||(l.subGudangId||"")===(editForm.subGudangId||"")));
+                if (blokOpts.length===0) return <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginBottom:6}}>⚠️ Belum ada Blok terdaftar — pilihan Gudang/Sub Gudang tetap tersimpan.</div>;
+                return (
+                  <div style={{marginBottom:6}}>
+                    <label style={sty.label}>Blok</label>
+                    <select style={sty.select} value={editForm.lokasiId||""} onChange={e=>setEditForm(f=>({...f,lokasiId:e.target.value||null}))}>
+                      <option value="">-- Pilih Blok --</option>
+                      {blokOpts.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                    </select>
+                  </div>
+                );
+              })()}
 
               {stageIdx>=1 && <>
                 <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 2 — AE.1 s.d. AE.4</div>
@@ -794,6 +972,32 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           </div>
         );
       })()}
+      {previewItem && (
+        <div className="attb-preview-backdrop" role="presentation" onClick={()=>setPreviewId(null)}>
+          <section className="attb-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="attb-preview-title" onClick={e=>e.stopPropagation()}>
+            <header className="attb-preview-header">
+              <div><h3 id="attb-preview-title">{previewItem.nomorATTB||previewItem.nomorAT||previewItem.id}</h3><p>{previewItem.description||"Tanpa deskripsi"}</p></div>
+              <div className="attb-preview-badges"><span>{ATTB_JENIS_ASET_LABEL[previewItem.jenisAset]||previewItem.jenisAset||"-"}</span><span>{attbStageLabel(previewItem.stage)}</span><span>{previewItem.approvalStatus||"DRAFT"}</span></div>
+            </header>
+            <div className="attb-preview-body">
+              <div className="attb-preview-photos">
+                {[{label:"Foto Keseluruhan", src:previewPhotos.keseluruhan, alt:"Foto Keseluruhan"}, {label:"Foto Nameplate", src:previewPhotos.nameplate, alt:"Foto Nameplate"}].map(photo=>(
+                  <div className="attb-preview-photo-card" key={photo.label}>
+                    <div className="attb-preview-photo-label">{photo.label}</div>
+                    <div className="attb-preview-photo">{photo.src ? <img src={photo.src} alt={photo.label==="Foto Keseluruhan" ? `Foto ${previewItem.description||"material"}` : `${photo.alt} ${previewItem.description||"material"}`} /> : <div aria-label={`${photo.label} tidak tersedia`}>📦<small>Foto tidak tersedia</small></div>}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="attb-preview-details">
+                {previewFieldGroups(previewItem).map(group=><div className="attb-preview-group" key={group.title}><h4>{group.title}</h4><dl>{group.fields.map(f=><Fragment key={f.key}><dt>{f.label}</dt><dd>{formatPreviewValue(f,previewItem[f.key])}</dd></Fragment>)}</dl></div>)}
+                <div className="attb-preview-group"><h4>Lokasi Penyimpanan</h4><dl><dt>Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.gdg?.nama||"-"}</dd><dt>Sub Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.sg?.nama||"-"}</dd><dt>Blok</dt><dd>{resolveLokasiMaster(previewItem)?.lok?.kode||resolveLokasiMaster(previewItem)?.lok?.nama||"-"}</dd></dl></div>
+                {previewItem.stageHistory?.length>0 && <div className="attb-preview-group"><h4>Riwayat Tahap</h4><ul className="attb-preview-history">{[...previewItem.stageHistory].reverse().map((h,i)=><li key={i}><b>{attbStageLabel(h.stage)}</b> — {h.tanggal?new Date(h.tanggal).toLocaleDateString("id-ID"):"-"}{h.catatan?` · ${h.catatan}`:""}</li>)}</ul></div>}
+              </div>
+            </div>
+            <footer className="attb-preview-footer"><button style={sty.btn("ghost")} onClick={()=>setPreviewId(null)}>Tutup</button>{canManage&&<button style={sty.btn("primary")} onClick={()=>{setPreviewId(null);setEditingId(previewItem.id);setEditForm({...previewItem});}}>Edit Data</button>}</footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

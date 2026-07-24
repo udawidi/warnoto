@@ -4,8 +4,9 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS } from "./src/constants.js";
-import { supabase, SUPABASE_URL, SUPABASE_KEY, usernameToAuthEmail } from "./src/supabaseClient.js";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError, isRetryableLoginError } from "./src/supabaseClient.js";
 import { CLOUD } from "./src/lib/cloud.js";
+import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.js";
 import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
 import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty } from "./src/theme.js";
@@ -19,6 +20,8 @@ import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, at
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
 import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, syncMaterialCadangRows, loadWarehouseCapacity, syncWarehouseCapacity, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { loadMaturityAssessments, loadMaturityAudits, upsertMaturityAssessment, upsertMaturityAudit, upsertMaturityAssessments, upsertMaturityAudits, deleteMaturityAuditRow } from "./src/lib/maturitySync.js";
+import { createMaterialInspection, loadMaterialInspections } from "./src/lib/materialInspectionSync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
 import { TelegramWhitelistPanel } from "./src/components/TelegramWhitelistPanel.jsx";
@@ -43,6 +46,8 @@ import { ImportLokasiModal, downloadLokasiTemplate } from "./src/components/Impo
 import { PermMatrixPage } from "./src/components/PermMatrixPage.jsx";
 import { HeavyEquipmentTabV2 } from "./src/components/HeavyEquipmentTabV2.jsx";
 import { AttbTab } from "./src/components/AttbTab.jsx";
+import { MaturityAuditEditor, Form5STab } from "./src/components/MaturityAuditSystem.jsx";
+import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "./src/data/auditAspects.js";
 import { TUG5Tab } from "./src/components/TUG5Tab.jsx";
 import { TUG3Tab } from "./src/components/TUG3Tab.jsx";
 import { StockOpnameTab } from "./src/components/StockOpnameTab.jsx";
@@ -54,8 +59,6 @@ import { TUG15Tab } from "./src/components/TUG15Tab.jsx";
 import { MaterialCadangTab } from "./src/components/MaterialCadangTab.jsx";
 import { InspeksiMaterialCadangTab } from "./src/components/InspeksiMaterialCadangTab.jsx";
 import { ForecastStokPage } from "./src/components/ForecastStokPage.jsx";
-import { MaturityAuditEditor, Form5STab } from "./src/components/MaturityAuditSystem.jsx";
-import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "./src/data/auditAspects.js";
 import { ApprovalTab } from "./src/components/ApprovalTab.jsx";
 import { SidebarNavItem } from "./src/components/SidebarNavItem.jsx";
 import { SidebarIcon } from "./src/components/SidebarIcon.jsx";
@@ -107,6 +110,9 @@ ATTB_FIELDS_BY_JENIS.JALAN = [...ATTB_FIELDS_BY_JENIS.BANGUNAN, {key:"hilang", l
 
 // ─── MASTER GUDANG (bangunan gudang, parent dari Blok/Lokasi) ──────────
 const MATURITY_LEVELS = { 1:"Basic", 2:"Developing", 3:"Defined", 4:"Managed", 5:"Excellent" };
+// Penilaian Maturity (audit workflow) — label & warna status berjenjang.
+const MATURITY_WORKFLOW_LABEL = { DRAFT:"Draft", SELF_ASSESSMENT:"Self Assessment (UPT)", REVIEW_UIT:"Review UIT", REVISION:"Revisi", FINAL:"Nilai Final (Pusat)" };
+const MATURITY_WORKFLOW_COLOR = { DRAFT:"#94a3b8", SELF_ASSESSMENT:"#3b82f6", REVIEW_UIT:"#f59e0b", REVISION:"#ef4444", FINAL:"#1d4ed8" };
 
 // ─── DATA STOK dari SAP PEMAT (145 material Persediaan UPT Surabaya) ───
 // Data real dari file PEMAT_04062026.csv — selalu tersedia saat aplikasi dibuka.
@@ -172,14 +178,20 @@ WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 // Cache profil user di localStorage supaya layar "Memuat sesi..." tidak menunggu
 // network — dipakai sebagai initial state currentUser/authLoading (lihat effect
 // onAuthStateChange di bawah), profil sebenarnya tetap di-refresh dari Supabase.
-const PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
+const PROFILE_CACHE_KEY = "warnoto_profile_cache_v2";
+const LEGACY_PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
 function readCachedProfile() {
   try {
-    // Hanya pakai cache kalau memang ada sesi Supabase tersimpan di browser ini
-    const hasAuthToken = Object.keys(localStorage).some(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
-    if (!hasAuthToken) return null;
-    return JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+    // Hanya pakai cache bila token untuk endpoint self-host yang tepat masih ada.
+    // Token sb-* lain (mis. Supabase Cloud lama) tidak pernah boleh membuka aplikasi.
+    if (!localStorage.getItem(SUPABASE_AUTH_STORAGE_KEY)) return null;
+    const cached = JSON.parse(localStorage.getItem(PROFILE_CACHE_KEY) || "null");
+    return cached?.endpoint === SUPABASE_URL ? cached.profile || null : null;
   } catch { return null; }
+}
+
+function writeCachedProfile(profile) {
+  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ endpoint: SUPABASE_URL, profile })); } catch {}
 }
 
 // Reader cache generik (sinkron, langsung localStorage) untuk lazy-initializer
@@ -196,7 +208,12 @@ function readCachedList(key) {
 // localStorage (~5-10MB) lalu gagal tersimpan diam-diam (QuotaExceededError yang ditelan
 // CLOUD.set). State React yang dipakai UI TIDAK memakai versi ini — tetap lengkap dgn foto.
 function leanStocks(list) {
-  return (Array.isArray(list) ? list : []).map(s => ({ ...s, fotoKeseluruhan: undefined, fotoNameplate: undefined }));
+  // Foto yang sudah berupa URL Storage sangat kecil (±100 byte) dan aman
+  // disimpan di cache. Yang harus dibuang hanya data-URL/base64 besar agar
+  // localStorage tidak penuh. Sebelumnya kedua field selalu dihapus, sehingga
+  // saat cache-first menampilkan Data Stok sebelum refresh server selesai,
+  // Foto Nameplate tampak hilang walaupun URL-nya sudah ada di database.
+  return leanStocksForCache(list);
 }
 
 // Kunci localStorage cache Fase 1 (cache-first render). Dibersihkan saat logout supaya
@@ -248,14 +265,9 @@ export default function PLNWarehouse() {
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
   const [stockCountList, setStockCountList] = useState(() => readCachedList("pln_stockcount_v1") ?? []); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [approvalHistoryList, setApprovalHistoryList] = useState([]); // log keputusan approval (Lokasi/Blok, Pemindahan Stok, dkk) — TUG tetap diturunkan dari txns
-  const [maturityAssessments, setMaturityAssessments] = useState([]); // riwayat asesmen Maturity Level Gudang UPT Surabaya, diisi manual oleh Admin
-  const [maturityAuditModal, setMaturityAuditModal] = useState(null);
-  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
-  const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({});
-  const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
-  const [selectedMaturityUpt, setSelectedMaturityUpt] = useState("UPT Surabaya");
-  const [maturitySubTab, setMaturitySubTab] = useState("pelaksanaan");
-  const [materialInspections, setMaterialInspections] = useState(() => readCachedList("pln_material_inspections_v1") ?? []);
+  const [maturityAssessments, setMaturityAssessments] = useState(() => readCachedList("pln_maturity_v1") ?? []); // cache fallback read-only; DB adalah canonical
+  const [maturityAudits, setMaturityAudits] = useState(() => readCachedList("pln_maturity_audits_v1") ?? []); // cache fallback read-only; DB adalah canonical
+  const [materialInspections, setMaterialInspections] = useState(() => readCachedList("pln_material_inspections_v1") ?? []); // cache fallback; DB self-host adalah canonical
   const [heavyEquipmentList, setHeavyEquipmentList] = useState(() => readCachedList("pln_heavy_equipment_v1") ?? []);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState(() => readCachedList("pln_heavy_equipment_loans_v1") ?? []);
   const [attbList, setAttbList] = useState(() => readCachedList("pln_attb_v1") ?? []);
@@ -384,7 +396,11 @@ export default function PLNWarehouse() {
   const accountMenuRef = useRef(null);
   // Dark mode: persist manual di localStorage, default terang (tanpa auto-deteksi OS).
   // Palet C di-shadow di bawah (dekat makeSty) supaya semua C.xxx/sty.xxx ikut tema.
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("warnoto_theme") || "light"; } catch { return "light"; } });
+  const [theme, setTheme] = useState(() => {
+    // Always start each load in light mode; the in-session toggle still works.
+    try { localStorage.setItem("warnoto_theme", "light"); } catch {}
+    return "light";
+  });
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); try { localStorage.setItem("warnoto_theme", theme); } catch {} }, [theme]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth > 768 && window.innerWidth <= 1120);
   const compactViewportRef = useRef(typeof window !== "undefined" && window.innerWidth > 768 && window.innerWidth <= 1120);
@@ -507,6 +523,7 @@ export default function PLNWarehouse() {
   const [forecastDetailLoading, setForecastDetailLoading] = useState(false);
   const showToastRef = useRef(null);
   const lastSyncErrorToastRef = useRef(0);
+  const maturityMigrationPromptedRef = useRef({ assessments:false, audits:false });
 
   useEffect(() => {
     // Tabel master memakai RLS authenticated. Tunggu sesi/profil selesai dipulihkan;
@@ -525,31 +542,20 @@ export default function PLNWarehouse() {
       // mendorongnya ke server (mencegah cache basi menimpa data benar di server saat fetch
       // gagal — mis. Supabase pause/resume/network blip). Di akhir loadCloud diperingatkan via toast.
       const loadFailures = [];
-      const cs = await CLOUD.get("pln_stocks_v4");
-      const ckat = await CLOUD.get("pln_katalog_v4");
-      const clokLocal = await CLOUD.get("pln_lokasi_v4");
-      const ct = await CLOUD.get("pln_txns_v3");
-      const cseq = await CLOUD.get("pln_docseq_v3");
-      const crk = await CLOUD.get("pln_rencana_v1");
-      const copn = await CLOUD.get("pln_opname_v1");
-      const csc = await CLOUD.get("pln_stockcount_v1");
-      const cah = await CLOUD.get("pln_approval_history_v1");
-      const cma = await CLOUD.get("pln_maturity_v1");
-      const che = await CLOUD.get("pln_heavy_equipment_v1");
-      const chel = await CLOUD.get("pln_heavy_equipment_loans_v1");
-      const cattb = await CLOUD.get("pln_attb_v1");
-      const cmcd = await CLOUD.get("pln_material_cadang_v1");
-      const cmch = await CLOUD.get("pln_material_cadang_health_v1");
-      const cmcai = await CLOUD.get("pln_material_cadang_ai_insights_v1");
-      const cgcap = await CLOUD.get("pln_gudang_capacity_v1");
-      const cgcapi = await CLOUD.get("pln_gudang_capacity_imports_v1");
-      const cmig = await CLOUD.get("pln_migrated_tug15_v1");
-      const cmpr = await CLOUD.get("pln_migrasi_pending_review_v1");
+      // Semua cache dibaca paralel. Pada browser dengan window.storage asinkron ini
+      // menghilangkan waterfall sebelum request REST bahkan dimulai.
+      const [cs, ckat, clokLocal, ct, cseq, crk, copn, csc, cah, cma, cmau, che, chel, cattb, cmcd, cmch, cmcai, cgcap, cgcapi, cmig, cmpr] = await Promise.all([
+        CLOUD.get("pln_stocks_v4"), CLOUD.get("pln_katalog_v4"), CLOUD.get("pln_lokasi_v4"), CLOUD.get("pln_txns_v3"), CLOUD.get("pln_docseq_v3"),
+        CLOUD.get("pln_rencana_v1"), CLOUD.get("pln_opname_v1"), CLOUD.get("pln_stockcount_v1"), CLOUD.get("pln_approval_history_v1"), CLOUD.get("pln_maturity_v1"),
+        CLOUD.get("pln_maturity_audits_v1"), CLOUD.get("pln_heavy_equipment_v1"), CLOUD.get("pln_heavy_equipment_loans_v1"), CLOUD.get("pln_attb_v1"),
+        CLOUD.get("pln_material_cadang_v1"), CLOUD.get("pln_material_cadang_health_v1"), CLOUD.get("pln_material_cadang_ai_insights_v1"),
+        CLOUD.get("pln_gudang_capacity_v1"), CLOUD.get("pln_gudang_capacity_imports_v1"), CLOUD.get("pln_migrated_tug15_v1"), CLOUD.get("pln_migrasi_pending_review_v1"),
+      ]);
 
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote] = await Promise.all([
+      const masterLoads = [
         loadMasterTable("uit"),
         loadMasterTable("upt"),
         loadMasterTable("ultg"),
@@ -567,7 +573,20 @@ export default function PLNWarehouse() {
         loadMasterTable("stock_opname"),
         loadMasterTable("stock_count"),
         loadMasterTable("attb_list"),
-      ]);
+      ];
+      // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
+      const maturityLoads = [loadMaturityAssessments(), loadMaturityAudits()];
+
+      // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
+      // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
+      // tidak-menulis yang ada di bawah.
+      const [initialLokasi, initialKatalog, initialStocks] = await Promise.all([masterLoads[5], masterLoads[8], masterLoads[9]]);
+      if (initialLokasi !== null) setLokasiList(initialLokasi?.length ? dedupeById(initialLokasi).list : (clokLocal || DEFAULT_LOKASI));
+      if (initialKatalog !== null) setKatalogList(initialKatalog?.some(k => k.name) ? dedupeById(initialKatalog.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
+      if (initialStocks !== null) setStocks(initialStocks?.length ? dedupeById(initialStocks).list : (cs || DEFAULT_STOCKS));
+      setLoading(false);
+
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, cmaRemote, cmauRemote] = await Promise.all([...masterLoads, ...maturityLoads]);
       const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
       if (cs && ckat && clok) {
@@ -762,7 +781,56 @@ export default function PLNWarehouse() {
         if (scLocal.length > 0) syncMasterTable("stock_count", scLocal);
       }
       setApprovalHistoryList(cah || []);
-      setMaturityAssessments(cma || []);
+      // DB adalah canonical. Cache Maturity hanya dipakai bila remote gagal;
+      // remote yang sukses tapi kosong harus tetap dianggap kosong dan pengguna
+      // diberi satu kesempatan eksplisit untuk memigrasikan cache lama.
+      const maturityMigrationCandidates = [];
+      const prepareMaturityCacheMigration = ({ key, label, cached, remote, setState, upsertAll, reload }) => {
+        if (remote === null) {
+          setState(cached || []);
+          loadFailures.push(label);
+          return;
+        }
+        if (remote.length > 0) {
+          setState(remote);
+          return;
+        }
+        setState([]);
+        if (!cached?.length || maturityMigrationPromptedRef.current[key]) return;
+        maturityMigrationPromptedRef.current[key] = true;
+        maturityMigrationCandidates.push({ label, cached, setState, upsertAll, reload });
+      };
+      prepareMaturityCacheMigration({ key:"assessments", label:"Asesmen Maturity", cached:cma, remote:cmaRemote, setState:setMaturityAssessments, upsertAll:upsertMaturityAssessments, reload:loadMaturityAssessments });
+      prepareMaturityCacheMigration({ key:"audits", label:"Audit Maturity", cached:cmau, remote:cmauRemote, setState:setMaturityAudits, upsertAll:upsertMaturityAudits, reload:loadMaturityAudits });
+      if (maturityMigrationCandidates.length > 0) {
+        const migrationSummary = maturityMigrationCandidates.map(item => `${item.cached.length} ${item.label}`).join(" dan ");
+        askConfirmDelete({
+          title: "Migrasikan data Maturity ke server?",
+          message: <>Server belum memiliki data tersebut, tetapi ditemukan <b>{migrationSummary}</b> di perangkat ini.</>,
+          warning: "Migrasi hanya menyimpan metadata Maturity; file/foto tidak ikut diunggah. Periksa hasil setelah proses selesai.",
+          confirmLabel: "Migrasikan ke Server",
+          onConfirm: async () => {
+            const results = await Promise.all(maturityMigrationCandidates.map(async candidate => {
+              // Satu request batch per tabel mencegah migrasi parsial di tabel itu.
+              const migrated = await candidate.upsertAll(candidate.cached);
+              if (!migrated) return { ...candidate, verified:null };
+              const verified = await candidate.reload();
+              const expectedIds = new Set(candidate.cached.map(item => item.id));
+              const valid = verified !== null
+                && verified.length === candidate.cached.length
+                && verified.every(item => expectedIds.has(item.id));
+              return { ...candidate, verified:valid ? verified : null };
+            }));
+            const failed = results.filter(result => result.verified === null);
+            results.filter(result => result.verified !== null).forEach(result => result.setState(result.verified));
+            if (failed.length > 0) {
+              showToast(`Migrasi ${failed.map(item => item.label).join(" dan ")} gagal atau belum dapat diverifikasi. Data perangkat tidak dihapus.`, "error");
+              return;
+            }
+            showToast("Data Maturity berhasil dimigrasikan dan diverifikasi di server.");
+          },
+        });
+      }
       // Alat Berat/Peminjaman UPT — Supabase (heavy_equipment/_loans) sekarang sumber
       // utama kalau sudah ada isinya; kalau masih kosong (instalasi lama yang baru
       // upgrade ke skema jsonb ini, atau baru pertama kali), dorong sekali data
@@ -852,11 +920,35 @@ export default function PLNWarehouse() {
     loadCloud();
   }, [authLoading, currentUser?.id]);
 
+  // Inspeksi material punya tabel typed sendiri. Cache hanya dipakai ketika
+  // jaringan gagal; data lokal tidak pernah di-bootstrap ke server otomatis.
+  useEffect(() => {
+    if (authLoading || !currentUser) return;
+    let active = true;
+    loadMaterialInspections().then(rows => {
+      if (!active || rows === null) return;
+      setMaterialInspections(rows);
+      CLOUD.set("pln_material_inspections_v1", rows);
+    });
+    return () => { active = false; };
+  }, [authLoading, currentUser?.id]);
+
+  async function saveMaterialInspection(entry, photoInputs) {
+    const saved = await createMaterialInspection(entry, photoInputs);
+    if (!saved) return null;
+    setMaterialInspections(current => {
+      const next = [saved, ...current.filter(item => item.id !== saved.id)];
+      CLOUD.set("pln_material_inspections_v1", next);
+      return next;
+    });
+    return saved;
+  }
+
   // saveToCloud now takes an overrides object. Any field not passed falls back
   // to the latest React state via stateRef (always up to date, avoids stale
   // closures without needing every call site updated when new fields are added).
   const stateRef = useRef({});
-  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, heavyEquipmentList, heavyEquipmentLoans, attbList, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview };
+  stateRef.current = { stocks, txns, docSeq, satpamList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, maturityAudits, heavyEquipmentList, heavyEquipmentLoans, attbList, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview };
   // Debounce auto-sync warnoto_state + RAG (bot WA/Telegram) — dipicu tiap ada perubahan
   // stocks/txns lewat saveToCloud, tapi ditunda sampai 90 detik tidak ada perubahan baru
   // lagi (quiet period), supaya sesi edit beruntun (banyak saveToCloud berturut-turut)
@@ -884,7 +976,6 @@ export default function PLNWarehouse() {
     const opn = overrides.opnameList ?? stateRef.current.opnameList;
     const sc = overrides.stockCountList ?? stateRef.current.stockCountList;
     const ah = overrides.approvalHistoryList ?? stateRef.current.approvalHistoryList;
-    const ma = overrides.maturityAssessments ?? stateRef.current.maturityAssessments;
     const he = overrides.heavyEquipmentList ?? stateRef.current.heavyEquipmentList;
     const hel = overrides.heavyEquipmentLoans ?? stateRef.current.heavyEquipmentLoans;
     const attb = overrides.attbList ?? stateRef.current.attbList;
@@ -905,7 +996,6 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_opname_v1", opn),
       CLOUD.set("pln_stockcount_v1", sc),
       CLOUD.set("pln_approval_history_v1", ah),
-      CLOUD.set("pln_maturity_v1", ma),
       CLOUD.set("pln_heavy_equipment_v1", he),
       CLOUD.set("pln_heavy_equipment_loans_v1", hel),
       CLOUD.set("pln_attb_v1", attb),
@@ -1063,57 +1153,61 @@ export default function PLNWarehouse() {
   showToastRef.current = showToast;
 
   async function handleLogin() {
-    if (!supabase) {
-      const username = (loginForm.username || "admin").trim().toLowerCase();
-      const localProfile = {
-        id: "local-user-" + username,
-        name: (loginForm.username.trim() || "Admin Local") + " (Local)",
-        username: username,
-        role: "SUPERADMIN",
-        jabatan: "Administrator Gudang (Local)",
-        avatar: null,
-        uptId: "UPT_SURABAYA",
-        ultgId: null,
-        uitId: null,
-        gudangIds: null
-      };
-      try {
-        localStorage.setItem("sb-local-auth-token", JSON.stringify({ local: true }));
-        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(localProfile));
-      } catch {}
-      setCurrentUser(localProfile);
-      setLoginErr("");
-      return;
-    }
+    if (!supabase) { setLoginErr("Supabase belum dikonfigurasi."); return; }
     if (!loginForm.username.trim() || !loginForm.password) { setLoginErr("Username dan password wajib diisi."); return; }
     setLoginBusy(true); setLoginErr("");
-    const { error } = await supabase.auth.signInWithPassword({
+    const payload = {
       email: usernameToAuthEmail(loginForm.username),
       password: loginForm.password,
-    });
-    setLoginBusy(false);
+    };
+    let error = null;
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const result = await supabase.auth.signInWithPassword(payload);
+          error = result?.error || null;
+        } catch (err) {
+          error = err;
+        }
+        if (!error || attempt === 1 || !isRetryableLoginError(error)) break;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } finally {
+      setLoginBusy(false);
+    }
     // currentUser di-set oleh listener onAuthStateChange (lihat effect di bawah),
     // bukan di sini — supaya restore sesi (reload halaman) dan login manual
     // lewat jalur yang sama persis, tidak ada logic yang didobel.
-    if (error) setLoginErr("Username atau password salah.");
+    if (error) setLoginErr(describeLoginError(error));
+  }
+
+  function clearLocalAuthState() {
+    try { sessionStorage.removeItem("warnoto_tab"); } catch {}
+    try { localStorage.removeItem(PROFILE_CACHE_KEY); localStorage.removeItem(LEGACY_PROFILE_CACHE_KEY); } catch {}
+    try { localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY); } catch {}
+    try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+    try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+    setCurrentUser(null); setUsers([]);
   }
 
   async function handleLogout() {
     setLoggingOut(true);
+    // Putuskan akses UI/cache lebih dulu. Bila self-host sedang lambat, refresh
+    // setelah klik Logout tetap tidak dapat memulihkan token atau data pengguna lama.
+    clearLocalAuthState();
     try {
-      if (supabase) await supabase.auth.signOut();
-      try { sessionStorage.removeItem("warnoto_tab"); } catch {}
-      // Bersihkan cache SECARA LANGSUNG di sini, jangan hanya menunggu listener
-      // onAuthStateChange (async, jalan setelah signOut selesai). Kalau signOut ke
-      // server self-host lambat/timeout dan user keburu refresh, sesi belum putus →
-      // refresh = login lagi. Dobel-hapus dengan listener AMAN (removeItem key yang
-      // sudah tidak ada tidak error).
-      try { localStorage.removeItem("sb-local-auth-token"); } catch {}
-      try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
-      try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
-      try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
-      setCurrentUser(null); setUsers([]);
+      if (supabase) {
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("logout timeout")), 5000)),
+        ]);
+      }
+    } catch (err) {
+      // Token sudah dibuang secara lokal; kegagalan revoke server tidak boleh
+      // membuat pengguna tampak masih login.
+      console.warn("Logout server tidak selesai, sesi lokal tetap dibersihkan.", err);
     } finally {
+      if (supabase) await supabase.auth.signOut({ scope:"local" }).catch(() => {});
       // Kalau logout sukses, currentUser=null me-render app ke form login (komponen ini
       // unmount, state tidak sempat balik). finally ini menjaga tombol tidak stuck "Keluar..."
       // kalau signOut gagal di tengah jalan.
@@ -1252,18 +1346,28 @@ export default function PLNWarehouse() {
     // dilempar ke handleAuthSession (fire-and-forget).
     async function handleAuthSession(session, event) {
       if (session?.user) {
-        const { data: profile, error: profErr } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
-        if (profErr || !profile) {
+        let profile = null;
+        let profErr = null;
+        // Error jaringan/proxy saat bootstrap bukan bukti bahwa profil hilang.
+        // Retry singkat lalu pertahankan cache dan sesi; logout hanya bila query
+        // sukses tapi memang tidak menemukan profil, atau Auth mengirim sesi kosong.
+        for (let attempt = 0; attempt < 2; attempt++) {
+          const result = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+          profile = result.data;
+          profErr = result.error;
+          if (!profErr) break;
+          if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 350));
+        }
+        if (profErr) {
+          console.warn("Profil sesi belum dapat dimuat; mempertahankan sesi/cache.", profErr);
+        } else if (!profile) {
           setLoginErr("Akun ini belum punya profil (hubungi Admin). Logout otomatis.");
           await supabase.auth.signOut();
-          setCurrentUser(null); setUsers([]);
-          try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
-          try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // cegah kebocoran data antar user di device sama
-          try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // idem, master data Fase 2
+          clearLocalAuthState();
         } else {
           const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, ultgId: profile.ultg_id, uitId: profile.uit_id, gudangIds: profile.gudang_ids };
           setCurrentUser(userObj);
-          try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(userObj)); } catch {}
+          writeCachedProfile(userObj);
           // LOGIN dicatat cuma untuk login manual (SIGNED_IN) — bukan INITIAL_SESSION
           // (buka tab/reload dgn sesi tersimpan) atau TOKEN_REFRESHED (refresh token
           // tiap jam), supaya audit log tidak dibanjiri entri yang bukan aksi user nyata.
@@ -1276,10 +1380,7 @@ export default function PLNWarehouse() {
           reloadRolePerms();
         }
       } else {
-        setCurrentUser(null); setUsers([]);
-        try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
-        try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // cegah kebocoran data antar user di device sama
-        try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {} // idem, master data Fase 2
+        clearLocalAuthState();
       }
       setAuthLoading(false);
     }
@@ -1301,49 +1402,6 @@ export default function PLNWarehouse() {
   useEffect(() => {
     try { sessionStorage.setItem("warnoto_tab", tab); } catch {}
   }, [tab]);
-
-  async function saveMaturityAudit(audit, newStatus) {
-    setMaturityAuditSaving(true);
-    try {
-      const entry = {
-        ...(audit?.id ? audit : {}),
-        id: audit?.id || `MA-${uid().slice(-8)}`,
-        upt: audit?.upt || selectedMaturityUpt || "UPT Surabaya",
-        status: newStatus,
-        aspekScores: maturityAuditForm.aspekScores,
-        evidence: maturityAuditEvidence,
-        catatanUPT: maturityAuditForm.catatanUPT,
-        catatanUIT: maturityAuditForm.catatanUIT,
-        catatanPusat: maturityAuditForm.catatanPusat,
-        fileUrl: maturityAuditForm.fileUrl,
-        fileNama: maturityAuditForm.fileNama,
-        createdAt: audit?.createdAt || Date.now(),
-        updatedAt: Date.now(),
-        updatedBy: currentUser?.id,
-        history: [...(audit?.history || []), { action: newStatus, by: currentUser?.id, at: Date.now() }],
-      };
-      let nm;
-      if (audit?.id) {
-        nm = maturityAssessments.map(a => a.id === audit.id ? entry : a);
-      } else {
-        nm = [entry, ...maturityAssessments];
-      }
-      setMaturityAssessments(nm);
-      try { CLOUD.set("pln_maturity_v1", nm); } catch {}
-      logAudit(currentUser, audit?.id ? "UPDATE" : "CREATE", "maturity_audit", entry.id, { status: newStatus, upt: entry.upt });
-      setMaturityAuditModal(null);
-      showToast(`Audit ${entry.upt} tersimpan.`);
-    } finally { setMaturityAuditSaving(false); }
-  }
-
-  async function deleteMaturityAudit(id) {
-    if (!id) return;
-    const nm = maturityAssessments.filter(a => a.id !== id);
-    setMaturityAssessments(nm);
-    try { CLOUD.set("pln_maturity_v1", nm); } catch {}
-    setMaturityAuditModal(null);
-    showToast("Audit maturity berhasil dihapus");
-  }
 
   // Auto-sync foto transaksi yang belum ter-upload (mis. submit saat offline di
   // gudang). Dicoba saat app load, saat daftar transaksi berubah, dan saat koneksi
@@ -1566,10 +1624,158 @@ export default function PLNWarehouse() {
   // Simpan 1 entri baru riwayat Maturity Level Gudang (khusus Admin, input manual)
   async function saveMaturityAssessment(form) {
     const entry = { id:`MAT-${uid().slice(-8)}`, level:form.level, catatan:form.catatan||"", tanggalAsesmen:form.tanggalAsesmen||Date.now(), createdBy:currentUser.id, createdAt:Date.now() };
-    const nm = [entry, ...maturityAssessments];
-    setMaturityAssessments(nm);
-    await saveToCloud({maturityAssessments: nm});
+    const saved = await upsertMaturityAssessment(entry);
+    if (!saved) {
+      showToast("Asesmen Maturity tidak tersimpan karena server tidak dapat dihubungi.", "error");
+      return false;
+    }
+    setMaturityAssessments(current => [entry, ...current.filter(item => item.id !== entry.id)]);
     showToast("✅ Asesmen Maturity Level disimpan!");
+  }
+
+  // ─── Penilaian Maturity — audit berjenjang (UPT → UIT → Pusat) ─────────
+  // Skor per-aspek: dari rasio bukti ter-upload, atau override manual UIT/Pusat.
+  function calculateItemLevel(uploadedCount, totalRequired) {
+    if (uploadedCount === 0) return 1;
+    if (uploadedCount === totalRequired) return 5;
+    const ratio = uploadedCount / totalRequired;
+    if (ratio < 0.35) return 2;
+    if (ratio < 0.7) return 3;
+    return 4;
+  }
+  function createMaturityAudit() {
+    const scores = {};
+    AUDIT_ASPECTS.forEach(a => { scores[a.id] = { upt:0, uit:0, pusat:0 }; });
+    setMaturityAuditForm({ aspekScores: scores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
+    setMaturityAuditEvidence({});
+    setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
+    setActiveAspectId(null);
+    setAspectPage(1);
+    setMaturityAuditModal({ isNew:true, upt: selectedMaturityUpt });
+    setMaturitySubTab("pelaksanaan");
+  }
+  function openMaturityAudit(audit) {
+    setMaturityAuditForm({ aspekScores: JSON.parse(JSON.stringify(audit.aspekScores || {})), catatanUPT: audit.catatanUPT || "", catatanUIT: audit.catatanUIT || "", catatanPusat: audit.catatanPusat || "", fileUrl: audit.fileUrl || "", fileNama: audit.fileNama || "" });
+    setMaturityAuditEvidence(JSON.parse(JSON.stringify(audit.evidence || {})));
+    setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
+    setActiveAspectId(null);
+    setAspectPage(1);
+    setMaturityAuditModal(audit);
+  }
+  // Skor akhir: getScore pilih pusat>uit>upt(rasio bukti), rata 5 kategori,
+  // A = avg(5 kategori)*0.75 + B = avg(sarana_prasarana,k3,teknologi)*0.25;
+  // level dibucket dari threshold 1.5 / 2.5 / 3.5 / 4.5.
+  function calcMaturityScore(scores = {}, evidence = {}) {
+    const getAspectScore = (a) => {
+      const centerscore = scores[a.id]?.pusat || 0;
+      if (centerscore > 0) return centerscore;
+      const uitscore = scores[a.id]?.uit || 0;
+      if (uitscore > 0) return uitscore;
+      const uptscore = scores[a.id]?.upt || 0;
+      if (uptscore > 0) return uptscore;
+      const uploadedCount = (evidence[a.id] || []).length;
+      return calculateItemLevel(uploadedCount, a.requiredEvidence.length);
+    };
+    const getCatAvg = (catId) => {
+      const catAspects = AUDIT_ASPECTS.filter(a => a.category === catId);
+      if (catAspects.length === 0) return 0;
+      const sum = catAspects.reduce((acc, a) => acc + getAspectScore(a), 0);
+      return sum / catAspects.length;
+    };
+    const c1 = getCatAvg("tata_kelola");
+    const c2 = getCatAvg("tenaga_kerja");
+    const c3 = getCatAvg("sarana_prasarana");
+    const c4 = getCatAvg("k3");
+    const c5 = getCatAvg("teknologi");
+    const itemA = ((c1 + c2 + c3 + c4 + c5) / 5) * 0.75;
+    const itemB = ((c3 + c4 + c5) / 3) * 0.25;
+    const total = itemA + itemB;
+    let level = 1;
+    if (total >= 4.5) level = 5;
+    else if (total >= 3.5) level = 4;
+    else if (total >= 2.5) level = 3;
+    else if (total >= 1.5) level = 2;
+    else level = 1;
+    return { c1, c2, c3, c4, c5, itemA, itemB, total, level };
+  }
+  function calcMaturityLevel(scores, evidence = {}) {
+    return calcMaturityScore(scores, evidence).level;
+  }
+  async function saveMaturityAudit(audit, newStatus) {
+    setMaturityAuditSaving(true);
+    try {
+      const scores = maturityAuditForm.aspekScores;
+      const level = calcMaturityLevel(scores, maturityAuditEvidence);
+      const entry = {
+        ...(audit.id ? audit : {}),
+        id: audit.id || `MA-${uid().slice(-8)}`,
+        upt: audit.upt || selectedMaturityUpt || "UPT Surabaya",
+        status: newStatus,
+        level,
+        aspekScores: scores,
+        evidence: maturityAuditEvidence,
+        catatanUPT: maturityAuditForm.catatanUPT,
+        catatanUIT: maturityAuditForm.catatanUIT,
+        catatanPusat: maturityAuditForm.catatanPusat,
+        fileUrl: maturityAuditForm.fileUrl,
+        fileNama: maturityAuditForm.fileNama,
+        createdAt: audit.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: currentUser.id,
+        history: [...(audit.history || []), { action: newStatus, by: currentUser.id, at: Date.now() }],
+      };
+      const saved = await upsertMaturityAudit(entry);
+      if (!saved) {
+        showToast("Audit Maturity tidak tersimpan karena server tidak dapat dihubungi.", "error");
+        return;
+      }
+      setMaturityAudits(current => audit.id ? current.map(a => a.id === audit.id ? entry : a) : [entry, ...current]);
+      logAudit(currentUser, audit.id ? "UPDATE" : "CREATE", "maturity_audit", entry.id, { status: newStatus, level, upt: entry.upt });
+      setMaturityAuditModal(null);
+      showToast(`Audit ${entry.upt} disimpan — ${MATURITY_WORKFLOW_LABEL[newStatus]}${newStatus === "FINAL" ? " (Nilai Final)" : ""}`);
+    } finally { setMaturityAuditSaving(false); }
+  }
+  async function deleteMaturityAudit(id) {
+    const audit = maturityAudits.find(a => a.id === id);
+    askConfirmDelete({
+      title: "Hapus Riwayat Audit Maturity?",
+      message: <>Apakah Anda yakin ingin menghapus data audit maturity untuk <b>{audit?.upt || "UPT"}</b> (Level {audit?.level || "?"})?</>,
+      warning: "Tindakan ini tidak bisa dibatalkan.",
+      onConfirm: async () => {
+        const deleted = await deleteMaturityAuditRow(id);
+        if (!deleted) {
+          showToast("Audit Maturity tidak dihapus karena server tidak dapat dihubungi.", "error");
+          return;
+        }
+        setMaturityAudits(current => current.filter(a => a.id !== id));
+        logAudit(currentUser, "DELETE", "maturity_audit", id, { upt: audit?.upt });
+        showToast("Riwayat audit maturity berhasil dihapus.");
+        if (maturityAuditModal && maturityAuditModal.id === id) setMaturityAuditModal(null);
+      }
+    });
+  }
+  async function exportMaturityAuditExcel(audit) {
+    const XLSX = await import("xlsx");
+    const rows = [["Aspek ID", "Deskripsi", "Skor UPT", "Skor UIT", "Skor Pusat", "Evidence"]];
+    AUDIT_ASPECTS.forEach(a => {
+      const s = audit.aspekScores?.[a.id] || {};
+      const evi = audit.evidence?.[a.id] || [];
+      const uploadedCount = evi.length;
+      const uptScore = calculateItemLevel(uploadedCount, a.requiredEvidence.length);
+      rows.push([a.id, a.title, uptScore, s.uit || 0, s.pusat || 0, evi.map(e => e.name).join("; ") || "—"]);
+    });
+    rows.push([]);
+    rows.push(["Level Akhir", MATURITY_LEVELS[audit.level] || "—"]);
+    rows.push(["Status", MATURITY_WORKFLOW_LABEL[audit.status] || audit.status]);
+    rows.push(["Catatan UPT", audit.catatanUPT || ""]);
+    rows.push(["Catatan UIT", audit.catatanUIT || ""]);
+    rows.push(["Catatan Pusat", audit.catatanPusat || ""]);
+    rows.push(["Lampiran Umum", audit.fileNama || audit.fileUrl || ""]);
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Audit Maturity");
+    XLSX.writeFile(wb, `Audit_Maturity_${audit.id}.xlsx`);
+    showToast("File Excel berhasil didownload!");
   }
 
   // Catat 1 keputusan approval (disetujui/ditolak) ke riwayat — dipakai oleh
@@ -1756,7 +1962,7 @@ export default function PLNWarehouse() {
       const cur = stateRef.current.stocks.find(s => s.id === st0.id); // versi terkini
       if (!cur || !cur.fotoNameplate || cur.fotoNameplateOcr != null) continue;
       try {
-        pending.set(cur.id, await ocrSpaceOCR(cur.fotoNameplate));
+        pending.set(cur.id, await ocrSpaceOCR(resolveStockPhotoUrl(cur.fotoNameplate)));
       } catch (e) {
         console.warn("Auto-OCR nameplate gagal:", st0.id, e?.message||e);
         continue;
@@ -1993,6 +2199,16 @@ export default function PLNWarehouse() {
   const [gudangModal, setGudangModal] = useState(null);
   const [maturityModal, setMaturityModal] = useState(false);
   const [maturityForm, setMaturityForm] = useState({ level:3, catatan:"", tanggalAsesmen:Date.now() });
+  // ─── Penilaian Maturity (audit workflow) — UI state ───────────────────
+  const [maturitySubTab, setMaturitySubTab] = useState("dashboard"); // dashboard | pelaksanaan | history | 5s
+  const [selectedMaturityUpt, setSelectedMaturityUpt] = useState("UPT Surabaya");
+  const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
+  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
+  const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
+  const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // {aspekId: [{url,name,size,itemId,...}]}
+  const [expandedAspek, setExpandedAspek] = useState(null); // kategori aktif di editor
+  const [activeAspectId, setActiveAspectId] = useState(null);
+  const [aspectPage, setAspectPage] = useState(1);
   const [gudangForm, setGudangForm] = useState({});
   const [denahLoading, setDenahLoading] = useState(false);
   const [mapConfigMode, setMapConfigMode] = useState(false);
@@ -4096,9 +4312,10 @@ export default function PLNWarehouse() {
         if (error) throw error;
         onProgress?.(Math.min(i+BATCH, chunks.length), chunks.length);
       }
-      // Hapus chunk lama yang sumbernya sudah tidak ada lagi (katalog/txn/FAQ terhapus)
+      // Hapus hanya chunk lama milik sinkron browser (katalog/txn/FAQ). Chunk
+      // `mutasi` dibuat nightly_sync.mjs dan tidak boleh ikut terhapus di sini.
       const currentIds = new Set(chunks.map(c=>c.id));
-      const { data: existing } = await supabase.from("rag_chunks").select("id");
+      const { data: existing } = await supabase.from("rag_chunks").select("id").in("source_type", ["katalog", "txn", "faq"]);
       const toDelete = (existing||[]).filter(r=>!currentIds.has(r.id)).map(r=>r.id);
       if (toDelete.length) await supabase.from("rag_chunks").delete().in("id", toDelete);
       setRagLastSync(Date.now());
@@ -4537,6 +4754,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           tanggal: t.approvedAt || t.createdAt,
           namaPekerjaan: t.namaPekerjaan || "",
           status: t.status || "",
+          // Keep both source photos.  ATTB preview needs to distinguish the
+          // overall material photo from the nameplate (the old `foto` fallback
+          // discarded whichever one was not selected first).
+          fotoKeseluruhan: si.fotoBarangRetur || null,
+          fotoNameplate: si.fotoNameplate || null,
           foto: si.fotoBarangRetur || si.fotoNameplate || null,
         });
       });
@@ -4583,6 +4805,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   // (via prop C={C}) otomatis mengikuti tema aktif. Deklarasi sebelum sty dipakai.
   const C = theme === "dark" ? C_DARK : C_LIGHT;
   const sty = makeSty(isMobile, C);
+  const loginSty = makeSty(isMobile, C_LIGHT);
 
   // ══════════════════════ PUBLIC SCAN VIEW (QR dari HP, tanpa login) ══════════════════════
   const scanKatalogId = new URLSearchParams(window.location.search).get("scan");
@@ -4599,7 +4822,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
   if (!currentUser) return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#001a57 0%,#003087 50%,#0052cc 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',system-ui,sans-serif"}}>
-      <div style={{background:"white",borderRadius:20,overflow:"hidden",display:"flex",width:isMobile?"100%":720,maxWidth:isMobile?400:720,boxShadow:"0 25px 60px rgba(0,0,0,0.35)"}}>
+      <div style={{background:"linear-gradient(160deg,#123a7a,#0b2559)",borderRadius:20,overflow:"hidden",display:"flex",width:isMobile?"100%":720,maxWidth:isMobile?400:720,boxShadow:"0 25px 60px rgba(0,0,0,0.35)"}}>
         {/* KIRI — panel branding (desktop only) */}
         <div style={{display:isMobile?"none":"flex",flexDirection:"column",justifyContent:"center",width:300,flexShrink:0,padding:40,background:"linear-gradient(160deg,#123a7a,#0b2559)",color:"white"}}>
           <div style={{width:76,height:76,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:22,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
@@ -4608,32 +4831,27 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",lineHeight:1.5}}>{UPT} · {WAREHOUSE}</div>
         </div>
         {/* KANAN — form login */}
-        <div style={{flex:1,padding:isMobile?32:40,minWidth:0}}>
+        <div style={{flex:1,padding:isMobile?32:40,minWidth:0,background:"#fff"}}>
           {isMobile && (
             <div style={{textAlign:"center",marginBottom:24}}>
-              <div style={{width:72,height:72,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",border:`1px solid ${C.border}`,padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
-              <div style={{fontSize:26,fontWeight:900,color:C.accent,letterSpacing:"1px",lineHeight:1}}>WARNOTO</div>
-              <div style={{fontSize:12,color:C.muted,marginTop:6}}>{UPT} · {WAREHOUSE}</div>
+              <div style={{width:72,height:72,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",border:`1px solid ${C_LIGHT.border}`,padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
+              <div style={{fontSize:26,fontWeight:900,color:C_LIGHT.accent,letterSpacing:"1px",lineHeight:1}}>WARNOTO</div>
+              <div style={{fontSize:12,color:C_LIGHT.muted,marginTop:6}}>{UPT} · {WAREHOUSE}</div>
             </div>
           )}
-          <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:4}}>Selamat Datang</div>
-          <div style={{fontSize:13,color:C.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
+          <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:4}}>Selamat Datang</div>
+          <div style={{fontSize:13,color:C_LIGHT.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
           <div style={{marginBottom:16}}>
-            <label style={sty.label}>Username</label>
-            <input style={sty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
+            <label style={loginSty.label}>Username</label>
+            <input style={loginSty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
           </div>
           <div style={{marginBottom:8}}>
-            <label style={sty.label}>Password</label>
-            <input style={sty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+            <label style={loginSty.label}>Password</label>
+            <input style={loginSty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
           </div>
-          {loginErr && <div style={{color:C.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius:8}}>{loginErr}</div>}
-          {!supabase && (
-            <div style={{fontSize:12,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px",marginBottom:12,lineHeight:1.4}}>
-              💡 <b>Mode Lokal / Testing:</b> Supabase belum terhubung di <code>.env</code>. Anda dapat memasukkan username & password apa saja untuk masuk ke mode pengujian lokal.
-            </div>
-          )}
-          <button style={{...sty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
-          <div style={{marginTop:16,fontSize:12,color:C.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
+          {loginErr && <div style={{color:C_LIGHT.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius:8}}>{loginErr}</div>}
+          <button style={{...loginSty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
+          <div style={{marginTop:16,fontSize:12,color:C_LIGHT.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
         </div>
       </div>
     </div>
@@ -4673,11 +4891,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"heavyEquipment",icon:<SidebarIcon name="equipment"/>,label:"Alat Berat",badge:(hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"ATTB",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
+    {id:"maturity",icon:<SidebarIcon name="maturity"/>,label:"Penilaian Maturity"},
+    {id:"inspeksiMaterial",icon:<SidebarIcon name="inspeksiMaterial"/>,label:"Inspeksi Material"},
     {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
-    {id:"maturity",icon:<SidebarIcon name="maturity"/>,label:"Maturity Level"},
-    {id:"inspeksiMaterial",icon:<SidebarIcon name="inspeksi"/>,label:"Inspeksi Material"},
   ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
@@ -4690,13 +4908,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     approval: {eyebrow:"Decision Center",title:"Approval"},
     heavyEquipment: {eyebrow:"Fleet Operations",title:"Alat Berat & Peminjaman"},
     attb: {eyebrow:"Asset Disposal Governance",title:"ATTB — Penghapusan Aset"},
+    maturity: {eyebrow:"Warehouse Maturity Audit",title:"Penilaian Maturity Gudang"},
+    inspeksiMaterial: {eyebrow:"Inventory Health Check",title:"Inspeksi Material Cadang"},
     opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
     rencana: {eyebrow:"Inbound Planning",title:"Rencana Kedatangan Barang"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
-    maturity: {eyebrow:"Audit & Compliance",title:"Penilaian Maturity Level Gudang"},
-    inspeksiMaterial: {eyebrow:"Inventory Health Check",title:"Inspeksi Material Cadang"},
   }[tab] || {eyebrow:"WARNOTO",title:"Dashboard"};
 
   return (
@@ -5228,7 +5446,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
                       {photoSearchResults.map(r=>{
                         const est = enrichedStocks.find(s=>String(s.katalog)===String(r.katalog));
-                        const thumb = est?.fotoKeseluruhan || est?.img;
+                        const thumb = resolveStockPhotoUrl(est?.fotoKeseluruhan || est?.img);
                         const pct = Math.round((r.similarity||0)*100);
                         return (
                           <div key={r.katalog} onClick={()=>est&&setStockDetailId(est.id)} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,cursor:est?"pointer":"default",display:"flex",gap:10,alignItems:"center",background:C.surface}}>
@@ -5281,8 +5499,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     const hasDenah = !!(gdg?.denahImageData || (lok?.subGudangId && subGudangList.find(s=>s.id===lok.subGudangId)?.denahImageData));
                     return (
                       <tr className="mobile-card-table__row" key={st.id} onClick={()=>{setPendingFoto({}); setStockDetailId(st.id);}} style={{cursor:"pointer",background:st.deletePending?"#fef2f2":undefined,borderBottom:`1px solid ${C.border}`,borderLeft:`3px ${st.deletePending?"dashed #dc2626":"solid"} ${st.deletePending?"#dc2626":noLokasi?"#f59e0b":isLow?C.red:st.jenisBarang==="Non-Stock"?"#be185d":C.green}`}}>
-                        <td className="mobile-card-table__photo" data-label="Foto" onClick={e=>{ if(st.fotoKeseluruhan){e.stopPropagation(); setLightboxImg(st.fotoKeseluruhan);} }} style={{padding:"8px 10px",textAlign:"center",cursor:st.fotoKeseluruhan?"zoom-in":"default"}}>
-                          {st.fotoKeseluruhan ? <img src={st.fotoKeseluruhan} alt={st.name} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:`1px solid ${C.border}`}}/>
+                        <td className="mobile-card-table__photo" data-label="Foto" onClick={e=>{ if(st.fotoKeseluruhan){e.stopPropagation(); setLightboxImg(resolveStockPhotoUrl(st.fotoKeseluruhan));} }} style={{padding:"8px 10px",textAlign:"center",cursor:st.fotoKeseluruhan?"zoom-in":"default"}}>
+                          {st.fotoKeseluruhan ? <img src={resolveStockPhotoUrl(st.fotoKeseluruhan)} alt={st.name} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:`1px solid ${C.border}`}}/>
                             : <div style={{width:48,height:48,background:"#eff6ff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
                         </td>
                         <td className="mobile-card-table__title" data-label="Nama Barang" style={{padding:"8px 10px",minWidth:200}}>
@@ -6392,6 +6610,692 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           />
         )}
 
+        {tab==="inspeksiMaterial" && (
+          <InspeksiMaterialCadangTab
+            stocks={stocks}
+            katalogList={katalogList}
+            lokasiList={lokasiList}
+            materialInspections={materialInspections}
+            currentUser={currentUser}
+            C={C}
+            sty={sty}
+            isMobile={isMobile}
+            showToast={showToast}
+            canMutate={can(currentUser, "aksi.kelolaInspeksi", rolePerms)}
+            onSaveInspection={saveMaterialInspection}
+          />
+        )}
+
+          {tab === "maturity" && (() => {
+            const is3D = false;
+            return (
+              <div style={{ maxWidth: 960, margin: "0 auto" }}>
+              <div style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 16,
+                marginBottom: 24,
+                background: "linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)",
+                padding: "18px 24px",
+                borderRadius: 16,
+                boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.3), 0 8px 16px -6px rgba(15, 23, 42, 0.3)",
+                color: "white",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                transition: "all 0.3s ease"
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: "rgba(255, 255, 255, 0.1)",
+                    backdropFilter: "blur(8px)",
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 13,
+                    fontWeight: 900,
+                    border: "1px solid rgba(255, 255, 255, 0.2)",
+                    letterSpacing: "1px",
+                    boxShadow: "inset 0 1px 1px rgba(255,255,255,0.2)"
+                  }}>
+                    UPT
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "1.5px" }}>Wilayah Kerja Audit</div>
+                    <div style={{ fontSize: 18, fontWeight: 900, color: "white", letterSpacing: "-0.5px", marginTop: 2 }}>{selectedMaturityUpt}</div>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                  {DEFAULT_UPT_LIST.map(u => {
+                    const isSelected = selectedMaturityUpt === u.nama;
+                    return (
+                      <button
+                        key={u.id}
+                        onClick={() => setSelectedMaturityUpt(u.nama)}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: 20,
+                          border: "1px solid transparent",
+                          background: isSelected ? "#ffffff" : "rgba(255, 255, 255, 0.08)",
+                          color: isSelected ? "#1e3a8a" : "#f1f5f9",
+                          fontSize: 12,
+                          fontWeight: isSelected ? 800 : 600,
+                          cursor: "pointer",
+                          transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                          boxShadow: isSelected ? "0 4px 12px rgba(255, 255, 255, 0.25)" : "none",
+                          backdropFilter: "blur(4px)",
+                          outline: "none"
+                        }}
+                      >
+                        {u.nama}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Sub-tab navigation */}
+              <div style={{
+                display: "flex",
+                gap: 4,
+                marginBottom: 24,
+                background: "#f1f5f9",
+                borderRadius: 12,
+                padding: 4,
+                border: "1px solid #e2e8f0",
+                boxShadow: "inset 0 1px 2px rgba(0,0,0,0.05)",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch"
+              }}>
+                {[
+                  { id: "dashboard", label: "Dashboard Audit" },
+                  { id: "pelaksanaan", label: "Pelaksanaan Audit" },
+                  { id: "history", label: "History Audit" },
+                  { id: "5s", label: "Form Pengisian 5S" },
+                ].map(s => (
+                  <button key={s.id} onClick={() => setMaturitySubTab(s.id)} style={{
+                    flex: 1,
+                    padding: "8px 16px",
+                    borderRadius: 8,
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    background: maturitySubTab === s.id ? "#ffffff" : "transparent",
+                    color: maturitySubTab === s.id ? "#1e3a8a" : "#64748b",
+                    boxShadow: maturitySubTab === s.id ? "0 2px 6px rgba(15, 23, 42, 0.08)" : "none",
+                    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                    whiteSpace: "nowrap"
+                  }}>{s.label}</button>
+                ))}
+              </div>
+
+              {/*  DASHBOARD AUDIT  */}
+              {maturitySubTab === "dashboard" && (() => {
+                const uptAudits = maturityAudits.filter(a => (a.upt || "UPT Surabaya") === selectedMaturityUpt);
+                const latestAudit = uptAudits[0] || null;
+                const calcResult = latestAudit ? calcMaturityScore(latestAudit.aspekScores || {}, latestAudit.evidence || {}) : { itemA: 0, itemB: 0, total: 0, level: 1 };
+                const currentLevel = latestAudit ? calcResult.level : 1;
+                const evidenceCount = latestAudit?.evidence ? Object.values(latestAudit.evidence).flat().length : 0;
+                const statusLabel = latestAudit ? (MATURITY_WORKFLOW_LABEL[latestAudit.status] || latestAudit.status) : "Belum Ada Audit";
+                const statusColor = latestAudit ? (MATURITY_WORKFLOW_COLOR[latestAudit.status] || "#64748b") : "#64748b";
+
+                return (
+                  <div>
+                    {/* Title and Sub-headline */}
+                    <div style={{ marginBottom: 24 }}>
+                      <div style={{ fontSize: 10, color: "#2563eb", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.5px" }}>DASHBOARD AUDIT MATURITY</div>
+                      <h1 style={{ fontSize: 24, fontWeight: 950, color: "#0f172a", margin: "4px 0 2px 0", letterSpacing: "-0.5px" }}>Rangkuman Audit {selectedMaturityUpt}</h1>
+                      <p style={{ fontSize: 13, color: "#64748b", margin: 0 }}>Ringkasan pencapaian level kematangan gudang, kelengkapan berkas evidence, dan riwayat asesmen.</p>
+                    </div>
+
+                    {/* Main Card */}
+                    <div style={{
+                      background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 16,
+                      padding: 24,
+                      marginBottom: 20,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: 16,
+                      boxShadow: "0 10px 25px -5px rgba(15, 23, 42, 0.05), 0 8px 16px -6px rgba(15, 23, 42, 0.05)",
+                      transition: "all 0.3s ease"
+                    }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <span style={{ fontSize: 9, color: "#2563eb", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1.5px" }}>WILAYAH AUDIT</span>
+                          <span style={{ padding: "2px 10px", borderRadius: 20, background: `${statusColor}12`, color: statusColor, fontSize: 11, fontWeight: 800, border: `1px solid ${statusColor}22` }}>{statusLabel}</span>
+                        </div>
+                        <h2 style={{ fontSize: 22, fontWeight: 900, color: "#0f172a", margin: "2px 0 6px 0", letterSpacing: "-0.3px" }}>{selectedMaturityUpt}</h2>
+                        <div style={{ fontSize: 12, color: "#64748b", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ color: "#3b82f6", display: "inline-flex" }}>
+                            <svg style={{ width: 14, height: 14 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </span>
+                          Terakhir diperbarui: {latestAudit ? fmtDate(latestAudit.updatedAt || latestAudit.createdAt) : "—"}
+                        </div>
+                      </div>
+                      <div style={{
+                        background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+                        border: "1px solid #bfdbfe",
+                        borderRadius: 16,
+                        padding: "16px 24px",
+                        textAlign: "right",
+                        minWidth: 180,
+                        boxShadow: "0 4px 12px rgba(37,99,235,0.08)"
+                      }}>
+                        <div style={{ fontSize: 9, color: "#1d4ed8", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px" }}>Level Maturity</div>
+                        <div style={{ fontSize: 34, fontWeight: 950, color: "#1e3a8a", margin: "2px 0", lineHeight: 1.1, letterSpacing: "-1px" }}>Level {currentLevel}</div>
+                        <div style={{ fontSize: 11, color: "#2563eb", fontWeight: 700 }}>{MATURITY_LEVELS[currentLevel] || "Basic"}</div>
+                      </div>
+                    </div>
+
+                    {/* Three Cards Row */}
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
+                      {[
+                        { title: "Jumlah Audit Terdaftar", value: `${uptAudits.length} Audit`, desc: `Riwayat asesmen ${selectedMaturityUpt}`, color: "#3b82f6", icon: (
+                          <svg style={{ width: 18, height: 18 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2" />
+                          </svg>
+                        ) },
+                        { title: "Total Berkas Uploaded", value: `${evidenceCount} Berkas`, desc: "Bukti fisik terunggah ke Drive", color: "#10b981", icon: (
+                          <svg style={{ width: 18, height: 18 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        ) },
+                        { title: "Status Asesmen Saat Ini", value: statusLabel, desc: `Posisi alur kerja untuk ${selectedMaturityUpt}`, color: statusColor, icon: (
+                          <svg style={{ width: 18, height: 18 }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                        ) }
+                      ].map((c, i) => (
+                        <div key={i} style={{
+                          background: "white",
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 16,
+                          padding: "20px",
+                          boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 16,
+                          transition: "all 0.2s ease"
+                        }}>
+                          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${c.color}10`, color: c.color, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                            {c.icon}
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 11, color: "#64748b", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>{c.title}</div>
+                            <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a", margin: "4px 0 2px 0", letterSpacing: "-0.3px" }}>{c.value}</div>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>{c.desc}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* History Audit Block */}
+                    <div style={{
+                      background: "white",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: 16,
+                      padding: 24,
+                      marginBottom: 20,
+                      boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)"
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+                        <div>
+                          <h3 style={{ fontSize: 16, fontWeight: 800, color: "#0f172a", margin: 0 }}>History Audit</h3>
+                          <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 0 0" }}>Tren skor audit beberapa semester terakhir.</p>
+                        </div>
+                        <div style={{
+                          background: "#eff6ff",
+                          border: "1px solid #bfdbfe",
+                          borderRadius: 20,
+                          padding: "4px 12px",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          color: "#1d4ed8",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 4
+                        }}>
+                          <span>Perubahan terakhir</span>
+                          <strong>+0.14</strong>
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1.2fr", gap: 24 }}>
+                        {/* Bar Chart Container */}
+                        <div style={{
+                          border: "1px solid #e2e8f0",
+                          borderRadius: 12,
+                          padding: "20px 16px 16px 16px",
+                          background: "#f8fafc",
+                          display: "flex",
+                          flexDirection: "column",
+                          justifyContent: "space-between",
+                          minHeight: 220
+                        }}>
+                          <div style={{ display: "flex", justifyContent: "space-around", alignItems: "flex-end", height: 160, paddingBottom: 10, borderBottom: "1.5px solid #cbd5e1" }}>
+                            {[
+                              { label: "S1 2024", val: 3.58 },
+                              { label: "S2 2024", val: 3.74 },
+                              { label: "S1 2025", val: 3.86 },
+                              { label: "S2 2025", val: 4.12 },
+                              { label: "S1 2026", val: 4.26 }
+                            ].map((bar, idx) => {
+                              const heightPct = (bar.val / 5) * 100;
+                              return (
+                                <div key={idx} style={{ display: "flex", flexDirection: "column", alignItems: "center", width: "15%", height: "100%", justifyContent: "flex-end" }}>
+                                  <span style={{ fontSize: 11, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>{bar.val.toFixed(2)}</span>
+                                  <div style={{
+                                    width: "100%",
+                                    height: `${heightPct}%`,
+                                    background: "linear-gradient(to top, #1e3a8a, #3b82f6)",
+                                    borderRadius: "4px 4px 0 0",
+                                    transition: "height 0.5s ease-out"
+                                  }} />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          <div style={{ display: "flex", justifyContent: "space-around", paddingTop: 8 }}>
+                            {["S1 2024", "S2 2024", "S1 2025", "S2 2025", "S1 2026"].map((lbl, idx) => (
+                              <div key={idx} style={{ width: "15%", textAlign: "center", fontSize: 10, fontWeight: 800, color: "#64748b" }}>{lbl}</div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* List Container */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {/* Latest Score Card */}
+                          <div style={{
+                            background: "#e0f2fe",
+                            border: "1px solid #bae6fd",
+                            borderRadius: 12,
+                            padding: "12px 14px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center"
+                          }}>
+                            <div>
+                              <div style={{ fontSize: 9, color: "#0369a1", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>Skor Terbaru</div>
+                              <div style={{ fontSize: 22, fontWeight: 900, color: "#0369a1", margin: "2px 0", lineHeight: 1.1 }}>4.26</div>
+                              <div style={{ fontSize: 10, color: "#0284c7", fontWeight: 600 }}>Semester 1 2026 - Berjalan</div>
+                            </div>
+                          </div>
+
+                          {/* History items list */}
+                          {[
+                            { sem: "S1 2026", status: "Berjalan", score: 4.26, color: "#0284c7" },
+                            { sem: "S2 2025", status: "Final", score: 4.12, color: "#1d4ed8" },
+                            { sem: "S1 2025", status: "Final", score: 3.86, color: "#1d4ed8" },
+                            { sem: "S2 2024", status: "Arsip", score: 3.74, color: "#64748b" }
+                          ].map((item, idx) => (
+                            <div key={idx} style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "10px 14px",
+                              background: "white",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 12
+                            }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{item.sem}</span>
+                                <span style={{
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: 12,
+                                  background: item.color + "15",
+                                  color: item.color,
+                                  textTransform: "uppercase"
+                                }}>{item.status}</span>
+                              </div>
+                              <strong style={{ fontSize: 13, fontWeight: 950, color: "#0f172a" }}>{item.score.toFixed(2)}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom 2x2 Grid */}
+                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                      {/* Yang sudah bagus */}
+                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: 0 }}>Yang Sudah Bagus</h3>
+                        <p style={{ fontSize: 11, color: "#64748b", margin: "2px 0 14px 0" }}>Kategori dengan skor tertinggi</p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {[
+                            { title: "Tata Kelola", desc: "Sudah mendekati standar maturity yang diharapkan.", val: "1.10", color: "#1d4ed8", bg: "#eff6ff" },
+                            { title: "Tenaga Kerja", desc: "Sudah mendekati standar maturity yang diharapkan.", val: "0.00", color: "#1d4ed8", bg: "#eff6ff" }
+                          ].map((item, idx) => (
+                            <div key={idx} style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "10px 14px",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 12,
+                              background: "#f8fafc"
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{item.title}</div>
+                                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.desc}</div>
+                              </div>
+                              <span style={{
+                                background: item.bg,
+                                color: item.color,
+                                border: `1px solid ${item.color}33`,
+                                borderRadius: 8,
+                                padding: "4px 10px",
+                                fontSize: 12,
+                                fontWeight: 900
+                              }}>{item.val}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Yang masih kurang */}
+                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: 0 }}>Yang Masih Kurang</h3>
+                        <p style={{ fontSize: 11, color: "#64748b", margin: "2px 0 14px 0" }}>Prioritas pemeriksaan berikutnya</p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          {[
+                            { title: "Tenaga Kerja", desc: "Perlu penguatan evidence, konsistensi proses, dan catatan tindak lanjut.", val: "0.00", color: "#ea580c", bg: "#fff7ed" },
+                            { title: "Sarana Prasarana", desc: "Perlu penguatan evidence, konsistensi proses, dan catatan tindak lanjut.", val: "0.00", color: "#ea580c", bg: "#fff7ed" }
+                          ].map((item, idx) => (
+                            <div key={idx} style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              padding: "10px 14px",
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 12,
+                              background: "#f8fafc"
+                            }}>
+                              <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{item.title}</div>
+                                <div style={{ fontSize: 11, color: "#64748b", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.desc}</div>
+                              </div>
+                              <span style={{
+                                background: item.bg,
+                                color: item.color,
+                                border: `1px solid ${item.color}33`,
+                                borderRadius: 8,
+                                padding: "4px 10px",
+                                fontSize: 12,
+                                fontWeight: 900
+                              }}>{item.val}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Peluang peningkatan nilai */}
+                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: 0 }}>Peluang Peningkatan Nilai</h3>
+                        <p style={{ fontSize: 11, color: "#64748b", margin: "2px 0 14px 0" }}>Target per kategori sampai akhir periode</p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                          {[
+                            { title: "Tenaga Kerja", target: "Naikkan dari 0.00 ke 4.00", val: 50 },
+                            { title: "Sarana Prasarana", target: "Naikkan dari 0.00 ke 4.00", val: 35 }
+                          ].map((item, idx) => (
+                            <div key={idx}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                <span style={{ fontSize: 12, fontWeight: 800, color: "#0f172a" }}>{item.title}</span>
+                                <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>{item.target}</span>
+                              </div>
+                              <div style={{ height: 6, borderRadius: 3, background: "#e2e8f0", overflow: "hidden" }}>
+                                <div style={{ height: "100%", width: `${item.val}%`, background: "#0e7490", borderRadius: 3 }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Target waktu */}
+                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 16, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                        <h3 style={{ fontSize: 14, fontWeight: 800, color: "#0f172a", margin: 0 }}>Target Waktu</h3>
+                        <p style={{ fontSize: 11, color: "#64748b", margin: "2px 0 14px 0" }}>Rencana penyelesaian audit berjalan</p>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "relative", paddingLeft: 16 }}>
+                          {/* Vertical line */}
+                          <div style={{ position: "absolute", left: 4, top: 8, bottom: 8, width: 2, background: "#cbd5e1" }} />
+                          {[
+                            { date: "31 Juli 2026", desc: "Input evidence wajib selesai oleh UPT." },
+                            { date: "14 Agustus 2026", desc: "Review dan koreksi UIT selesai." },
+                            { date: "31 Agustus 2026", desc: "Finalisasi skor auditor pusat." }
+                          ].map((item, idx) => (
+                            <div key={idx} style={{ position: "relative" }}>
+                              {/* Bullet circle */}
+                              <div style={{
+                                position: "absolute",
+                                left: -16.5,
+                                top: 3.5,
+                                width: 7,
+                                height: 7,
+                                borderRadius: "50%",
+                                background: "#2563eb",
+                                border: "2px solid white",
+                                boxShadow: "0 0 0 2px #2563eb33"
+                              }} />
+                              <div style={{ fontSize: 11, fontWeight: 800, color: "#2563eb" }}>{item.date}</div>
+                              <div style={{ fontSize: 11, color: "#475569", marginTop: 2 }}>{item.desc}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/*  PELAKSANAAN AUDIT  */}
+              {maturitySubTab === "pelaksanaan" && (
+                <div>
+                  {/* HEADER — navigasi */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>
+                      {maturityAuditModal ? (maturityAuditModal.isNew ? "Audit Maturity Baru" : "Edit Audit Maturity") : "Pelaksanaan Audit Maturity"}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      {maturityAuditModal && (
+                        <button style={sty.btn("ghost")} onClick={() => setMaturityAuditModal(null)}>← Kembali ke Daftar</button>
+                      )}
+                    </div>
+                  </div>
+
+                  {maturityAuditModal && (() => {
+                    return (
+                      <MaturityAuditEditor
+                        maturityAuditModal={maturityAuditModal}
+                        setMaturityAuditModal={setMaturityAuditModal}
+                        currentUser={currentUser}
+                        hasRole={hasRole}
+                        C={C}
+                        sty={sty}
+                        isMobile={isMobile}
+                        maturityAuditForm={maturityAuditForm}
+                        setMaturityAuditForm={setMaturityAuditForm}
+                        maturityAuditEvidence={maturityAuditEvidence}
+                        setMaturityAuditEvidence={setMaturityAuditEvidence}
+                        expandedAspek={expandedAspek}
+                        setExpandedAspek={setExpandedAspek}
+                        activeAspectId={activeAspectId}
+                        setActiveAspectId={setActiveAspectId}
+                        aspectPage={aspectPage}
+                        setAspectPage={setAspectPage}
+                        saveMaturityAudit={saveMaturityAudit}
+                        deleteMaturityAudit={deleteMaturityAudit}
+                        maturityAuditSaving={maturityAuditSaving}
+                        calculateItemLevel={calculateItemLevel}
+                        selectedUpt={selectedMaturityUpt}
+                      />
+                    );
+                  })()}
+
+                  {/*  DAFTAR AUDIT (bila tidak sedang input/edit)  */}
+                  {!maturityAuditModal && (
+                    <>
+
+
+                      {/* List audit */}
+                      <div style={{
+                        ...sty.card,
+                        boxShadow: is3D ? "-6px 8px 20px rgba(15, 23, 42, 0.08)" : "0 2px 8px rgba(0,0,0,0.03)",
+                        border: "1.5px solid #cbd5e1",
+                        transition: "box-shadow 0.4s ease"
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>Daftar Audit Aktif</div>
+                          <button style={{ ...sty.btn("primary"), padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 800 }} onClick={createMaturityAudit}>
+                            + Audit Baru
+                          </button>
+                        </div>
+                        {maturityAudits.length === 0 ? (
+                          <div style={{ textAlign: "center", padding: 32 }}>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>Belum ada audit</div>
+                            <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Klik "+ Audit Baru" untuk memulai asesmen maturity level gudang.</div>
+                            <button style={sty.btn("primary")} onClick={createMaturityAudit}>
+                              + Audit Baru
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                            {maturityAudits.map(a => {
+                              const canEditUPT = hasRole(currentUser, "ADMIN", "TL", "ASMAN", "MANAGER") && (a.status === "DRAFT" || a.status === "SELF_ASSESSMENT" || a.status === "REVISION");
+                              const canEditUIT = hasRole(currentUser, "ADMIN_UIT", "MGR_LOGISTIK_UIT") && a.status === "REVIEW_UIT";
+                              const canEditPusat = hasRole(currentUser, "SUPERADMIN", "MANAGER") && a.status === "FINAL";
+                              const canReview = canEditUPT || canEditUIT || canEditPusat;
+                              return (
+                                <div key={a.id} style={{
+                                  padding: 14,
+                                  borderRadius: 10,
+                                  border: `1.5px solid #cbd5e1`,
+                                  background: a.status === "FINAL" ? `${MATURITY_WORKFLOW_COLOR.FINAL}08` : "white",
+                                  boxShadow: is3D ? "0 4px 12px rgba(15, 23, 42, 0.08), -2px 4px 8px rgba(0,0,0,0.04)" : "none",
+                                  transition: "all 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+                                  cursor: "default",
+                                  position: "relative"
+                                }}
+                                onMouseEnter={e => {
+                                  e.currentTarget.style.boxShadow = is3D ? "0 12px 28px rgba(15, 23, 42, 0.15), -4px 6px 16px rgba(0,0,0,0.08)" : "none";
+                                  e.currentTarget.style.borderColor = "#2563eb";
+                                  e.currentTarget.style.transform = "translateY(-2px)";
+                                }}
+                                onMouseLeave={e => {
+                                  e.currentTarget.style.boxShadow = is3D ? "0 4px 12px rgba(15, 23, 42, 0.08), -2px 4px 8px rgba(0,0,0,0.04)" : "none";
+                                  e.currentTarget.style.borderColor = "#cbd5e1";
+                                  e.currentTarget.style.transform = "translateY(0)";
+                                }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", position: "relative", zIndex: 1 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                      <div style={{ width: 44, height: 44, borderRadius: 10, background: MATURITY_WORKFLOW_COLOR[a.status], color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 18, flexShrink: 0 }}>{a.level || "—"}</div>
+                                      <div>
+                                        <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Level {a.level || "?"} — {MATURITY_LEVELS[a.level] || "Proses"}</div>
+                                        <div style={{ fontSize: 11, color: MATURITY_WORKFLOW_COLOR[a.status], fontWeight: 600, marginTop: 2 }}>{MATURITY_WORKFLOW_LABEL[a.status]}</div>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", position: "relative", zIndex: 20 }}>
+                                      <button style={{ ...sty.btn("ghost", "sm"), fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", pointerEvents: "auto" }} onClick={e => { e.stopPropagation(); exportMaturityAuditExcel(a); }}>
+                                        Excel
+                                      </button>
+                                      {canReview && <button style={{ ...sty.btn("primary", "sm"), fontSize: 11, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", pointerEvents: "auto" }} onClick={e => { e.stopPropagation(); openMaturityAudit(a); }}>
+                                        {canEditUPT ? "Input" : "Review"}
+                                      </button>}
+                                      {hasRole(currentUser, "ADMIN", "SUPERADMIN", "TL") && (
+                                        <button style={{ ...sty.btn("ghost", "sm"), fontSize: 11, color: C.red, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", pointerEvents: "auto" }} onClick={e => { e.stopPropagation(); deleteMaturityAudit(a.id); }}>
+                                          Hapus
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  {a.aspekScores && (
+                                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(2,1fr)", gap: 6, marginTop: 12 }}>
+                                      {[
+                                        { label: "Skor UIT", key: "uit" },
+                                        { label: "Skor Pusat", key: "pusat" },
+                                      ].map(col => {
+                                        const avg = AUDIT_ASPECTS.reduce((s, as) => s + (a.aspekScores[as.id]?.[col.key] || 0), 0) / AUDIT_ASPECTS.length;
+                                        return (
+                                          <div key={col.key} style={{ padding: 8, borderRadius: 6, background: C.muted + "11", textAlign: "center" }}>
+                                            <div style={{ fontSize: 11, color: C.muted }}>{col.label}</div>
+                                            <div style={{ fontSize: 16, fontWeight: 800, color: C.text, marginTop: 2 }}>{avg > 0 ? avg.toFixed(1) : "—"}</div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {a.fileNama && <div style={{ fontSize: 11, color: C.muted, marginTop: 8, display: "flex", alignItems: "center", gap: 4 }}>{a.fileNama}</div>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/*  HISTORY AUDIT  */}
+              {maturitySubTab === "history" && (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>Riwayat Audit Maturity</div>
+                    <button style={sty.btn("ghost")} onClick={() => setMaturitySubTab("pelaksanaan")}>← Kembali</button>
+                  </div>
+                  <div style={{ ...sty.card }}>
+                    {maturityAudits.length === 0 ? (
+                      <div style={{ fontSize: 13, color: C.muted, textAlign: "center", padding: 32 }}>Belum ada riwayat audit.</div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {maturityAudits.map(a => (
+                          <div key={a.id} onClick={() => { openMaturityAudit(a); setMaturitySubTab("pelaksanaan"); }} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.border}`, cursor: "pointer", transition: "background .15s" }} onMouseEnter={e => e.currentTarget.style.background = C.border} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                              <div style={{ width: 40, height: 40, borderRadius: 10, background: MATURITY_WORKFLOW_COLOR[a.status], color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 17, flexShrink: 0 }}>{a.level || "—"}</div>
+                              <div>
+                                <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>Level {a.level || "?"} — {MATURITY_LEVELS[a.level] || "Proses"}</div>
+                                <div style={{ fontSize: 11, color: MATURITY_WORKFLOW_COLOR[a.status], fontWeight: 600 }}>{MATURITY_WORKFLOW_LABEL[a.status]}</div>
+                                {a.catatanUPT && <div style={{ fontSize: 11, color: C.muted, marginTop: 2 }}>UPT: {a.catatanUPT.slice(0, 60)}{a.catatanUPT.length > 60 ? "…" : ""}</div>}
+                              </div>
+                            </div>
+                            <div style={{ textAlign: "right", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                              <div style={{ fontSize: 12, color: C.muted }}>{fmtDate(a.updatedAt || a.createdAt)}</div>
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button style={{ ...sty.btn("ghost", "sm"), fontSize: 10, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); exportMaturityAuditExcel(a); }}>Export</button>
+                                {hasRole(currentUser, "ADMIN", "SUPERADMIN", "TL") && (
+                                  <button style={{ ...sty.btn("ghost", "sm"), fontSize: 10, color: C.red, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={e => { e.stopPropagation(); deleteMaturityAudit(a.id); }}>Hapus</button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/*  FORM PENGISIAN 5S  */}
+              {maturitySubTab === "5s" && (
+                <Form5STab C={C} sty={sty} currentUser={currentUser} lokasiList={lokasiList}
+                  setMaturityAuditEvidence={setMaturityAuditEvidence} isMobile={isMobile} selectedUpt={selectedMaturityUpt} />
+              )}
+            </div>
+            );
+          })()}
+
         {/* APPROVAL — semua notifikasi approval (TUG, Lokasi/Blok, Pemindahan Stok, dkk) dikumpulkan di sini, dipisah per-bagian + riwayat di bawah */}
         {tab==="approval" && hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG") && (
           <div className="approval-page">
@@ -6800,90 +7704,6 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           />
         )}
 
-        {/* MATURITY AUDIT — Penilaian Maturity Level Gudang UPT */}
-        {tab==="maturity" && (
-          <div style={{display:"flex",flexDirection:"column",gap:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${C.border}`,paddingBottom:12,marginBottom:8,flexWrap:"wrap",gap:12}}>
-              <div style={{display:"flex",gap:8}}>
-                <button
-                  style={{...sty.btn(maturitySubTab==="pelaksanaan"?"primary":"ghost","sm")}}
-                  onClick={()=>setMaturitySubTab("pelaksanaan")}
-                >
-                  📋 Pelaksanaan Audit
-                </button>
-                <button
-                  style={{...sty.btn(maturitySubTab==="5s"?"primary":"ghost","sm")}}
-                  onClick={()=>setMaturitySubTab("5s")}
-                >
-                  ✨ Form Checklist 5S
-                </button>
-              </div>
-
-              {/* Selector UPT untuk pemantauan / penilaian multi-UPT */}
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:12,fontWeight:700,color:C.muted}}>Unit UPT:</span>
-                <select
-                  style={{...sty.input,width:"auto",padding:"6px 12px",fontSize:12,fontWeight:700,borderRadius:8,background:C.surface,color:C.text}}
-                  value={selectedMaturityUpt}
-                  onChange={e => setSelectedMaturityUpt(e.target.value)}
-                >
-                  {(uptList.length > 0 ? uptList : DEFAULT_UPT_LIST).map(u => (
-                    <option key={u.id} value={u.nama}>{u.nama}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {maturitySubTab==="5s" ? (
-              <Form5STab
-                C={C}
-                sty={sty}
-                currentUser={currentUser}
-                lokasiList={lokasiList}
-                setMaturityAuditEvidence={setMaturityAuditEvidence}
-                onBack={()=>setMaturitySubTab("pelaksanaan")}
-                isMobile={isMobile}
-                selectedUpt={selectedMaturityUpt}
-              />
-            ) : (
-              <MaturityAuditEditor
-                maturityAuditModal={maturityAuditModal}
-                setMaturityAuditModal={setMaturityAuditModal}
-                maturityAuditForm={maturityAuditForm}
-                setMaturityAuditForm={setMaturityAuditForm}
-                maturityAuditEvidence={maturityAuditEvidence}
-                setMaturityAuditEvidence={setMaturityAuditEvidence}
-                maturityAuditSaving={maturityAuditSaving}
-                saveMaturityAudit={saveMaturityAudit}
-                deleteMaturityAudit={deleteMaturityAudit}
-                currentUser={currentUser}
-                hasRole={hasRole}
-                selectedUpt={selectedMaturityUpt}
-                isMobile={isMobile}
-                C={C}
-                sty={sty}
-              />
-            )}
-          </div>
-        )}
-
-        {/* INSPEKSI MATERIAL CADANG */}
-        {tab==="inspeksiMaterial" && (
-          <InspeksiMaterialCadangTab
-            stocks={stocks}
-            katalogList={katalogList}
-            lokasiList={lokasiList}
-            materialInspections={materialInspections}
-            setMaterialInspections={setMaterialInspections}
-            currentUser={currentUser}
-            C={C}
-            sty={sty}
-            isMobile={isMobile}
-            showToast={showToast}
-            saveToCloud={saveToCloud}
-          />
-        )}
-
         </div>
       </main>
 
@@ -6919,7 +7739,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={sty.label}>Foto Kondisi Barang (opsional)</label>
-                {stockForm.img && <img src={stockForm.img} alt="prev" onClick={()=>setLightboxImg(stockForm.img)} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.img && <img src={resolveStockPhotoUrl(stockForm.img)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.img))} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,img})))} style={{display:"none"}}/>
@@ -6927,7 +7747,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
               <div>
                 <label style={sty.label}>Foto Nameplate {!stockForm.id?.startsWith("STK-SAP-") && "*"}</label>
-                {stockForm.fotoNameplate && <img src={stockForm.fotoNameplate} alt="prev" onClick={()=>setLightboxImg(stockForm.fotoNameplate)} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.fotoNameplate && <img src={resolveStockPhotoUrl(stockForm.fotoNameplate)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoNameplate))} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoNameplate:img})))} style={{display:"none"}}/>
@@ -6935,7 +7755,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
               <div>
                 <label style={sty.label}>Foto Keseluruhan {!stockForm.id?.startsWith("STK-SAP-") && "*"}</label>
-                {stockForm.fotoKeseluruhan && <img src={stockForm.fotoKeseluruhan} alt="prev" onClick={()=>setLightboxImg(stockForm.fotoKeseluruhan)} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.fotoKeseluruhan && <img src={resolveStockPhotoUrl(stockForm.fotoKeseluruhan)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoKeseluruhan))} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoKeseluruhan:img})))} style={{display:"none"}}/>
@@ -7275,7 +8095,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         const isSAP = st.id?.startsWith("STK-SAP-");
         const bs = getSAPBadgeStyle(st.katalog);
         const fotoBox = (label, field) => {
-          const previewImg = pendingFoto[field] ?? st[field];
+          const previewImg = resolveStockPhotoUrl(pendingFoto[field] ?? st[field]);
           const hasUnsaved = pendingFoto[field] != null;
           return (
             <div style={{flex:1,minWidth:160}}>
@@ -7625,7 +8445,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setMaturityModal(false)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveMaturityAssessment(maturityForm); setMaturityModal(false);}}>💾 Simpan</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{if (await saveMaturityAssessment(maturityForm) !== false) setMaturityModal(false);}}>💾 Simpan</button>
             </div>
           </div>
         </div>

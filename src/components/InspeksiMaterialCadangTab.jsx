@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import { fmtDate, uid } from "../lib/utils.js";
-import { hasRole } from "../lib/roles.js";
 import { normalizeKatalog, matchesMaterialSearch } from "../lib/sap.js";
 
 const KONDISI_OPTIONS = [
@@ -24,21 +23,22 @@ export function InspeksiMaterialCadangTab({
   katalogList = [],
   lokasiList = [],
   materialInspections = [],
-  setMaterialInspections,
   currentUser,
   C = {},
   sty = {},
   isMobile,
   showToast,
-  saveToCloud
+  canMutate = false,
+  onSaveInspection
 }) {
-  const [subTab, setSubTab] = useState("formInspeksi"); // Default langsung ke Form Inspeksi!
+  const [subTab, setSubTab] = useState(() => canMutate ? "formInspeksi" : "riwayat");
   const [stockSearchQuery, setStockSearchQuery] = useState("");
   const [stockDropdownOpen, setStockDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
   // Selected Stock Item
   const [selectedStockId, setSelectedStockId] = useState("");
+  const [selectedKatalogId, setSelectedKatalogId] = useState("");
   const [noKatalog, setNoKatalog] = useState("");
   const [namaBarang, setNamaBarang] = useState("");
   const [lokasiNama, setLokasiNama] = useState("GUDANG KETINTANG");
@@ -87,6 +87,10 @@ export function InspeksiMaterialCadangTab({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!canMutate) setSubTab("riwayat");
+  }, [canMutate]);
+
   // Map stocks dengan metadata katalog & lokasi
   const enrichedStocks = useMemo(() => {
     return (stocks || []).map(s => {
@@ -121,6 +125,7 @@ export function InspeksiMaterialCadangTab({
   // Handle Pilih Barang dari Autocomplete Dropdown
   function selectStockItem(item) {
     setSelectedStockId(item.id);
+    setSelectedKatalogId(item.katalogId || "");
     setNoKatalog(item.noKat);
     setNamaBarang(item.katalogName);
     setLokasiNama(item.lokasiNama);
@@ -143,16 +148,16 @@ export function InspeksiMaterialCadangTab({
   function handleSinglePhotoAdd(e, setFotoFn) {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFotoFn({ name: file.name, url: reader.result, size: file.size });
-    };
-    reader.readAsDataURL(file);
+    setFotoFn({ name: file.name, file, url: URL.createObjectURL(file), size: file.size, contentType: file.type });
     e.target.value = "";
   }
 
   // Simpan Hasil Inspeksi
   async function handleSaveInspeksi() {
+    if (!canMutate) {
+      showToast && showToast("Akun Anda hanya memiliki akses baca untuk Inspeksi Material.", "error");
+      return;
+    }
     if (!namaBarang.trim()) {
       showToast && showToast("Pilih atau isi nama barang material terlebih dahulu.", "error");
       return;
@@ -162,7 +167,7 @@ export function InspeksiMaterialCadangTab({
       const entry = {
         id: "INSP-" + Date.now() + "-" + uid().slice(-4),
         stockId: selectedStockId || null,
-        katalogId: selectedStockId || null,
+        katalogId: selectedKatalogId || null,
         noKatalog: noKatalog.trim() || "-",
         namaBarang: namaBarang.trim(),
         lokasiNama: lokasiNama.trim() || "GUDANG KETINTANG",
@@ -182,19 +187,20 @@ export function InspeksiMaterialCadangTab({
           bebasBocor: paramBebasBocor,
           kemasanBaik: paramKemasanBaik
         },
-        fotos: [foto1, foto2].filter(Boolean),
         inspectorId: currentUser?.id,
         inspectorName: currentUser?.name || currentUser?.username || "Auditor Logistik",
         createdAt: Date.now()
       };
 
-      const updatedList = [entry, ...(materialInspections || [])];
-      setMaterialInspections(updatedList);
-      saveToCloud && await saveToCloud({ materialInspections: updatedList });
+      const saved = await onSaveInspection?.(entry, [foto1, foto2].filter(Boolean));
+      if (!saved) {
+        showToast && showToast("Gagal menyimpan inspeksi ke server. Form dan data foto tetap terbuka untuk dicoba lagi.", "error");
+        return;
+      }
       showToast && showToast(`✅ Inspeksi untuk ${namaBarang} berhasil disimpan.`);
       
       // Buka modal cetak Berita Acara (BA)
-      openBaModal([entry]);
+      openBaModal([saved]);
     } catch (err) {
       console.error("Error simpan inspeksi:", err);
       showToast && showToast("Gagal menyimpan inspeksi.", "error");
@@ -259,12 +265,14 @@ export function InspeksiMaterialCadangTab({
       {/* Sub-tab Navigation Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.border || "#e2e8f0"}`, paddingBottom: 12, flexWrap: "wrap", gap: 12 }}>
         <div style={{ display: "flex", gap: 8 }}>
-          <button
-            style={{ ...sty.btn(subTab === "formInspeksi" ? "primary" : "ghost", "sm") }}
-            onClick={() => setSubTab("formInspeksi")}
-          >
-            📝 Formulir Inspeksi Material
-          </button>
+          {canMutate && (
+            <button
+              style={{ ...sty.btn(subTab === "formInspeksi" ? "primary" : "ghost", "sm") }}
+              onClick={() => setSubTab("formInspeksi")}
+            >
+              📝 Formulir Inspeksi Material
+            </button>
+          )}
 
           <button
             style={{ ...sty.btn(subTab === "riwayat" ? "primary" : "ghost", "sm") }}
@@ -284,8 +292,14 @@ export function InspeksiMaterialCadangTab({
         )}
       </div>
 
+      {!canMutate && (
+        <div style={{ padding: "10px 12px", borderRadius: 10, background: C.bg || "#f8fafc", border: `1px solid ${C.border || "#e2e8f0"}`, color: C.muted || "#64748b", fontSize: 12 }}>
+          Akses baca saja — Anda dapat melihat riwayat dan mencetak Berita Acara, tetapi tidak dapat membuat atau mengubah inspeksi.
+        </div>
+      )}
+
       {/* SUB-TAB 1: FORMULIR INSPEKSI MATERIAL (LANGSUNG TERSEDIA) */}
-      {subTab === "formInspeksi" && (
+      {canMutate && subTab === "formInspeksi" && (
         <div style={{ background: C.surface || "#ffffff", border: `1px solid ${C.border || "#e2e8f0"}`, borderRadius: 14, padding: 22, boxShadow: "0 4px 16px rgba(0,0,0,0.04)", maxWidth: 850, margin: "0 auto", width: "100%" }}>
           
           <div style={{ marginBottom: 18, borderBottom: `1px solid ${C.border || "#e2e8f0"}`, paddingBottom: 12 }}>
@@ -370,6 +384,7 @@ export function InspeksiMaterialCadangTab({
                     type="button"
                     onClick={() => {
                       setSelectedStockId("");
+                      setSelectedKatalogId("");
                       setNoKatalog("");
                       setNamaBarang("");
                       setStockSearchQuery("");

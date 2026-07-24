@@ -99,7 +99,7 @@ const test = base.extend({
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("sb-e2e-auth-token", JSON.stringify({ e2e: true }));
-      localStorage.setItem("warnoto_profile_cache_v1", JSON.stringify(profile));
+      localStorage.setItem("warnoto_profile_cache_v2", JSON.stringify({ endpoint: undefined, profile }));
       localStorage.setItem("warnoto_theme", "light");
       Object.entries(cloud).forEach(([key, value]) => {
         localStorage.setItem(`warnoto_${key}`, JSON.stringify(value));

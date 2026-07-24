@@ -173,11 +173,71 @@
 .operations-table-card thead tr { background: #0b2559 !important; }
 
 .attb-page .operations-segments { margin-bottom: 8px; }
-.attb-pipeline { display: flex; align-items: stretch; gap: 3px; margin-bottom: 16px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scroll-snap-type: x proximity; padding: 2px 1px 7px; }
-.attb-stage-card { flex: 0 0 auto !important; min-width: 94px !important; padding: 7px 8px !important; border-width: 1px !important; border-radius: 10px !important; box-shadow: none !important; scroll-snap-align: start; }
-.attb-stage-card.is-source { min-width: 100px !important; }
-.attb-pipeline > div:not(.attb-stage-card) { flex-shrink: 0; }
+.attb-pipeline { position: relative; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); align-items: stretch; gap: 12px; width: min(100%, 980px); margin: 0 auto 16px; padding: 2px 1px 7px; }
+.attb-stage-card,
+.attb-pipeline__end { position: relative; min-width: 0 !important; min-height: 88px; padding: 9px 8px !important; border-radius: 10px !important; box-shadow: none !important; }
+.attb-stage-card { width: 100%; border-width: 1px !important; scroll-snap-align: start; }
+.attb-stage-card::after,
+.attb-pipeline__end::after { content: ""; position: absolute; inset: 7px; border: 1px solid rgba(148,163,184,.14); border-radius: 7px; pointer-events: none; }
+.attb-stage-card:not(:first-child)::before,
+.attb-pipeline__end::before { content: ""; position: absolute; left: -13px; top: 50%; width: 12px; height: 2px; background: #cbd5e1; transform: translateY(-50%); pointer-events: none; }
+.attb-pipeline__end { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 2px dashed #16a34a; background: #f0fdf4; align-self: stretch; }
 .attb-stage-code { display: inline-flex; min-width: 25px; height: 18px; align-items: center; justify-content: center; padding: 0 4px; border-radius: 5px; background: rgba(100,116,139,.12); color: inherit; font-size: 12px; font-weight: 900; letter-spacing: .5px; }
+
+/* ATTB — tabel desktop wrapper (disembunyikan di mobile, digantikan .attb-mobile-cards) */
+.attb-table-wrap { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; box-shadow: 0 1px 2px rgba(15,23,42,.04),0 8px 18px -19px rgba(15,23,42,.7); margin-bottom: 12px; }
+
+/* ATTB — card layout mobile (disembunyikan di desktop) */
+.attb-mobile-cards { display: none; margin-bottom: 12px; }
+.attb-mobile-card {
+  position: relative;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(15,23,42,.06), 0 6px 16px -14px rgba(15,23,42,.6);
+  transition: box-shadow .16s ease, transform .16s ease;
+}
+.attb-mobile-card:active { transform: scale(.995); }
+.attb-preview-trigger { cursor: pointer; }
+.attb-preview-backdrop { position: fixed; inset: 0; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15,23,42,.62); }
+.attb-preview-dialog { width: min(900px,100%); max-height: min(90vh,760px); overflow: hidden; display: flex; flex-direction: column; border: 1px solid #dbe3ef; border-radius: 14px; background: #fff; color: #172033; box-shadow: 0 24px 70px rgba(15,23,42,.3); }
+.attb-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #e5eaf1; }
+.attb-preview-header h3 { margin: 0; font-size: 16px; font-weight: 800; }
+.attb-preview-header p { margin: 3px 0 0; color: #64748b; font-size: 13px; }
+.attb-preview-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.attb-preview-badges span { padding: 4px 8px; border-radius: 999px; background: #eef2f7; color: #475569; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.attb-preview-body { display: grid; grid-template-columns: minmax(220px,.8fr) minmax(0,1.2fr); gap: 18px; padding: 18px; overflow: auto; }
+.attb-preview-photos { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; align-content: start; }
+.attb-preview-photo-card { min-width: 0; }
+.attb-preview-photo-label { margin: 0 0 5px; color: #475569; font-size: 12px; font-weight: 800; }
+.attb-preview-photo { min-height: 220px; max-height: 390px; display: flex; align-items: center; justify-content: center; border: 1px solid #e2e8f0; border-radius: 10px; background: #f8fafc; overflow: hidden; }
+.attb-preview-photo img { width: 100%; height: 100%; max-height: 390px; object-fit: contain; }
+.attb-preview-photo div { display: flex; flex-direction: column; align-items: center; gap: 5px; font-size: 42px; color: #94a3b8; }
+.attb-preview-photo small { font-size: 12px; }
+.attb-preview-group { margin-bottom: 14px; }
+.attb-preview-group h4 { margin: 0 0 6px; padding-bottom: 5px; border-bottom: 1px solid #e5eaf1; color: #334155; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.attb-preview-group dl { display: grid; grid-template-columns: minmax(120px,.75fr) minmax(0,1.25fr); gap: 5px 12px; margin: 0; font-size: 12px; }
+.attb-preview-group dt { color: #64748b; }
+.attb-preview-group dd { margin: 0; overflow-wrap: anywhere; font-weight: 600; }
+.attb-preview-group a { color: #2563eb; text-decoration: underline; }
+.attb-preview-history { margin: 0; padding-left: 18px; color: #64748b; font-size: 12px; }
+.attb-preview-footer { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px; border-top: 1px solid #e5eaf1; }
+[data-theme="dark"] .attb-preview-dialog { border-color: #475569; background: #0f172a; color: #e2e8f0; }
+[data-theme="dark"] .attb-preview-header, [data-theme="dark"] .attb-preview-footer, [data-theme="dark"] .attb-preview-group h4 { border-color: #334155; }
+[data-theme="dark"] .attb-preview-header p, [data-theme="dark"] .attb-preview-group dt { color: #94a3b8; }
+[data-theme="dark"] .attb-preview-badges span { background: #1e293b; color: #cbd5e1; }
+[data-theme="dark"] .attb-preview-photo { border-color: #334155; background: #1e293b; }
+[data-theme="dark"] .attb-preview-photo-label { color: #cbd5e1; }
+@media (max-width: 700px) { .attb-preview-header { flex-direction: column; } .attb-preview-badges { justify-content: flex-start; } .attb-preview-body { grid-template-columns: 1fr; padding: 14px; gap: 12px; } .attb-preview-photos { grid-template-columns: 1fr 1fr; } .attb-preview-photo { min-height: 170px; max-height: 250px; } }
+.attb-mobile-card__header { display: flex; align-items: center; gap: 10px; padding: 10px 12px 6px; }
+.attb-mobile-card__foto { width: 38px; height: 38px; flex-shrink: 0; border-radius: 7px; object-fit: cover; border: 1px solid #e2e8f0; }
+.attb-mobile-card__foto-placeholder { width: 38px; height: 38px; flex-shrink: 0; border-radius: 7px; border: 1px solid #e2e8f0; background: #f3f4f6; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #9ca3af; }
+.attb-mobile-card__id { min-width: 0; flex: 1; }
+.attb-mobile-card__body { padding: 2px 12px 8px; }
+.attb-mobile-card__row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 4px; }
+.attb-mobile-card__actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid #f1f5f9; background: #f8fafc; }
 
 /* ── DARK MODE (hero + heading operasional) ────────────────────────────────
    Scope MVP: hero berlatar putih & judul section (dark-text agar tidak
@@ -194,6 +254,11 @@
 [data-theme="dark"] .operations-section-heading { border-bottom-color: #334155; }
 [data-theme="dark"] .operations-section-heading h2 { color: #e2e8f0; }
 [data-theme="dark"] .operations-section-heading small { color: #94a3b8; }
+[data-theme="dark"] .attb-page .attb-stage-card:not(.is-active) { background: #1e293b !important; border-color: #475569 !important; color: #e2e8f0 !important; }
+[data-theme="dark"] .attb-page .attb-stage-card:not(.is-active) .attb-stage-code { background: rgba(148,163,184,.18); }
+[data-theme="dark"] .attb-page .attb-pipeline__end { background: #052e1a !important; border-color: #4ade80 !important; }
+[data-theme="dark"] .attb-page .attb-stage-card:not(:first-child)::before,
+[data-theme="dark"] .attb-page .attb-pipeline__end::before { background: #64748b; }
 
 @media (max-width: 800px) {
   .operations-hero__top { flex-direction: column; padding: 20px; }
@@ -355,47 +420,36 @@
   .heavy-equipment-page .dashboard-mode-switch button { padding-inline: 9px; }
 }
 
-/* ATTB: compact pipeline toolbar (segments + stage cards) & responsive hero metrics for phone screens. */
+/* ATTB: compact pipeline toolbar (segments + stage cards) for phone screens. */
 @media (max-width: 768px) {
-  .operations-hero--summary-only {
-    display: flex !important;
-    flex-direction: column !important;
-  }
-  .operations-hero__footer {
-    display: flex !important;
-    flex-direction: column !important;
-    width: 100% !important;
-  }
-  .operations-hero__metrics {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    width: 100% !important;
-  }
-  .operations-metric {
-    min-width: 0 !important;
-    padding: 10px 12px !important;
-    border-top: 1px solid rgba(219,234,254,.1) !important;
-    border-right: 1px solid rgba(219,234,254,.1) !important;
-  }
-  .operations-metric:nth-child(2n) {
-    border-right: 0 !important;
-  }
-  .operations-metric span {
-    white-space: normal !important;
-    line-height: 1.25 !important;
-    font-size: 10px !important;
-    word-break: break-word !important;
-  }
-  .operations-hero__scope {
-    width: 100% !important;
-    padding: 10px 14px !important;
-    border-top: 1px solid rgba(219,234,254,.14) !important;
-    text-align: left !important;
-  }
-
   .attb-page .operations-segments { margin-bottom: 6px; }
-  .attb-page .attb-pipeline { gap: 4px; padding: 2px 1px 8px; }
-  .attb-page .attb-stage-card { min-width: 84px !important; padding: 6px 7px !important; }
-  .attb-page .attb-stage-card.is-source { min-width: 90px !important; }
+  /* ATTB KPI: four metrics use a 2x2 grid on narrow phones so labels do not
+     overlap or get clipped by the hero's horizontal viewport. */
+  .attb-page .operations-hero__metrics {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+    overflow: visible;
+  }
+  .attb-page .operations-hero--summary-only .operations-metric {
+    min-width: 0;
+    padding: 12px 10px;
+  }
+  .attb-page .operations-hero--summary-only .operations-metric span {
+    min-height: 30px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+  .attb-page .attb-pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; padding: 2px 1px 8px; }
+  /* The full 5-stage chain cannot fit horizontally at 390px. Wrap cards into
+     two columns and remove connector cells on phones so no card is cropped. */
+  .attb-page .attb-stage-card,
+  .attb-page .attb-stage-card.is-source { min-width: 0 !important; min-height: 82px; padding: 6px 7px !important; }
+  .attb-page .attb-stage-card::before,
+  .attb-page .attb-pipeline__end::before { display: none; }
+  .attb-page .attb-pipeline__end { grid-column: 1 / -1; min-width: 0 !important; min-height: 70px; }
   .attb-page .operations-actionbar { padding: 6px 9px; margin-bottom: 8px; }
+  /* Tabel utama ATTB: sembunyikan tabel desktop, tampilkan kartu mobile khusus. */
+  .attb-page .attb-table-wrap { display: none !important; }
+  .attb-page .attb-mobile-cards { display: block; }
 }

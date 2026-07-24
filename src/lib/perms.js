@@ -18,16 +18,17 @@ export const PERM_MENUS = [
   { key: "menu.heavyEquipment", label: "Alat Berat" },
   { key: "menu.attb", label: "ATTB" },
   { key: "menu.opname", label: "Stock Opname & Count" },
+  { key: "menu.maturity", label: "Penilaian Maturity" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
   { key: "menu.rencana", label: "Rencana Kedatangan" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
   { key: "menu.ai", label: "Pak War (AI)" },
-  { key: "menu.maturity", label: "Maturity Audit" },
-  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
 ];
 
 export const PERM_AKSI = [
   { key: "aksi.buatTransaksi", label: "Buat Transaksi TUG" },
   { key: "aksi.kelolaMaster", label: "Kelola Master Data" },
+  { key: "aksi.kelolaInspeksi", label: "Kelola Inspeksi Material" },
   { key: "aksi.import", label: "Import Data (Excel)" },
   { key: "aksi.kelolaAkun", label: "Kelola Akun" },
 ];
@@ -48,7 +49,7 @@ function menus(...ids) {
 
 const FULL_MENUS = menus(
   "dashboard", "stock", "kapasitasGudang", "master", "transaction", "approval",
-  "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai", "maturity", "inspeksiMaterial"
+  "heavyEquipment", "attb", "opname", "maturity", "rencana", "forecastStok", "ai"
 );
 
 // Default per role — turunan langsung dari gating hardcoded App.jsx:
@@ -57,14 +58,14 @@ const FULL_MENUS = menus(
 export const DEFAULT_PERMS = {
   // ULTG create (TUG-5) tetap lewat jalur canCreateULTG terpisah di App.jsx,
   // jadi aksi.buatTransaksi ADMIN_ULTG sengaja false di sini (perilaku tak berubah).
-  ADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true },
-  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.import": true },
-  ASMAN: { ...FULL_MENUS },
+  ADMIN: { ...FULL_MENUS, "menu.inspeksiMaterial": true, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.kelolaInspeksi": true, "aksi.import": true, "aksi.kelolaAkun": true },
+  TL: { ...FULL_MENUS, "menu.inspeksiMaterial": true, "aksi.buatTransaksi": true, "aksi.kelolaInspeksi": true, "aksi.import": true },
+  ASMAN: { ...FULL_MENUS, "menu.inspeksiMaterial": true, "aksi.kelolaInspeksi": true },
   MANAGER: { ...FULL_MENUS },
   ADMIN_UIT: { ...FULL_MENUS },
   MGR_LOGISTIK_UIT: { ...FULL_MENUS },
   // VIEWER: cabang normal TANPA menu approval.
-  VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai", "maturity", "inspeksiMaterial"),
+  VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai"),
   PENGADAAN: menus("dashboard", "rencana"),
   ADMIN_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),
   MGR_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),
