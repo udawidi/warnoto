@@ -4,8 +4,9 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo, Fragment } from "react";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS } from "./src/constants.js";
-import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError } from "./src/supabaseClient.js";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError, isRetryableLoginError } from "./src/supabaseClient.js";
 import { CLOUD } from "./src/lib/cloud.js";
+import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.js";
 import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
 import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty } from "./src/theme.js";
@@ -19,6 +20,7 @@ import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, at
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
 import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, syncMaterialCadangRows, loadWarehouseCapacity, syncWarehouseCapacity, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { loadMaturityAssessments, loadMaturityAudits, upsertMaturityAssessment, upsertMaturityAudit, upsertMaturityAssessments, upsertMaturityAudits, deleteMaturityAuditRow } from "./src/lib/maturitySync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
 import { TelegramWhitelistPanel } from "./src/components/TelegramWhitelistPanel.jsx";
@@ -204,7 +206,12 @@ function readCachedList(key) {
 // localStorage (~5-10MB) lalu gagal tersimpan diam-diam (QuotaExceededError yang ditelan
 // CLOUD.set). State React yang dipakai UI TIDAK memakai versi ini — tetap lengkap dgn foto.
 function leanStocks(list) {
-  return (Array.isArray(list) ? list : []).map(s => ({ ...s, fotoKeseluruhan: undefined, fotoNameplate: undefined }));
+  // Foto yang sudah berupa URL Storage sangat kecil (±100 byte) dan aman
+  // disimpan di cache. Yang harus dibuang hanya data-URL/base64 besar agar
+  // localStorage tidak penuh. Sebelumnya kedua field selalu dihapus, sehingga
+  // saat cache-first menampilkan Data Stok sebelum refresh server selesai,
+  // Foto Nameplate tampak hilang walaupun URL-nya sudah ada di database.
+  return leanStocksForCache(list);
 }
 
 // Kunci localStorage cache Fase 1 (cache-first render). Dibersihkan saat logout supaya
@@ -256,8 +263,8 @@ export default function PLNWarehouse() {
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
   const [stockCountList, setStockCountList] = useState(() => readCachedList("pln_stockcount_v1") ?? []); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [approvalHistoryList, setApprovalHistoryList] = useState([]); // log keputusan approval (Lokasi/Blok, Pemindahan Stok, dkk) — TUG tetap diturunkan dari txns
-  const [maturityAssessments, setMaturityAssessments] = useState([]); // riwayat asesmen Maturity Level Gudang UPT Surabaya, diisi manual oleh Admin
-  const [maturityAudits, setMaturityAudits] = useState([]); // Penilaian Maturity — audit berjenjang UPT→UIT→Pusat (mekanisme sync blob sama seperti maturityAssessments)
+  const [maturityAssessments, setMaturityAssessments] = useState(() => readCachedList("pln_maturity_v1") ?? []); // cache fallback read-only; DB adalah canonical
+  const [maturityAudits, setMaturityAudits] = useState(() => readCachedList("pln_maturity_audits_v1") ?? []); // cache fallback read-only; DB adalah canonical
   const [heavyEquipmentList, setHeavyEquipmentList] = useState(() => readCachedList("pln_heavy_equipment_v1") ?? []);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState(() => readCachedList("pln_heavy_equipment_loans_v1") ?? []);
   const [attbList, setAttbList] = useState(() => readCachedList("pln_attb_v1") ?? []);
@@ -386,7 +393,11 @@ export default function PLNWarehouse() {
   const accountMenuRef = useRef(null);
   // Dark mode: persist manual di localStorage, default terang (tanpa auto-deteksi OS).
   // Palet C di-shadow di bawah (dekat makeSty) supaya semua C.xxx/sty.xxx ikut tema.
-  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("warnoto_theme") || "light"; } catch { return "light"; } });
+  const [theme, setTheme] = useState(() => {
+    // Always start each load in light mode; the in-session toggle still works.
+    try { localStorage.setItem("warnoto_theme", "light"); } catch {}
+    return "light";
+  });
   useEffect(() => { document.documentElement.setAttribute("data-theme", theme); try { localStorage.setItem("warnoto_theme", theme); } catch {} }, [theme]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => typeof window !== "undefined" && window.innerWidth > 768 && window.innerWidth <= 1120);
   const compactViewportRef = useRef(typeof window !== "undefined" && window.innerWidth > 768 && window.innerWidth <= 1120);
@@ -509,6 +520,7 @@ export default function PLNWarehouse() {
   const [forecastDetailLoading, setForecastDetailLoading] = useState(false);
   const showToastRef = useRef(null);
   const lastSyncErrorToastRef = useRef(0);
+  const maturityMigrationPromptedRef = useRef({ assessments:false, audits:false });
 
   useEffect(() => {
     // Tabel master memakai RLS authenticated. Tunggu sesi/profil selesai dipulihkan;
@@ -559,6 +571,8 @@ export default function PLNWarehouse() {
         loadMasterTable("stock_count"),
         loadMasterTable("attb_list"),
       ];
+      // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
+      const maturityLoads = [loadMaturityAssessments(), loadMaturityAudits()];
 
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
@@ -569,7 +583,7 @@ export default function PLNWarehouse() {
       if (initialStocks !== null) setStocks(initialStocks?.length ? dedupeById(initialStocks).list : (cs || DEFAULT_STOCKS));
       setLoading(false);
 
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote] = await Promise.all(masterLoads);
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, cmaRemote, cmauRemote] = await Promise.all([...masterLoads, ...maturityLoads]);
       const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
 
       if (cs && ckat && clok) {
@@ -764,8 +778,56 @@ export default function PLNWarehouse() {
         if (scLocal.length > 0) syncMasterTable("stock_count", scLocal);
       }
       setApprovalHistoryList(cah || []);
-      setMaturityAssessments(cma || []);
-      setMaturityAudits(cmau || []);
+      // DB adalah canonical. Cache Maturity hanya dipakai bila remote gagal;
+      // remote yang sukses tapi kosong harus tetap dianggap kosong dan pengguna
+      // diberi satu kesempatan eksplisit untuk memigrasikan cache lama.
+      const maturityMigrationCandidates = [];
+      const prepareMaturityCacheMigration = ({ key, label, cached, remote, setState, upsertAll, reload }) => {
+        if (remote === null) {
+          setState(cached || []);
+          loadFailures.push(label);
+          return;
+        }
+        if (remote.length > 0) {
+          setState(remote);
+          return;
+        }
+        setState([]);
+        if (!cached?.length || maturityMigrationPromptedRef.current[key]) return;
+        maturityMigrationPromptedRef.current[key] = true;
+        maturityMigrationCandidates.push({ label, cached, setState, upsertAll, reload });
+      };
+      prepareMaturityCacheMigration({ key:"assessments", label:"Asesmen Maturity", cached:cma, remote:cmaRemote, setState:setMaturityAssessments, upsertAll:upsertMaturityAssessments, reload:loadMaturityAssessments });
+      prepareMaturityCacheMigration({ key:"audits", label:"Audit Maturity", cached:cmau, remote:cmauRemote, setState:setMaturityAudits, upsertAll:upsertMaturityAudits, reload:loadMaturityAudits });
+      if (maturityMigrationCandidates.length > 0) {
+        const migrationSummary = maturityMigrationCandidates.map(item => `${item.cached.length} ${item.label}`).join(" dan ");
+        askConfirmDelete({
+          title: "Migrasikan data Maturity ke server?",
+          message: <>Server belum memiliki data tersebut, tetapi ditemukan <b>{migrationSummary}</b> di perangkat ini.</>,
+          warning: "Migrasi hanya menyimpan metadata Maturity; file/foto tidak ikut diunggah. Periksa hasil setelah proses selesai.",
+          confirmLabel: "Migrasikan ke Server",
+          onConfirm: async () => {
+            const results = await Promise.all(maturityMigrationCandidates.map(async candidate => {
+              // Satu request batch per tabel mencegah migrasi parsial di tabel itu.
+              const migrated = await candidate.upsertAll(candidate.cached);
+              if (!migrated) return { ...candidate, verified:null };
+              const verified = await candidate.reload();
+              const expectedIds = new Set(candidate.cached.map(item => item.id));
+              const valid = verified !== null
+                && verified.length === candidate.cached.length
+                && verified.every(item => expectedIds.has(item.id));
+              return { ...candidate, verified:valid ? verified : null };
+            }));
+            const failed = results.filter(result => result.verified === null);
+            results.filter(result => result.verified !== null).forEach(result => result.setState(result.verified));
+            if (failed.length > 0) {
+              showToast(`Migrasi ${failed.map(item => item.label).join(" dan ")} gagal atau belum dapat diverifikasi. Data perangkat tidak dihapus.`, "error");
+              return;
+            }
+            showToast("Data Maturity berhasil dimigrasikan dan diverifikasi di server.");
+          },
+        });
+      }
       // Alat Berat/Peminjaman UPT — Supabase (heavy_equipment/_loans) sekarang sumber
       // utama kalau sudah ada isinya; kalau masih kosong (instalasi lama yang baru
       // upgrade ke skema jsonb ini, atau baru pertama kali), dorong sekali data
@@ -887,8 +949,6 @@ export default function PLNWarehouse() {
     const opn = overrides.opnameList ?? stateRef.current.opnameList;
     const sc = overrides.stockCountList ?? stateRef.current.stockCountList;
     const ah = overrides.approvalHistoryList ?? stateRef.current.approvalHistoryList;
-    const ma = overrides.maturityAssessments ?? stateRef.current.maturityAssessments;
-    const maud = overrides.maturityAudits ?? stateRef.current.maturityAudits;
     const he = overrides.heavyEquipmentList ?? stateRef.current.heavyEquipmentList;
     const hel = overrides.heavyEquipmentLoans ?? stateRef.current.heavyEquipmentLoans;
     const attb = overrides.attbList ?? stateRef.current.attbList;
@@ -909,8 +969,6 @@ export default function PLNWarehouse() {
       CLOUD.set("pln_opname_v1", opn),
       CLOUD.set("pln_stockcount_v1", sc),
       CLOUD.set("pln_approval_history_v1", ah),
-      CLOUD.set("pln_maturity_v1", ma),
-      CLOUD.set("pln_maturity_audits_v1", maud),
       CLOUD.set("pln_heavy_equipment_v1", he),
       CLOUD.set("pln_heavy_equipment_loans_v1", hel),
       CLOUD.set("pln_attb_v1", attb),
@@ -1071,11 +1129,25 @@ export default function PLNWarehouse() {
     if (!supabase) { setLoginErr("Supabase belum dikonfigurasi."); return; }
     if (!loginForm.username.trim() || !loginForm.password) { setLoginErr("Username dan password wajib diisi."); return; }
     setLoginBusy(true); setLoginErr("");
-    const { error } = await supabase.auth.signInWithPassword({
+    const payload = {
       email: usernameToAuthEmail(loginForm.username),
       password: loginForm.password,
-    });
-    setLoginBusy(false);
+    };
+    let error = null;
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const result = await supabase.auth.signInWithPassword(payload);
+          error = result?.error || null;
+        } catch (err) {
+          error = err;
+        }
+        if (!error || attempt === 1 || !isRetryableLoginError(error)) break;
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } finally {
+      setLoginBusy(false);
+    }
     // currentUser di-set oleh listener onAuthStateChange (lihat effect di bawah),
     // bukan di sini — supaya restore sesi (reload halaman) dan login manual
     // lewat jalur yang sama persis, tidak ada logic yang didobel.
@@ -1525,9 +1597,12 @@ export default function PLNWarehouse() {
   // Simpan 1 entri baru riwayat Maturity Level Gudang (khusus Admin, input manual)
   async function saveMaturityAssessment(form) {
     const entry = { id:`MAT-${uid().slice(-8)}`, level:form.level, catatan:form.catatan||"", tanggalAsesmen:form.tanggalAsesmen||Date.now(), createdBy:currentUser.id, createdAt:Date.now() };
-    const nm = [entry, ...maturityAssessments];
-    setMaturityAssessments(nm);
-    await saveToCloud({maturityAssessments: nm});
+    const saved = await upsertMaturityAssessment(entry);
+    if (!saved) {
+      showToast("Asesmen Maturity tidak tersimpan karena server tidak dapat dihubungi.", "error");
+      return false;
+    }
+    setMaturityAssessments(current => [entry, ...current.filter(item => item.id !== entry.id)]);
     showToast("✅ Asesmen Maturity Level disimpan!");
   }
 
@@ -1622,9 +1697,12 @@ export default function PLNWarehouse() {
         updatedBy: currentUser.id,
         history: [...(audit.history || []), { action: newStatus, by: currentUser.id, at: Date.now() }],
       };
-      const nm = audit.id ? maturityAudits.map(a => a.id === audit.id ? entry : a) : [entry, ...maturityAudits];
-      setMaturityAudits(nm);
-      await saveToCloud({ maturityAudits: nm });
+      const saved = await upsertMaturityAudit(entry);
+      if (!saved) {
+        showToast("Audit Maturity tidak tersimpan karena server tidak dapat dihubungi.", "error");
+        return;
+      }
+      setMaturityAudits(current => audit.id ? current.map(a => a.id === audit.id ? entry : a) : [entry, ...current]);
       logAudit(currentUser, audit.id ? "UPDATE" : "CREATE", "maturity_audit", entry.id, { status: newStatus, level, upt: entry.upt });
       setMaturityAuditModal(null);
       showToast(`Audit ${entry.upt} disimpan — ${MATURITY_WORKFLOW_LABEL[newStatus]}${newStatus === "FINAL" ? " (Nilai Final)" : ""}`);
@@ -1637,9 +1715,12 @@ export default function PLNWarehouse() {
       message: <>Apakah Anda yakin ingin menghapus data audit maturity untuk <b>{audit?.upt || "UPT"}</b> (Level {audit?.level || "?"})?</>,
       warning: "Tindakan ini tidak bisa dibatalkan.",
       onConfirm: async () => {
-        const nextAudits = maturityAudits.filter(a => a.id !== id);
-        setMaturityAudits(nextAudits);
-        await saveToCloud({ maturityAudits: nextAudits });
+        const deleted = await deleteMaturityAuditRow(id);
+        if (!deleted) {
+          showToast("Audit Maturity tidak dihapus karena server tidak dapat dihubungi.", "error");
+          return;
+        }
+        setMaturityAudits(current => current.filter(a => a.id !== id));
         logAudit(currentUser, "DELETE", "maturity_audit", id, { upt: audit?.upt });
         showToast("Riwayat audit maturity berhasil dihapus.");
         if (maturityAuditModal && maturityAuditModal.id === id) setMaturityAuditModal(null);
@@ -1854,7 +1935,7 @@ export default function PLNWarehouse() {
       const cur = stateRef.current.stocks.find(s => s.id === st0.id); // versi terkini
       if (!cur || !cur.fotoNameplate || cur.fotoNameplateOcr != null) continue;
       try {
-        pending.set(cur.id, await ocrSpaceOCR(cur.fotoNameplate));
+        pending.set(cur.id, await ocrSpaceOCR(resolveStockPhotoUrl(cur.fotoNameplate)));
       } catch (e) {
         console.warn("Auto-OCR nameplate gagal:", st0.id, e?.message||e);
         continue;
@@ -4646,6 +4727,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           tanggal: t.approvedAt || t.createdAt,
           namaPekerjaan: t.namaPekerjaan || "",
           status: t.status || "",
+          // Keep both source photos.  ATTB preview needs to distinguish the
+          // overall material photo from the nameplate (the old `foto` fallback
+          // discarded whichever one was not selected first).
+          fotoKeseluruhan: si.fotoBarangRetur || null,
+          fotoNameplate: si.fotoNameplate || null,
           foto: si.fotoBarangRetur || si.fotoNameplate || null,
         });
       });
@@ -4692,6 +4778,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   // (via prop C={C}) otomatis mengikuti tema aktif. Deklarasi sebelum sty dipakai.
   const C = theme === "dark" ? C_DARK : C_LIGHT;
   const sty = makeSty(isMobile, C);
+  const loginSty = makeSty(isMobile, C_LIGHT);
 
   // ══════════════════════ PUBLIC SCAN VIEW (QR dari HP, tanpa login) ══════════════════════
   const scanKatalogId = new URLSearchParams(window.location.search).get("scan");
@@ -4708,7 +4795,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
   if (!currentUser) return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#001a57 0%,#003087 50%,#0052cc 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',system-ui,sans-serif"}}>
-      <div style={{background:"white",borderRadius:20,overflow:"hidden",display:"flex",width:isMobile?"100%":720,maxWidth:isMobile?400:720,boxShadow:"0 25px 60px rgba(0,0,0,0.35)"}}>
+      <div style={{background:"linear-gradient(160deg,#123a7a,#0b2559)",borderRadius:20,overflow:"hidden",display:"flex",width:isMobile?"100%":720,maxWidth:isMobile?400:720,boxShadow:"0 25px 60px rgba(0,0,0,0.35)"}}>
         {/* KIRI — panel branding (desktop only) */}
         <div style={{display:isMobile?"none":"flex",flexDirection:"column",justifyContent:"center",width:300,flexShrink:0,padding:40,background:"linear-gradient(160deg,#123a7a,#0b2559)",color:"white"}}>
           <div style={{width:76,height:76,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",marginBottom:22,boxShadow:"0 8px 24px rgba(0,0,0,0.25)",padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
@@ -4717,27 +4804,27 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           <div style={{fontSize:13,color:"rgba(255,255,255,0.6)",lineHeight:1.5}}>{UPT} · {WAREHOUSE}</div>
         </div>
         {/* KANAN — form login */}
-        <div style={{flex:1,padding:isMobile?32:40,minWidth:0}}>
+        <div style={{flex:1,padding:isMobile?32:40,minWidth:0,background:"#fff"}}>
           {isMobile && (
             <div style={{textAlign:"center",marginBottom:24}}>
-              <div style={{width:72,height:72,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",border:`1px solid ${C.border}`,padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
-              <div style={{fontSize:26,fontWeight:900,color:C.accent,letterSpacing:"1px",lineHeight:1}}>WARNOTO</div>
-              <div style={{fontSize:12,color:C.muted,marginTop:6}}>{UPT} · {WAREHOUSE}</div>
+              <div style={{width:72,height:72,background:"white",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px",boxShadow:"0 8px 24px rgba(0,0,0,0.10)",border:`1px solid ${C_LIGHT.border}`,padding:12}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
+              <div style={{fontSize:26,fontWeight:900,color:C_LIGHT.accent,letterSpacing:"1px",lineHeight:1}}>WARNOTO</div>
+              <div style={{fontSize:12,color:C_LIGHT.muted,marginTop:6}}>{UPT} · {WAREHOUSE}</div>
             </div>
           )}
-          <div style={{fontSize:20,fontWeight:800,color:C.text,marginBottom:4}}>Selamat Datang</div>
-          <div style={{fontSize:13,color:C.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
+          <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:4}}>Selamat Datang</div>
+          <div style={{fontSize:13,color:C_LIGHT.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
           <div style={{marginBottom:16}}>
-            <label style={sty.label}>Username</label>
-            <input style={sty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
+            <label style={loginSty.label}>Username</label>
+            <input style={loginSty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
           </div>
           <div style={{marginBottom:8}}>
-            <label style={sty.label}>Password</label>
-            <input style={sty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+            <label style={loginSty.label}>Password</label>
+            <input style={loginSty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
           </div>
-          {loginErr && <div style={{color:C.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius:8}}>{loginErr}</div>}
-          <button style={{...sty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
-          <div style={{marginTop:16,fontSize:12,color:C.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
+          {loginErr && <div style={{color:C_LIGHT.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius:8}}>{loginErr}</div>}
+          <button style={{...loginSty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
+          <div style={{marginTop:16,fontSize:12,color:C_LIGHT.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
         </div>
       </div>
     </div>
@@ -5330,7 +5417,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
                       {photoSearchResults.map(r=>{
                         const est = enrichedStocks.find(s=>String(s.katalog)===String(r.katalog));
-                        const thumb = est?.fotoKeseluruhan || est?.img;
+                        const thumb = resolveStockPhotoUrl(est?.fotoKeseluruhan || est?.img);
                         const pct = Math.round((r.similarity||0)*100);
                         return (
                           <div key={r.katalog} onClick={()=>est&&setStockDetailId(est.id)} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,cursor:est?"pointer":"default",display:"flex",gap:10,alignItems:"center",background:C.surface}}>
@@ -5383,8 +5470,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     const hasDenah = !!(gdg?.denahImageData || (lok?.subGudangId && subGudangList.find(s=>s.id===lok.subGudangId)?.denahImageData));
                     return (
                       <tr className="mobile-card-table__row" key={st.id} onClick={()=>{setPendingFoto({}); setStockDetailId(st.id);}} style={{cursor:"pointer",background:st.deletePending?"#fef2f2":undefined,borderBottom:`1px solid ${C.border}`,borderLeft:`3px ${st.deletePending?"dashed #dc2626":"solid"} ${st.deletePending?"#dc2626":noLokasi?"#f59e0b":isLow?C.red:st.jenisBarang==="Non-Stock"?"#be185d":C.green}`}}>
-                        <td className="mobile-card-table__photo" data-label="Foto" onClick={e=>{ if(st.fotoKeseluruhan){e.stopPropagation(); setLightboxImg(st.fotoKeseluruhan);} }} style={{padding:"8px 10px",textAlign:"center",cursor:st.fotoKeseluruhan?"zoom-in":"default"}}>
-                          {st.fotoKeseluruhan ? <img src={st.fotoKeseluruhan} alt={st.name} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:`1px solid ${C.border}`}}/>
+                        <td className="mobile-card-table__photo" data-label="Foto" onClick={e=>{ if(st.fotoKeseluruhan){e.stopPropagation(); setLightboxImg(resolveStockPhotoUrl(st.fotoKeseluruhan));} }} style={{padding:"8px 10px",textAlign:"center",cursor:st.fotoKeseluruhan?"zoom-in":"default"}}>
+                          {st.fotoKeseluruhan ? <img src={resolveStockPhotoUrl(st.fotoKeseluruhan)} alt={st.name} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:`1px solid ${C.border}`}}/>
                             : <div style={{width:48,height:48,background:"#eff6ff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
                         </td>
                         <td className="mobile-card-table__title" data-label="Nama Barang" style={{padding:"8px 10px",minWidth:200}}>
@@ -7607,7 +7694,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={sty.label}>Foto Kondisi Barang (opsional)</label>
-                {stockForm.img && <img src={stockForm.img} alt="prev" onClick={()=>setLightboxImg(stockForm.img)} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.img && <img src={resolveStockPhotoUrl(stockForm.img)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.img))} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,img})))} style={{display:"none"}}/>
@@ -7615,7 +7702,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
               <div>
                 <label style={sty.label}>Foto Nameplate {!stockForm.id?.startsWith("STK-SAP-") && "*"}</label>
-                {stockForm.fotoNameplate && <img src={stockForm.fotoNameplate} alt="prev" onClick={()=>setLightboxImg(stockForm.fotoNameplate)} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.fotoNameplate && <img src={resolveStockPhotoUrl(stockForm.fotoNameplate)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoNameplate))} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoNameplate:img})))} style={{display:"none"}}/>
@@ -7623,7 +7710,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               </div>
               <div>
                 <label style={sty.label}>Foto Keseluruhan {!stockForm.id?.startsWith("STK-SAP-") && "*"}</label>
-                {stockForm.fotoKeseluruhan && <img src={stockForm.fotoKeseluruhan} alt="prev" onClick={()=>setLightboxImg(stockForm.fotoKeseluruhan)} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.fotoKeseluruhan && <img src={resolveStockPhotoUrl(stockForm.fotoKeseluruhan)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoKeseluruhan))} style={{width:80,height:80,objectFit:"cover",borderRadius:8,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoKeseluruhan:img})))} style={{display:"none"}}/>
@@ -7963,7 +8050,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         const isSAP = st.id?.startsWith("STK-SAP-");
         const bs = getSAPBadgeStyle(st.katalog);
         const fotoBox = (label, field) => {
-          const previewImg = pendingFoto[field] ?? st[field];
+          const previewImg = resolveStockPhotoUrl(pendingFoto[field] ?? st[field]);
           const hasUnsaved = pendingFoto[field] != null;
           return (
             <div style={{flex:1,minWidth:160}}>
@@ -8313,7 +8400,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setMaturityModal(false)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveMaturityAssessment(maturityForm); setMaturityModal(false);}}>💾 Simpan</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{if (await saveMaturityAssessment(maturityForm) !== false) setMaturityModal(false);}}>💾 Simpan</button>
             </div>
           </div>
         </div>

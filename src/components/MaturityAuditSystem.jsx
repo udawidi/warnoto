@@ -2,23 +2,6 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRight, CaretLeft, Sparkle, CheckCircle, Info } from "@phosphor-icons/react";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 
-// CATATAN PORT: Integrasi Google Drive DITUNDA (keputusan user). Helper
-// `uploadFileToDrive`/`src/lib/gdrive.js` sengaja TIDAK di-port. Upload bukti
-// bekerja lokal-only via URL.createObjectURL() — lihat helper di bawah.
-// File blob bersifat sesi (URL mati setelah reload), tapi jumlah/metadata
-// evidence tetap tersimpan sehingga skoring per-aspek tetap konsisten.
-function uploadFileLocalOnly(file) {
-  return {
-    name: file.name,
-    size: file.size,
-    url: URL.createObjectURL(file),
-    isDrive: false,
-    syncedToDrive: false,
-    folderPath: null,
-    targetFolderId: null,
-  };
-}
-
 // =========================================================================
 // CONSTANTS & ICONS
 // =========================================================================
@@ -26,6 +9,12 @@ function uploadFileLocalOnly(file) {
 const MATURITY_LEVELS = { 1: "Basic", 2: "Developing", 3: "Defined", 4: "Managed", 5: "Excellent" };
 const MATURITY_WORKFLOW_LABEL = { DRAFT: "Draft", SELF_ASSESSMENT: "Self Assessment (UPT)", REVIEW_UIT: "Review UIT", REVISION: "Revisi", FINAL: "Nilai Final (Pusat)" };
 const MATURITY_WORKFLOW_COLOR = { DRAFT: "#64748b", SELF_ASSESSMENT: "#3b82f6", REVIEW_UIT: "#f59e0b", REVISION: "#ef4444", FINAL: "#1d4ed8" };
+
+// Temporary hard-stop: no Drive relay, object URL, base64, or file bytes may be
+// attached to a Maturity record while the canonical persistence rollout is active.
+function uploadFileToDrive() {
+  return Promise.reject(new Error("Upload evidence Maturity sedang dinonaktifkan."));
+}
 
 // Icon set diselaraskan ke @phosphor-icons/react (dipakai app-wide di 3 varian
 // dashboard). Dibungkus di bawah nama lama `Icons.*` supaya seluruh call-site
@@ -82,6 +71,7 @@ export function MaturityAuditEditor({
 }) {
   const [internalActiveAspectId, setInternalActiveAspectId] = useState(null);
   const [uploadingItems, setUploadingItems] = useState({});
+  const [, setUploadError] = useState("");
   const activeAspectId = propsActiveAspectId ?? internalActiveAspectId;
   const setActiveAspectId = (id) => {
     setInternalActiveAspectId(id);
@@ -268,8 +258,8 @@ export function MaturityAuditEditor({
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12, fontWeight: 800, color: "#93c5fd", textTransform: "uppercase", letterSpacing: "1px" }}>BERKAS EVIDENCE OFFICIAL</div>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: "white" }}>Upload File Bukti Fisik / Foto Evidence Audit</div>
-                        <div style={{ fontSize: 12, color: "#dbeafe", marginTop: 2 }}>Pilih file foto, PDF, atau dokumen pendukung dari komputer. File tersimpan lokal pada perangkat ini.</div>
+                        <div style={{ fontSize: 14, fontWeight: 800, color: "white" }}>Pencatatan Evidence Audit</div>
+                        <div style={{ fontSize: 12, color: "#dbeafe", marginTop: 2 }}>Upload file dan foto sedang dinonaktifkan sementara. Audit hanya menyimpan metadata penilaian.</div>
                       </div>
                     </div>
                   </div>
@@ -352,6 +342,7 @@ export function MaturityAuditEditor({
                             </div>
                           </div>
 
+                          {canScoreUPT && !isAutoFilled && <span style={{ fontSize: 12, color: C.muted, fontWeight: 800 }}>Upload bukti sementara nonaktif</span>}
                           {canScoreUPT && !isAutoFilled && (
                             <label style={{
                               padding: "8px 18px",
@@ -377,39 +368,45 @@ export function MaturityAuditEditor({
                                 type="file"
                                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt,.csv"
                                 multiple
-                                disabled={!!uploadingItems[eviItem.id]}
+                                disabled
                                 hidden
                                 onChange={async (e) => {
                                   const files = Array.from(e.target.files || []);
                                   if (files.length === 0) return;
 
+                                  setUploadError("");
                                   setUploadingItems(prev => ({ ...prev, [eviItem.id]: true }));
                                   try {
-                                    // Google Drive DITUNDA — simpan bukti lokal-only (blob URL).
-                                    const newFiles = files.map(f => {
-                                      const res = uploadFileLocalOnly(f);
-                                      return {
-                                        itemId: eviItem.id,
-                                        itemLabel: eviItem.label,
-                                        aspectId: activeAspect.id,
-                                        aspectTitle: activeAspect.title,
-                                        category: activeCategory.label,
-                                        upt: currentUptName,
-                                        folderPath: targetFolderPath,
-                                        name: res.name,
-                                        size: res.size,
-                                        url: res.url,
-                                        isDrive: res.isDrive,
-                                        syncedToDrive: res.syncedToDrive
-                                      };
-                                    });
+                                    const uploadedFiles = await Promise.all(files.map(f => uploadFileToDrive({
+                                      file: f,
+                                      upt: currentUptName,
+                                      category: activeCategory.label,
+                                      aspectId: activeAspect.id,
+                                      itemLabel: eviItem.label
+                                    })));
+                                    const newFiles = uploadedFiles.map(res => ({
+                                      itemId: eviItem.id,
+                                      itemLabel: eviItem.label,
+                                      aspectId: activeAspect.id,
+                                      aspectTitle: activeAspect.title,
+                                      category: activeCategory.label,
+                                      upt: currentUptName,
+                                      folderPath: res.folderPath || targetFolderPath,
+                                      driveRepositoryUrl: res.targetFolderId ? `https://drive.google.com/drive/folders/${res.targetFolderId}` : null,
+                                      name: res.name,
+                                      size: res.size,
+                                      url: res.url,
+                                      isDrive: res.isDrive,
+                                      syncedToDrive: res.syncedToDrive
+                                    }));
 
                                     setMaturityAuditEvidence(prev => {
                                       const cur = prev[activeAspect.id] || [];
                                       return { ...prev, [activeAspect.id]: [...cur, ...newFiles] };
                                     });
                                   } catch (err) {
-                                    console.error("Error upload evidence:", err);
+                                    console.warn("Upload evidence Maturity gagal:", err);
+                                    setUploadError(err?.message || "Upload evidence Maturity gagal.");
                                   } finally {
                                     setUploadingItems(prev => ({ ...prev, [eviItem.id]: false }));
                                     e.target.value = "";
@@ -987,6 +984,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
   const [catatan, setCatatan] = useState("");
   const [saved, setSaved] = useState(false);
   const [uploading5S, setUploading5S] = useState(false);
+  const [photoUploadError, setPhotoUploadError] = useState("");
 
   const initChecks = () =>
     Object.fromEntries(FORM_5S.map(cat => [cat.id, Array(cat.indicators.length).fill(false)]));
@@ -997,25 +995,29 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
     const remaining = 3 - samplePhotos.length;
     if (remaining <= 0) return;
     const taken = Array.from(files).slice(0, remaining);
+    setPhotoUploadError("");
     setUploading5S(true);
     try {
-      // Google Drive DITUNDA — foto sampling 5S disimpan lokal-only (blob URL).
-      const newEntries = taken.map(f => {
-        const res = uploadFileLocalOnly(f);
-        return {
-          name: res.name,
-          url: res.url,
-          size: res.size,
-          isDrive: res.isDrive,
-          syncedToDrive: res.syncedToDrive
-        };
-      });
+      const uploaded = await Promise.all(taken.map(f => uploadFileToDrive({
+        file: f,
+        upt: selectedUpt || "UPT Surabaya",
+        category: "K3",
+        aspectId: "4.5",
+        itemLabel: "Foto Sampling 5S"
+      })));
+      const newEntries = uploaded.map(res => ({
+        name: res.name,
+        url: res.url,
+        size: res.size,
+        driveFileId: res.driveFileId,
+        isDrive: res.isDrive,
+        syncedToDrive: res.syncedToDrive
+      }));
       setSamplePhotos(prev => [...prev, ...newEntries]);
       setSaved(false);
     } catch (err) {
-      console.error("Error memproses foto 5S:", err);
-      const fallback = taken.map(f => ({ name: f.name, url: URL.createObjectURL(f), size: f.size }));
-      setSamplePhotos(prev => [...prev, ...fallback]);
+      console.warn("Upload foto 5S gagal:", err);
+      setPhotoUploadError(err?.message || "Upload foto 5S gagal.");
     } finally {
       setUploading5S(false);
     }
@@ -1347,7 +1349,7 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
               📷 Sampling Foto Implementasi 5S di Gudang
             </div>
             <div style={{ fontSize: 12, color: C.muted }}>
-              Upload <strong>3 foto</strong> kondisi nyata penerapan 5S di area gudang. Foto ini akan otomatis dilampirkan sebagai evidence poin <strong>4.5</strong> saat Simpan.
+              Upload foto sedang dinonaktifkan sementara sampai penyimpanan Drive selesai disiapkan.
             </div>
           </div>
           {samplePhotos.length < 3 && (
@@ -1357,18 +1359,24 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
               background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", fontSize: 12, fontWeight: 700,
               border: "none", userSelect: "none", marginLeft: 12,
             }}>
-              {uploading5S ? "⌛ Mengunggah ke Drive..." : "＋ Pilih Foto"}
+              Upload Foto Belum Tersedia
               <input
                 type="file"
                 accept="image/*"
                 multiple
-                disabled={uploading5S}
+                disabled
                 hidden
                 onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
               />
             </label>
           )}
         </div>
+
+        {photoUploadError && (
+          <div role="alert" style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", fontSize: 12, fontWeight: 700 }}>
+            {photoUploadError}
+          </div>
+        )}
 
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16 }}>
           {[0, 1, 2].map(slot => {
@@ -1423,17 +1431,18 @@ export function Form5STab({ C, sty, currentUser, lokasiList = [], setMaturityAud
                     </div>
                   </>
                 ) : (
-                  <label style={{ cursor: samplePhotos.length >= 3 ? "not-allowed" : "pointer", textAlign: "center", padding: 16, display: "block", width: "100%" }}>
+                  <label style={{ cursor: "not-allowed", textAlign: "center", padding: 16, display: "block", width: "100%" }}>
                     <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
                     <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Foto Sampling {slot + 1}</div>
                     <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
-                      {samplePhotos.length <= slot ? "Klik untuk unggah" : "—"}
+                      {samplePhotos.length <= slot ? "Belum tersedia" : "—"}
                     </div>
                     {samplePhotos.length === slot && (
                       <input
                         type="file"
                         accept="image/*"
                         multiple
+                        disabled
                         hidden
                         onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
                       />
