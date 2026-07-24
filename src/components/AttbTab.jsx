@@ -2,7 +2,7 @@
 import { useState, useEffect, Fragment } from "react";
 import { UIT, UPT } from "../constants.js";
 import { hasRole } from "../lib/roles.js";
-import { getLokasiPetaInfo } from "../lib/masterSync.js";
+import { getLokasiPetaInfo, subGudangKodeMap } from "../lib/masterSync.js";
 import { ATTB_CORE_FIELDS, ATTB_FIELDS_BY_JENIS, ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "../lib/attb.js";
 import * as XLSX from "xlsx";
 import { OperationsHero } from "./OperationsHero.jsx";
@@ -27,11 +27,16 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
       satuan: p.satuan || "",
       keterangan: `Eks Bongkaran ATTB (MTU) dari ${p.tug10No}${p.namaPekerjaan?` — ${p.namaPekerjaan}`:""}`,
       sourceTug10Key: p.key,
-      foto: p.foto || null, // pakai foto dari input TUG-10 (foto barang/nameplate)
+      // Preserve both TUG-10 photos on the promoted ATTB record.  `foto` is
+      // retained as a backwards-compatible thumbnail for older records.
+      fotoKeseluruhan: p.fotoKeseluruhan || p.foto || null,
+      fotoNameplate: p.fotoNameplate || null,
+      foto: p.fotoKeseluruhan || p.foto || p.fotoNameplate || null,
     });
   }
   const [attbGudangFilter, setAttbGudangFilter] = useState({}); // per-item id -> gudangId (utk filter dropdown Sub Gudang & Blok)
   const [attbSubGudangFilter, setAttbSubGudangFilter] = useState({}); // per-item id -> subGudangId (utk filter dropdown Blok)
+  const subGudangCodes = subGudangKodeMap(subGudangList);
   // Resolve lokasi master-data yang tersimpan di item -> objek {lok, gdg, sg, petaInfo, teks}
   // untuk tampilan + tombol peta. Pola sama Data Stok, tapi ATTB juga simpan gudangId/subGudangId
   // sendiri (independen dari lokasiId/Blok) — ditemukan 2026-07-10: beberapa Sub Gudang (mis.
@@ -78,6 +83,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
   const [addForm, setAddForm] = useState(emptyAddForm);
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({});
+  const [previewId, setPreviewId] = useState(null);
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [belumLanjutId, setBelumLanjutId] = useState(null);
@@ -215,6 +221,31 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
     );
   }
 
+  const previewItem = previewId ? attbList.find(a=>a.id===previewId) : null;
+  // Older promoted records only persisted `foto`.  Rehydrate missing photo
+  // fields from the live TUG-10 pool when the source key is still available.
+  const previewSource = previewItem?.sourceTug10Key
+    ? bongkaranPool.find(p=>p.key===previewItem.sourceTug10Key)
+    : null;
+  const previewPhotos = previewItem ? {
+    keseluruhan: previewItem.fotoKeseluruhan || previewSource?.fotoKeseluruhan || previewItem.foto || null,
+    nameplate: previewItem.fotoNameplate || previewSource?.fotoNameplate || null,
+  } : { keseluruhan:null, nameplate:null };
+  const formatPreviewValue = (field, value) => {
+    if (value == null || value === "") return "";
+    if (["nilaiPerolehan","nilaiBuku","nilaiTaksiranKJPP","estimasiRpPerKg","estimasiNilaiTaksiran"].includes(field.key)) {
+      const n = Number(value); return Number.isFinite(n) ? `Rp ${n.toLocaleString("id-ID")}` : String(value);
+    }
+    if (/^https?:\/\//i.test(String(value).trim())) return <a href={String(value).trim()} target="_blank" rel="noreferrer">{String(value).trim()}</a>;
+    return String(value);
+  };
+  const previewFieldGroups = (item) => {
+    const groups = [{ title:"Data Inti", fields:ATTB_CORE_FIELDS }, { title:ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset, fields:ATTB_FIELDS_BY_JENIS[item.jenisAset]||[] }];
+    const stageFields = [ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS];
+    for (let i=0; i<=attbStageIndex(item.stage)-1; i++) groups.push({ title:`Tahap ${i+2}`, fields:stageFields[i] });
+    return groups.map(g=>({...g, fields:g.fields.filter(f=>item[f.key]!==undefined&&item[f.key]!==null&&item[f.key]!=="")})).filter(g=>g.fields.length);
+  };
+
   async function submitAdd() {
     await createItem(addForm);
     setAddForm(emptyAddForm);
@@ -247,8 +278,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
         ) : null}
       />
 
-      {/* Pipeline 5 tahap ATTB — kartu berurutan dihubungkan panah (proses maju
-          menuju lelang). Klik kartu untuk memfilter tabel per tahap. */}
+      {/* Pipeline ATTB: source + five stages + KI. Klik kartu untuk memfilter tabel. */}
       <div className="operations-section-heading"><div><span>Process Pipeline</span><h2>Tahapan Penghapusan</h2></div><small>Klik tahap untuk memfilter daftar</small></div>
       <div className="operations-segments">
         <button className={stageFilter==="ALL"?"is-active":""} onClick={()=>setStageFilter("ALL")} style={{"--segment-color":C.accent}}>
@@ -260,11 +290,11 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           </button>
         )}
       </div>
-      <div className="attb-pipeline">
+      <div className="attb-pipeline" aria-label="Pipeline penghapusan ATTB">
         {/* Pra-tahap: Material Bongkaran ATTB (MTU) dari TUG-10 — sumber kandidat sebelum AE.1 */}
         {(()=>{ const active = stageFilter==="SUMBER"; const color="#6b7280"; return (
           <Fragment key="SUMBER">
-            <button className="attb-stage-card is-source" onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
+            <button className={`attb-stage-card is-source${active?" is-active":""}`} onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
               style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px dashed ${active?color:"#cbd5e1"}`,background:active?color:"#f8fafc",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <span className="attb-stage-code">SRC</span>
@@ -272,16 +302,14 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               </div>
               <span style={{fontSize:12,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>Material Bongkaran<br/>(TUG-10)</span>
             </button>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",color:C.muted,fontSize:22,fontWeight:900,alignSelf:"center"}}>→</div>
           </Fragment>
         ); })()}
         {ATTB_STAGES.map((s,i)=>{
           const active = stageFilter===s.code;
           const color = stageColor(s.code);
-          const isLast = i===ATTB_STAGES.length-1;
           return (
             <Fragment key={s.code}>
-              <button className="attb-stage-card" onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
+              <button className={`attb-stage-card${active?" is-active":""}`} onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
                 style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px solid ${active?color:C.border}`,background:active?color:"white",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,background:active?"rgba(255,255,255,0.25)":color+"22",color:active?"white":color}}>{i+1}</span>
@@ -289,15 +317,11 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                 </div>
                 <span style={{fontSize:12,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>{s.label}</span>
               </button>
-              {!isLast && (
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",color:C.muted,fontSize:22,fontWeight:900,alignSelf:"center"}}>→</div>
-              )}
             </Fragment>
           );
         })}
         {/* Tujuan akhir proses */}
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",padding:"0 2px",color:C.green,fontSize:22,fontWeight:900,alignSelf:"center"}}>→</div>
-        <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,padding:"10px 14px",minWidth:90,borderRadius:12,border:`2px dashed ${C.green}`,background:"#f0fdf4",alignSelf:"center"}}>
+        <div className="attb-pipeline__end">
           <span className="attb-stage-code">KI</span>
           <span style={{fontSize:12,fontWeight:800,color:C.green,textAlign:"center",lineHeight:1.2}}>LELANG<br/>oleh KI</span>
         </div>
@@ -389,17 +413,17 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
       {/* Tabel desktop — format identik Data Stok Gudang */}
       <div className="attb-table-wrap">
       <div className="operations-table-card" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:0,boxShadow:"none",borderRadius:0}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:960}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
           <thead>
             <tr style={{background:C.sidebar,color:"white"}}>
-              {["Foto","Nama Barang","Kategori","Qty / Nilai","Gudang","Sub Gudang","Blok","Status","Aksi"].map(h=>(
+              {["Foto","Nama Barang","Kategori","Qty / Nilai","Lokasi","Status","Aksi"].map(h=>(
                 <th key={h} style={{padding:"10px 12px",textAlign:h==="Aksi"?"center":"left",fontSize:13,whiteSpace:"nowrap"}}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredList.length===0 && (
-              <tr><td colSpan={9} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
+              <tr><td colSpan={7} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
             )}
             {pagedList.map(item=>{
               const canApproveThis = isPendingAttbApproval(item) && canApproveAttb(currentUser, item);
@@ -414,9 +438,18 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               // Status badge mirip "SAP — Persediaan"
               const stageLbl = attbStageLabel(item.stage);
               const stageClr = stageColor(item.stage);
+              const locationParts = [
+                { short: loc?.gdg?.kode || loc?.gdg?.nama, full: loc?.gdg?.nama },
+                { short: loc?.sg?.kode || loc?.sg?.nama, full: loc?.sg?.nama },
+                { short: loc?.lok?.kode || loc?.lok?.nama, full: loc?.lok?.nama },
+              ].filter(part=>part.short);
+              const locationTitle = locationParts.length ? locationParts.map(part=>part.full || part.short).join(" / ") : "Lokasi belum diatur";
+              const locationGudang = loc?.gdg?.kode || loc?.gdg?.nama;
+              const locationSub = loc?.sg && `SG: ${loc.sg.kode || subGudangCodes[loc.sg.id] || loc.sg.nama}`;
+              const locationBlok = loc?.lok && `Blok: ${loc.lok.kode || loc.lok.nama}`;
               return (
                 <Fragment key={item.id}>
-                  <tr style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
+                  <tr className="attb-preview-trigger" onClick={()=>setPreviewId(item.id)} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
                     {/* Foto */}
                     <td style={{padding:"8px 12px",width:52}}>
                       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -449,45 +482,16 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                       </div>
                       {item.waktuUsulanPenghapusan && <div style={{fontSize:11,color:C.muted,marginTop:1}}>{item.waktuUsulanPenghapusan}</div>}
                     </td>
-                    {/* Gudang dropdown */}
-                    <td style={{padding:"8px 12px",minWidth:140}} onClick={e=>e.stopPropagation()}>
-                      {canManage ? (
-                        <select value={selGudangId}
-                          style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 28px 5px 8px",fontSize:12,background:"white",color:C.text,cursor:"pointer",minWidth:120,appearance:"auto"}}
-                          onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); saveEdit(item.id,{gudangId:v||null,subGudangId:null,lokasiId:null}); }}>
-                          <option value="">— Pilih Gudang —</option>
-                          {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
-                        </select>
-                      ) : (
-                        <span style={{fontSize:12,color:loc?.gdg?C.text:C.muted,fontStyle:loc?.gdg?"normal":"italic"}}>{loc?.gdg?.nama||"—"}</span>
-                      )}
-                    </td>
-                    {/* Sub Gudang dropdown */}
-                    <td style={{padding:"8px 12px",minWidth:140}} onClick={e=>e.stopPropagation()}>
-                      {canManage ? (
-                        <select value={selSubGudangId}
-                          disabled={!selGudangId || subsForGudang.length === 0}
-                          style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 28px 5px 8px",fontSize:12,background:"white",color:C.text,cursor:"pointer",minWidth:120,appearance:"auto"}}
-                          onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id,{subGudangId:v||null,lokasiId:null}); }}>
-                          <option value="">{subsForGudang.length > 0 ? "— Pilih Sub —" : "— Tanpa Sub —"}</option>
-                          {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
-                        </select>
-                      ) : (
-                        <span style={{fontSize:12,color:loc?.sg?C.text:C.muted,fontStyle:loc?.sg?"normal":"italic"}}>{loc?.sg?.nama||"—"}</span>
-                      )}
-                    </td>
-                    {/* Blok dropdown */}
-                    <td style={{padding:"8px 12px",minWidth:140}} onClick={e=>e.stopPropagation()}>
-                      {canManage ? (
-                        <select value={item.lokasiId||""}
-                          disabled={!selGudangId}
-                          style={{border:`1px solid ${C.border}`,borderRadius:6,padding:"5px 28px 5px 8px",fontSize:12,background:"white",color:C.text,cursor:"pointer",minWidth:120,appearance:"auto"}}
-                          onChange={e=>setAttbLokasi(item, e.target.value)}>
-                          <option value="">— Pilih Blok —</option>
-                          {blokOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
-                        </select>
-                      ) : (
-                        <span style={{fontSize:12,color:loc?.lok?C.text:C.muted,fontStyle:loc?.lok?"normal":"italic"}}>{loc?.lok?.kode||"—"}</span>
+                    {/* Lokasi — ringkas dan read-only; pengeditan tetap melalui Edit/modal */}
+                    <td style={{padding:"8px 12px",minWidth:180,maxWidth:230}} title={locationTitle} aria-label={`Lokasi: ${locationTitle}`}>
+                      <div style={{fontSize:12,color:locationGudang?C.text:C.muted,fontStyle:locationGudang?"normal":"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        {locationGudang || "—"}
+                      </div>
+                      {(locationSub || locationBlok) && (
+                        <div style={{display:"flex",gap:6,marginTop:2,fontSize:11,color:C.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          {locationSub && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationSub}</span>}
+                          {locationBlok && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationBlok}</span>}
+                        </div>
                       )}
                     </td>
                     {/* Status — format identik dengan "SAP — Persediaan" */}
@@ -556,7 +560,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                   </tr>
                   {(rejectingId===item.id || belumLanjutId===item.id) && (
                     <tr style={{borderLeft:`3px solid ${borderColor}`}}>
-                      <td colSpan={9} style={{padding:"10px 12px",background:"#fef2f2"}}>
+                      <td colSpan={7} style={{padding:"10px 12px",background:"#fef2f2"}}>
                         {rejectingId===item.id && (
                           <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
                             <textarea style={{...sty.input,minHeight:44,flex:1}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
@@ -598,7 +602,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           const blokOptions = lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0||(l.subGudangId||"")===selSubGudangId));
           return (
             <Fragment key={item.id}>
-            <div className="attb-mobile-card" style={{borderLeft:`4px solid ${borderColor}`}}>
+            <div className="attb-mobile-card attb-preview-trigger" role="button" tabIndex={0} onClick={()=>setPreviewId(item.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setPreviewId(item.id);}}} style={{borderLeft:`4px solid ${borderColor}`}}>
               {/* Header: foto + nomor + badge tahap */}
               <div className="attb-mobile-card__header">
                 {item.foto
@@ -619,7 +623,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset} · {item.upt}</div>
                 {item.bay && <div style={{fontSize:12,color:C.muted}}>⚡ Asal: {item.bay}</div>}
                 {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:12,color:C.red,marginTop:2}}>Ditolak: {item.alasanTolak}</div>}
-                <div className="attb-mobile-card__row" style={{flexDirection:"column",alignItems:"stretch",gap:6,marginTop:6,marginBottom:6}}>
+                <div className="attb-mobile-card__row" onClick={e=>e.stopPropagation()} style={{flexDirection:"column",alignItems:"stretch",gap:6,marginTop:6,marginBottom:6}}>
                   <div style={{fontSize:12,fontWeight:600,color:C.text,display:"flex",alignItems:"center",gap:4}}>📍 Lokasi Penyimpanan:</div>
                   {canManage ? (
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -658,7 +662,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                 </div>
               </div>
               {/* Actions */}
-              <div className="attb-mobile-card__actions">
+              <div className="attb-mobile-card__actions" onClick={e=>e.stopPropagation()}>
                 {canManage && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"5px 9px"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>✏️</button>}
                 {canApproveThis && (
                   <span className="approval-actions approval-actions--compact">
@@ -968,6 +972,32 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           </div>
         );
       })()}
+      {previewItem && (
+        <div className="attb-preview-backdrop" role="presentation" onClick={()=>setPreviewId(null)}>
+          <section className="attb-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="attb-preview-title" onClick={e=>e.stopPropagation()}>
+            <header className="attb-preview-header">
+              <div><h3 id="attb-preview-title">{previewItem.nomorATTB||previewItem.nomorAT||previewItem.id}</h3><p>{previewItem.description||"Tanpa deskripsi"}</p></div>
+              <div className="attb-preview-badges"><span>{ATTB_JENIS_ASET_LABEL[previewItem.jenisAset]||previewItem.jenisAset||"-"}</span><span>{attbStageLabel(previewItem.stage)}</span><span>{previewItem.approvalStatus||"DRAFT"}</span></div>
+            </header>
+            <div className="attb-preview-body">
+              <div className="attb-preview-photos">
+                {[{label:"Foto Keseluruhan", src:previewPhotos.keseluruhan, alt:"Foto Keseluruhan"}, {label:"Foto Nameplate", src:previewPhotos.nameplate, alt:"Foto Nameplate"}].map(photo=>(
+                  <div className="attb-preview-photo-card" key={photo.label}>
+                    <div className="attb-preview-photo-label">{photo.label}</div>
+                    <div className="attb-preview-photo">{photo.src ? <img src={photo.src} alt={photo.label==="Foto Keseluruhan" ? `Foto ${previewItem.description||"material"}` : `${photo.alt} ${previewItem.description||"material"}`} /> : <div aria-label={`${photo.label} tidak tersedia`}>📦<small>Foto tidak tersedia</small></div>}</div>
+                  </div>
+                ))}
+              </div>
+              <div className="attb-preview-details">
+                {previewFieldGroups(previewItem).map(group=><div className="attb-preview-group" key={group.title}><h4>{group.title}</h4><dl>{group.fields.map(f=><Fragment key={f.key}><dt>{f.label}</dt><dd>{formatPreviewValue(f,previewItem[f.key])}</dd></Fragment>)}</dl></div>)}
+                <div className="attb-preview-group"><h4>Lokasi Penyimpanan</h4><dl><dt>Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.gdg?.nama||"-"}</dd><dt>Sub Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.sg?.nama||"-"}</dd><dt>Blok</dt><dd>{resolveLokasiMaster(previewItem)?.lok?.kode||resolveLokasiMaster(previewItem)?.lok?.nama||"-"}</dd></dl></div>
+                {previewItem.stageHistory?.length>0 && <div className="attb-preview-group"><h4>Riwayat Tahap</h4><ul className="attb-preview-history">{[...previewItem.stageHistory].reverse().map((h,i)=><li key={i}><b>{attbStageLabel(h.stage)}</b> — {h.tanggal?new Date(h.tanggal).toLocaleDateString("id-ID"):"-"}{h.catatan?` · ${h.catatan}`:""}</li>)}</ul></div>}
+              </div>
+            </div>
+            <footer className="attb-preview-footer"><button style={sty.btn("ghost")} onClick={()=>setPreviewId(null)}>Tutup</button>{canManage&&<button style={sty.btn("primary")} onClick={()=>{setPreviewId(null);setEditingId(previewItem.id);setEditForm({...previewItem});}}>Edit Data</button>}</footer>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 // Cluster supabase-sync + proses foto TUG (dipindah dari App.jsx Fase 5f).
 // Sebagian dipakai app-wide (processTxnPhotos/resolveTxnPrivPhotos di alur simpan txn),
 // sebagian dipakai TUG15Tab (buildMutasiRows/buildTUG15HTML/sync*).
-import { supabase, SUPABASE_URL, SUPABASE_KEY } from "../supabaseClient.js";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, fetchSupabase } from "../supabaseClient.js";
 import { UIT, UPT, STATUS_RETUR_TO_JENIS } from "../constants.js";
 import { fmtDateOnly, fmtRp } from "./utils.js";
 import { fmtNum, getSAPLabel } from "./ragShared.mjs";
@@ -72,7 +72,7 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
   // (merk/type/keterangan/dst) bisa hilang, cuma menyisakan 4 field ini.
   // Insert ini murni jaga-jaga FK (katalog_id di tug15_history) untuk id yang
   // belum sempat tersinkron dari jalur utama.
-  const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+  const katRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
     method: "POST",
     headers: { ...headers, "Prefer": "resolution=ignore-duplicates" },
     body: JSON.stringify(katalogPayload),
@@ -91,7 +91,7 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
     if (r.masuk > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "MASUK", qty: r.masuk, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: `${baseKey}_MASUK` });
     if (r.keluar > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "KELUAR", qty: r.keluar, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: `${baseKey}_KELUAR` });
   });
-  const histRes = await fetch(`${SUPABASE_URL}/rest/v1/tug15_history?on_conflict=sync_key`, {
+  const histRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/tug15_history?on_conflict=sync_key`, {
     method: "POST",
     headers: { ...headers, "Prefer": "resolution=ignore-duplicates" },
     body: JSON.stringify(historyPayload),
@@ -132,7 +132,7 @@ export async function syncStockQtyToSupabase(stocks, katalogList) {
     const kat = katalogList.find(k=>k.id===kid);
     return { id: kid, data: { name: kat?.name||kid, katalog: kat?.katalog||null, satuan: kat?.satuan||null, jenisBarang: kat?.jenisBarang||null } };
   });
-  const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+  const katRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
     method: "POST",
     headers: { ...headers, "Prefer": "resolution=ignore-duplicates" },
     body: JSON.stringify(katalogPayload),
@@ -140,7 +140,7 @@ export async function syncStockQtyToSupabase(stocks, katalogList) {
   if (!katRes.ok) throw new Error(`Gagal sync katalog: ${await katRes.text()}`);
 
   const stockPayload = katalogIds.map(kid => ({ katalog_id: kid, qty: qtyMap[kid], updated_at: new Date().toISOString() }));
-  const stockRes = await fetch(`${SUPABASE_URL}/rest/v1/stock_current?on_conflict=katalog_id`, {
+  const stockRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/stock_current?on_conflict=katalog_id`, {
     method: "POST",
     headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
     body: JSON.stringify(stockPayload),
@@ -255,7 +255,7 @@ export async function syncFotoMaterialToSupabase(stocks, katalogList) {
     // fotoKeseluruhanUrl (dipakai halaman scan QR). Tanpa guard ini, dataUrlToBlob
     // akan error karena img bukan format "data:...;base64,".
     if (!/^data:/i.test(img)) {
-      const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+      const katRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
         method: "POST",
         headers: { ...headers, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" },
         body: JSON.stringify([{ id: kat.id, data: { ...kat, fotoKeseluruhanUrl: img } }]),
@@ -270,7 +270,7 @@ export async function syncFotoMaterialToSupabase(stocks, katalogList) {
     const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
     const path = `${kat.id}.${ext}`;
 
-    const upRes = await fetch(`${SUPABASE_URL}/storage/v1/object/material-photos/${path}`, {
+    const upRes = await fetchSupabase(`${SUPABASE_URL}/storage/v1/object/material-photos/${path}`, {
       method: "POST",
       headers: { ...headers, "Content-Type": blob.type, "x-upsert": "true" },
       body: blob,
@@ -281,7 +281,7 @@ export async function syncFotoMaterialToSupabase(stocks, katalogList) {
     // Kirim seluruh objek `kat` (state React, sudah lengkap) + fotoKeseluruhanUrl
     // sebagai `data` jsonb — BUKAN payload minimal — supaya merge-duplicates di
     // sini tidak menghapus field lain (merk/type/keterangan/dst) milik baris ini.
-    const katRes = await fetch(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
+    const katRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" },
       body: JSON.stringify([{ id: kat.id, data: { ...kat, fotoKeseluruhanUrl: publicUrl } }]),

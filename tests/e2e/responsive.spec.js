@@ -68,3 +68,36 @@ test.describe("Dashboard Manager mobile details", () => {
     });
   });
 });
+
+test.describe("ATTB mobile details", () => {
+  test("KPI labels and pipeline cards remain fully readable", async ({ isolatedPage:page }) => {
+    await openApp(page);
+    await openRoute(page, {
+      tab:"attb",
+      menuPath:["ATTB"],
+      readySelector:".attb-page",
+    });
+
+    const report = await page.locator(".attb-page").evaluate(scope => {
+      const metrics = [...scope.querySelectorAll(".operations-metric span")].map(node => {
+        const rect = node.getBoundingClientRect();
+        return { left:rect.left, right:rect.right, top:rect.top, bottom:rect.bottom };
+      });
+      const metricCollisions = [];
+      for (let i = 0; i < metrics.length; i++) for (let j = i + 1; j < metrics.length; j++) {
+        const overlapX = Math.min(metrics[i].right, metrics[j].right) - Math.max(metrics[i].left, metrics[j].left);
+        const overlapY = Math.min(metrics[i].bottom, metrics[j].bottom) - Math.max(metrics[i].top, metrics[j].top);
+        if (overlapX > 1 && overlapY > 1) metricCollisions.push([i, j]);
+      }
+
+      const pipeline = scope.querySelector(".attb-pipeline").getBoundingClientRect();
+      const croppedCards = [...scope.querySelectorAll(".attb-stage-card,.attb-pipeline__end")]
+        .map(node => node.getBoundingClientRect())
+        .filter(rect => rect.left < pipeline.left - 1 || rect.right > pipeline.right + 1)
+        .length;
+      return { metricCollisions, croppedCards };
+    });
+
+    expect(report).toEqual({ metricCollisions:[], croppedCards:0 });
+  });
+});
