@@ -355,8 +355,44 @@
   .heavy-equipment-page .dashboard-mode-switch button { padding-inline: 9px; }
 }
 
-/* ATTB: compact pipeline toolbar (segments + stage cards) for phone screens. */
+/* ATTB: compact pipeline toolbar (segments + stage cards) & responsive hero metrics for phone screens. */
 @media (max-width: 768px) {
+  .operations-hero--summary-only {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .operations-hero__footer {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+  }
+  .operations-hero__metrics {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+  }
+  .operations-metric {
+    min-width: 0 !important;
+    padding: 10px 12px !important;
+    border-top: 1px solid rgba(219,234,254,.1) !important;
+    border-right: 1px solid rgba(219,234,254,.1) !important;
+  }
+  .operations-metric:nth-child(2n) {
+    border-right: 0 !important;
+  }
+  .operations-metric span {
+    white-space: normal !important;
+    line-height: 1.25 !important;
+    font-size: 10px !important;
+    word-break: break-word !important;
+  }
+  .operations-hero__scope {
+    width: 100% !important;
+    padding: 10px 14px !important;
+    border-top: 1px solid rgba(219,234,254,.14) !important;
+    text-align: left !important;
+  }
+
   .attb-page .operations-segments { margin-bottom: 6px; }
   .attb-page .attb-pipeline { gap: 4px; padding: 2px 1px 8px; }
   .attb-page .attb-stage-card { min-width: 84px !important; padding: 6px 7px !important; }

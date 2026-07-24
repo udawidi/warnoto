@@ -390,11 +390,11 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           baris ringkas, border kiri berwarna per tahap). Form Tolak/Belum Lanjut
           muncul sebagai baris expand di bawah baris item terkait. */}
       <div className="operations-table-card mobile-card-table attb-card-table" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:12}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:920}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead>
             <tr style={{background:C.sidebar,color:"white"}}>
               {["Nomor AT/ATTB","Jenis / UPT","Deskripsi","Lokasi","Nilai Perolehan","Nilai Buku","Status","Tahap","Aksi"].map(h=>(
-                <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"?"center":h.startsWith("Nilai")?"right":"left",whiteSpace:"nowrap",fontSize:12}}>{h}</th>
+                <th key={h} style={{padding:"8px 6px",textAlign:h==="Aksi"?"center":h.startsWith("Nilai")?"right":"left",whiteSpace:"nowrap",fontSize:11}}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -408,60 +408,65 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               return (
                 <Fragment key={item.id}>
                   <tr className="mobile-card-table__row" style={{borderBottom:`1px solid ${C.border}`,"--row-accent":borderColor}}>
-                    <td className="mobile-card-table__title" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
-                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                        <div style={{width:34,height:34,flexShrink:0,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          {item.foto ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:15,color:"#9ca3af"}}>📦</span>}
+                    <td className="mobile-card-table__title" style={{padding:"6px 8px"}}>
+                      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                        <div style={{width:30,height:30,flexShrink:0,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:C.bg || "#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {item.foto ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:13,color:C.muted || "#9ca3af"}}>📦</span>}
                         </div>
-                        <div>
-                          <div style={{fontWeight:700,color:C.text}}>{item.nomorATTB || item.nomorAT || item.id}</div>
-                          {item.waktuUsulanPenghapusan && <div style={{fontSize:12,color:C.muted,marginTop:1}}>🕘 {item.waktuUsulanPenghapusan}</div>}
+                        <div style={{minWidth:0,flex:1}}>
+                          <div style={{fontWeight:700,color:C.text,fontSize:11,whiteSpace:"nowrap"}}>{item.nomorATTB || item.nomorAT || item.id}</div>
+                          {item.waktuUsulanPenghapusan && <div style={{fontSize:10,color:C.muted,marginTop:1,whiteSpace:"nowrap"}}>🕘 {item.waktuUsulanPenghapusan}</div>}
                         </div>
                       </div>
                     </td>
-                    <td data-label="Jenis / UPT" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
-                      <div style={{fontWeight:600}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
-                      <div style={{fontSize:12,color:C.muted}}>{item.upt}</div>
+                    <td data-label="Jenis / UPT" style={{padding:"6px 8px"}}>
+                      <div style={{fontWeight:600,fontSize:11,whiteSpace:"nowrap"}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
+                      <div style={{fontSize:11,color:C.muted,whiteSpace:"nowrap"}}>{item.upt}</div>
                     </td>
-                    <td data-label="Deskripsi" style={{padding:"8px 10px",minWidth:180,maxWidth:280}}>
-                      <div style={{fontWeight:600,color:C.text}}>{item.description||"-"}</div>
-                      {item.bay && <div style={{fontSize:12,color:C.muted,marginTop:2}}>⚡ Asal: {item.bay}</div>}
-                      {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:12,color:C.red,marginTop:2}}>Ditolak: {item.alasanTolak}</div>}
+                    <td data-label="Deskripsi" style={{padding:"6px 8px"}}>
+                      <div style={{fontWeight:600,color:C.text,fontSize:11,lineHeight:1.35,wordBreak:"break-word"}}>{item.description||"-"}</div>
+                      {item.bay && <div style={{fontSize:10,color:C.muted,marginTop:1}}>⚡ Asal: {item.bay}</div>}
+                      {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:10,color:C.red,marginTop:1}}>Ditolak: {item.alasanTolak}</div>}
                     </td>
-                    <td data-label="Lokasi" onClick={e=>e.stopPropagation()} style={{padding:"8px 10px",minWidth:180,maxWidth:230}}>
+                    <td data-label="Lokasi" onClick={e=>e.stopPropagation()} style={{padding:"6px 8px"}}>
                       {(()=>{
                         const loc = resolveLokasiMaster(item);
                         const selGudangId = attbGudangFilter[item.id] ?? item.gudangId ?? loc?.gdg?.id ?? "";
                         const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
                         const selSubGudangId = attbSubGudangFilter[item.id] ?? item.subGudangId ?? loc?.sg?.id ?? "";
-                        const blokOptions = lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0 || (l.subGudangId||"")===selSubGudangId));
+                        const blokOptions = lokasiList.filter(l => {
+                          if (selGudangId && l.gudangId !== selGudangId) return false;
+                          if (selSubGudangId && l.subGudangId && l.subGudangId !== selSubGudangId) return false;
+                          return true;
+                        });
                         const canLihatPeta = !!loc?.petaInfo;
+
                         if (canManage) {
                           return (
-                            <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                              <select value={selGudangId} style={{...sty.select,fontSize:12,padding:"4px 6px",minHeight:"unset"}}
+                            <div style={{display:"flex",flexDirection:"column",gap:5,width:"100%"}}>
+                              {/* Level 1: Gudang */}
+                              <select value={selGudangId} style={{...sty.select,fontSize:11,padding:"5px 8px",minHeight:"unset",width:"100%",textOverflow:"ellipsis"}}
                                 onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); saveEdit(item.id, { gudangId: v||null, subGudangId: null, lokasiId: null }); }}>
                                 <option value="">-- Pilih Gudang --</option>
                                 {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
                               </select>
-                              {subsForGudang.length>0 && (
-                                <select value={selSubGudangId} style={{...sty.select,fontSize:12,padding:"4px 6px",minHeight:"unset"}}
-                                  onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id, { subGudangId: v||null, lokasiId: null }); }}>
-                                  <option value="">-- Pilih Sub Gudang --</option>
-                                  {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
-                                </select>
-                              )}
-                              {selGudangId && blokOptions.length===0 && (subsForGudang.length===0 || selSubGudangId) && (
-                                <div style={{fontSize:12,color:"#b45309",fontStyle:"italic"}}>⚠️ Belum ada Blok terdaftar di sini (atur di Master Data → Master Gudang) — pilihan Gudang{subsForGudang.length>0?"/Sub Gudang":""} tetap tersimpan.</div>
-                              )}
-                              <div style={{display:"flex",gap:3,alignItems:"center"}}>
-                                <select value={item.lokasiId||""} style={{...sty.select,fontSize:12,padding:"4px 6px",minHeight:"unset",flex:1}}
+
+                              {/* Level 2: Sub Gudang */}
+                              <select value={selSubGudangId} style={{...sty.select,fontSize:11,padding:"5px 8px",minHeight:"unset",width:"100%",textOverflow:"ellipsis"}}
+                                onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id, { subGudangId: v||null, lokasiId: null }); }}>
+                                <option value="">-- Pilih Sub Gudang --</option>
+                                {(subsForGudang.length > 0 ? subsForGudang : subGudangList).map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
+                              </select>
+
+                              {/* Level 3: Blok Gudang + Pin Peta */}
+                              <div style={{display:"flex",gap:4,alignItems:"center",width:"100%"}}>
+                                <select value={item.lokasiId||""} style={{...sty.select,fontSize:11,padding:"5px 8px",minHeight:"unset",flex:1,minWidth:0,textOverflow:"ellipsis"}}
                                   onChange={e=>setAttbLokasi(item, e.target.value)}>
-                                  <option value="">-- Pilih Blok --</option>
+                                  <option value="">-- Pilih Blok Gudang --</option>
                                   {blokOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
                                 </select>
                                 <button title={canLihatPeta?"Lihat di Peta Gudang":!item.lokasiId?"Blok belum diisi":"Blok ini belum diplot di denah / denah belum diupload"}
-                                  style={{...sty.btn("ghost","sm"),padding:"4px 7px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
+                                  style={{...sty.btn("ghost","sm"),padding:"4px 7px",borderColor:canLihatPeta?"#fca5a5":C.border,color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5,flexShrink:0}}
                                   onClick={()=>{ if(canLihatPeta){ setPetaMiniDetail && setPetaMiniDetail({stock:item, lokasi:loc.lok, gudang:loc.gdg, petaInfo:loc.petaInfo}); } else { showToast(!item.lokasiId?"Blok/Lokasi belum diisi.":"Blok ini belum diplot koordinatnya di denah (atur di Master Data → Master Gudang).","error"); } }}>📍</button>
                               </div>
                             </div>
@@ -476,40 +481,53 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                     </td>
                     <td data-label="Nilai Perolehan" style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap"}}>{item.nilaiPerolehan?Number(item.nilaiPerolehan).toLocaleString("id-ID"):"—"}</td>
                     <td data-label="Nilai Buku" style={{padding:"8px 10px",textAlign:"right",whiteSpace:"nowrap",color:item.nilaiBuku?C.text:C.muted}}>{item.nilaiBuku?Number(item.nilaiBuku).toLocaleString("id-ID"):"—"}</td>
-                    <td data-label="Status" style={{padding:"8px 10px"}}>
-                      <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{item.approvalStatus||"DRAFT"}</span>
+                    <td data-label="Status" style={{padding:"6px 6px"}}>
+                      <span style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:800,background:C.bg || "#f3f4f6",color:C.text || "#475569",border:`1px solid ${C.border || "#cbd5e1"}`,whiteSpace:"nowrap"}}>{item.approvalStatus||"DRAFT"}</span>
                     </td>
-                    <td data-label="Tahap" style={{padding:"8px 10px"}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
-                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
-                        {item.lanjutBelumLanjut && <span title={`Belum Lanjut: ${item.keteranganTidakLanjut||"-"}`} style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap",cursor:"help"}}>⏸ Ditahan</span>}
-                      </div>
+                    <td data-label="Tahap" style={{padding:"6px 6px",maxWidth:110}}>
+                      {(()=>{
+                        const shortLabels = { USULAN_AE1:"Usulan AE.1", AE1_AE4:"AE.1 s.d AE.4", CEK_DEKOM:"Cek Dekom", CEK_KJPP:"Cek KJPP", LELANG:"Lelang" };
+                        const shortTxt = shortLabels[item.stage] || attbStageLabel(item.stage);
+                        return (
+                          <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
+                            <span title={attbStageLabel(item.stage)} style={{padding:"2px 7px",borderRadius:6,fontSize:10,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{shortTxt}</span>
+                            {item.lanjutBelumLanjut && <span title={`Belum Lanjut: ${item.keteranganTidakLanjut||"-"}`} style={{padding:"2px 6px",borderRadius:6,fontSize:10,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap",cursor:"help"}}>⏸ Ditahan</span>}
+                          </div>
+                        );
+                      })()}
                     </td>
-                    <td data-label="Aksi" style={{padding:"8px 10px"}}>
-                      <div style={{display:"flex",gap:4,flexWrap:"wrap",justifyContent:"center"}}>
-                        {canManage && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"5px 8px"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>✏️</button>}
+                    <td data-label="Aksi" style={{padding:"10px 12px",minWidth:170}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"center",justifyContent:"center"}}>
+                        {canManage && (
+                          <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"4px 10px",borderRadius:10,display:"inline-flex",alignItems:"center",justifyContent:"center"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>
+                            ✏️
+                          </button>
+                        )}
+
                         {canApproveThis && (
                           <span className="approval-actions approval-actions--compact">
                             <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Approve</button>
                             <button className="approval-btn--reject" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                           </span>
                         )}
-                        {/* Kontrol Lanjut / Belum Lanjut — compact segmented, aktif di Tahap 1 (Usulan AE.1)
-                            & Tahap 2 (AE.1 s.d AE.4). Tahap 3-4 cuma tombol Lanjut. */}
+
+                        {/* Kontrol Lanjut / Belum Lanjut — compact segmented, aktif di Tahap 1 (Usulan AE.1) & Tahap 2 (AE.1 s.d AE.4) */}
                         {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
-                          <div style={{display:"inline-flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                          <div style={{display:"inline-flex",borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.05)"}}>
                             <button title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
-                              style={{border:"none",cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:"#dcfce7",color:C.green,whiteSpace:"nowrap"}}>▶ Lanjut</button>
+                              style={{border:"none",cursor:"pointer",padding:"6px 12px",fontSize:12,fontWeight:800,background:"rgba(34, 197, 94, 0.15)",color:C.green,whiteSpace:"nowrap"}}>▶ Lanjut</button>
                             <button title={item.lanjutBelumLanjut?"Sedang Belum Lanjut — klik untuk lanjutkan lagi":"Tandai Belum Lanjut"}
                               onClick={()=>{ if(item.lanjutBelumLanjut){ resumeBelumLanjut(item); } else { setBelumLanjutId(item.id); setBelumLanjutNote(""); } }}
-                              style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"#fffbeb",color:item.lanjutBelumLanjut?"white":"#92400e",whiteSpace:"nowrap"}}>{item.lanjutBelumLanjut?"⏸ Ditahan":"⏸ Belum"}</button>
+                              style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"6px 12px",fontSize:12,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"rgba(245, 158, 11, 0.15)",color:item.lanjutBelumLanjut?"white":(C.yellow || "#d97706"),whiteSpace:"nowrap"}}>{item.lanjutBelumLanjut?"⏸ Ditahan":"⏸ Belum"}</button>
                           </div>
                         )}
+
                         {canManage && ["CEK_DEKOM","CEK_KJPP"].includes(item.stage) && (
                           <button style={sty.btn("ghost","sm")} onClick={()=>advanceStage(item.id)}>▶ Lanjut</button>
                         )}
+
                         {canDelete && (
-                          <button title="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 8px"}}
+                          <button title="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 9px",borderRadius:10,display:"inline-flex",alignItems:"center",justifyContent:"center"}}
                             onClick={()=>askConfirmDelete && askConfirmDelete({
                               title:"Hapus Item ATTB?",
                               message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,

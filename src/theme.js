@@ -24,7 +24,18 @@ export const modalHeaderStyle = { display:"flex", alignItems:"center", justifyCo
 // App.jsx meneruskan palet theme-aware (C_LIGHT/C_DARK) sebagai argumen kedua.
 export function makeSty(isMobile, C=C_LIGHT) {
   return {
-    btn:(v="primary",sz="md")=>({ padding:isMobile?(sz==="sm"?"10px 14px":"12px 18px"):(sz==="sm"?"5px 10px":"9px 18px"), minHeight:isMobile?44:undefined, borderRadius:10, border:"none", cursor:"pointer", fontWeight:600, fontSize:isMobile?(sz==="sm"?13:14):(sz==="sm"?11:13), background: v==="primary"?"linear-gradient(180deg,#2f6bf0,#1d4ed8)":v==="danger"?"linear-gradient(180deg,#ef4444,#dc2626)":v==="success"?"linear-gradient(180deg,#1db954,#16a34a)":v==="warn"?"linear-gradient(180deg,#fbb024,#f59e0b)":"#f3f4f6", color:v==="ghost"?C.text:"white", boxShadow:(v==="primary"||v==="danger"||v==="success"||v==="warn")?"0 1px 2px rgba(15,23,42,0.16), 0 1px 3px rgba(15,23,42,0.10)":"inset 0 0 0 1px rgba(15,23,42,0.07)" }),
+    btn:(v="primary",sz="md")=>({
+      padding:isMobile?(sz==="sm"?"10px 14px":"12px 18px"):(sz==="sm"?"5px 10px":"9px 18px"),
+      minHeight:isMobile?44:undefined,
+      borderRadius:10,
+      border:(v==="ghost"||v==="secondary")?`1px solid ${C.border}`:"none",
+      cursor:"pointer",
+      fontWeight:600,
+      fontSize:isMobile?(sz==="sm"?13:14):(sz==="sm"?11:13),
+      background: v==="primary"?"linear-gradient(180deg,#2f6bf0,#1d4ed8)":v==="danger"?"linear-gradient(180deg,#ef4444,#dc2626)":v==="success"?"linear-gradient(180deg,#1db954,#16a34a)":v==="warn"?"linear-gradient(180deg,#fbb024,#f59e0b)":(C===C_DARK?"#1e293b":"#f3f4f6"),
+      color:(v==="ghost"||v==="secondary")?C.text:"white",
+      boxShadow:(v==="primary"||v==="danger"||v==="success"||v==="warn")?"0 1px 2px rgba(15,23,42,0.16), 0 1px 3px rgba(15,23,42,0.10)":"none"
+    }),
     card:{ background:C.surface, borderRadius:14, border:`1px solid ${C.border}`, padding:20, boxShadow:"0 1px 2px rgba(16,24,40,0.04), 0 8px 20px -8px rgba(16,24,40,0.10)" },
     // Tombol Batal/Simpan "menempel" di bawah kartu modal (position:sticky)
     // supaya di form panjang (banyak baris material) user tidak perlu scroll

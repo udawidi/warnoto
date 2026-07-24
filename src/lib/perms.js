@@ -21,6 +21,8 @@ export const PERM_MENUS = [
   { key: "menu.rencana", label: "Rencana Kedatangan" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
   { key: "menu.ai", label: "Pak War (AI)" },
+  { key: "menu.maturity", label: "Maturity Audit" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
 ];
 
 export const PERM_AKSI = [
@@ -46,7 +48,7 @@ function menus(...ids) {
 
 const FULL_MENUS = menus(
   "dashboard", "stock", "kapasitasGudang", "master", "transaction", "approval",
-  "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai"
+  "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai", "maturity", "inspeksiMaterial"
 );
 
 // Default per role — turunan langsung dari gating hardcoded App.jsx:
@@ -62,7 +64,7 @@ export const DEFAULT_PERMS = {
   ADMIN_UIT: { ...FULL_MENUS },
   MGR_LOGISTIK_UIT: { ...FULL_MENUS },
   // VIEWER: cabang normal TANPA menu approval.
-  VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai"),
+  VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai", "maturity", "inspeksiMaterial"),
   PENGADAAN: menus("dashboard", "rencana"),
   ADMIN_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),
   MGR_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),

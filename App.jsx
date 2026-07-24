@@ -52,7 +52,10 @@ import { BarcodePrintModal } from "./src/components/BarcodePrintModal.jsx";
 import { KartuGantungModal } from "./src/components/KartuGantungModal.jsx";
 import { TUG15Tab } from "./src/components/TUG15Tab.jsx";
 import { MaterialCadangTab } from "./src/components/MaterialCadangTab.jsx";
+import { InspeksiMaterialCadangTab } from "./src/components/InspeksiMaterialCadangTab.jsx";
 import { ForecastStokPage } from "./src/components/ForecastStokPage.jsx";
+import { MaturityAuditEditor, Form5STab } from "./src/components/MaturityAuditSystem.jsx";
+import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "./src/data/auditAspects.js";
 import { ApprovalTab } from "./src/components/ApprovalTab.jsx";
 import { SidebarNavItem } from "./src/components/SidebarNavItem.jsx";
 import { SidebarIcon } from "./src/components/SidebarIcon.jsx";
@@ -246,6 +249,13 @@ export default function PLNWarehouse() {
   const [stockCountList, setStockCountList] = useState(() => readCachedList("pln_stockcount_v1") ?? []); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [approvalHistoryList, setApprovalHistoryList] = useState([]); // log keputusan approval (Lokasi/Blok, Pemindahan Stok, dkk) — TUG tetap diturunkan dari txns
   const [maturityAssessments, setMaturityAssessments] = useState([]); // riwayat asesmen Maturity Level Gudang UPT Surabaya, diisi manual oleh Admin
+  const [maturityAuditModal, setMaturityAuditModal] = useState(null);
+  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
+  const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({});
+  const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
+  const [selectedMaturityUpt, setSelectedMaturityUpt] = useState("UPT Surabaya");
+  const [maturitySubTab, setMaturitySubTab] = useState("pelaksanaan");
+  const [materialInspections, setMaterialInspections] = useState(() => readCachedList("pln_material_inspections_v1") ?? []);
   const [heavyEquipmentList, setHeavyEquipmentList] = useState(() => readCachedList("pln_heavy_equipment_v1") ?? []);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState(() => readCachedList("pln_heavy_equipment_loans_v1") ?? []);
   const [attbList, setAttbList] = useState(() => readCachedList("pln_attb_v1") ?? []);
@@ -1053,7 +1063,28 @@ export default function PLNWarehouse() {
   showToastRef.current = showToast;
 
   async function handleLogin() {
-    if (!supabase) { setLoginErr("Supabase belum dikonfigurasi."); return; }
+    if (!supabase) {
+      const username = (loginForm.username || "admin").trim().toLowerCase();
+      const localProfile = {
+        id: "local-user-" + username,
+        name: (loginForm.username.trim() || "Admin Local") + " (Local)",
+        username: username,
+        role: "SUPERADMIN",
+        jabatan: "Administrator Gudang (Local)",
+        avatar: null,
+        uptId: "UPT_SURABAYA",
+        ultgId: null,
+        uitId: null,
+        gudangIds: null
+      };
+      try {
+        localStorage.setItem("sb-local-auth-token", JSON.stringify({ local: true }));
+        localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(localProfile));
+      } catch {}
+      setCurrentUser(localProfile);
+      setLoginErr("");
+      return;
+    }
     if (!loginForm.username.trim() || !loginForm.password) { setLoginErr("Username dan password wajib diisi."); return; }
     setLoginBusy(true); setLoginErr("");
     const { error } = await supabase.auth.signInWithPassword({
@@ -1077,6 +1108,7 @@ export default function PLNWarehouse() {
       // server self-host lambat/timeout dan user keburu refresh, sesi belum putus →
       // refresh = login lagi. Dobel-hapus dengan listener AMAN (removeItem key yang
       // sudah tidak ada tidak error).
+      try { localStorage.removeItem("sb-local-auth-token"); } catch {}
       try { localStorage.removeItem(PROFILE_CACHE_KEY); } catch {}
       try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
       try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
@@ -1269,6 +1301,49 @@ export default function PLNWarehouse() {
   useEffect(() => {
     try { sessionStorage.setItem("warnoto_tab", tab); } catch {}
   }, [tab]);
+
+  async function saveMaturityAudit(audit, newStatus) {
+    setMaturityAuditSaving(true);
+    try {
+      const entry = {
+        ...(audit?.id ? audit : {}),
+        id: audit?.id || `MA-${uid().slice(-8)}`,
+        upt: audit?.upt || selectedMaturityUpt || "UPT Surabaya",
+        status: newStatus,
+        aspekScores: maturityAuditForm.aspekScores,
+        evidence: maturityAuditEvidence,
+        catatanUPT: maturityAuditForm.catatanUPT,
+        catatanUIT: maturityAuditForm.catatanUIT,
+        catatanPusat: maturityAuditForm.catatanPusat,
+        fileUrl: maturityAuditForm.fileUrl,
+        fileNama: maturityAuditForm.fileNama,
+        createdAt: audit?.createdAt || Date.now(),
+        updatedAt: Date.now(),
+        updatedBy: currentUser?.id,
+        history: [...(audit?.history || []), { action: newStatus, by: currentUser?.id, at: Date.now() }],
+      };
+      let nm;
+      if (audit?.id) {
+        nm = maturityAssessments.map(a => a.id === audit.id ? entry : a);
+      } else {
+        nm = [entry, ...maturityAssessments];
+      }
+      setMaturityAssessments(nm);
+      try { CLOUD.set("pln_maturity_v1", nm); } catch {}
+      logAudit(currentUser, audit?.id ? "UPDATE" : "CREATE", "maturity_audit", entry.id, { status: newStatus, upt: entry.upt });
+      setMaturityAuditModal(null);
+      showToast(`Audit ${entry.upt} tersimpan.`);
+    } finally { setMaturityAuditSaving(false); }
+  }
+
+  async function deleteMaturityAudit(id) {
+    if (!id) return;
+    const nm = maturityAssessments.filter(a => a.id !== id);
+    setMaturityAssessments(nm);
+    try { CLOUD.set("pln_maturity_v1", nm); } catch {}
+    setMaturityAuditModal(null);
+    showToast("Audit maturity berhasil dihapus");
+  }
 
   // Auto-sync foto transaksi yang belum ter-upload (mis. submit saat offline di
   // gudang). Dicoba saat app load, saat daftar transaksi berubah, dan saat koneksi
@@ -4552,6 +4627,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             <input style={sty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
           </div>
           {loginErr && <div style={{color:C.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius:8}}>{loginErr}</div>}
+          {!supabase && (
+            <div style={{fontSize:12,color:"#1d4ed8",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px",marginBottom:12,lineHeight:1.4}}>
+              💡 <b>Mode Lokal / Testing:</b> Supabase belum terhubung di <code>.env</code>. Anda dapat memasukkan username & password apa saja untuk masuk ke mode pengujian lokal.
+            </div>
+          )}
           <button style={{...sty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
           <div style={{marginTop:16,fontSize:12,color:C.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
         </div>
@@ -4596,6 +4676,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
+    {id:"maturity",icon:<SidebarIcon name="maturity"/>,label:"Maturity Level"},
+    {id:"inspeksiMaterial",icon:<SidebarIcon name="inspeksi"/>,label:"Inspeksi Material"},
   ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
@@ -4613,6 +4695,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
+    maturity: {eyebrow:"Audit & Compliance",title:"Penilaian Maturity Level Gudang"},
+    inspeksiMaterial: {eyebrow:"Inventory Health Check",title:"Inspeksi Material Cadang"},
   }[tab] || {eyebrow:"WARNOTO",title:"Dashboard"};
 
   return (
@@ -6713,6 +6797,90 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             showToast={showToast}
             currentUser={currentUser}
             C={C} sty={sty}
+          />
+        )}
+
+        {/* MATURITY AUDIT — Penilaian Maturity Level Gudang UPT */}
+        {tab==="maturity" && (
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:`1px solid ${C.border}`,paddingBottom:12,marginBottom:8,flexWrap:"wrap",gap:12}}>
+              <div style={{display:"flex",gap:8}}>
+                <button
+                  style={{...sty.btn(maturitySubTab==="pelaksanaan"?"primary":"ghost","sm")}}
+                  onClick={()=>setMaturitySubTab("pelaksanaan")}
+                >
+                  📋 Pelaksanaan Audit
+                </button>
+                <button
+                  style={{...sty.btn(maturitySubTab==="5s"?"primary":"ghost","sm")}}
+                  onClick={()=>setMaturitySubTab("5s")}
+                >
+                  ✨ Form Checklist 5S
+                </button>
+              </div>
+
+              {/* Selector UPT untuk pemantauan / penilaian multi-UPT */}
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:12,fontWeight:700,color:C.muted}}>Unit UPT:</span>
+                <select
+                  style={{...sty.input,width:"auto",padding:"6px 12px",fontSize:12,fontWeight:700,borderRadius:8,background:C.surface,color:C.text}}
+                  value={selectedMaturityUpt}
+                  onChange={e => setSelectedMaturityUpt(e.target.value)}
+                >
+                  {(uptList.length > 0 ? uptList : DEFAULT_UPT_LIST).map(u => (
+                    <option key={u.id} value={u.nama}>{u.nama}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {maturitySubTab==="5s" ? (
+              <Form5STab
+                C={C}
+                sty={sty}
+                currentUser={currentUser}
+                lokasiList={lokasiList}
+                setMaturityAuditEvidence={setMaturityAuditEvidence}
+                onBack={()=>setMaturitySubTab("pelaksanaan")}
+                isMobile={isMobile}
+                selectedUpt={selectedMaturityUpt}
+              />
+            ) : (
+              <MaturityAuditEditor
+                maturityAuditModal={maturityAuditModal}
+                setMaturityAuditModal={setMaturityAuditModal}
+                maturityAuditForm={maturityAuditForm}
+                setMaturityAuditForm={setMaturityAuditForm}
+                maturityAuditEvidence={maturityAuditEvidence}
+                setMaturityAuditEvidence={setMaturityAuditEvidence}
+                maturityAuditSaving={maturityAuditSaving}
+                saveMaturityAudit={saveMaturityAudit}
+                deleteMaturityAudit={deleteMaturityAudit}
+                currentUser={currentUser}
+                hasRole={hasRole}
+                selectedUpt={selectedMaturityUpt}
+                isMobile={isMobile}
+                C={C}
+                sty={sty}
+              />
+            )}
+          </div>
+        )}
+
+        {/* INSPEKSI MATERIAL CADANG */}
+        {tab==="inspeksiMaterial" && (
+          <InspeksiMaterialCadangTab
+            stocks={stocks}
+            katalogList={katalogList}
+            lokasiList={lokasiList}
+            materialInspections={materialInspections}
+            setMaterialInspections={setMaterialInspections}
+            currentUser={currentUser}
+            C={C}
+            sty={sty}
+            isMobile={isMobile}
+            showToast={showToast}
+            saveToCloud={saveToCloud}
           />
         )}
 
