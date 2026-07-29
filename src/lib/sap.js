@@ -171,7 +171,10 @@ export function matchesMaterialSearch(fields, query) {
 }
 
 export function matchesStockSearch(stock, query) {
-  return matchesMaterialSearch([stock.name, stock.id, stock.katalog, stock.lokasi, stock.merk, stock.category], query);
+  return matchesMaterialSearch([
+    stock.name, stock.id, stock.katalog, stock.lokasi, stock.blok, stock.gudang,
+    stock.merk, stock.category, stock.keteranganBarang, stock.lokasiKeterangan,
+  ], query);
 }
 
 // Master Katalog Barang: sama persis mesinnya dengan Data Stok (matchesStockSearch),

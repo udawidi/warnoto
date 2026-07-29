@@ -48,7 +48,9 @@ test.describe("WARNOTO desktop preservation smoke", () => {
       expect(cacheShape[0].fotoKeseluruhan).toBeUndefined();
       expect(cacheShape[1].fotoNameplate).toBeUndefined();
       await openRoute(page, { tab:"stock", menuPath:["Data Stok"], readySelector:".stock-page" });
-      await page.locator(".stock-card-table tbody tr").first().getByText("Material Foto E2E", { exact:true }).click();
+      const stockRow = page.locator(".stock-card-table tbody tr").first();
+      await expect(stockRow.getByTitle("Edit data stok")).toBeVisible();
+      await stockRow.locator(".mobile-card-table__title").click();
       await expect(page.getByText(/^Foto Nameplate/)).toBeVisible();
       await expect(page.locator('img[alt="Foto Nameplate"]')).toBeVisible();
       await expect(page.locator('img[alt="Foto Keseluruhan"]')).toBeVisible();

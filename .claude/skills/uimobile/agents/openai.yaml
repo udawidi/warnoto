@@ -1,0 +1,5 @@
+interface:
+  display_name: "WARNOTO UI Mobile"
+  short_description: "Audit-first mobile UI repair workflow"
+  brand_color: "#1D4ED8"
+  default_prompt: "Use $uimobile to audit a WARNOTO mobile screen and propose a bounded repair before editing."

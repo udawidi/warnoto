@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // WARNOTO — Vendor C (OpenCode Go)
+  // Arsitek default: grok-4.5. Tukang lewat @tukang-biasa / @tukang-senior.
+  "model": "opencode-go/grok-4.5",
+  "small_model": "opencode-go/glm-5.1",
+  "default_agent": "arsitek",
+  "instructions": [
+    "AGENTS.md",
+    ".opencode/instructions/vendor-c-warnoto.md"
+  ],
+  "permission": {
+    // LAST matching rule wins — broad first, narrow last
+    "bash": {
+      "*": "allow",
+      "git push*": "ask",
+      "git push --force*": "deny",
+      "git push -f*": "deny",
+      "git push --force-with-lease*": "deny",
+      "vercel *": "ask",
+      "ssh *": "ask",
+      "scp *": "ask"
+    },
+    "edit": {
+      "*": "allow",
+      "HANDOFF.md": "ask",
+      "supabase/schema.sql": "ask",
+      ".env*": "deny"
+    }
+  },
+  "agent": {
+    // Built-in build diganti peran arsitek; jangan default ke build mentah
+    "build": {
+      "disable": true
+    },
+    "plan": {
+      "model": "opencode-go/grok-4.5",
+      "description": "Plan-only mode (baca HANDOFF, susun spek, tanpa edit kode)."
+    }
+  }
+}

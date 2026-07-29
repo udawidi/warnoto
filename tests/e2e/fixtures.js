@@ -23,7 +23,7 @@ const HEAVY_LOANS = [
 ];
 
 const CATALOG = [
-  { id:"KAT-E2E-01", katalog:"301234567", name:"Isolator Keramik 150 kV", satuan:"BUAH" },
+  { id:"KAT-E2E-01", katalog:"301234567", name:"Isolator Keramik 150 kV", satuan:"BUAH", keterangan:"Komponen isolasi switchyard untuk jalur transmisi" },
   { id:"KAT-E2E-02", katalog:"309876543", name:"Lightning Arrester 150 kV", satuan:"SET" },
 ];
 

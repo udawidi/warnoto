@@ -5,10 +5,43 @@ import { hasRole, getUserUptScope } from "../lib/roles.js";
 import { downloadHeavyEquipmentLoanHTML } from "../lib/docBuilders.js";
 import { canApproveHeavyEquipmentLoan, getEquipmentCategory, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
 import { OperationsHero } from "./OperationsHero.jsx";
+import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
 
-export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, saveEdit, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
+const EQUIPMENT_FORM_FIELDS = [
+  ["upt", "UPT"], ["lokasi", "Lokasi"], ["nama", "Nama"], ["jenis", "Jenis"],
+  ["merkType", "Merk/Type"], ["kapasitas", "Kapasitas"], ["nomorSeri", "No. Seri"],
+  ["tahun", "Tahun"], ["kondisi", "Kondisi"], ["suratIzinAlat", "Surat Izin Alat"],
+];
+
+function EquipmentFields({ form, setForm, sty }) {
+  return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+    {EQUIPMENT_FORM_FIELDS.map(([key,label]) => <label key={key} style={sty.label}>{label}
+      <input style={sty.input} value={form[key]||""} onChange={e=>setForm(current=>({...current,[key]:e.target.value}))}/>
+    </label>)}
+  </div>;
+}
+
+function EquipmentPhotoInput({ foto, nama, handleImg, setForm, sty, C, showToast }) {
+  return <>
+    <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
+      {foto ? <img src={foto} alt={nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:38,color:"#9ca3af"}}>🚜</div>}
+    </div>
+    <label style={{...sty.btn("ghost","sm"),textAlign:"center",display:"block",marginBottom:16}}>
+      📷 {foto?"Ganti Foto":"Upload Foto"}
+      <input type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" capture="environment" style={{display:"none"}} onChange={e=>{
+        const file = e.target.files?.[0];
+        const validation = validateHeavyEquipmentPhotoFile(file);
+        if (!validation.ok) { showToast?.(validation.message, "error"); e.target.value=""; return; }
+        handleImg(e, img=>setForm(current=>({...current,foto:img})), error=>showToast?.(`Gagal memproses foto: ${error?.message || "file tidak dapat dibaca"}.`, "error"));
+        e.target.value="";
+      }}/>
+    </label>
+  </>;
+}
+
+export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, sty, C, handleImg, saveEdit, createEquipment, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
   const myUpt = getUserUptScope(currentUser);
-  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
+  const isMSB = currentUser?.role === "MSB" || currentUser?.role === "Manager UIT";
   // Dulu 2 sub-tab terpisah ("List Alat" vs "Peminjaman & Histori") dengan filter UPT yang
   // di-reset kontradiktif tiap pindah tab (list pakai UPT sendiri, loans di-reset ke "Semua UPT"
   // padahal unifiedLoans-nya sendiri tidak pernah benar-benar difilter UPT) — digabung jadi 1
@@ -47,6 +80,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
     ...normalizedLoans.map(l=>l.requesterUpt),
   ].filter(Boolean))).sort();
   const canManage = hasRole(currentUser, "ADMIN","TL");
+  const canEditAll = hasRole(currentUser, "ADMIN");
+  const [addingEquipment, setAddingEquipment] = useState(false);
+  const blankEquipment = () => ({upt:myUpt||"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", foto:null});
+  const [addForm, setAddForm] = useState(blankEquipment);
+  const [savingEquipment, setSavingEquipment] = useState(false);
   // Ajukan Peminjaman = "kita mau pinjam alat", jadi alat yang ditawarkan HARUS di luar UPT
   // sendiri (non-MSB) — pinjam alat sendiri lewat form sendiri tidak masuk akal. MSB/Manager UIT
   // memfasilitasi peminjaman UPT mana pun, jadi tetap lihat semua alat.
@@ -261,10 +299,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
 
       {viewMode==="armada" && (<>
       {/* ── SECTION: Daftar Alat Berat ── */}
-      <div className="operations-section-heading"><div><span>Fleet Registry</span><h2>Daftar Alat Berat</h2></div><small>{filteredEquipment.length} alat sesuai filter</small></div>
+      <div className="operations-section-heading"><div><span>Fleet Registry</span><h2>Daftar Alat Berat</h2></div><div style={{display:"flex",alignItems:"center",gap:8}}><small>{filteredEquipment.length} alat sesuai filter</small>{canEditAll&&<button style={sty.btn("primary","sm")} onClick={()=>{setAddForm(blankEquipment());setAddingEquipment(true);}}>+ Tambah Alat Berat</button>}</div></div>
       {/* Kategori (kiri, wrap) + dropdown kondisi ringkas (kanan) — satu baris, hilangkan dualisme chip. */}
       <div className="equipment-filter-layout" style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap",marginBottom:10}}>
-        <div className="operations-category-filters" style={{flex:1,minWidth:0,marginBottom:0}}>
+        <div className="operations-category-filters heavy-category-strip" role="tablist" aria-label="Kategori alat berat" style={{flex:1,minWidth:0,marginBottom:0}}>
           {EQUIPMENT_CATEGORIES.map(cat=>{
             const active = categoryFilter===cat.id;
             const count = equipmentList.filter(e=>
@@ -273,10 +311,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
               (kondisiFilter==="ALL"||e.statusAlat===kondisiFilter||(kondisiFilter==="DIPINJAM"&&!!activeLoanForEquipment(e.id)))
             ).length;
             return (
-              <button key={cat.id} className={active?"is-active":""} onClick={()=>setCategoryFilter(cat.id)}>
-                <span style={{color:active?C.accent:"#9ca3af",display:"flex"}}>{cat.icon}</span>
-                <span style={{fontSize:12,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
-                <span style={{fontSize:12,fontWeight:700,color:active?C.accent:C.muted}}>{count}</span>
+              <button key={cat.id} className={`heavy-category-button${active?" is-active":""}`} onClick={()=>setCategoryFilter(cat.id)} role="tab" aria-selected={active}>
+                <span className="heavy-category-icon" style={{color:active?C.accent:"#9ca3af"}}>{cat.icon}</span>
+                <span className="heavy-category-label" style={{fontWeight:active?800:500}}>{cat.label}</span>
+                <span className="heavy-category-count" style={{color:active?C.accent:C.muted}}>{count}</span>
               </button>
             );
           })}
@@ -314,7 +352,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
               {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius:8,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
               {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:"#4b5563"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
               {lastLoan && <div style={{fontSize:12,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
-              {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm({statusAlat:eq.statusAlat||"LAYAK", foto:eq.foto||null});}}>Edit data alat</button>}
+              {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm(canEditAll ? {...eq} : {statusAlat:eq.statusAlat||"LAYAK", foto:eq.foto||null});}}>Edit data alat</button>}
             </div>
           );
         })}
@@ -325,18 +363,17 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
       {viewMode==="peminjaman" && (<>
       {/* ── SECTION: Ajukan Peminjaman + Peminjaman & Histori ── */}
       <div className="operations-section-heading"><div><span>Loan Operations</span><h2>Peminjaman & Histori</h2></div><small>{unifiedLoans.length} transaksi</small></div>
-      <div className="operations-category-filters is-compact">
+      <div className="operations-category-filters heavy-category-strip is-compact" role="tablist" aria-label="Kategori alat berat untuk peminjaman">
         {EQUIPMENT_CATEGORIES.map(cat=>{
           const active = loanCategoryFilter===cat.id;
           const base = equipmentList.filter(e=>(cat.id==="ALL"||getEquipmentCategory(e)===cat.id));
           const countActive = base.filter(e=>activeLoanForEquipment(e.id)).length;
           const countTotal = base.length;
           return (
-            <button key={cat.id} className={active?"is-active":""} onClick={()=>setLoanCategoryFilter(cat.id)}
-              style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"6px 12px",minWidth:64,borderRadius:10,border:`2px solid ${active?C.accent:C.border}`,background:active?"#eff6ff":"white",color:active?C.accent:C.muted,cursor:"pointer",boxShadow:active?"0 2px 8px rgba(0,152,218,.15)":"none"}}>
-              <span style={{color:active?C.accent:"#9ca3af"}}>{cat.icon}</span>
-              <span style={{fontSize:12,fontWeight:active?800:500,whiteSpace:"nowrap"}}>{cat.label}</span>
-              <span style={{fontSize:12,color:active?C.accent:C.muted}}><b>{countActive}</b>/{countTotal}</span>
+            <button key={cat.id} className={`heavy-category-button${active?" is-active":""}`} onClick={()=>setLoanCategoryFilter(cat.id)} role="tab" aria-selected={active}>
+              <span className="heavy-category-icon" style={{color:active?C.accent:"#9ca3af"}}>{cat.icon}</span>
+              <span className="heavy-category-label" style={{fontWeight:active?800:500}}>{cat.label}</span>
+              <span className="heavy-category-count" style={{color:active?C.accent:C.muted}}><b>{countActive}</b>/{countTotal}</span>
             </button>
           );
         })}
@@ -427,16 +464,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
         if (!eq) return null;
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-            <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <div role="dialog" aria-label="Edit Alat Berat" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
               <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{eq.nama} — {eq.upt}</div>
-              <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
-                {editForm.foto ? <img src={editForm.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:38,color:"#9ca3af"}}>🚜</div>}
-              </div>
-              <label style={{...sty.btn("ghost","sm"),textAlign:"center",display:"block",marginBottom:16}}>
-                📷 {editForm.foto?"Ganti Foto":"Upload Foto"}
-                <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>setEditForm(f=>({...f,foto:img})))}/>
-              </label>
+              {canEditAll && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty}/>}
+              <EquipmentPhotoInput foto={editForm.foto} nama={eq.nama} handleImg={handleImg} setForm={setEditForm} sty={sty} C={C} showToast={showToast}/>
               <div style={{marginBottom:16}}>
                 <label style={sty.label}>Status Alat</label>
                 <select style={sty.select} value={editForm.statusAlat} onChange={e=>setEditForm(f=>({...f,statusAlat:e.target.value}))}>
@@ -446,13 +478,27 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, users, 
                 {eq.availabilityStatus==="DIPINJAM" && ["MAINTENANCE","KIR"].includes(editForm.statusAlat) && <div style={{fontSize:12,color:C.red,marginTop:4}}>Alat sedang dipinjam — tidak bisa diubah ke status ini sampai kembali.</div>}
               </div>
               <div style={{display:"flex",gap:10}}>
-                <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingEquipment(null)}>Batal</button>
-                <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(eq.id, editForm);setEditingEquipment(null);}}>💾 Simpan</button>
+                <button style={{...sty.btn("ghost"),flex:1}} disabled={savingEquipment} onClick={()=>setEditingEquipment(null)}>Batal</button>
+                <button style={{...sty.btn("primary"),flex:2}} disabled={savingEquipment} onClick={async()=>{setSavingEquipment(true);try { if (await saveEdit(eq.id, editForm)) setEditingEquipment(null); } finally { setSavingEquipment(false); }}}>{savingEquipment?"Menyimpan…":"💾 Simpan"}</button>
               </div>
             </div>
           </div>
         );
       })()}
+      {addingEquipment && <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+        <div role="dialog" aria-label="Tambah Alat Berat" style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+          <h3 style={{fontSize:16,fontWeight:800,marginBottom:12}}>Tambah Alat Berat</h3>
+          <EquipmentFields form={addForm} setForm={setAddForm} sty={sty}/>
+          <EquipmentPhotoInput foto={addForm.foto} nama={addForm.nama||"Alat berat baru"} handleImg={handleImg} setForm={setAddForm} sty={sty} C={C} showToast={showToast}/>
+          <label style={{...sty.label,marginTop:10}}>Status Alat
+            <select style={sty.select} value={addForm.statusAlat} onChange={e=>setAddForm(form=>({...form,statusAlat:e.target.value}))}>{STATUS_ALAT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>
+          </label>
+          <div style={{display:"flex",gap:10,marginTop:14}}>
+            <button style={{...sty.btn("ghost"),flex:1}} disabled={savingEquipment} onClick={()=>setAddingEquipment(false)}>Batal</button>
+            <button style={{...sty.btn("primary"),flex:2}} disabled={savingEquipment} onClick={async()=>{setSavingEquipment(true);try { if (await createEquipment(addForm)) { setAddingEquipment(false); setAddForm(blankEquipment()); } } finally { setSavingEquipment(false); }}}>{savingEquipment?"Menyimpan…":"💾 Simpan"}</button>
+          </div>
+        </div>
+      </div>}
     </div>
   );
 }

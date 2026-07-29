@@ -505,52 +505,6 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
     showToast("Item ditolak, tidak ditambahkan ke Master Katalog.", "success");
   }
 
-  // Bug lokasi ditemukan 2026-07-04: sebelum fix di atas, baris stok baru hasil
-  // migrasi (id berawalan "STK-MIG-") auto-diisi lokasiList[0] (lokasi PERTAMA
-  // di Master Lokasi, bukan hasil pembacaan file). Tidak bisa dibedakan otomatis
-  // mana yang memang ditinggal begitu vs yang sudah sengaja dikonfirmasi manual
-  // oleh Admin ke lokasi yang sama — jadi ditampilkan sebagai daftar review,
-  // Admin putuskan satu-per-satu (atau sekaligus) pertahankan/kosongkan.
-  //
-  // PERBAIKAN 2026-07-04 (kedua): filter awal membandingkan ke lokasiId ===
-  // lokasiList[0]?.id — tapi urutan baris dari Supabase TIDAK terjamin stabil
-  // antar reload (query lokasi tidak pakai ORDER BY), jadi lokasiList[0] bisa
-  // beda tiap kali app dimuat, dan panel jadi tidak menangkap baris yang
-  // sebelumnya memang salah. Fix: tangkap SEMUA baris hasil migrasi yang
-  // punya lokasi tapi belum direview — tidak bergantung ke lokasi mana pun.
-  //
-  // PERBAIKAN 2026-07-04 (ketiga): filter cuma cek prefix "STK-MIG-", tapi
-  // banyak baris ternyata berasal dari fitur "Import dari SAP" LAMA (sudah
-  // dihapus tombolnya, lihat commit 5958153) yang pakai prefix "STK-SAP-" —
-  // baris-baris itu masih ada di data existing dan ikut kena bug lokasi yang
-  // sama. Fix: terima kedua prefix.
-  const locationReviewCandidates = (stocks||[]).filter(s =>
-    /^STK-(MIG|SAP)-/.test(String(s.id||"")) && s.lokasiId && !s.locationReviewed
-  );
-
-  async function keepMigrasiLocation(stockId) {
-    const newStocks = stocks.map(s => s.id===stockId ? {...s, locationReviewed:true} : s);
-    setStocks(newStocks);
-    await saveToCloud({ stocks: newStocks });
-    showToast("Lokasi dipertahankan.", "success");
-  }
-
-  async function clearMigrasiLocation(stockId) {
-    const newStocks = stocks.map(s => s.id===stockId ? {...s, lokasiId:null, locationReviewed:true} : s);
-    setStocks(newStocks);
-    await saveToCloud({ stocks: newStocks });
-    showToast("Lokasi dikosongkan — isi manual lewat Data Stok.", "success");
-  }
-
-  async function clearAllMigrasiLocations() {
-    if (!window.confirm(`Kosongkan lokasi untuk SEMUA ${locationReviewCandidates.length} baris ini sekaligus? Tindakan ini tidak bisa di-undo.`)) return;
-    const ids = new Set(locationReviewCandidates.map(s=>s.id));
-    const newStocks = stocks.map(s => ids.has(s.id) ? {...s, lokasiId:null, locationReviewed:true} : s);
-    setStocks(newStocks);
-    await saveToCloud({ stocks: newStocks });
-    showToast(`${ids.size} baris dikosongkan — isi manual lewat Data Stok.`, "success");
-  }
-
   // ── IMPORT TRANSAKSI TUG LAMA — histori murni (APPROVED, legacyImport:true).
   // TIDAK memutasi stok, TIDAK masuk antrian approval, TIDAK menyentuh docSeq —
   // nomor dokumen dipakai apa adanya dari file, disimpan di docNumbers sesuai
@@ -674,41 +628,6 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, txns, migrated
                 </span>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {locationReviewCandidates.length > 0 && (
-        <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid #dc2626`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:6}}>
-            <div style={{fontWeight:800,fontSize:14,color:"#991b1b"}}>
-              📍 Review Lokasi Otomatis ({locationReviewCandidates.length} baris stok)
-            </div>
-            <button style={sty.btn("danger","sm")} onClick={clearAllMigrasiLocations}>🗑️ Kosongkan Semua ({locationReviewCandidates.length})</button>
-          </div>
-          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
-            Baris-baris ini pernah dibuat migrasi lalu dengan lokasi ditebak otomatis (bug yang sudah diperbaiki) —
-            sebagian mungkin sudah Anda konfirmasi/set manual, sebagian mungkin belum. Cek satu-satu:
-            kalau lokasinya memang benar, klik "Pertahankan". Kalau bukan, klik "Kosongkan" lalu isi lokasi yang
-            benar manual lewat Data Stok. Kalau Anda yakin SEMUA baris ini memang belum pernah diisi manual,
-            pakai "Kosongkan Semua" di kanan atas.
-          </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:320,overflowY:"auto"}}>
-            {locationReviewCandidates.map(s=>{
-              const kat = katalogList.find(k=>k.id===s.katalogId);
-              const lok = lokasiList.find(l=>l.id===s.lokasiId);
-              const gudang = lok?.gudangId;
-              return (
-                <div key={s.id} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",background:"white"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name||kat?.name}</div>
-                    <div style={{fontSize:12,color:C.muted}}>No. Katalog {s.katalog||kat?.katalog} • Qty {s.qty} • Lokasi saat ini: {lok?.kode||"-"}</div>
-                  </div>
-                  <button style={sty.btn("primary","sm")} onClick={()=>keepMigrasiLocation(s.id)}>✅ Pertahankan</button>
-                  <button style={sty.btn("danger","sm")} onClick={()=>clearMigrasiLocation(s.id)}>🗑️ Kosongkan</button>
-                </div>
-              );
-            })}
           </div>
         </div>
       )}

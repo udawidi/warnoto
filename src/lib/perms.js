@@ -19,8 +19,10 @@ export const PERM_MENUS = [
   { key: "menu.attb", label: "ATTB" },
   { key: "menu.opname", label: "Stock Opname & Count" },
   { key: "menu.maturity", label: "Penilaian Maturity" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
   { key: "menu.rencana", label: "Rencana Kedatangan" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material Cadang" },
   { key: "menu.ai", label: "Pak War (AI)" },
 ];
 
@@ -29,6 +31,7 @@ export const PERM_AKSI = [
   { key: "aksi.kelolaMaster", label: "Kelola Master Data" },
   { key: "aksi.import", label: "Import Data (Excel)" },
   { key: "aksi.kelolaAkun", label: "Kelola Akun" },
+  { key: "aksi.buatInspeksiMaterial", label: "Buat Inspeksi Material Cadang" },
 ];
 
 // Urutan role sebagai kolom di halaman Matrix Izin. SUPERADMIN read-only (selalu true).
@@ -47,7 +50,7 @@ function menus(...ids) {
 
 const FULL_MENUS = menus(
   "dashboard", "stock", "kapasitasGudang", "master", "transaction", "approval",
-  "heavyEquipment", "attb", "opname", "maturity", "rencana", "forecastStok", "ai"
+  "heavyEquipment", "attb", "opname", "maturity", "rencana", "forecastStok", "inspeksiMaterial", "ai"
 );
 
 // Default per role — turunan langsung dari gating hardcoded App.jsx:
@@ -56,14 +59,14 @@ const FULL_MENUS = menus(
 export const DEFAULT_PERMS = {
   // ULTG create (TUG-5) tetap lewat jalur canCreateULTG terpisah di App.jsx,
   // jadi aksi.buatTransaksi ADMIN_ULTG sengaja false di sini (perilaku tak berubah).
-  ADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true },
-  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.import": true },
+  ADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true },
+  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.import": true, "aksi.buatInspeksiMaterial": true },
   ASMAN: { ...FULL_MENUS },
   MANAGER: { ...FULL_MENUS },
   ADMIN_UIT: { ...FULL_MENUS },
   MGR_LOGISTIK_UIT: { ...FULL_MENUS },
   // VIEWER: cabang normal TANPA menu approval.
-  VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "ai"),
+  VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "inspeksiMaterial", "ai"),
   PENGADAAN: menus("dashboard", "rencana"),
   ADMIN_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),
   MGR_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),

@@ -1,9 +1,12 @@
-# WARNOTO — panduan untuk Codex (Vendor B)
+# WARNOTO — panduan agent (Vendor B Codex & Vendor C OpenCode Go)
 
-Ikuti kontrak dua-vendor di `~/.codex/AGENTS.md`: **baca `HANDOFF.md` dulu** dan lanjutkan dari "Langkah berikutnya".
+**Baca `HANDOFF.md` dulu** dan lanjutkan dari "Langkah berikutnya".
+
+- **Vendor B (Codex):** kontrak di `~/.codex/AGENTS.md`. Routing `worker` / `senior`.
+- **Vendor C (OpenCode Go):** detail penuh di `.opencode/instructions/vendor-c-warnoto.md`. Agent: `arsitek` (default, `grok-4.5`), `@tukang-biasa` (`glm-5.1`), `@tukang-senior` (`kimi-k2.7-code`). Command: `/sesi`, `/kerjakan`.
 
 ## Aturan routing agent
-- Jika ragu memilih `worker` atau `senior`, wajib prioritaskan `worker` lebih dulu. `senior` hanya dipakai setelah scope/risiko terbukti kompleks atau `worker` mengeskalasi karena pekerjaannya melampaui levelnya; jangan default ke `senior` hanya karena agen utama bingung menentukan level.
+- Jika ragu memilih `worker`/`tukang-biasa` atau `senior`/`tukang-senior`, wajib prioritaskan **biasa/worker** lebih dulu. `senior` hanya dipakai setelah scope/risiko terbukti kompleks atau worker mengeskalasi; jangan default ke `senior` hanya karena agen utama bingung menentukan level.
 
 ## Aturan HANDOFF ringkas (override khusus project ini)
 - Jangan pernah mengedit atau memperbarui `HANDOFF.md` secara otomatis. Agen utama wajib meminta dan memperoleh persetujuan pengguna terlebih dahulu, termasuk setelah tahap signifikan dan di akhir sesi. Aturan persetujuan ini mengoverride semua aturan pembaruan `HANDOFF.md` otomatis yang bertentangan.

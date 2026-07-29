@@ -13,7 +13,7 @@ import { AttbDashboardSummary } from "./AttbDashboardSummary.jsx";
 import { DashboardAnalitikSection } from "./DashboardAnalitikSection.jsx";
 import { Package, Money, Warning, Hourglass, Tractor, ClockCounterClockwise, ChartLineUp, CalendarBlank, MapPin, Buildings, Nut, CheckCircle, Circle } from "@phosphor-icons/react";
 
-export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, attbList, attbBongkaranPool }) {
+export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencanaKedatanganList, myPendingApprovals, lowStocks, totalVal, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, currentUser, heavyEquipmentList, heavyEquipmentLoans, materialCadangData, attbList, attbBongkaranPool, isMobile = false }) {
   const [dashModal, setDashModal] = useState(null); // null | "totalItem" | "nilai" | "kritis" | "tindakan"
 
   const jenisBreakdown = JENIS_BARANG.map(jb => ({
@@ -49,14 +49,14 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
           </button>
         ))}
       </div>
-      <KPISaldoCards stocks={stocks} C={C} sty={sty}/>
+      <div className="dashboard-default-saldo"><KPISaldoCards stocks={stocks} C={C} sty={sty}/></div>
       {(heavyEquipmentList?.length>0 || heavyEquipmentLoans?.length>0) && (
-        <CollapsibleSection id="alatberat" title="Alat Berat" icon={<Tractor weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} C={C}>
+        <CollapsibleSection id={isMobile ? "default-mobile-alatberat" : "alatberat"} title="Alat Berat" icon={<Tractor weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} defaultOpen={!isMobile} C={C}>
           <HeavyEquipmentDashboardSummary equipmentList={heavyEquipmentList} loans={heavyEquipmentLoans} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
         </CollapsibleSection>
       )}
       {(attbList?.length>0 || attbBongkaranPool?.length>0) && (
-        <CollapsibleSection id="attb" title="Aset ATTB (Penghapusan)" icon="🏢" C={C}>
+        <CollapsibleSection id={isMobile ? "default-mobile-attb" : "attb"} title="Aset ATTB (Penghapusan)" icon="🏢" defaultOpen={!isMobile} C={C}>
           <AttbDashboardSummary attbList={attbList} bongkaranPool={attbBongkaranPool} C={C} sty={sty} setTab={setTab} currentUser={currentUser}/>
         </CollapsibleSection>
       )}
@@ -95,7 +95,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
           </div>
         );
       })()}
-      <CollapsibleSection id="aktivitas" title="Aktivitas Terbaru & Rencana Kedatangan" icon={<ClockCounterClockwise weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} C={C}>
+      <CollapsibleSection id={isMobile ? "default-mobile-aktivitas" : "aktivitas"} title="Aktivitas Terbaru & Rencana Kedatangan" icon={<ClockCounterClockwise weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} defaultOpen={!isMobile} C={C}>
       <div className="dashboard-overview__activity">
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
@@ -124,7 +124,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, rencan
         <div><RencanaWidget rencanaKedatanganList={rencanaKedatanganList} C={C} sty={sty} setTab={setTab}/></div>
       </div>
       </CollapsibleSection>
-      <CollapsibleSection id="analitik" title="Analitik & Grafik" icon={<ChartLineUp weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} C={C}>
+      <CollapsibleSection id={isMobile ? "default-mobile-analitik" : "analitik"} title="Analitik & Grafik" icon={<ChartLineUp weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} defaultOpen={!isMobile} C={C}>
       <DashboardAnalitikSection txns={txns} stocks={stocks} katalogList={katalogList} topN={topN} setTopN={setTopN} pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode} C={C} sty={sty}/>
       </CollapsibleSection>
 

@@ -75,7 +75,7 @@ export function describeLoginError(error) {
   const message = String(error?.message || "").toLowerCase();
   const status = Number(error?.status || 0);
   if (status === 429 || message.includes("rate limit") || message.includes("too many")) return "Terlalu banyak percobaan masuk. Tunggu sebentar lalu coba lagi.";
-  if (status >= 500 || message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "Server login sedang tidak dapat dihubungi. Periksa koneksi lalu coba lagi.";
+  if (status >= 500 || message.includes("failed to fetch") || message.includes("network") || message.includes("timeout")) return "Server login sedang tidak dapat dihubungi. Coba jaringan lain (mis. data seluler) — bila hanya gagal di jaringan kantor, minta IT whitelist domain warnoto.com di firewall.";
   if (message.includes("email not confirmed")) return "Akun ini belum aktif. Hubungi Admin.";
   if (message.includes("banned") || message.includes("disabled")) return "Akun ini tidak aktif. Hubungi Admin.";
   if (status === 400 || status === 401 || message.includes("invalid login credentials") || message.includes("invalid credentials")) return "Username atau password salah.";

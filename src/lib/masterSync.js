@@ -164,6 +164,18 @@ export async function syncMasterTableRows(table, rows, extraCols) {
   return true;
 }
 
+// Hapus satu baris yang ID-nya sudah diketahui, tanpa reconciliation seluruh tabel.
+// Dipakai saat aksi bisnis memang menghapus satu record spesifik (contoh: approval
+// hapus Data Stok). Jangan menggantikan syncMasterTable() untuk kasus bulk delete,
+// karena rekonsiliasi penuh tetap diperlukan di sana.
+export async function deleteMasterTableRow(table, id) {
+  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
+  if (!supabase || !id) return false;
+  const { error } = await supabase.from(table).delete().eq("id", id);
+  if (error) { console.error(`deleteMasterTableRow delete(${table}, ${id}): ${error.message}`, error); return false; }
+  return true;
+}
+
 // ════════════════════════════════════════════════════════════════════
 // KAPASITAS GUDANG — load/sync KHUSUS (tabel warehouse_capacity)
 // ────────────────────────────────────────────────────────────────────

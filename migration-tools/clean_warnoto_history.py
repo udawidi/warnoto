@@ -203,8 +203,44 @@ def load_headers(path):
                         ],
                     )
                 ),
+                # Lampiran lokal AppSheet (path relatif ke folder _extracted, bukan URL).
+                # Nama kolomnya beda-beda per sheet, jadi dipetakan ke nama generik.
+                "foto_surat_jalan_relpath": clean_text(
+                    first_present(
+                        row,
+                        ["Foto surat jalan", "Foto surat permintaan", "Foto surat pengembalian"],
+                    )
+                ),
+                "foto_sim_ktp_relpath": clean_text(
+                    first_present(row, ["Foto SIM/ KTP sopir", "Foto SIM / KTP sopir"])
+                ),
+                "foto_kendaraan_relpath": clean_text(
+                    first_present(row, ["Foto Kendaraan pengangkut", "Foto kendaraan pengangkut"])
+                ),
+                # Kolom "PDF"/"ID PDF" cuma id hex 8 karakter (tidak bisa di-resolve ke file),
+                # path PDF sesungguhnya ada di "Print Bon" (tug34/10/9/8) / "Print PDF" (tug5).
+                "pdf_relpath": clean_text(first_present(row, ["Print Bon", "Print PDF"])),
+                "berita_acara_relpath": clean_text(row.get("Print Berita Acara")),
+                "lampiran_relpath": clean_text(row.get("Print Lampiran")),
             }
     return out
+
+
+def build_document_attachments(headers):
+    return [
+        {
+            "doc_type": h["doc_type"],
+            "doc_id": h["doc_id"],
+            "source_upt": h["upt_header"],
+            "foto_surat_jalan_relpath": h["foto_surat_jalan_relpath"],
+            "foto_sim_ktp_relpath": h["foto_sim_ktp_relpath"],
+            "foto_kendaraan_relpath": h["foto_kendaraan_relpath"],
+            "pdf_relpath": h["pdf_relpath"],
+            "berita_acara_relpath": h["berita_acara_relpath"],
+            "lampiran_relpath": h["lampiran_relpath"],
+        }
+        for h in headers.values()
+    ]
 
 
 def build_master(path):
@@ -353,6 +389,7 @@ def build_transactions(path, headers, master_by_id, master_by_catalog, master_by
                 "sap_status": classify_sap(resolved["no_katalog"]),
                 "catatan": clean_text(first_present(row, ["Keterangan"])) or header.get("pekerjaan", ""),
                 "link_foto": clean_text(row.get("Link Foto Barang")),
+                "foto_barang_relpath": clean_text(row.get("Foto Barang")),
                 "import_ready": "YA" if import_ready else "TIDAK",
                 "issue_flags": "; ".join(sorted(set(issue))),
                 "sync_key": make_sync_key([doc_type, doc_id, item_id, tanggal, movement, resolved["no_katalog"], qty]),
@@ -514,6 +551,7 @@ def main():
         "summary": records_for_json(build_summary(transactions, anomalies, master_rows)),
         "tug15_history_import": records_for_json(ready_import),
         "transaksi_all_clean": records_for_json(transactions),
+        "dokumen_header": records_for_json(build_document_attachments(headers)),
         "mapping_material_review": records_for_json(mapping),
         "anomali_data": records_for_json(anomalies),
         "master_material_clean": records_for_json(master_rows),

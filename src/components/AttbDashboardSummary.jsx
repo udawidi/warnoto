@@ -1,6 +1,5 @@
 // Komponen AttbDashboardSummary — dipindah dari App.jsx (refactor Fase 4e).
-import { UPT } from "../constants.js";
-import { hasRole } from "../lib/roles.js";
+import { getUserUptScope } from "../lib/roles.js";
 import { fmtRp } from "../lib/utils.js";
 import { ATTB_STAGES, attbStageIndex } from "../lib/attb.js";
 
@@ -8,9 +7,8 @@ import { ATTB_STAGES, attbStageIndex } from "../lib/attb.js";
 // akan dihapusbukukan, estimasi nilai lelang (recovery), sebaran tahap pipeline, item
 // yang tertahan (bottleneck), dan inflow material bongkaran dari TUG-10.
 export function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty, setTab, currentUser }) {
-  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i,"").trim();
-  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
-  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
+  const myUpt = getUserUptScope(currentUser);
+  const isMSB = currentUser?.role === "MSB" || currentUser?.role === "Manager UIT";
   const scoped = isMSB ? attbList : attbList.filter(a=>a.upt===myUpt);
   const scopeLabel = isMSB ? "Semua UPT" : (myUpt || "UPT");
   if (attbList.length === 0 && bongkaranPool.length === 0) return null;

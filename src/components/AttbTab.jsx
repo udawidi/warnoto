@@ -1,10 +1,11 @@
 // Komponen AttbTab — dipindah dari App.jsx (refactor Fase 5b).
 import { useState, useEffect, Fragment } from "react";
-import { UIT, UPT } from "../constants.js";
-import { hasRole } from "../lib/roles.js";
+import { UIT } from "../constants.js";
+import { hasRole, getUserUptScope } from "../lib/roles.js";
 import { getLokasiPetaInfo, subGudangKodeMap } from "../lib/masterSync.js";
 import { ATTB_CORE_FIELDS, ATTB_FIELDS_BY_JENIS, ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "../lib/attb.js";
 import * as XLSX from "xlsx";
+import { ArrowsClockwise, Camera, CaretRight, Check, CheckCircle, FileText, FloppyDisk, Info, MapPin, Package, PencilSimple, Plus, Trash, UploadSimple, Warning, X } from "@phosphor-icons/react";
 import { OperationsHero } from "./OperationsHero.jsx";
 
 // AttbTab — pipeline monitoring penghapusan aset material ATTB, lihat docs/ATTB_SPEC.md.
@@ -63,9 +64,8 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
   async function setAttbLokasi(item, newLokasiId) {
     await saveEdit(item.id, { lokasiId: newLokasiId || null });
   }
-  const appUptShort = (typeof UPT !== "undefined" ? UPT : "").replace(/^UPT\s+/i, "").trim();
-  const myUpt = currentUser?.upt || currentUser?.uptName || appUptShort || "";
-  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
+  const myUpt = getUserUptScope(currentUser);
+  const isMSB = currentUser?.role === "MSB" || currentUser?.role === "Manager UIT";
   const [myUptSelected, setMyUptSelected] = useState(isMSB ? "" : (myUpt || ""));
   const effectiveUptFilter = isMSB ? myUptSelected : (myUpt || "");
   const canManage = hasRole(currentUser, "ADMIN","TL");
@@ -166,7 +166,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
         title:"Tiban (Timpa) Data Eksisting?",
         message:`${importPreview.overwriteCount} item lama dengan Waktu Usulan "${importWaktu}" (UPT ${importUpt}) akan DIHAPUS, lalu diganti ${importPreview.newCount} item dari file ini.`,
         warning:"Data lama yang ditimpa tidak bisa dikembalikan. Pastikan file sudah benar.",
-        confirmLabel:"♻️ Ya, Tiban & Import",
+        confirmLabel:"Ya, Tiban & Import",
         onConfirm: runImport,
       });
     } else {
@@ -296,11 +296,12 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           <Fragment key="SUMBER">
             <button className={`attb-stage-card is-source${active?" is-active":""}`} onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
               style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px dashed ${active?color:"#cbd5e1"}`,background:active?color:"#f8fafc",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
+              <div className="attb-pipeline__node-head">
+                <Package size={15} weight="duotone" aria-hidden="true" />
                 <span className="attb-stage-code">SRC</span>
-                <span style={{fontSize:20,fontWeight:900,color:active?"white":color}}>{bongkaranBelum.length}</span>
+                <span className="attb-pipeline__count" style={{color:active?"white":color}}>{bongkaranBelum.length}</span>
               </div>
-              <span style={{fontSize:12,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>Material Bongkaran<br/>(TUG-10)</span>
+              <span className="attb-pipeline__label" style={{color:active?"white":C.muted}}>Material Bongkaran<br/>(TUG-10)</span>
             </button>
           </Fragment>
         ); })()}
@@ -311,25 +312,25 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
             <Fragment key={s.code}>
               <button className={`attb-stage-card${active?" is-active":""}`} onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
                 style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px solid ${active?color:C.border}`,background:active?color:"white",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{width:20,height:20,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,background:active?"rgba(255,255,255,0.25)":color+"22",color:active?"white":color}}>{i+1}</span>
-                  <span style={{fontSize:20,fontWeight:900,color:active?"white":color}}>{stageCounts[s.code]||0}</span>
+                <div className="attb-pipeline__node-head">
+                  <span className="attb-pipeline__step" style={{background:active?"rgba(255,255,255,0.25)":color+"22",color:active?"white":color}}>{i+1}</span>
+                  <span className="attb-pipeline__count" style={{color:active?"white":color}}>{stageCounts[s.code]||0}</span>
                 </div>
-                <span style={{fontSize:12,fontWeight:700,textAlign:"center",lineHeight:1.2,color:active?"white":C.muted}}>{s.label}</span>
+                <span className="attb-pipeline__label" style={{color:active?"white":C.muted}}>{s.label}</span>
               </button>
             </Fragment>
           );
         })}
         {/* Tujuan akhir proses */}
         <div className="attb-pipeline__end">
-          <span className="attb-stage-code">KI</span>
-          <span style={{fontSize:12,fontWeight:800,color:C.green,textAlign:"center",lineHeight:1.2}}>LELANG<br/>oleh KI</span>
+          <div className="attb-pipeline__node-head"><CheckCircle size={16} weight="fill" aria-hidden="true" /><span className="attb-stage-code">KI</span></div>
+          <span className="attb-pipeline__label" style={{color:C.green}}>LELANG<br/>oleh KI</span>
         </div>
       </div>
 
       {canManage && stageFilter!=="SUMBER" && (
         <div className="operations-actionbar">
-          <button style={sty.btn("ghost")} onClick={()=>{setImportRaw(null);setImportPreview(null);setImportOverwrite(false);setImportIncludeHidden(false);setShowImportPanel(true);}}>Import Excel Material</button>
+          <button style={{...sty.btn("ghost"),display:"inline-flex",alignItems:"center",justifyContent:"center",gap:6}} onClick={()=>{setImportRaw(null);setImportPreview(null);setImportOverwrite(false);setImportIncludeHidden(false);setShowImportPanel(true);}}><UploadSimple size={16} weight="bold" aria-hidden="true" />Import Excel Material</button>
         </div>
       )}
 
@@ -337,7 +338,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
       {stageFilter==="SUMBER" && (
         <div>
           <div style={{...sty.card,marginBottom:12,background:"#f8fafc",borderLeft:`4px solid #6b7280`,padding:"10px 14px",fontSize:12,color:C.muted}}>
-            🧰 Daftar material <b>Bongkaran ATTB (MTU)</b> yang masuk lewat TUG-10 (retur). Ini sumber kandidat sebelum diusulkan ke AE.1. Klik <b>Usulkan ATTB</b> untuk memindahkan material ke pipeline (Tahap 1 — Usulan AE.1 ke Unit Induk).
+            <Package className="attb-inline-icon" size={16} weight="duotone" aria-hidden="true" /> Daftar material <b>Bongkaran ATTB (MTU)</b> yang masuk lewat TUG-10 (retur). Ini sumber kandidat sebelum diusulkan ke AE.1. Klik <b>Usulkan ATTB</b> untuk memindahkan material ke pipeline (Tahap 1 — Usulan AE.1 ke Unit Induk).
           </div>
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Total <b style={{color:C.text}}>{bongkaranPool.length}</b> material bongkaran • <b style={{color:C.accent}}>{bongkaranBelum.length}</b> belum diusulkan</div>
           <div className="mobile-card-table attb-card-table" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:24}}>
@@ -366,9 +367,9 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                       <td data-label="Status TUG-10" style={{padding:"8px 10px"}}><span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:p.status==="APPROVED"?"#dcfce7":"#fef3c7",color:p.status==="APPROVED"?C.green:"#92400e"}}>{p.status||"-"}</span></td>
                       <td data-label="Aksi" style={{padding:"8px 10px",textAlign:"center"}}>
                         {sudah
-                          ? <span style={{fontSize:12,fontWeight:700,color:C.green}}>✅ Sudah diusulkan</span>
+                          ? <span style={{fontSize:12,fontWeight:700,color:C.green}}><CheckCircle className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Sudah diusulkan</span>
                           : canManage
-                            ? <button style={sty.btn("primary","sm")} onClick={()=>promoteBongkaran(p)}>➕ Usulkan ATTB</button>
+                            ? <button style={sty.btn("primary","sm")} onClick={()=>promoteBongkaran(p)}><Plus size={15} weight="bold" aria-hidden="true" /> Usulkan ATTB</button>
                             : <span style={{fontSize:12,color:C.muted}}>—</span>}
                       </td>
                     </tr>
@@ -385,7 +386,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
       <div className="operations-filterbar">
         <div style={{position:"relative",flex:1,minWidth:220}}>
           <input style={{...sty.input,paddingRight:28}} placeholder="Cari nomor AT/ATTB, deskripsi, merk, bay, atau lokasi" value={attbSearch} onChange={e=>setAttbSearch(e.target.value)}/>
-          {attbSearch && <button onClick={()=>setAttbSearch("")} title="Hapus pencarian" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:C.muted,padding:4,lineHeight:1}}>✕</button>}
+          {attbSearch && <button onClick={()=>setAttbSearch("")} title="Hapus pencarian" aria-label="Hapus pencarian" style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",color:C.muted,padding:4,lineHeight:1}}><X size={16} weight="bold" aria-hidden="true" /></button>}
         </div>
         {jenisOptions.length>1 && (
           <select style={{...sty.select,width:"auto",minWidth:130}} value={jenisFilter} onChange={e=>setJenisFilter(e.target.value)}>
@@ -455,32 +456,32 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                       <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         {item.foto
                           ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                          : <span style={{fontSize:18,color:"#9ca3af"}}>📦</span>}
+                          : <Package size={18} weight="duotone" color="#9ca3af" aria-label="Tidak ada foto" />}
                       </div>
                     </td>
                     {/* Nama Barang — ATTB No + AT kode di bawah (mirip Nama + kode SAP) */}
                     <td style={{padding:"8px 12px",maxWidth:200}}>
                       <div style={{fontWeight:700,color:C.text,fontSize:13,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.description||item.nomorATTB||"-"}</div>
                       <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
-                        <span style={{fontSize:11,color:C.muted}}>📋 {item.nomorATTB||item.nomorAT||item.id}</span>
+                        <span style={{fontSize:12,color:C.muted}}><FileText className="attb-inline-icon" size={13} weight="fill" aria-hidden="true" /> {item.nomorATTB||item.nomorAT||item.id}</span>
                       </div>
                     </td>
                     {/* Kategori — badge jenis + UPT + waktu usulan */}
                     <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:2}}>
-                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,background:jenisColor+"22",color:jenisColor,whiteSpace:"nowrap"}}>
+                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:jenisColor+"22",color:jenisColor,whiteSpace:"nowrap"}}>
                           {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}
                         </span>
-                        {item.bay && <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:600,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{item.bay}</span>}
+                        {item.bay && <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:600,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{item.bay}</span>}
                       </div>
-                      <div style={{fontSize:11,color:C.muted}}>{item.upt}</div>
+                      <div style={{fontSize:12,color:C.muted}}>{item.upt}</div>
                     </td>
                     {/* Qty / Nilai — nilai perolehan + waktu usulan di bawah */}
                     <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
                       <div style={{fontWeight:700,color:C.text,fontSize:13}}>
                         {item.nilaiPerolehan ? `Rp ${Number(item.nilaiPerolehan).toLocaleString("id-ID")}` : "Rp 0"}
                       </div>
-                      {item.waktuUsulanPenghapusan && <div style={{fontSize:11,color:C.muted,marginTop:1}}>{item.waktuUsulanPenghapusan}</div>}
+                      {item.waktuUsulanPenghapusan && <div style={{fontSize:12,color:C.muted,marginTop:1}}>{item.waktuUsulanPenghapusan}</div>}
                     </td>
                     {/* Lokasi — ringkas dan read-only; pengeditan tetap melalui Edit/modal */}
                     <td style={{padding:"8px 12px",minWidth:180,maxWidth:230}} title={locationTitle} aria-label={`Lokasi: ${locationTitle}`}>
@@ -488,7 +489,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                         {locationGudang || "—"}
                       </div>
                       {(locationSub || locationBlok) && (
-                        <div style={{display:"flex",gap:6,marginTop:2,fontSize:11,color:C.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        <div style={{display:"flex",gap:6,marginTop:2,fontSize:12,color:C.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {locationSub && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationSub}</span>}
                           {locationBlok && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationBlok}</span>}
                         </div>
@@ -531,7 +532,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                         )}
                         {canDelete && (
                           <button className="table-action-button is-danger" title="Hapus data ATTB"
-                            onClick={()=>askConfirmDelete&&askConfirmDelete({title:"Hapus Item ATTB?",message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,warning:"Data akan dihapus permanen.",confirmLabel:"🗑️ Ya, Hapus",onConfirm:()=>deleteItem(item.id)})}>Hapus</button>
+                            onClick={()=>askConfirmDelete&&askConfirmDelete({title:"Hapus Item ATTB?",message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,warning:"Data akan dihapus permanen.",confirmLabel:"Ya, Hapus",onConfirm:()=>deleteItem(item.id)})}><Trash size={15} weight="bold" aria-hidden="true" /> Hapus</button>
                         )}
                         {canApproveThis && (
                           <>
@@ -553,7 +554,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                         )}
                         {canLihatPeta && (
                           <button className="table-action-button is-icon" title="Lihat di Peta Gudang"
-                            onClick={()=>setPetaMiniDetail&&setPetaMiniDetail({stock:item,lokasi:loc.lok,gudang:loc.gdg,petaInfo:loc.petaInfo})}>📍</button>
+                            onClick={()=>setPetaMiniDetail&&setPetaMiniDetail({stock:item,lokasi:loc.lok,gudang:loc.gdg,petaInfo:loc.petaInfo})}><MapPin size={16} weight="fill" aria-hidden="true" /></button>
                         )}
                       </div>
                     </td>
@@ -596,10 +597,10 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
           const borderColor = item.lanjutBelumLanjut ? "#f59e0b" : stageColor(item.stage);
           const loc = resolveLokasiMaster(item);
           const canApproveThis = isPendingAttbApproval(item) && canApproveAttb(currentUser, item);
-          const selGudangId = attbGudangFilter[item.id] ?? item.gudangId ?? loc?.gdg?.id ?? "";
-          const subsForGudang = subGudangList.filter(sg=>sg.gudangId===selGudangId);
-          const selSubGudangId = attbSubGudangFilter[item.id] ?? item.subGudangId ?? loc?.sg?.id ?? "";
-          const blokOptions = lokasiList.filter(l=>l.gudangId===selGudangId && (subsForGudang.length===0||(l.subGudangId||"")===selSubGudangId));
+          const mobileLocationSummary = [
+            loc?.gdg?.kode || loc?.gdg?.nama,
+            loc?.lok?.kode || loc?.lok?.nama,
+          ].filter(Boolean).join(" • ") || "Lokasi belum diisi";
           return (
             <Fragment key={item.id}>
             <div className="attb-mobile-card attb-preview-trigger" role="button" tabIndex={0} onClick={()=>setPreviewId(item.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setPreviewId(item.id);}}} style={{borderLeft:`4px solid ${borderColor}`}}>
@@ -607,84 +608,58 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               <div className="attb-mobile-card__header">
                 {item.foto
                   ? <img src={item.foto} alt="foto" className="attb-mobile-card__foto"/>
-                  : <div className="attb-mobile-card__foto-placeholder">📦</div>}
+                  : <div className="attb-mobile-card__foto-placeholder"><Package size={20} weight="duotone" aria-label="Tidak ada foto" /></div>}
                 <div className="attb-mobile-card__id">
                   <div style={{fontWeight:700,fontSize:13,color:C.text}}>{item.nomorATTB||item.nomorAT||item.id}</div>
-                  {item.waktuUsulanPenghapusan && <div style={{fontSize:11,color:C.muted}}>{item.waktuUsulanPenghapusan}</div>}
+                  {item.waktuUsulanPenghapusan && <div style={{fontSize:12,color:C.muted}}>{item.waktuUsulanPenghapusan}</div>}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end",flexShrink:0}}>
-                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
-                  {item.lanjutBelumLanjut && <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}>⏸ Ditahan</span>}
+                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
+                  {item.lanjutBelumLanjut && <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}><Warning className="attb-inline-icon" size={13} weight="fill" aria-hidden="true" /> Ditahan</span>}
                 </div>
               </div>
               {/* Body: deskripsi, jenis, lokasi, nilai */}
               <div className="attb-mobile-card__body">
                 <div style={{fontWeight:600,fontSize:13,color:C.text}}>{item.description||"-"}</div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset} · {item.upt}</div>
-                {item.bay && <div style={{fontSize:12,color:C.muted}}>⚡ Asal: {item.bay}</div>}
+                {item.bay && <div style={{fontSize:12,color:C.muted}}><Info className="attb-inline-icon" size={14} weight="fill" aria-hidden="true" /> Asal: {item.bay}</div>}
                 {item.approvalStatus==="DRAFT" && item.alasanTolak && <div style={{fontSize:12,color:C.red,marginTop:2}}>Ditolak: {item.alasanTolak}</div>}
-                <div className="attb-mobile-card__row" onClick={e=>e.stopPropagation()} style={{flexDirection:"column",alignItems:"stretch",gap:6,marginTop:6,marginBottom:6}}>
-                  <div style={{fontSize:12,fontWeight:600,color:C.text,display:"flex",alignItems:"center",gap:4}}>📍 Lokasi Penyimpanan:</div>
-                  {canManage ? (
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      <select value={selGudangId} style={{...sty.select,fontSize:12,padding:"6px 8px",width:"100%"}}
-                        onChange={e=>{ const v=e.target.value; setAttbGudangFilter(prev=>({...prev,[item.id]:v})); setAttbSubGudangFilter(prev=>({...prev,[item.id]:""})); saveEdit(item.id,{gudangId:v||null,subGudangId:null,lokasiId:null}); }}>
-                        <option value="">— Pilih Gudang —</option>
-                        {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
-                      </select>
-                      
-                      <div style={{display:"flex",gap:6}}>
-                        <select value={selSubGudangId}
-                          disabled={!selGudangId || subsForGudang.length === 0}
-                          style={{...sty.select,fontSize:12,padding:"6px 8px",flex:1}}
-                          onChange={e=>{ const v=e.target.value; setAttbSubGudangFilter(prev=>({...prev,[item.id]:v})); saveEdit(item.id,{subGudangId:v||null,lokasiId:null}); }}>
-                          <option value="">{subsForGudang.length > 0 ? "— Sub Gudang —" : "— Tanpa Sub —"}</option>
-                          {subsForGudang.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
-                        </select>
-                        <select value={item.lokasiId||""}
-                          disabled={!selGudangId}
-                          style={{...sty.select,fontSize:12,padding:"6px 8px",flex:1}}
-                          onChange={e=>setAttbLokasi(item, e.target.value)}>
-                          <option value="">— Blok —</option>
-                          {blokOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                  ) : (
-                    <span style={{fontSize:12,color:loc?C.text:C.muted,fontStyle:loc?"normal":"italic"}}>
-                      {loc ? loc.teks : "Belum diisi"}
-                    </span>
-                  )}
+                <div className="attb-mobile-card__row" onClick={e=>e.stopPropagation()} style={{alignItems:"center",gap:4,marginTop:6,marginBottom:6}}>
+                  <MapPin size={15} weight="fill" color={C.red} aria-hidden="true" />
+                  <span style={{fontSize:12,color:mobileLocationSummary === "Lokasi belum diisi" ? C.muted : C.text,fontStyle:mobileLocationSummary === "Lokasi belum diisi" ? "italic" : "normal"}}>
+                    {mobileLocationSummary}
+                  </span>
                 </div>
                 <div className="attb-mobile-card__row">
-                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{item.approvalStatus||"DRAFT"}</span>
+                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{item.approvalStatus||"DRAFT"}</span>
                   {item.nilaiPerolehan && <span style={{fontSize:12,color:C.muted}}>Perolehan: <b style={{color:C.text}}>{Number(item.nilaiPerolehan).toLocaleString("id-ID")}</b></span>}
                 </div>
               </div>
               {/* Actions */}
               <div className="attb-mobile-card__actions" onClick={e=>e.stopPropagation()}>
-                {canManage && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"5px 9px"}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>✏️</button>}
+                {canManage && <button title="Edit" aria-label="Edit" style={{...sty.btn("ghost","sm"),padding:"8px 12px",minHeight:44,display:"inline-flex",alignItems:"center",gap:5}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}><PencilSimple size={16} weight="bold" aria-hidden="true" /><span>Edit</span></button>}
                 {canApproveThis && (
                   <span className="approval-actions approval-actions--compact">
-                    <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Approve</button>
-                    <button className="approval-btn--reject" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                    <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><Check className="approval-btn__ic" size={15} weight="bold" aria-hidden="true" />Approve</button>
+                    <button className="approval-btn--reject" onClick={()=>{setRejectingId(item.id);setRejectReason("");}}><X className="approval-btn__ic" size={15} weight="bold" aria-hidden="true" />Tolak</button>
                   </span>
                 )}
                 {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
                   <div style={{display:"inline-flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`}}>
-                    <button title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
-                      style={{border:"none",cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:"#dcfce7",color:C.green,whiteSpace:"nowrap"}}>▶ Lanjut</button>
+                    <button className="attb-stage-action" title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
+                      style={{border:"none",cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:"#dcfce7",color:C.green,whiteSpace:"nowrap"}}><CaretRight size={15} weight="bold" aria-hidden="true" /> Lanjut</button>
                     <button title={item.lanjutBelumLanjut?"Sedang Belum Lanjut — klik untuk lanjutkan lagi":"Tandai Belum Lanjut"}
                       onClick={()=>{ if(item.lanjutBelumLanjut){ resumeBelumLanjut(item); } else { setBelumLanjutId(item.id); setBelumLanjutNote(""); } }}
-                      style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"#fffbeb",color:item.lanjutBelumLanjut?"white":"#92400e",whiteSpace:"nowrap"}}>{item.lanjutBelumLanjut?"⏸ Ditahan":"⏸ Belum"}</button>
+                      className="attb-stage-action"
+                      style={{border:"none",borderLeft:`1px solid ${C.border}`,cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:item.lanjutBelumLanjut?"#f59e0b":"#fffbeb",color:item.lanjutBelumLanjut?"white":"#92400e",whiteSpace:"nowrap"}}><Warning size={15} weight="fill" aria-hidden="true" /> {item.lanjutBelumLanjut?"Ditahan":"Belum"}</button>
                   </div>
                 )}
                 {canManage && ["CEK_DEKOM","CEK_KJPP"].includes(item.stage) && (
-                  <button style={sty.btn("ghost","sm")} onClick={()=>advanceStage(item.id)}>▶ Lanjut</button>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>advanceStage(item.id)}><CaretRight size={15} weight="bold" aria-hidden="true" /> Lanjut</button>
                 )}
                 {canDelete && (
-                  <button title="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 8px"}}
-                    onClick={()=>askConfirmDelete&&askConfirmDelete({title:"Hapus Item ATTB?",message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,warning:"Data akan dihapus permanen dari daftar & database. Tindakan ini tidak bisa di-undo.",confirmLabel:"🗑️ Ya, Hapus",onConfirm:()=>deleteItem(item.id)})}>🗑️</button>
+                  <button title="Hapus item ATTB" aria-label="Hapus item ATTB" style={{...sty.btn("danger","sm"),padding:"5px 8px"}}
+                    onClick={()=>askConfirmDelete&&askConfirmDelete({title:"Hapus Item ATTB?",message:`${item.nomorATTB||item.nomorAT||item.id} — ${item.description||"-"}`,warning:"Data akan dihapus permanen dari daftar & database. Tindakan ini tidak bisa di-undo.",confirmLabel:"Ya, Hapus",onConfirm:()=>deleteItem(item.id)})}><Trash size={16} weight="bold" aria-hidden="true" /></button>
                 )}
               </div>
             </div>
@@ -696,7 +671,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                     <textarea style={{...sty.input,minHeight:50}} placeholder="Alasan penolakan..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
                     <div className="approval-actions approval-actions--compact" style={{marginTop:6}}>
                       <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
-                      <button className="approval-btn--danger" onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                      <button className="approval-btn--danger" onClick={async()=>{await rejectToKI(item.id, rejectReason);setRejectingId(null);}}><X className="approval-btn__ic" size={15} weight="bold" aria-hidden="true" />Tolak</button>
                     </div>
                   </div>
                 )}
@@ -737,9 +712,9 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
       {/* MODAL IMPORT EXCEL — jenis MATERIAL, 2 format sumber -> 2 tahap target berbeda */}
       {showImportPanel && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-          <div style={{...sty.card,width:640,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-            <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>📥 Import Excel ATTB (Material)</h3>
-            <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Baris data dideteksi otomatis lewat kolom Nomor AT/ATTB. Baris yang nomor AT-nya sudah ada di daftar akan otomatis dilewati (tidak dobel). 💡 Kalau punya kedua file (kandidat baru + yang sudah disetujui), import <b>Tahap 2 dulu</b>, baru Tahap 1 — supaya item yang sudah disetujui otomatis ke-skip saat import Tahap 1, tidak dobel-catat.</p>
+          <div className="attb-import-dialog" style={{...sty.card,width:640,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}><FileText className="attb-inline-icon" size={18} weight="duotone" aria-hidden="true" /> Import Excel ATTB (Material)</h3>
+            <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Baris data dideteksi otomatis lewat kolom Nomor AT/ATTB. Baris yang nomor AT-nya sudah ada di daftar akan otomatis dilewati (tidak dobel). <Info className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Kalau punya kedua file (kandidat baru + yang sudah disetujui), import <b>Tahap 2 dulu</b>, baru Tahap 1 — supaya item yang sudah disetujui otomatis ke-skip saat import Tahap 1, tidak dobel-catat.</p>
 
             <div style={{marginBottom:8}}>
               <label style={sty.label}>Target Tahap</label>
@@ -753,7 +728,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               <div style={{...sty.input,background:"#f3f4f6",color:C.text,display:"flex",alignItems:"center",fontWeight:600}}>{importUpt||"(UPT login tidak terdeteksi)"}</div>
               <div style={{fontSize:12,color:C.muted,marginTop:2}}>Otomatis mengikuti UPT login admin.</div>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+            <div className="attb-import-period" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
               <div>
                 <label style={sty.label}>Waktu Usulan — Semester</label>
                 <select style={sty.select} value={importSemester} onChange={e=>setImportSemester(e.target.value)}>
@@ -780,21 +755,21 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
 
             <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:12,cursor:"pointer",padding:"8px 10px",background:importOverwrite?"#fef2f2":"#f8fafc",border:`1px solid ${importOverwrite?"#fecaca":C.border}`,borderRadius:8}}>
               <input type="checkbox" checked={importOverwrite} onChange={e=>setImportOverwrite(e.target.checked)}/>
-              <span>♻️ <b>Tiban (timpa)</b> semua data eksisting dengan Waktu Usulan = <b>{importWaktu}</b>
+              <span><ArrowsClockwise className="attb-inline-icon" size={15} weight="bold" aria-hidden="true" /> <b>Tiban (timpa)</b> semua data eksisting dengan Waktu Usulan = <b>{importWaktu}</b>
                 {importOverwrite && importPreview && <span style={{color:C.red,fontWeight:700}}> — {importPreview.overwriteCount} item lama akan dihapus & diganti isi file</span>}
                 {!importOverwrite && <span style={{color:C.muted}}> (default: data lama dipertahankan, hanya menambah yang baru)</span>}
               </span>
             </label>
 
-            <label style={{...sty.btn("primary"),cursor:"pointer",display:"inline-block",marginBottom:12}}>
-              {importing?"⏳ Memproses...":"📂 Upload File Excel"}
+            <label style={{...sty.btn("primary"),cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6,marginBottom:12}}>
+              <UploadSimple size={16} weight="bold" aria-hidden="true" /> {importing?"Memproses...":"Upload File Excel"}
               <input type="file" accept=".xlsx" style={{display:"none"}} onChange={handleImportFile} disabled={importing}/>
             </label>
 
             {importPreview && (
               <div>
                 <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Preview: {importPreview.fileName} (Sheet: {importPreview.sheetName})</div>
-                <div style={{display:"flex",gap:10,marginBottom:10}}>
+                <div className="attb-import-preview-stats" style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
                   <div style={{padding:"6px 12px",borderRadius:8,background:"#f0fdf4",border:`1px solid #bbf7d0`,textAlign:"center"}}>
                     <div style={{fontSize:12,color:C.muted}}>Baru</div>
                     <div style={{fontSize:16,fontWeight:800,color:C.green}}>{importPreview.newCount}</div>
@@ -833,7 +808,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
             <div style={{display:"flex",gap:10,marginTop:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setShowImportPanel(false);setImportRaw(null);setImportPreview(null);}}>Batal</button>
               <button style={{...sty.btn("primary"),flex:2}} disabled={!importPreview || importPreview.newCount===0} onClick={confirmImport}>
-                💾 Import {importPreview?.newCount||0} Item Baru
+                <FloppyDisk size={16} weight="bold" aria-hidden="true" /> Import {importPreview?.newCount||0} Item Baru
               </button>
             </div>
           </div>
@@ -855,7 +830,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
             {(ATTB_FIELDS_BY_JENIS[addForm.jenisAset]||[]).map(f=>renderField(f, addForm, setAddForm))}
             <div style={{display:"flex",gap:10,marginTop:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setShowAddForm(false)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={submitAdd}>💾 Simpan</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={submitAdd}><FloppyDisk size={16} weight="bold" aria-hidden="true" /> Simpan</button>
             </div>
           </div>
         </div>
@@ -869,21 +844,21 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
             <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-              <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>✏️ Edit ATTB</h3>
+              <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}><PencilSimple className="attb-inline-icon" size={18} weight="bold" aria-hidden="true" /> Edit ATTB</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{item.nomorATTB||item.id} — {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
 
               {/* Foto barang — bisa ditambah/diperbarui di semua tahap. Untuk material
                   eks Bongkaran TUG-10, foto awal sudah ter-isi dari input TUG-10. */}
               <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Foto Barang</div>
               <div style={{height:170,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:8}}>
-                {editForm.foto ? <img src={editForm.foto} alt="Foto barang ATTB" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:36,color:"#9ca3af"}}>📦</div>}
+                {editForm.foto ? <img src={editForm.foto} alt="Foto barang ATTB" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:36,color:"#9ca3af"}}><Package size={36} weight="duotone" aria-label="Tidak ada foto" /></div>}
               </div>
               <div style={{display:"flex",gap:8,marginBottom:16}}>
                 <label style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer"}}>
-                  📷 {editForm.foto?"Ganti Foto":"Upload Foto"}
+                  <Camera size={16} weight="bold" aria-hidden="true" /> {editForm.foto?"Ganti Foto":"Upload Foto"}
                   <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg && handleImg(e, img=>setEditForm(f=>({...f,foto:img})))}/>
                 </label>
-                {editForm.foto && <button style={sty.btn("danger","sm")} onClick={()=>setEditForm(f=>({...f,foto:null}))}>🗑️ Hapus Foto</button>}
+                {editForm.foto && <button style={sty.btn("danger","sm")} onClick={()=>setEditForm(f=>({...f,foto:null}))}><Trash size={15} weight="bold" aria-hidden="true" /> Hapus Foto</button>}
               </div>
 
               <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Data Inti</div>
@@ -911,7 +886,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
               {editForm.gudangId && (()=>{
                 const subs = subGudangList.filter(sg=>sg.gudangId===editForm.gudangId);
                 const blokOpts = lokasiList.filter(l=>l.gudangId===editForm.gudangId && (subs.length===0||(l.subGudangId||"")===(editForm.subGudangId||"")));
-                if (blokOpts.length===0) return <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginBottom:6}}>⚠️ Belum ada Blok terdaftar — pilihan Gudang/Sub Gudang tetap tersimpan.</div>;
+                if (blokOpts.length===0) return <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginBottom:6}}><Warning className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Belum ada Blok terdaftar — pilihan Gudang/Sub Gudang tetap tersimpan.</div>;
                 return (
                   <div style={{marginBottom:6}}>
                     <label style={sty.label}>Blok</label>
@@ -966,7 +941,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
 
               <div style={{display:"flex",gap:10,marginTop:16}}>
                 <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingId(null)}>Batal</button>
-                <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(item.id, editForm);setEditingId(null);}}>💾 Simpan</button>
+                <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(item.id, editForm);setEditingId(null);}}><FloppyDisk size={16} weight="bold" aria-hidden="true" /> Simpan</button>
               </div>
             </div>
           </div>
@@ -984,7 +959,7 @@ export function AttbTab({ attbList, currentUser, users, sty, C, createItem, save
                 {[{label:"Foto Keseluruhan", src:previewPhotos.keseluruhan, alt:"Foto Keseluruhan"}, {label:"Foto Nameplate", src:previewPhotos.nameplate, alt:"Foto Nameplate"}].map(photo=>(
                   <div className="attb-preview-photo-card" key={photo.label}>
                     <div className="attb-preview-photo-label">{photo.label}</div>
-                    <div className="attb-preview-photo">{photo.src ? <img src={photo.src} alt={photo.label==="Foto Keseluruhan" ? `Foto ${previewItem.description||"material"}` : `${photo.alt} ${previewItem.description||"material"}`} /> : <div aria-label={`${photo.label} tidak tersedia`}>📦<small>Foto tidak tersedia</small></div>}</div>
+                    <div className="attb-preview-photo">{photo.src ? <img src={photo.src} alt={photo.label==="Foto Keseluruhan" ? `Foto ${previewItem.description||"material"}` : `${photo.alt} ${previewItem.description||"material"}`} /> : <div aria-label={`${photo.label} tidak tersedia`}><Package size={36} weight="duotone" aria-hidden="true" /><small>Foto tidak tersedia</small></div>}</div>
                   </div>
                 ))}
               </div>

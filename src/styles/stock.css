@@ -1,0 +1,56 @@
+/* Data Stok presentation, scoped away from ATTB and shared tables. */
+.stock-search-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.stock-mobile-summary { display: none; }
+.stock-mobile-direct-actions { display: none; }
+.stock-desktop-actions { display: contents; }
+.stock-detail-keterangan { grid-column: 1 / -1; line-height: 1.45; }
+
+@media (max-width: 768px) {
+  .stock-page .workspace-filter-panel :is(input, select, button) { min-height: 44px; }
+  .stock-search-label { position: static; display: block; width: auto; height: auto; margin-bottom: 4px; overflow: visible; clip: auto; color: #334155; font-size: 12px; font-weight: 800; }
+  .stock-page .workspace-filter-panel input { font-size: 16px !important; }
+  .stock-page .workspace-filter-panel > div:first-child > div > button[title="Hapus pencarian"] { top: auto !important; right: 0 !important; bottom: 0; min-width: 44px; min-height: 44px; transform: none !important; font-size: 0; }
+  .stock-page .workspace-filter-panel > div:first-child { gap: 8px; }
+  .stock-photo-search-button { align-self: flex-end; flex: 0 0 44px; width: 44px; height: 44px; min-width: 44px; min-height: 44px; padding: 0 !important; justify-content: center; font-size: 0; }
+  .stock-card-table .mobile-card-table__row { grid-template-columns: 58px minmax(0,1fr); }
+  .stock-card-table table, .stock-card-table tbody { display: block; width: 100%; min-width: 0 !important; }
+  .stock-card-table thead { display: none; }
+  .stock-card-table tbody { display: grid; gap: 12px; }
+  .stock-card-table .mobile-card-table__row { display: grid; width: 100%; min-width: 0; overflow: hidden; border: 1px solid #dbe3ef !important; border-left-width: 4px !important; border-radius: 13px; background: #fff; box-shadow: 0 8px 20px -20px rgba(15,23,42,.8); }
+  .stock-card-table .mobile-card-table__row > td { min-width: 0 !important; }
+  .stock-card-table .mobile-card-table__row > .mobile-card-table__photo { grid-row: 1 / span 2; padding: 10px 6px !important; }
+  .stock-card-table .mobile-card-table__row > .mobile-card-table__photo :is(img,div) { width: 44px !important; height: 44px !important; }
+  .stock-card-table .stock-mobile-summary { display: block; grid-column: 2; grid-row: 1; min-width: 0; padding: 11px 12px !important; border-top: 0; }
+  .stock-mobile-summary::before { display: none !important; }
+  .stock-mobile-summary__head { display: flex; min-width: 0; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .stock-mobile-summary__head strong { min-width: 0; overflow: hidden; color: #172033; font-size: 14px; font-weight: 850; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+  .stock-mobile-summary__head span { flex: 0 0 auto; color: #0369a1; font-size: 12px; font-weight: 800; }
+  .stock-mobile-summary__description { display: -webkit-box; margin-top: 3px; overflow: hidden; color: #64748b; font-size: 12px; line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .stock-mobile-summary__meta { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; margin-top: 7px; font-size: 12px; font-weight: 750; }
+  .stock-mobile-summary__meta > span:first-child { display: flex; min-width: 0; align-items: center; gap: 3px; overflow: hidden; color: #475569; text-overflow: ellipsis; white-space: nowrap; }
+  .stock-mobile-summary__meta > span:last-child { flex: 0 0 auto; font-size: 15px; font-weight: 900; }
+  .stock-mobile-summary__meta .is-critical { color: #dc2626; }
+  .stock-mobile-summary__meta .is-ok { color: #15803d; }
+  .stock-card-table .mobile-card-table__row > td.mobile-card-table__title,
+  .stock-card-table .mobile-card-table__row > td[data-label="Kategori"],
+  .stock-card-table .mobile-card-table__row > td[data-label="Qty"],
+  .stock-card-table .mobile-card-table__row > td[data-label="Gudang"],
+  .stock-card-table .mobile-card-table__row > td[data-label="Blok"],
+  .stock-card-table .mobile-card-table__row > td[data-label="Harga"],
+  .stock-card-table .mobile-card-table__row > td[data-label="Status"] { display: none !important; }
+  .stock-card-table .mobile-card-table__row > td[data-label="Aksi"] { display: flex; grid-column: 2; grid-row: 2; justify-content: flex-end; padding: 0 12px 10px !important; border-top: 0; }
+  .stock-card-table .mobile-card-table__row > td[data-label="Aksi"]::before { display: none !important; content: none; }
+  .stock-mobile-direct-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .stock-mobile-direct-actions .table-action-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; height: 44px; min-height: 44px; padding: 7px 10px; white-space: nowrap; }
+  .stock-mobile-direct-actions .stock-mobile-action--location { width: 44px; min-width: 44px; padding: 0; }
+  .stock-mobile-direct-actions .stock-mobile-action--card { flex: 0 0 128px; width: 128px; min-width: 128px; }
+  .stock-desktop-actions { display: none; }
+  .stock-card-table .mobile-card-table__row .table-actions { justify-content: flex-start; gap: 5px; }
+  .stock-card-table .mobile-card-table__row .table-action-button { min-height: 44px; padding: 7px 10px; }
+  .stock-detail-keterangan { grid-column: 1 / -1; }
+}
+
+[data-theme="dark"] .stock-mobile-summary__head strong { color: #e2e8f0; }
+[data-theme="dark"] .stock-mobile-summary__description,
+[data-theme="dark"] .stock-mobile-summary__meta > span:first-child { color: #94a3b8; }
+[data-theme="dark"] .stock-card-table .mobile-card-table__row { border-color: #334155 !important; background: #111827; }

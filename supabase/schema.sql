@@ -69,6 +69,25 @@ drop policy if exists "Authenticated write stocks" on stocks;
 create policy "Authenticated read stocks" on stocks for select using (auth.role() = 'authenticated');
 create policy "Authenticated write stocks" on stocks for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+-- Realtime Data Stok (PROPOSAL OPERASIONAL — JANGAN dieksekusi otomatis dari file ini).
+-- Setelah service Realtime self-host telah sehat dan user memberi gate eksplisit,
+-- tambahkan HANYA public.stocks ke publication yang sudah ada. PK stocks.id cukup
+-- untuk DELETE; jangan ubah REPLICA IDENTITY ke FULL karena payload jsonb/WAL membesar.
+-- Blok berikut idempotent bila dijalankan manual oleh operator:
+--
+-- do $$
+-- begin
+--   if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+--      and not exists (
+--        select 1 from pg_publication_tables
+--        where pubname = 'supabase_realtime'
+--          and schemaname = 'public'
+--          and tablename = 'stocks'
+--      ) then
+--     alter publication supabase_realtime add table public.stocks;
+--   end if;
+-- end $$;
+
 -- ────────────────────────────────────────────────────────────
 -- 2. TUG15_HISTORY — riwayat mutasi stok (sumber data training ML
 --    + ditampilkan di halaman scan QR TUG-2 publik)
@@ -841,6 +860,214 @@ create policy "Authenticated write mc_ai_insights" on material_cadang_ai_insight
 create policy "Authenticated read mc_apply_audit" on material_cadang_apply_audit for select using (auth.role() = 'authenticated');
 create policy "Authenticated write mc_apply_audit" on material_cadang_apply_audit for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
+-- 20b. MATERIAL_INSPECTIONS — append-only inspection Material Cadang.
+-- DB canonical; foto privat disimpan sebagai path bucket, bukan base64 jsonb.
+-- Revisi 2026-07-27: satu BA (material_inspection_batches) berisi 1..10 material
+-- (material_inspections jadi tabel item). Nomor BA digenerate server-side lewat
+-- RPC create_material_inspection_batch() agar tidak bisa ditebak/ditabrak client.
+
+-- Counter nomor BA per (UPT, tahun). Tabel, bukan sequence Postgres, supaya
+-- nomor bisa direset per tahun & per UPT tanpa DDL runtime.
+create table if not exists material_inspection_seq (
+  upt_id text not null,
+  tahun int not null,
+  last_seq bigint not null default 0,
+  primary key (upt_id, tahun)
+);
+alter table material_inspection_seq enable row level security;
+grant all on material_inspection_seq to service_role;
+-- Tanpa grant/policy untuk authenticated: hanya RPC (security definer) yang menyentuh ini.
+
+create table if not exists material_inspection_batches (
+  id uuid primary key default gen_random_uuid(),
+  nomor_ba text not null unique,     -- '000001/BA-INSPEKSI/UPT-SBY/07/2026'
+  upt_id text not null default 'UPT-SBY',
+  gudang_id text references gudang(id) on delete set null,
+  tanggal date not null default now()::date,
+  inspector_id uuid references profiles(id) on delete set null,
+  data jsonb not null default '{}'::jsonb,   -- header manual: pelaksana*, managerUpt, namaUpt, noSloc, namaGudang
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mi_batches_created_at on material_inspection_batches(created_at desc);
+create index if not exists idx_mi_batches_upt on material_inspection_batches(upt_id);
+create index if not exists idx_mi_batches_gudang on material_inspection_batches(gudang_id);
+grant select on material_inspection_batches to authenticated;
+grant all on material_inspection_batches to service_role;
+alter table material_inspection_batches enable row level security;
+drop policy if exists "Authenticated read material_inspection_batches" on material_inspection_batches;
+create policy "Authenticated read material_inspection_batches" on material_inspection_batches
+  for select using (auth.role() = 'authenticated');
+-- Sengaja TIDAK ada policy insert: batch hanya dibuat lewat RPC security definer,
+-- supaya nomor BA & pasangan batch+item selalu atomik.
+
+create table if not exists material_inspections (
+  id uuid primary key default gen_random_uuid(),
+  stock_id text references stocks(id) on delete set null,
+  katalog_id text references katalog(id) on delete set null,
+  lokasi_id text references lokasi(id) on delete set null,
+  inspector_id uuid references profiles(id) on delete set null,
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+alter table material_inspections
+  add column if not exists batch_id uuid references material_inspection_batches(id) on delete cascade;
+create index if not exists idx_material_inspections_created_at on material_inspections(created_at desc);
+create index if not exists idx_material_inspections_stock on material_inspections(stock_id);
+create index if not exists idx_material_inspections_batch on material_inspections(batch_id);
+grant select on material_inspections to authenticated;
+grant all on material_inspections to service_role;
+alter table material_inspections enable row level security;
+drop policy if exists "Authenticated read material_inspections" on material_inspections;
+-- Insert langsung dari client dihapus (revisi 2026-07-27): semua insert lewat RPC.
+drop policy if exists "Admin TL insert material_inspections" on material_inspections;
+create policy "Authenticated read material_inspections" on material_inspections
+  for select using (auth.role() = 'authenticated');
+
+-- RPC atomik: buat 1 batch + 1..10 item dalam satu transaksi, nomor BA server-side.
+-- p_header: { upt_id?, gudang_id?, tanggal?, ...field manual BA }
+-- p_items : [ { stock_id, ...field per-material termasuk photoPaths } ]
+create or replace function public.create_material_inspection_batch(p_items jsonb, p_header jsonb)
+returns jsonb as $$
+declare
+  v_inspector uuid := auth.uid();
+  v_upt text := coalesce(nullif(p_header->>'upt_id', ''), 'UPT-SBY');
+  v_tanggal date := coalesce((p_header->>'tanggal')::date, now()::date);
+  v_gudang text := nullif(p_header->>'gudang_id', '');
+  v_count int;
+  v_seq bigint;
+  v_nomor text;
+  v_batch_id uuid;
+  v_items jsonb;
+begin
+  if v_inspector is null then
+    raise exception 'Tidak terautentikasi.';
+  end if;
+  if not exists (select 1 from profiles where id = v_inspector and role in ('ADMIN', 'TL')) then
+    raise exception 'Hanya ADMIN/TL yang boleh membuat BA inspeksi.';
+  end if;
+  if p_items is null or jsonb_typeof(p_items) <> 'array' then
+    raise exception 'Daftar material tidak valid.';
+  end if;
+
+  v_count := jsonb_array_length(p_items);
+  if v_count < 1 or v_count > 10 then
+    raise exception 'Satu BA harus berisi 1 sampai 10 material (diterima %).', v_count;
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_items) e
+    where nullif(e.value->>'stock_id', '') is null
+  ) then
+    raise exception 'Setiap material wajib punya stock_id.';
+  end if;
+  if (select count(distinct e.value->>'stock_id') from jsonb_array_elements(p_items) e) <> v_count then
+    raise exception 'Material duplikat dalam satu BA tidak diperbolehkan.';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_items) e
+    where not exists (select 1 from stocks s where s.id = e.value->>'stock_id')
+  ) then
+    raise exception 'Ada stock_id yang tidak ditemukan di data stok.';
+  end if;
+  -- decision: jenisBarang 'Cadang' TIDAK divalidasi di sini. Filter itu urusan
+  -- picker UI; data katalog lama banyak yang jenisBarang-nya kosong, jadi cek di
+  -- RPC malah memblokir inspeksi sah. Identitas material tetap aman karena
+  -- katalog_id/lokasi_id diambil dari JOIN ke stocks, bukan dari input client.
+
+  insert into material_inspection_seq (upt_id, tahun, last_seq)
+  values (v_upt, extract(year from v_tanggal)::int, 1)
+  on conflict (upt_id, tahun) do update set last_seq = material_inspection_seq.last_seq + 1
+  returning last_seq into v_seq;
+
+  v_nomor := lpad(v_seq::text, 6, '0') || '/BA-INSPEKSI/' || v_upt || '/'
+    || to_char(v_tanggal, 'MM') || '/' || to_char(v_tanggal, 'YYYY');
+
+  insert into material_inspection_batches (nomor_ba, upt_id, gudang_id, tanggal, inspector_id, data)
+  values (v_nomor, v_upt, v_gudang, v_tanggal, v_inspector, coalesce(p_header, '{}'::jsonb))
+  returning id into v_batch_id;
+
+  with inserted as (
+    insert into material_inspections (batch_id, stock_id, katalog_id, lokasi_id, inspector_id, data)
+    select v_batch_id, s.id, s.katalog_id, s.lokasi_id, v_inspector, e.value - 'stock_id'
+    from jsonb_array_elements(p_items) e
+    join stocks s on s.id = e.value->>'stock_id'
+    returning id, batch_id, stock_id, katalog_id, lokasi_id, inspector_id, data, created_at
+  )
+  select coalesce(jsonb_agg(to_jsonb(inserted)), '[]'::jsonb) into v_items from inserted;
+
+  return jsonb_build_object('batch_id', v_batch_id, 'nomor_ba', v_nomor, 'items', v_items);
+end;
+$$ language plpgsql security definer set search_path = public;
+revoke all on function public.create_material_inspection_batch(jsonb, jsonb) from public;
+grant execute on function public.create_material_inspection_batch(jsonb, jsonb) to authenticated;
+
+-- Migrasi data v1 (1 inspeksi = 1 BA) → struktur batch. Idempoten: hanya
+-- menyentuh item dengan batch_id IS NULL, jadi aman dijalankan ulang.
+do $$
+declare
+  r record;
+  v_seq bigint;
+  v_upt text;
+  v_tanggal date;
+  v_batch_id uuid;
+begin
+  for r in
+    select mi.id, mi.inspector_id, mi.created_at, mi.data, l.gudang_id
+    from material_inspections mi
+    left join lokasi l on l.id = mi.lokasi_id
+    where mi.batch_id is null
+    order by mi.created_at
+  loop
+    v_upt := 'UPT-SBY';
+    v_tanggal := r.created_at::date;
+    insert into material_inspection_seq (upt_id, tahun, last_seq)
+    values (v_upt, extract(year from v_tanggal)::int, 1)
+    on conflict (upt_id, tahun) do update set last_seq = material_inspection_seq.last_seq + 1
+    returning last_seq into v_seq;
+
+    insert into material_inspection_batches (nomor_ba, upt_id, gudang_id, tanggal, inspector_id, data)
+    values (
+      lpad(v_seq::text, 6, '0') || '/BA-INSPEKSI/' || v_upt || '/'
+        || to_char(v_tanggal, 'MM') || '/' || to_char(v_tanggal, 'YYYY'),
+      v_upt,
+      r.gudang_id,
+      v_tanggal,
+      r.inspector_id,
+      jsonb_build_object('managerUpt', 'Yaya Supriman')
+        || coalesce(r.data->'finalBa', '{}'::jsonb)
+    )
+    returning id into v_batch_id;
+
+    update material_inspections set batch_id = v_batch_id where id = r.id;
+  end loop;
+end $$;
+
+-- Setelah migrasi, batch_id wajib. Dipisah dari DO block supaya kalau ada row
+-- sisa yang gagal termigrasi, error-nya kelihatan di sini (bukan silently null).
+alter table material_inspections alter column batch_id set not null;
+
+insert into storage.buckets (id, name, public)
+values ('material-inspection-photos', 'material-inspection-photos', false)
+on conflict (id) do update set public = false;
+drop policy if exists "Authenticated read material-inspection-photos" on storage.objects;
+drop policy if exists "Admin TL insert material-inspection-photos" on storage.objects;
+drop policy if exists "Admin TL cleanup material-inspection-photos" on storage.objects;
+create policy "Authenticated read material-inspection-photos" on storage.objects
+  for select using (bucket_id = 'material-inspection-photos' and auth.role() = 'authenticated');
+create policy "Admin TL insert material-inspection-photos" on storage.objects
+  for insert to authenticated
+  with check (
+    bucket_id = 'material-inspection-photos'
+    and name like (auth.uid()::text || '/%')
+    and exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role in ('ADMIN', 'TL'))
+  );
+create policy "Admin TL cleanup material-inspection-photos" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'material-inspection-photos'
+    and name like (auth.uid()::text || '/%')
+    and exists (select 1 from profiles where profiles.id = auth.uid() and profiles.role in ('ADMIN', 'TL'))
+  );
+
 -- ────────────────────────────────────────────────────────────
 -- 21. HEAVY_EQUIPMENT / HEAVY_EQUIPMENT_LOANS — master alat berat + riwayat
 --     peminjaman antar-UPT (menu "Alat Berat & Peminjaman UPT" di App.jsx).
@@ -1103,3 +1330,92 @@ create policy "Auth upload tug-docs-private" on storage.objects
   for insert with check (bucket_id = 'tug-docs-private' and auth.role() = 'authenticated');
 create policy "Auth update tug-docs-private" on storage.objects
   for update using (bucket_id = 'tug-docs-private' and auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 26. LEGACY_HISTORY_ARCHIVE — arsip READ-ONLY riwayat transaksi dari aplikasi
+--     WARNOTO versi lama (AppSheet, DB Excel). Terpisah TOTAL dari tug15_history
+--     (transaksi live) — TANPA FK ke `katalog` karena kode katalog lama banyak
+--     tidak match master katalog aktif; memaksa FK akan menolak baris legacy yang
+--     sah atau merusak katalog live. Kode/nama katalog di sini APA ADANYA dari
+--     data lama, tidak divalidasi ulang. Format dibakukan supaya UPT lain juga
+--     bisa pakai pipeline yang sama (lihat migration-tools/README.md).
+--     Diisi via migration-tools/load_legacy_history_to_supabase.mjs (service_role
+--     saja) dari hasil migration-tools/clean_warnoto_history.py — TIDAK ada
+--     tulisan dari App.jsx.
+-- ────────────────────────────────────────────────────────────
+create table if not exists legacy_history_archive (
+  id bigint generated always as identity primary key,
+  source_app text not null default 'appsheet_warnoto', -- antisipasi sumber legacy lain di masa depan
+  source_upt text,                -- "UPT Surabaya", "UPT Gresik", dst — teks bebas, bukan FK ke lokasi aktif
+  doc_type text,                  -- TUG3/TUG5/TUG8/TUG9/TUG10
+  doc_id text,                    -- No Dokumen/No Bon dari AppSheet
+  item_id text,
+  tanggal date,
+  jenis_transaksi text,           -- MASUK/KELUAR/PERMINTAAN
+  no_katalog text,                -- kode katalog APA ADANYA dari data lama, tidak divalidasi ke katalog aktif
+  nama_material text,
+  satuan text,
+  qty numeric,
+  unit_lawan text,
+  lokasi_kode text,
+  catatan text,
+  link_foto text,                 -- link Google Drive asli AppSheet, tidak dimigrasi fisik
+  match_confidence numeric,       -- dari hasil cleansing (0-100), transparansi kualitas data ke admin
+  issue_flags text,               -- anomali dari cleansing (mis. "KATALOG_KOSONG; NAMA_BEDA_DENGAN_MASTER"), kosong = bersih
+  sync_key text,                  -- dedupe idempotent antar-run import
+  imported_by text,
+  imported_at timestamptz default now()
+);
+create unique index if not exists idx_legacy_history_sync_key on legacy_history_archive(sync_key);
+create index if not exists idx_legacy_history_upt_doctype on legacy_history_archive(source_upt, doc_type);
+
+alter table legacy_history_archive enable row level security;
+-- Read HANYA untuk user login (BUKAN public seperti tug15_history) — arsip internal,
+-- bukan untuk halaman scan publik. Insert/update/delete HANYA lewat service_role
+-- (loader script), sengaja TIDAK ada policy write untuk anon/authenticated.
+drop policy if exists "Authenticated read legacy_history_archive" on legacy_history_archive;
+create policy "Authenticated read legacy_history_archive" on legacy_history_archive
+  for select using (auth.role() = 'authenticated');
+
+-- ────────────────────────────────────────────────────────────
+-- 27. LAMPIRAN ARSIP LEGACY — foto/PDF dokumen AppSheet lama yang file fisiknya
+--     ikut di-backup (path relatif lokal, bukan URL Drive). Diupload ke Supabase
+--     Storage oleh migration-tools/upload_legacy_history_attachments.mjs
+--     (service_role saja), dua bucket sesuai sensitivitas:
+--       - tug-docs-private : foto SIM/KTP sopir + PDF dokumen (data pribadi) —
+--                            disimpan sebagai `priv:<path>`, resolve via signed URL.
+--       - tug-photos       : foto surat jalan/permintaan/pengembalian, kendaraan,
+--                            dan foto barang (public URL langsung).
+-- ────────────────────────────────────────────────────────────
+alter table legacy_history_archive add column if not exists foto_barang_url text; -- backup foto item ke tug-photos (link_foto Drive lama bisa mati sewaktu-waktu)
+
+create table if not exists legacy_history_documents (
+  id bigint generated always as identity primary key,
+  source_app text not null default 'appsheet_warnoto',
+  source_upt text,
+  doc_type text,                  -- TUG3/TUG5/TUG8/TUG9/TUG10
+  doc_id text,                    -- No Dokumen/No Bon dari AppSheet
+  foto_surat_jalan_url text,      -- public (tug-photos)
+  foto_sim_ktp_url text,          -- private, disimpan sbg `priv:<path>` (tug-docs-private)
+  foto_kendaraan_url text,        -- public (tug-photos)
+  pdf_url text,                   -- private, disimpan sbg `priv:<path>` (tug-docs-private)
+  berita_acara_url text,          -- private, disimpan sbg `priv:<path>` (tug-docs-private)
+  lampiran_url text,              -- private, disimpan sbg `priv:<path>` (tug-docs-private)
+  match_notes text,               -- jejak resolusi file (mis. "sim_ktp: AMBIGU 2 kandidat beda isi, dipilih dari WARNOTOV2-2757983")
+  imported_by text,
+  imported_at timestamptz default now()
+);
+create unique index if not exists idx_legacy_history_documents_doc on legacy_history_documents(doc_type, doc_id);
+
+alter table legacy_history_documents enable row level security;
+-- Sama seperti legacy_history_archive: read hanya user login, write HANYA service_role.
+drop policy if exists "Authenticated read legacy_history_documents" on legacy_history_documents;
+create policy "Authenticated read legacy_history_documents" on legacy_history_documents
+  for select using (auth.role() = 'authenticated');
+
+-- Privilege minimum untuk endpoint REST self-host: RLS di atas tetap menjadi
+-- pengaman row-level; tidak ada DELETE/TRUNCATE atau default privilege tambahan.
+grant usage on schema public to authenticated, service_role;
+grant select on legacy_history_archive, legacy_history_documents to authenticated;
+grant select, insert, update on legacy_history_archive, legacy_history_documents to service_role;
+grant usage on sequence legacy_history_archive_id_seq, legacy_history_documents_id_seq to service_role;

@@ -5,7 +5,7 @@ import { Tractor, Warning, PushPin } from "@phosphor-icons/react";
 
 export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [], C, sty, setTab, currentUser }) {
   const myUpt = getUserUptScope(currentUser);
-  const isMSB = hasRole(currentUser, "MSB","Manager UIT");
+  const isMSB = currentUser?.role === "MSB" || currentUser?.role === "Manager UIT";
   const scopedEquipment = isMSB ? equipmentList : equipmentList.filter(e=>e.upt===myUpt);
   const scopedLoans = isMSB ? loans : loans.filter(l=>
     (getHeavyEquipmentLoanOwnerUpt(l)===myUpt)||(getHeavyEquipmentLoanRequesterUpt(l)===myUpt)

@@ -109,7 +109,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         katalogId: newKatalog.id, namaBarang: newKatalog.name, noKatalog: newKatalog.katalog,
         satuan: newKatalog.satuan, qtySistem: 0, qtsFisik: Number(f.qty), selisih: 0,
         statusItem: "MATERIAL_BARU_NONSAP", keterangan: "", lokasiId: f.lokasiId,
-        fotoKeseluruhan: f.foto || null, belumDicocokkanMara: !maraPicked && maraSkip,
+        fotoKeseluruhan: newKatalog.fotoKeseluruhan || null, belumDicocokkanMara: !maraPicked && maraSkip,
       }],
     }));
     setQrResult(newKatalog);

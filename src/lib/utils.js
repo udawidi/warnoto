@@ -284,6 +284,7 @@ export function enrichStock(stock, katalogList, lokasiList) {
     name: kat.name || stock.name || "(Katalog tidak ditemukan)",
     katalog: kat.katalog || stock.katalog || "-",
     category: kat.category || "Lainnya",
+    keteranganBarang: kat.keterangan || stock.keteranganBarang || "",
     unit: kat.satuan || stock.unit || "unit",
     lokasi: lok.kode || stock.lokasi || "-",
     lokasiKeterangan: lok.keterangan || "",
