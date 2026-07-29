@@ -59,6 +59,7 @@ import { BarcodePrintModal } from "./src/components/BarcodePrintModal.jsx";
 import { KartuGantungModal } from "./src/components/KartuGantungModal.jsx";
 import { MaterialCadangTab } from "./src/components/MaterialCadangTab.jsx";
 import { InspeksiMaterialCadangTab } from "./src/components/InspeksiMaterialCadangTab.jsx";
+import { SignaturePadModal, SignaturePreviewButton } from "./src/components/SignaturePadModal.jsx";
 import { ForecastStokPage } from "./src/components/ForecastStokPage.jsx";
 import { ApprovalTab } from "./src/components/ApprovalTab.jsx";
 import { ApprovalHubTab } from "./src/components/ApprovalHubTab.jsx";
@@ -260,6 +261,8 @@ export default function PLNWarehouse() {
   const [loginErr, setLoginErr] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false); // tombol Logout busy — cegah user refresh di tengah signOut yang bisa lambat
+  const [sigPadAkunModalOpen, setSigPadAkunModalOpen] = useState(false);
+  const [sigPadTugField, setSigPadTugField] = useState(null); // 'transporter' | 'menyerahkan' | 'penerima' | 'asman'
 
   const [users, setUsers] = useState([]); // di-fetch dari tabel "profiles" Supabase setelah login (lihat effect onAuthStateChange)
   const [rolePerms, setRolePerms] = useState({}); // override izin per role dari tabel role_permissions ({role: {key:bool}}); {} = pakai DEFAULT_PERMS
@@ -269,7 +272,10 @@ export default function PLNWarehouse() {
   const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
   const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? []);
   const [timMutuList, setTimMutuList] = useState(() => readCachedList("pln_tim_mutu_v1") ?? []);
-  const [uitList, setUitList] = useState(() => readCachedList("pln_uit_v1") ?? []);
+  const [uitList, setUitList] = useState(() => {
+    const cached = readCachedList("pln_uit_v1");
+    return (cached && cached.length > 0) ? cached : DEFAULT_UIT;
+  });
   const [uptList, setUptList] = useState(() => readCachedList("pln_upt_v1") ?? []);
   const [ultgList, setUltgList] = useState(() => readCachedList("pln_ultg_v1") ?? []); // Unit di bawah UPT (mis. ULTG Surabaya Utara/Selatan)
   const [gudangList, setGudangList] = useState(() => readCachedList("pln_gudang_v1") ?? []);
@@ -1280,7 +1286,28 @@ export default function PLNWarehouse() {
   showToastRef.current = showToast;
 
   async function handleLogin() {
-    if (!supabase) { setLoginErr("Supabase belum dikonfigurasi."); return; }
+    if (!supabase) {
+      // Local dev mode fallback — mengizinkan login lokal tanpa koneksi Supabase
+      const inputUsername = loginForm.username.trim() || "admin.gudang";
+      const mockLocalUser = {
+        id: "usr_local_admin",
+        name: inputUsername.toUpperCase() + " (Dev Mode)",
+        username: inputUsername.toLowerCase(),
+        role: "ADMIN",
+        jabatan: "Admin Gudang PLN (Local Dev)",
+        avatar: "",
+        uptId: "upt_surabaya",
+        ultgId: null,
+        uitId: null,
+        gudangIds: []
+      };
+      try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(mockLocalUser)); } catch {}
+      setCurrentUser(mockLocalUser);
+      setUsers([mockLocalUser]);
+      setAuthLoading(false);
+      showToast("💡 Login Mode Lokal berhasil (Supabase Dev Offline)", "success");
+      return;
+    }
     if (!loginForm.username.trim() || !loginForm.password) { setLoginErr("Username dan password wajib diisi."); return; }
     setLoginBusy(true); setLoginErr("");
     const payload = {
@@ -5042,13 +5069,31 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const katalogTotalPages = Math.max(1, Math.ceil(filteredKatalog.length / katalogPageSize));
   const katalogPageClamped = Math.min(katalogPage, katalogTotalPages);
   const pagedKatalog = filteredKatalog.slice((katalogPageClamped-1)*katalogPageSize, katalogPageClamped*katalogPageSize);
-  const filteredTxns = txns.filter(t=> filterStatus==="ALL" || t.status===filterStatus).sort((a,b)=>b.createdAt-a.createdAt);
-  const activeTugTxns = tugSubTab==="TUG15" ? [] : txns.filter(t=>t.docType===tugSubTab);
+  const groupTabsMap = {
+    penerimaan: ["TUG3", "TUG10"],
+    pengeluaran: ["TUG9", "TUG8"],
+    permintaan: ["TUG5"],
+    laporan: ["TUG15"]
+  };
+  const allowedTabs = groupTabsMap[tugGroup] || ["TUG3"];
+  const currentSubTab = allowedTabs.includes(tugSubTab) ? tugSubTab : allowedTabs[0];
+
+  const filteredTxns = filterStatus === "ALL" ? txns : txns.filter(t => {
+    const s = (t.status || "").toUpperCase();
+    const st = (t.stage || "").toUpperCase();
+    if (filterStatus === "PENDING") return s.includes("PENDING") || st.includes("PENDING") || st.startsWith("MENUNGGU_");
+    if (filterStatus === "APPROVED") return s.includes("APPROVED") || st.includes("APPROVED");
+    if (filterStatus === "REJECTED") return s.includes("REJECTED") || st.includes("REJECTED");
+    if (filterStatus === "DRAFT") return s.includes("DRAFT") || st.includes("DRAFT");
+    return s === filterStatus;
+  }).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+
+  const activeTugTxns = currentSubTab==="TUG15" ? [] : txns.filter(t=>t.docType===currentSubTab);
   const activeTugSummary = [
     {label:"Total Dokumen",val:activeTugTxns.length},
-    {label:"Menunggu",val:activeTugTxns.filter(t=>t.status==="PENDING").length,cls:"is-alert"},
-    {label:"Disetujui",val:activeTugTxns.filter(t=>t.status==="APPROVED").length,cls:"is-ok"},
-    {label:"Draft",val:activeTugTxns.filter(t=>t.status==="DRAFT").length},
+    {label:"Menunggu",val:activeTugTxns.filter(t=>(t.status||"").includes("PENDING") || (t.stage||"").includes("PENDING")).length,cls:"is-alert"},
+    {label:"Disetujui",val:activeTugTxns.filter(t=>(t.status||"").includes("APPROVED")).length,cls:"is-ok"},
+    {label:"Draft",val:activeTugTxns.filter(t=>(t.status||"").includes("DRAFT") || t.stage==="DRAFT_TUG8").length},
   ];
 
   // ── DESIGN TOKENS ──
@@ -5098,6 +5143,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           )}
           <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:4}}>Selamat Datang</div>
           <div style={{fontSize:13,color:C_LIGHT.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
+
+          {!supabase && (
+            <div style={{marginBottom: 16, padding: "10px 14px", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, fontSize: 12, color: "#166534", lineHeight: 1.4}}>
+              💡 <b>Mode Dev Lokal Aktif</b> (Tanpa Supabase Cloud). Isi username atau langsung klik <b>Masuk ke Sistem</b> untuk login sebagai Admin.
+            </div>
+          )}
           <div style={{marginBottom:16}}>
             <label style={loginSty.label}>Username</label>
             <input style={loginSty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
@@ -5157,11 +5208,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
   const masterPageTitle = stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi":stockSubTab==="akun"?"Kelola Akun":stockSubTab==="migrasi"?"Migrasi Data SAP / Non-SAP":stockSubTab==="auditLog"?"Audit Log":stockSubTab==="perms"?"Matrix Izin":"Master Gudang";
+
   const pageMeta = {
     dashboard: {eyebrow:"Operations Overview",title:hasRole(currentUser,"MANAGER")?"Dashboard Eksekutif":hasRole(currentUser,"ASMAN")?"Dashboard Operasional":"Dashboard Gudang"},
     stock: {eyebrow:"Inventory Control",title:"Data Stok Gudang"},
     master: {eyebrow:"Master Data",title:masterPageTitle},
-    transaction: {eyebrow:(TUG_UI[tugSubTab]||{}).code||"TUG",title:(TUG_UI[tugSubTab]||{}).title||"Transaksi TUG"},
+    transaction: {eyebrow:(TUG_UI[currentSubTab]||{}).code||"TUG",title:(TUG_UI[currentSubTab]||{}).title||"Transaksi TUG"},
     approval: {eyebrow:"Decision Center",title:"Approval"},
     heavyEquipment: {eyebrow:"Fleet Operations",title:"Alat Berat & Peminjaman"},
     attb: {eyebrow:"Asset Disposal Governance",title:"ATTB — Penghapusan Aset"},
@@ -5707,6 +5759,35 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* KELOLA AKUN MODAL — daftarkan user baru (ADMIN only) */}
       {akunModal && <AkunModal akunModal={akunModal} setAkunModal={setAkunModal} akunForm={akunForm} setAkunForm={setAkunForm} akunResult={akunResult} setAkunResult={setAkunResult} akunBusy={akunBusy} uitList={uitList} uptList={uptList} ultgList={ultgList} users={users} visibleGudangList={visibleGudangList} submitAkunEdit={submitAkunEdit} submitAkunBaru={submitAkunBaru} UIT_ROLE_QUOTA={UIT_ROLE_QUOTA} UPT_ROLE_QUOTA={UPT_ROLE_QUOTA} sty={sty} C={C} />}
+
+      {/* Modal Pad TTD Form TUG */}
+      <SignaturePadModal
+        isOpen={Boolean(sigPadTugField)}
+        onClose={()=>setSigPadTugField(null)}
+        onSave={(dataUrl)=>{
+          if (sigPadTugField && txnForm) {
+            setTxnForm(tf => ({
+              ...tf,
+              signatures: { ...(tf.signatures || {}), [sigPadTugField]: dataUrl }
+            }));
+          }
+        }}
+        title={`Tanda Tangan Digital — ${sigPadTugField === "transporter" ? "Transporter / Pengemudi" : sigPadTugField === "menyerahkan" ? "Yang Menyerahkan" : sigPadTugField === "penerima" ? "Yang Menerima" : "TUG"}`}
+        subtitle="Coret tanda tangan pada area yang tersedia untuk dimasukkan ke dokumen cetak TUG"
+        initialSignature={txnForm?.signatures?.[sigPadTugField]}
+        C={C} sty={sty} isMobile={isMobile}
+      />
+
+      {/* Modal Pad TTD Profil User */}
+      <SignaturePadModal
+        isOpen={Boolean(sigPadAkunModalOpen)}
+        onClose={()=>setSigPadAkunModalOpen(false)}
+        onSave={(dataUrl)=>setAkunForm(f=>({...f, signatureUrl: dataUrl}))}
+        title="Tanda Tangan Digital — Profile Akun"
+        subtitle="Coret tanda tangan bawaan akun yang akan otomatis digunakan pada transaksi Anda"
+        initialSignature={akunForm?.signatureUrl}
+        C={C} sty={sty} isMobile={isMobile}
+      />
 
       {/* GANTI PASSWORD MODAL — self-service, semua role, akun sendiri */}
       {gantiPasswordModal && <GantiPasswordModal setGantiPasswordModal={setGantiPasswordModal} gantiPasswordForm={gantiPasswordForm} setGantiPasswordForm={setGantiPasswordForm} gantiPasswordBusy={gantiPasswordBusy} submitGantiPassword={submitGantiPassword} sty={sty} />}

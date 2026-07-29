@@ -19,6 +19,7 @@ export const PERM_MENUS = [
   { key: "menu.attb", label: "ATTB" },
   { key: "menu.opname", label: "Stock Opname & Count" },
   { key: "menu.maturity", label: "Penilaian Maturity" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
   { key: "menu.rencana", label: "Rencana Kedatangan" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
   { key: "menu.inspeksiMaterial", label: "Inspeksi Material Cadang" },

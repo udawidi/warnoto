@@ -7,181 +7,643 @@ import { fmtNum, getSAPLabel } from "./ragShared.mjs";
 import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
+import { buildKartuGantungHistory } from "./sap.js";
 
-// ─── TUG-9 DOCUMENT HTML BUILDER (Surat Jalan + Bon TUG-9 + Lampiran Foto) ────
-// Returns a full standalone HTML string. Used for both in-app preview
-// (rendered in an iframe inside a modal) and for downloading as a
-// .html file the user can open in any browser and Print > Save as PDF.
-export function buildTUG9HTML(txn, stocks, users, satpamList) {
-  const docs = txn.docNumbers;
-  const isTUG8 = txn.docType === "TUG8";
-  const docKey = isTUG8 ? "tug8" : "tug9";
-  const creator = users.find(u=>u.id===txn.createdBy) || {};
-  const actualApprover = users.find(u=>u.id===txn.approvedBy) || {};
-  // "Mengetahui" on the Bon Pemakaian is ALWAYS Asman Konstruksi, per baku format.
-  // Whether Asman approved it directly or it was auto-approved alongside TL's
-  // approval, the on-file Asman Konstruksi user always signs this slot.
-  const asmanUser = users.find(u => u.role === "ASMAN") || {};
-  // "Yang Menyerahkan" is always TL Logistik (whoever holds that role / actually approved if TL)
-  const menyerahkanUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u=>u.role==="TL")||{});
-  const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
-  const itemRows = txn.stockItems.map(si => {
-    const stock = stocks.find(s=>s.id===si.stockId) || {};
-    return { stock, qty: si.qty };
+// ─── TUG-8 DOCUMENT HTML BUILDER (Surat Jalan + BAST-B + 3-Page Lampiran Foto) ────
+export function buildTUG8HTML(txn, stocks, users, satpamList) {
+  const docs = txn.docNumbers || {};
+  const creator = users.find(u => u.id === txn.createdBy) || {};
+  const actualApprover = users.find(u => u.id === txn.approvedBy) || {};
+  const menyerahkanUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u => u.role === "TL") || {});
+  const satpamUser = (satpamList || []).find(sp => sp.id === txn.satpamId) || {};
+  
+  const sigs = txn.signatures || {};
+  const sigTransporter = sigs.transporter || "";
+  const sigSatpam = sigs.satpam || satpamUser.signatureUrl || "";
+  const sigCreator = sigs.creator || creator.signatureUrl || "";
+  const sigPenerima = sigs.penerima || "";
+  const sigMenyerahkan = sigs.menyerahkan || menyerahkanUser.signatureUrl || "";
+
+  function renderSigImg(url) {
+    if (!url) return '';
+    return `<img src="${url}" style="max-height:42px;max-width:130px;object-fit:contain;display:block;margin:0 auto" alt="TTD"/>`;
+  }
+
+  const itemRows = (txn.stockItems || []).map(si => {
+    const stock = stocks.find(s => s.id === si.stockId) || {};
+    return { stock, qty: si.qty, si };
   });
 
-  const materialRowsSJ = itemRows.map(({stock,qty}) => `
-    <tr><td>${stock.name||""}</td><td>${stock.lokasi||""}</td><td style="text-align:center">${fmtNum(qty)}</td><td style="text-align:center">${stock.unit||""}</td><td>${stock.jenisBarang==="Non-Stock"?"(NON-STOCK) ":""}${txn.keteranganBarang||""}</td></tr>`).join("");
+  const materialRowsTUG8 = itemRows.map(({ stock, qty, si }) => `
+    <tr>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px">${stock.name || si.namaBaru || "-"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${stock.lokasi || WAREHOUSE || "TANDES"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${fmtNum(qty)}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${stock.unit || si.satuanBaru || "BH"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px">(${stock.jenisBarang || "Non-Stock"}) ${si.keterangan || txn.keteranganBarang || ""}</td>
+    </tr>
+  `).join("");
 
-  const materialRowsTUG9 = itemRows.map(({stock,qty}) => `
-    <tr><td style="text-align:center">${fmtNum(qty)}</td><td style="text-align:center">${stock.unit||""}</td><td>${stock.name||""}</td><td style="text-align:center">${stock.katalog||"-"}</td><td>${stock.jenisBarang==="Non-Stock"?"(NON-STOCK) ":""}${txn.keteranganBarang||""}</td></tr>`).join("");
-
-  // ── Lampiran Foto: build photo rows (2 columns: Kendaraan/SIM-KTP, then Surat, then per-material) ──
-  const hasAnyAttachment = txn.fotoKendaraan || txn.fotoSimKtp || txn.fotoSuratPengembalian || (txn.fotoMaterial && txn.fotoMaterial.length > 0);
-  function photoCell(label, src) {
-    return `<div class="photo-cell"><div class="photo-label">${label}</div>${src ? `<img src="${src}" alt="${label}"/>` : `<div class="photo-empty">Tidak ada foto</div>`}</div>`;
+  function photoBox(label, src, placeholder) {
+    return `<div style="border:1.5px solid #111;height:100%;display:flex;flex-direction:column;min-height:360px">
+      <div style="background:#f2f2f2;padding:8px;font-size:11px;font-weight:bold;border-bottom:1.5px solid #111;text-align:center">${label}</div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:12px;background:#fff">
+        ${src ? `<img src="${src}" style="max-width:100%;max-height:420px;object-fit:contain;display:block" alt="${label}"/>` : `<div style="color:#64748b;font-size:11px;font-style:italic">&lt;&lt;[${placeholder || label}]&gt;&gt;</div>`}
+      </div>
+    </div>`;
   }
-  const materialPhotoCells = itemRows.map(({stock}) => {
-    const photo = (txn.fotoMaterial||[]).find(fm => fm.stockId === stock.id);
-    return photoCell(stock.name || "-", photo?.img);
-  }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${isTUG8?"TUG-8":"TUG-9"} ${txn.id}</title>
+  const headerAccent = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+      <div class="header-accent">
+        <svg width="420" height="24" viewBox="0 0 420 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="4" width="300" height="16" fill="#00a3e0"/>
+          <path d="M295 4L315 20H302L282 4H295Z" fill="#004d80"/>
+          <path d="M312 4L332 20H319L299 4H312Z" fill="#00a3e0"/>
+          <path d="M329 4L349 20H336L316 4H329Z" fill="#004d80"/>
+        </svg>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end">
+        <img src="${PLN_LOGO_DATA_URI}" style="height:34px;width:auto" alt="PLN Logo"/>
+        <div style="font-size:7.5px;font-weight:bold;margin-top:2px;text-align:right;line-height:1.2">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI<br/>UNIT PELAKSANA TRANSMISI ${UPT.replace(/^UPT\s+/i, "")}</div>
+      </div>
+    </div>
+  `;
+
+  const footerAccent = `
+    <div style="margin-top:20px;display:flex;justify-content:center">
+      <svg width="220" height="16" viewBox="0 0 220 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M40 0L60 14H47L27 0H40Z" fill="#00a3e0"/>
+        <path d="M57 0L77 14H64L44 0H57Z" fill="#004d80"/>
+        <path d="M65 12H220V16H55L65 12Z" fill="#004d80"/>
+      </svg>
+    </div>
+  `;
+
+  const sjNo = docs?.sj || docs?.tug8 || `${txn.id}.SI/LOG.00.02/${UPT.replace(/^UPT\s+/i, "UPT-")}/VII/2026`;
+  const baNo = docs?.tug8?.replace(".TUG-8", ".BA") || `${txn.id}.BA/LOG.00.02/${UPT.replace(/^UPT\s+/i, "UPT-")}/VII/2026`;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-8 ${txn.id}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}
-.page{padding:28px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px}
+body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}
+.page{padding:20px 28px;page-break-after:always;min-height:100vh;background:white;max-width:920px;margin:0 auto 16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .page:last-child{page-break-after:auto;margin-bottom:0}
-.topbar{height:6px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}
-.head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
-.head h1{font-size:13px;font-weight:800;letter-spacing:.3px}
-.head .sub{font-size:9px;color:#555}
-.logobox{display:flex;align-items:center;gap:6px}
-.logo{height:38px;width:auto;display:block;object-fit:contain}
-.doctitle{text-align:center;margin-bottom:4px}
-.doctitle h2{font-size:14px;font-weight:800;letter-spacing:.5px}
-.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;font-weight:700}
-table.meta{width:100%;margin-bottom:10px;font-size:10.5px}
-table.meta td{padding:2px 4px;vertical-align:top}
-table.meta td.label{width:140px;color:#333}
-table.meta td.colon{width:10px}
-table.items{width:100%;border-collapse:collapse;margin-bottom:10px}
-table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:left}
-table.items td{padding:6px 6px;border-bottom:1px solid #ddd;font-size:10px}
-.sig-row{display:flex;justify-content:space-between;margin-top:18px;text-align:center}
-.sig-col{flex:1;font-size:10px}
-.sig-space{height:50px}
-.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}
-.note{font-size:9.5px;font-style:italic;margin-bottom:10px}
-.status-stamp{display:inline-block;border:2px solid #16a34a;color:#16a34a;font-weight:800;padding:4px 14px;border-radius:6px;font-size:11px;transform:rotate(-8deg);margin-bottom:8px}
-.print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:10}
-.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
-.photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.photo-cell{border:1px solid #ccc;border-radius:6px;overflow:hidden}
-.photo-label{background:#f1f5f9;padding:6px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #ccc}
-.photo-cell img{width:100%;height:160px;object-fit:cover;display:block}
-.photo-empty{height:160px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;font-style:italic;background:#fafafa}
-.section-heading{font-weight:800;font-size:11.5px;margin:14px 0 8px;color:#003087}
+.doctitle{text-align:center;margin-bottom:8px}
+.doctitle h2{font-size:13px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase}
+.doctitle .docno{font-size:9.5px;color:#00377a;font-weight:700;margin-top:2px}
+.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}
+.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}
 @media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none}body{background:white}}
 </style></head><body>
 
-<div class="print-bar">📄 Dokumen TUG-9 siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="print-bar">📄 Dokumen TUG-8 (Surat Jalan, BAST-B &amp; Lampiran) siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 
-<!-- ════════ PAGE 1: SURAT JALAN ════════ -->
+<!-- ════════ PAGE 1: SURAT JALAN & BAST-B ════════ -->
 <div class="page">
-  <div class="topbar"></div>
-  <div class="head">
-    <div><h1>${UIT}</h1><div class="sub">Unit Pelaksana Transmisi Surabaya</div></div>
-    <div class="logobox"><img class="logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/></div>
+  ${headerAccent}
+
+  <!-- SECTION 1: SURAT JALAN PENGAMBILAN MATERIAL -->
+  <div style="border:1.5px solid #111;padding:10px;margin-bottom:12px">
+    <div class="doctitle">
+      <h2>SURAT JALAN PENGAMBILAN MATERIAL</h2>
+      <div class="docno">${sjNo}</div>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:8px">
+      <tr>
+        <td style="width:120px">Dibawa Ke</td><td style="width:8px">:</td><td>${txn.lokasiPekerjaan || "-"}</td>
+        <td style="width:130px">Kendaraan / Nopol</td><td style="width:8px">:</td><td>${txn.nopol || "-"}</td>
+      </tr>
+      <tr>
+        <td>Tanggal Pengambilan</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
+        <td>No SIM / KTP Pengemudi</td><td>:</td><td>${txn.simKtp || "-"}</td>
+      </tr>
+      <tr>
+        <td>PIC Gudang ${UPT}</td><td>:</td><td colspan="4">${creator.name || "BAYU"} (081297708845)</td>
+      </tr>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;border:1px solid #111;margin-bottom:8px">
+      <thead>
+        <tr style="background:#e6e6e6">
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:35%">MATERIAL</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:15%">GUDANG</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">JUMLAH</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">SATUAN</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:30%">KETERANGAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsTUG8}</tbody>
+    </table>
+
+    <div style="font-size:8.5px;margin-bottom:10px">Demikian Surat Jalan ini kami buat agar dipergunakan sebagaimana mestinya</div>
+
+    <div style="display:flex;justify-content:space-between;text-align:center;font-size:8.5px">
+      <div style="width:30%">
+        Transporter,<br/><b>PENGEMUDI</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigTransporter)}</div>
+        <div>${txn.namaPengemudi || "....................."}</div>
+      </div>
+      <div style="width:35%">
+        Mengetahui,<br/><b>SATPAM GUDANG ${WAREHOUSE.toUpperCase()}</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigSatpam)}</div>
+        <div>${satpamUser.name || "....................."}</div>
+      </div>
+      <div style="width:30%">
+        Yang menyerahkan,<br/><b>ADMINISTRASI GUDANG</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigCreator)}</div>
+        <div style="font-weight:bold;text-decoration:underline">${(creator.name || "BAYU TRI NUGROHO").toUpperCase()}</div>
+      </div>
+    </div>
   </div>
-  <div class="doctitle"><h2>SURAT JALAN PENGAMBILAN MATERIAL</h2><div class="docno">${docs.sj}</div></div>
 
-  <table class="meta">
-    <tr><td class="label">Dibawa Ke</td><td class="colon">:</td><td>${txn.lokasiPekerjaan}</td><td class="label" style="width:120px">Kendaraan / Nopol</td><td class="colon">:</td><td>${txn.nopol||"-"}</td></tr>
-    <tr><td class="label">Tanggal Pengambilan</td><td class="colon">:</td><td>${fmtDateOnly(txn.createdAt)}</td><td class="label">No SIM / KTP Pengemudi</td><td class="colon">:</td><td>${txn.simKtp||"-"}</td></tr>
-    <tr><td class="label">PIC Gudang ${UPT}</td><td class="colon">:</td><td colspan="3">${creator.name||"-"}</td></tr>
-  </table>
+  <!-- SECTION 2: BERITA ACARA SERAH TERIMA BARANG (BAST-B) -->
+  <div style="border:1.5px solid #111;padding:10px">
+    <div class="doctitle">
+      <h2>BERITA ACARA SERAH TERIMA BARANG (BAST-B)</h2>
+      <div class="docno">${baNo}</div>
+    </div>
 
-  <table class="items">
-    <thead><tr><th>Material</th><th>Gudang</th><th>Jumlah</th><th>Satuan</th><th>Keterangan</th></tr></thead>
-    <tbody>${materialRowsSJ}</tbody>
-  </table>
+    <div style="font-size:8.5px;margin-bottom:6px">
+      Pada hari ini <b>${terbilangHari(txn.createdAt)}</b> tanggal <b>${fmtDateOnly(txn.createdAt)}</b>, Kami yang bertanda di bawah ini :
+    </div>
 
-  <div class="note">Demikian Surat Jalan ini kami buat agar dipergunakan sebagaimana mestinya</div>
+    <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:6px">
+      <tr><td style="width:70px">Nama</td><td style="width:8px">:</td><td><b>${(menyerahkanUser.name || "BAYU TRI NUGROHO").toUpperCase()}</b></td></tr>
+      <tr><td>Jabatan</td><td>:</td><td>${menyerahkanUser.jabatan || "TL LOG " + UPT}</td></tr>
+      <tr><td>Unit</td><td>:</td><td>${UPT}</td></tr>
+      <tr><td colspan="3" style="font-weight:bold;padding-top:2px">Untuk selanjutnya disebut PIHAK YANG MENYERAHKAN</td></tr>
+    </table>
 
-  <div class="sig-row">
-    <div class="sig-col">Transporter,<div class="sig-space"></div><div class="sig-name">${txn.namaPengemudi||"....................."}</div></div>
-    <div class="sig-col">Mengetahui,<br>SATPAM ${WAREHOUSE.toUpperCase()}<div class="sig-space"></div><div class="sig-name">${satpamUser.name||"....................."}</div></div>
-    <div class="sig-col">Yang menyerahkan,<br>ADMINISTRASI GUDANG<div class="sig-space"></div><div class="sig-name">${creator.name||"....................."}</div></div>
+    <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:6px">
+      <tr><td style="width:70px">Nama</td><td style="width:8px">:</td><td><b>${(txn.penerimaNama || "-").toUpperCase()}</b></td></tr>
+      <tr><td>Jabatan</td><td>:</td><td>${txn.penerimaJabatan || "-"}</td></tr>
+      <tr><td>Unit</td><td>:</td><td>${txn.penerimaUnit || "-"}</td></tr>
+      <tr><td colspan="3" style="font-weight:bold;padding-top:2px">Untuk selanjutnya disebut PIHAK YANG MENERIMA</td></tr>
+    </table>
+
+    <div style="font-size:8.5px;margin-bottom:6px">Telah melaksanakan serah terima barang, sesuai dengan data sebagai berikut :</div>
+
+    <table style="width:100%;border-collapse:collapse;border:1px solid #111;margin-bottom:6px">
+      <thead>
+        <tr style="background:#e6e6e6">
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:35%">MATERIAL</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:15%">GUDANG</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">JUMLAH</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">SATUAN</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:30%">KETERANGAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsTUG8}</tbody>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:6px">
+      <tr><td style="width:180px">Sesuai Nodin / Surat Permintaan No</td><td style="width:8px">:</td><td>${txn.noNodin || "-"}</td></tr>
+      <tr><td>Sesuai Surat Persetujuan No</td><td>:</td><td>${txn.noSuratPersetujuan || "-"}</td></tr>
+      <tr><td>Untuk Pekerjaan</td><td>:</td><td>${txn.pekerjaan || txn.namaPekerjaan || "-"}</td></tr>
+    </table>
+
+    <div style="font-size:8.5px;margin-bottom:10px">Demikian Berita Acara ini kami buat agar dipergunakan sebagaimana mestinya</div>
+
+    <div style="display:flex;justify-content:space-between;text-align:center;font-size:8.5px">
+      <div style="width:45%">
+        Yang menerima,<br/><b>${txn.penerimaUnit || "UPT penerima"}</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigPenerima)}</div>
+        <div style="font-weight:bold">${(txn.penerimaNama || ".....................").toUpperCase()}</div>
+      </div>
+      <div style="width:45%">
+        Yang menyerahkan,<br/><b>${menyerahkanUser.jabatan || "TL LOG " + UPT}</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigMenyerahkan)}</div>
+        <div style="font-weight:bold;text-decoration:underline">${(menyerahkanUser.name || "BAYU TRI NUGROHO").toUpperCase()}</div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- ════════ PAGE 2: BON PEMAKAIAN TUG-9 ════════ -->
+<!-- ════════ PAGE 2: LAMPIRAN FOTO KENDARAAN & SIM/KTP ════════ -->
 <div class="page">
-  <div class="topbar"></div>
-  <div class="head">
-    <div></div>
-    <div class="logobox"><img class="logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/></div>
+  ${headerAccent}
+  <div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:14px">Lampiran Foto</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;height:520px">
+    ${photoBox("Foto Kendaraan", txn.fotoKendaraan, "Foto Kendaraan pengangkut")}
+    ${photoBox("SIM / KTP", txn.fotoSimKtp, "Foto SIM / KTP sopir")}
   </div>
-  <div style="text-align:right;font-weight:800;font-size:13px;margin-bottom:6px">${isTUG8 ? "TUG 8" : "TUG 9"}</div>
-  <div class="doctitle"><h2>BON PEMAKAIAN</h2><div class="docno">${docs[docKey]}</div></div>
+  ${footerAccent}
+</div>
 
-  ${txn.status==="APPROVED" ? `<div style="text-align:center"><span class="status-stamp">✓ DISETUJUI</span></div>` : ""}
+<!-- ════════ PAGE 3: LAMPIRAN FOTO SURAT PENGEMBALIAN ════════ -->
+<div class="page">
+  ${headerAccent}
+  <div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:14px">Lampiran Foto</div>
+  <div style="height:540px">
+    ${photoBox("Surat Pengembalian", txn.fotoSuratPengembalian, "Foto surat permintaan")}
+  </div>
+  ${footerAccent}
+</div>
 
-  <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-    <tr><td colspan="6" style="font-weight:700;text-align:center;border-bottom:1px solid #ccc;padding-bottom:4px">${COMPANY.toUpperCase()} UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI</td></tr>
-    <tr><td class="label">PEKERJAAN</td><td class="colon">:</td><td colspan="2">${txn.pekerjaan}</td><td class="label" style="width:90px">UNIT/SEKTOR</td><td>: ${isTUG8 ? (txn.unitTujuan||"-") : UPT}</td></tr>
-    <tr><td class="label">NAMA PEKERJAAN</td><td class="colon">:</td><td colspan="2">${txn.namaPekerjaan}</td><td class="label">SURAT/NODIN</td><td>: ${txn.noNodin||"-"}</td></tr>
-    <tr><td class="label">LOKASI PEKERJAAN</td><td class="colon">:</td><td colspan="2">${txn.lokasiPekerjaan}</td><td class="label">TANGGAL</td><td>: ${fmtDateOnly(txn.createdAt)}</td></tr>
+<!-- ════════ PAGE 4: LAMPIRAN FOTO BARANG ════════ -->
+<div class="page">
+  ${headerAccent}
+  <div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:14px">Lampiran Foto Barang</div>
+  <table style="width:100%;border-collapse:collapse;border:1.5px solid #111">
+    <thead>
+      <tr style="background:#f2f2f2">
+        <th style="border:1.5px solid #111;padding:8px;width:35%;font-size:11px;text-align:center">Nama Material</th>
+        <th style="border:1.5px solid #111;padding:8px;font-size:11px;text-align:center">Foto Barang</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows.map(({ stock, si }) => {
+        const photo = (txn.fotoMaterial || []).find(fm => fm.stockId === stock.id);
+        const name = stock.name || si.namaBaru || "-";
+        return `
+          <tr>
+            <td style="border:1px solid #111;padding:10px;font-size:10px;vertical-align:top;font-weight:bold">${name}</td>
+            <td style="border:1px solid #111;padding:10px;text-align:center">
+              ${photo?.img ? `<img src="${photo.img}" style="max-height:280px;max-width:100%;object-fit:contain"/>` : `<span style="color:#64748b;font-style:italic">&lt;&lt;[Foto Barang]&gt;&gt;</span>`}
+            </td>
+          </tr>
+        `;
+      }).join("")}
+    </tbody>
+  </table>
+  ${footerAccent}
+</div>
+
+</body></html>`;
+}
+
+// ─── TUG-9 DOCUMENT HTML BUILDER (Surat Jalan + BAST-B + Bon TUG-9 + 3-Page Lampiran Foto) ────
+export function buildTUG9HTML(txn, stocks, users, satpamList) {
+  const isTUG8 = txn.docType === "TUG8";
+  if (isTUG8) return buildTUG8HTML(txn, stocks, users, satpamList);
+
+  const docs = txn.docNumbers || {};
+  const creator = users.find(u => u.id === txn.createdBy) || {};
+  const actualApprover = users.find(u => u.id === txn.approvedBy) || {};
+  const asmanUser = users.find(u => u.role === "ASMAN") || {};
+  const menyerahkanUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u => u.role === "TL") || {});
+  const satpamUser = (satpamList || []).find(sp => sp.id === txn.satpamId) || {};
+
+  const sigs = txn.signatures || {};
+  const sigTransporter = sigs.transporter || "";
+  const sigSatpam = sigs.satpam || satpamUser.signatureUrl || "";
+  const sigCreator = sigs.creator || creator.signatureUrl || "";
+  const sigPenerima = sigs.penerima || "";
+  const sigAsman = sigs.asman || asmanUser.signatureUrl || "";
+  const sigMenyerahkan = sigs.menyerahkan || menyerahkanUser.signatureUrl || "";
+
+  function renderSigImg(url) {
+    if (!url) return '';
+    return `<img src="${url}" style="max-height:42px;max-width:130px;object-fit:contain;display:block;margin:0 auto" alt="TTD"/>`;
+  }
+
+  const itemRows = (txn.stockItems || []).map(si => {
+    const stock = stocks.find(s => s.id === si.stockId) || {};
+    return { stock, qty: si.qty, si };
+  });
+
+  const materialRowsSJ = itemRows.map(({ stock, qty, si }) => `
+    <tr>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px">${stock.name || si.namaBaru || "-"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${stock.lokasi || WAREHOUSE || "TANDES"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${fmtNum(qty)}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${stock.unit || si.satuanBaru || "BH"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px">(${stock.jenisBarang || "Non-Stock"}) ${si.keterangan || txn.keteranganBarang || ""}</td>
+    </tr>
+  `).join("");
+
+  const materialRowsTUG9 = itemRows.map(({ stock, qty, si }) => `
+    <tr>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${fmtNum(qty)}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${stock.unit || si.satuanBaru || "BH"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px">${stock.name || si.namaBaru || "-"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px;text-align:center">${stock.katalog || si.katalogBaru || "-"}</td>
+      <td style="border:1px solid #111;padding:5px 6px;font-size:9.5px">(${stock.jenisBarang || "Non-Stock"}) ${si.keterangan || txn.keteranganBarang || ""}</td>
+    </tr>
+  `).join("");
+
+  function photoBox(label, src, placeholder) {
+    return `<div style="border:1.5px solid #111;height:100%;display:flex;flex-direction:column;min-height:360px">
+      <div style="background:#f2f2f2;padding:8px;font-size:11px;font-weight:bold;border-bottom:1.5px solid #111;text-align:center">${label}</div>
+      <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:12px;background:#fff">
+        ${src ? `<img src="${src}" style="max-width:100%;max-height:420px;object-fit:contain;display:block" alt="${label}"/>` : `<div style="color:#64748b;font-size:11px;font-style:italic">&lt;&lt;[${placeholder || label}]&gt;&gt;</div>`}
+      </div>
+    </div>`;
+  }
+
+  const headerAccent = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+      <div class="header-accent">
+        <svg width="420" height="24" viewBox="0 0 420 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="0" y="4" width="300" height="16" fill="#00a3e0"/>
+          <path d="M295 4L315 20H302L282 4H295Z" fill="#004d80"/>
+          <path d="M312 4L332 20H319L299 4H312Z" fill="#00a3e0"/>
+          <path d="M329 4L349 20H336L316 4H329Z" fill="#004d80"/>
+        </svg>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end">
+        <img src="${PLN_LOGO_DATA_URI}" style="height:34px;width:auto" alt="PLN Logo"/>
+        <div style="font-size:7.5px;font-weight:bold;margin-top:2px;text-align:right;line-height:1.2">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI<br/>UNIT PELAKSANA TRANSMISI ${UPT.replace(/^UPT\s+/i, "")}</div>
+      </div>
+    </div>
+  `;
+
+  const footerAccent = `
+    <div style="margin-top:20px;display:flex;justify-content:center">
+      <svg width="220" height="16" viewBox="0 0 220 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M40 0L60 14H47L27 0H40Z" fill="#00a3e0"/>
+        <path d="M57 0L77 14H64L44 0H57Z" fill="#004d80"/>
+        <path d="M65 12H220V16H55L65 12Z" fill="#004d80"/>
+      </svg>
+    </div>
+  `;
+
+  const sjNo = docs?.sj || `${txn.id}.SI/LOG.00.02/${UPT.replace(/^UPT\s+/i, "UPT-")}/VII/2026`;
+  const baNo = docs?.tug9?.replace(".TUG-9", ".BA") || `${txn.id}.BA/LOG.00.02/${UPT.replace(/^UPT\s+/i, "UPT-")}/VII/2026`;
+  const tug9No = docs?.tug9 || `${txn.id}.TUG-9/LOG.00.02/${UPT.replace(/^UPT\s+/i, "UPT-")}/VII/2026`;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-9 ${txn.id}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}
+.page{padding:20px 28px;page-break-after:always;min-height:100vh;background:white;max-width:920px;margin:0 auto 16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.page:last-child{page-break-after:auto;margin-bottom:0}
+.doctitle{text-align:center;margin-bottom:8px}
+.doctitle h2{font-size:13px;font-weight:800;letter-spacing:0.5px;text-transform:uppercase}
+.doctitle .docno{font-size:9.5px;color:#00377a;font-weight:700;margin-top:2px}
+.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}
+.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}
+@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none}body{background:white}}
+</style></head><body>
+
+<div class="print-bar">📄 Dokumen TUG-9 (Surat Jalan, BAST-B, Bon TUG-9 &amp; Lampiran) siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+
+<!-- ════════ PAGE 1: SURAT JALAN & BAST-B ════════ -->
+<div class="page">
+  ${headerAccent}
+
+  <!-- SECTION 1: SURAT JALAN PENGAMBILAN MATERIAL -->
+  <div style="border:1.5px solid #111;padding:10px;margin-bottom:12px">
+    <div class="doctitle">
+      <h2>SURAT JALAN PENGAMBILAN MATERIAL</h2>
+      <div class="docno">${sjNo}</div>
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:9px;margin-bottom:8px">
+      <tr>
+        <td style="width:120px">Dibawa Ke</td><td style="width:8px">:</td><td>${txn.lokasiPekerjaan || "-"}</td>
+        <td style="width:130px">Kendaraan / Nopol</td><td style="width:8px">:</td><td>${txn.nopol || "-"}</td>
+      </tr>
+      <tr>
+        <td>Tanggal Pengambilan</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
+        <td>No SIM / KTP Pengemudi</td><td>:</td><td>${txn.simKtp || "-"}</td>
+      </tr>
+      <tr>
+        <td>PIC Gudang ${UPT}</td><td>:</td><td colspan="4">${creator.name || "BAYU"} (081297708845)</td>
+      </tr>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;border:1px solid #111;margin-bottom:8px">
+      <thead>
+        <tr style="background:#e6e6e6">
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:35%">MATERIAL</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:15%">GUDANG</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">JUMLAH</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">SATUAN</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:30%">KETERANGAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsSJ}</tbody>
+    </table>
+
+    <div style="font-size:8.5px;margin-bottom:10px">Demikian Surat Jalan ini kami buat agar dipergunakan sebagaimana mestinya</div>
+
+    <div style="display:flex;justify-content:space-between;text-align:center;font-size:8.5px">
+      <div style="width:30%">
+        Transporter,<br/><b>PENGEMUDI</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigTransporter)}</div>
+        <div>${txn.namaPengemudi || "....................."}</div>
+      </div>
+      <div style="width:35%">
+        Mengetahui,<br/><b>SATPAM GUDANG ${WAREHOUSE.toUpperCase()}</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigSatpam)}</div>
+        <div>${satpamUser.name || "....................."}</div>
+      </div>
+      <div style="width:30%">
+        Yang menyerahkan,<br/><b>ADMINISTRASI GUDANG</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigCreator)}</div>
+        <div style="font-weight:bold;text-decoration:underline">${(creator.name || "BAYU TRI NUGROHO").toUpperCase()}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SECTION 2: BERITA ACARA SERAH TERIMA BARANG (BAST-B) -->
+  <div style="border:1.5px solid #111;padding:10px">
+    <div class="doctitle">
+      <h2>BERITA ACARA SERAH TERIMA BARANG (BAST-B)</h2>
+      <div class="docno">${baNo}</div>
+    </div>
+
+    <div style="font-size:8.5px;margin-bottom:6px">
+      Pada hari ini <b>${terbilangHari(txn.createdAt)}</b> tanggal <b>${fmtDateOnly(txn.createdAt)}</b>, Kami yang bertanda di bawah ini :
+    </div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:6px">
+      <tr><td style="width:70px">Nama</td><td style="width:8px">:</td><td><b>${(menyerahkanUser.name || "BAYU TRI NUGROHO").toUpperCase()}</b></td></tr>
+      <tr><td>Jabatan</td><td>:</td><td>${menyerahkanUser.jabatan || "TL LOG " + UPT}</td></tr>
+      <tr><td>Unit</td><td>:</td><td>${UPT}</td></tr>
+      <tr><td colspan="3" style="font-weight:bold;padding-top:2px">Untuk selanjutnya disebut PIHAK YANG MENYERAHKAN</td></tr>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:6px">
+      <tr><td style="width:70px">Nama</td><td style="width:8px">:</td><td><b>${(txn.penerimaNama || "-").toUpperCase()}</b></td></tr>
+      <tr><td>Jabatan</td><td>:</td><td>${txn.penerimaJabatan || "-"}</td></tr>
+      <tr><td>Unit</td><td>:</td><td>${txn.penerimaUnit || "-"}</td></tr>
+      <tr><td colspan="3" style="font-weight:bold;padding-top:2px">Untuk selanjutnya disebut PIHAK YANG MENERIMA</td></tr>
+    </table>
+
+    <div style="font-size:8.5px;margin-bottom:6px">Telah melaksanakan serah terima barang, sesuai dengan data sebagai berikut :</div>
+
+    <table style="width:100%;border-collapse:collapse;border:1px solid #111;margin-bottom:6px">
+      <thead>
+        <tr style="background:#e6e6e6">
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:35%">MATERIAL</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:15%">GUDANG</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">JUMLAH</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:10%">SATUAN</th>
+          <th style="border:1px solid #111;padding:4px;font-size:8.5px;text-align:center;width:30%">KETERANGAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsSJ}</tbody>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;font-size:8.5px;margin-bottom:6px">
+      <tr><td style="width:180px">Sesuai Nodin / Surat Permintaan No</td><td style="width:8px">:</td><td>${txn.noNodin || "-"}</td></tr>
+      <tr><td>Sesuai Surat Persetujuan No</td><td>:</td><td>${txn.noSuratPersetujuan || "-"}</td></tr>
+      <tr><td>Untuk Pekerjaan</td><td>:</td><td>${txn.pekerjaan || txn.namaPekerjaan || "-"}</td></tr>
+    </table>
+
+    <div style="font-size:8.5px;margin-bottom:10px">Demikian Berita Acara ini kami buat agar dipergunakan sebagaimana mestinya</div>
+
+    <div style="display:flex;justify-content:space-between;text-align:center;font-size:8.5px">
+      <div style="width:45%">
+        Yang menerima,<br/><b>${txn.penerimaUnit || "UPT penerima"}</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigPenerima)}</div>
+        <div style="font-weight:bold">${(txn.penerimaNama || ".....................").toUpperCase()}</div>
+      </div>
+      <div style="width:45%">
+        Yang menyerahkan,<br/><b>${menyerahkanUser.jabatan || "TL LOG " + UPT}</b>
+        <div style="height:36px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigMenyerahkan)}</div>
+        <div style="font-weight:bold;text-decoration:underline">${(menyerahkanUser.name || "BAYU TRI NUGROHO").toUpperCase()}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════ PAGE 2: BON PEMAKAIAN (TUG 9) ════════ -->
+<div class="page">
+  ${headerAccent}
+
+  <div style="text-align:right;font-weight:bold;font-size:14px;margin-bottom:4px">TUG 9</div>
+  <div class="doctitle">
+    <h2>BON PEMAKAIAN</h2>
+    <div class="docno">${tug9No}</div>
+  </div>
+
+  <table style="width:100%;border-collapse:collapse;border:1.5px solid #111;margin-bottom:12px">
+    <tr style="background:#fff">
+      <td colspan="6" style="text-align:center;font-weight:bold;padding:6px;border-bottom:1.5px solid #111;font-size:10px">
+        PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI
+      </td>
+    </tr>
+    <tr>
+      <td style="width:130px;padding:4px 6px;border-right:1px solid #111;border-bottom:1px solid #111;font-weight:bold">PEKERJAAN</td>
+      <td style="width:8px;padding:4px 2px;border-bottom:1px solid #111">:</td>
+      <td style="padding:4px 6px;border-right:1.5px solid #111;border-bottom:1px solid #111">${txn.pekerjaan || txn.namaPekerjaan || "-"}</td>
+      <td style="width:120px;padding:4px 6px;border-right:1px solid #111;border-bottom:1px solid #111;font-weight:bold">UNIT / SEKTOR</td>
+      <td style="width:8px;padding:4px 2px;border-bottom:1px solid #111">:</td>
+      <td style="padding:4px 6px;border-bottom:1px solid #111">${UPT}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 6px;border-right:1px solid #111;border-bottom:1px solid #111;font-weight:bold">NAMA PEKERJAAN</td>
+      <td style="padding:4px 2px;border-bottom:1px solid #111">:</td>
+      <td style="padding:4px 6px;border-right:1.5px solid #111;border-bottom:1px solid #111">${txn.namaPekerjaan || "-"}</td>
+      <td style="padding:4px 6px;border-right:1px solid #111;border-bottom:1px solid #111;font-weight:bold">SURAT / NODIN</td>
+      <td style="padding:4px 2px;border-bottom:1px solid #111">:</td>
+      <td style="padding:4px 6px;border-bottom:1px solid #111">${txn.noNodin || "-"}</td>
+    </tr>
+    <tr>
+      <td style="padding:4px 6px;border-right:1px solid #111;font-weight:bold">LOKASI PEKERJAAN</td>
+      <td style="padding:4px 2px">:</td>
+      <td style="padding:4px 6px;border-right:1.5px solid #111">${txn.lokasiPekerjaan || "-"}</td>
+      <td style="padding:4px 6px;border-right:1px solid #111;font-weight:bold">TANGGAL</td>
+      <td style="padding:4px 2px">:</td>
+      <td style="padding:4px 6px">${fmtDateOnly(txn.createdAt)}</td>
+    </tr>
   </table>
 
-  <table class="items">
-    <thead><tr><th>Banyaknya</th><th>Satuan</th><th>Nama Barang / Spare Parts</th><th>Nomor Katalog</th><th>Keterangan</th></tr></thead>
+  <table style="width:100%;border-collapse:collapse;border:1.5px solid #111;margin-bottom:12px">
+    <thead>
+      <tr style="background:#e6e6e6">
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:10%">Banyaknya</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:10%">Satuan</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:40%">Nama barang / Spare Parts</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:18%">Nomor Katalog</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:22%">Keterangan</th>
+      </tr>
+    </thead>
     <tbody>${materialRowsTUG9}</tbody>
   </table>
 
-  <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-    <tr><td class="label" style="width:160px">Perkiraan Pembebanan</td><td class="colon">:</td><td>${txn.perkiraanPembebanan||"-"}</td></tr>
-    <tr><td class="label">Kode Perkiraan</td><td class="colon">:</td><td>${txn.kodePerkiraan||"-"}</td></tr>
-    <tr><td class="label">Tanggal</td><td class="colon">:</td><td>${fmtDateOnly(txn.approvedAt||Date.now())}</td></tr>
+  <table style="width:100%;border-collapse:collapse;border:1.5px solid #111;margin-bottom:16px">
+    <thead>
+      <tr style="background:#e6e6e6">
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:35%">Perkiraan Pembebanan</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:35%">Kode perkiraan</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:30%">Tanggal</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border:1px solid #111;padding:6px;text-align:center">${txn.perkiraanPembebanan || "-"}</td>
+        <td style="border:1px solid #111;padding:6px;text-align:center">${txn.kodePerkiraan || "-"}</td>
+        <td style="border:1px solid #111;padding:6px;text-align:center">${fmtDateOnly(txn.createdAt)}</td>
+      </tr>
+    </tbody>
   </table>
 
-  <div class="sig-row">
-    <div class="sig-col">Yang Menerima,<br>${txn.penerimaUnit||"-"}<div class="sig-space"></div><div class="sig-name">${txn.penerimaNama||"....................."}</div></div>
-    <div class="sig-col">Mengetahui,<br>${asmanUser.jabatan||"ASMAN KONSTRUKSI " + UPT}<div class="sig-space"></div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
-    <div class="sig-col">Yang Menyerahkan,<br>${menyerahkanUser.jabatan||"TL LOGISTIK " + UPT}<div class="sig-space"></div><div class="sig-name">${menyerahkanUser.name||"....................."}</div></div>
+  <div style="display:flex;justify-content:space-between;text-align:center;font-size:9px;margin-top:16px">
+    <div style="width:30%">
+      Yang Menerima,<br/><b>${txn.penerimaUnit || "UPT penerima"}</b>
+      <div style="height:45px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigPenerima)}</div>
+      <div style="font-weight:bold">${(txn.penerimaNama || ".....................").toUpperCase()}</div>
+    </div>
+    <div style="width:35%">
+      Mengetahui,<br/><b>${asmanUser.jabatan || "MAN II KON " + UPT.replace(/^UPT\s+/i, "")}</b>
+      <div style="height:45px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigAsman)}</div>
+      <div style="font-weight:bold;text-decoration:underline">${(asmanUser.name || "ASEP MOCH. YUSUP").toUpperCase()}</div>
+    </div>
+    <div style="width:30%">
+      Yang Menyerahkan,<br/><b>${menyerahkanUser.jabatan || "TL LOG " + UPT}</b>
+      <div style="height:45px;display:flex;align-items:center;justify-content:center">${renderSigImg(sigMenyerahkan)}</div>
+      <div style="font-weight:bold;text-decoration:underline">${(menyerahkanUser.name || "BAYU TRI NUGROHO").toUpperCase()}</div>
+    </div>
   </div>
-  ${txn.requiredApprover==="TL" ? `<div style="font-size:9px;color:#16a34a;text-align:center;margin-top:6px;font-style:italic">* Disetujui oleh TL Logistik, Asman Konstruksi turut menyetujui sesuai ketentuan internal</div>` : ""}
+
+  ${footerAccent}
 </div>
 
-${hasAnyAttachment ? `
-<!-- ════════ PAGE 3: LAMPIRAN FOTO ════════ -->
+<!-- ════════ PAGE 3: LAMPIRAN FOTO KENDARAAN & SIM/KTP ════════ -->
 <div class="page">
-  <div class="topbar"></div>
-  <div class="head">
-    <div><h1>${UIT}</h1><div class="sub">Unit Pelaksana Transmisi Surabaya</div></div>
-    <div class="logobox"><img class="logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/></div>
+  ${headerAccent}
+  <div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:14px">Lampiran Foto</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;height:520px">
+    ${photoBox("Foto Kendaraan", txn.fotoKendaraan, "Foto Kendaraan pengangkut")}
+    ${photoBox("SIM / KTP", txn.fotoSimKtp, "Foto SIM / KTP sopir")}
   </div>
-  <div class="doctitle"><h2>LAMPIRAN FOTO</h2><div class="docno">${docs[docKey]}</div></div>
+  ${footerAccent}
+</div>
 
-  <div class="section-heading">Foto Kendaraan &amp; SIM / KTP Pengemudi</div>
-  <div class="photo-grid">
-    ${photoCell("Foto Kendaraan", txn.fotoKendaraan)}
-    ${photoCell("SIM / KTP Pengemudi", txn.fotoSimKtp)}
+<!-- ════════ PAGE 4: LAMPIRAN FOTO SURAT PENGEMBALIAN ════════ -->
+<div class="page">
+  ${headerAccent}
+  <div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:14px">Lampiran Foto</div>
+  <div style="height:540px">
+    ${photoBox("Surat Pengembalian", txn.fotoSuratPengembalian, "Foto surat permintaan")}
   </div>
+  ${footerAccent}
+</div>
 
-  ${txn.fotoSuratPengembalian ? `
-  <div class="section-heading">Surat Permintaan / Pengembalian</div>
-  <div class="photo-grid">
-    ${photoCell("Surat Permintaan / Pengembalian", txn.fotoSuratPengembalian)}
-  </div>` : ""}
-
-  ${itemRows.length > 0 ? `
-  <div class="section-heading">Foto Material</div>
-  <div class="photo-grid">
-    ${materialPhotoCells}
-  </div>` : ""}
-</div>` : ""}
+<!-- ════════ PAGE 5: LAMPIRAN FOTO BARANG ════════ -->
+<div class="page">
+  ${headerAccent}
+  <div style="text-align:center;font-weight:bold;font-size:13px;margin-bottom:14px">Lampiran Foto Barang</div>
+  <table style="width:100%;border-collapse:collapse;border:1.5px solid #111">
+    <thead>
+      <tr style="background:#f2f2f2">
+        <th style="border:1.5px solid #111;padding:8px;width:35%;font-size:11px;text-align:center">Nama Material</th>
+        <th style="border:1.5px solid #111;padding:8px;font-size:11px;text-align:center">Foto Barang</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${itemRows.map(({ stock, si }) => {
+        const photo = (txn.fotoMaterial || []).find(fm => fm.stockId === stock.id);
+        const name = stock.name || si.namaBaru || "-";
+        return `
+          <tr>
+            <td style="border:1px solid #111;padding:10px;font-size:10px;vertical-align:top;font-weight:bold">${name}</td>
+            <td style="border:1px solid #111;padding:10px;text-align:center">
+              ${photo?.img ? `<img src="${photo.img}" style="max-height:280px;max-width:100%;object-fit:contain"/>` : `<span style="color:#64748b;font-style:italic">&lt;&lt;[Foto Barang]&gt;&gt;</span>`}
+            </td>
+          </tr>
+        `;
+      }).join("")}
+    </tbody>
+  </table>
+  ${footerAccent}
+</div>
 
 </body></html>`;
 }
@@ -298,12 +760,26 @@ table.items td{padding:6px 6px;border-bottom:1px solid #ddd;font-size:10px}
     <tr><td class="label">Tanggal</td><td class="colon">:</td><td>${fmtDateOnly(txn.approvedAt||Date.now())}</td></tr>
   </table>
 
+  ${(() => {
+    const sigs = txn.signatures || {};
+    const sigAsman = sigs.asman || asmanUser.signatureUrl || "";
+    const sigPenerima = sigs.penerima || penerimaUser.signatureUrl || "";
+    const sigSatpam = sigs.satpam || satpamUser.signatureUrl || "";
+    const sigMenyerahkan = sigs.menyerahkan || "";
+
+    function renderSigImg(url) {
+      if (!url) return '';
+      return `<img src="${url}" class="sig-img" alt="TTD"/>`;
+    }
+
+    return `
   <div class="sig-row">
-    <div class="sig-col">Mengetahui,<br>${asmanUser.jabatan||"ASMAN KONS UPT " + UPT}<div class="sig-space"></div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
-    <div class="sig-col">Yang Menerima,<br>${penerimaUser.jabatan||"SPV LOG UPT " + UPT}<div class="sig-space"></div><div class="sig-name">${penerimaUser.name||"....................."}</div></div>
-    <div class="sig-col">Mengetahui,<br>SATPAM GUDANG${gudLabel?` ${gudLabel}`:""}<div class="sig-space"></div><div class="sig-name">${satpamUser.name||"....................."}</div></div>
-    <div class="sig-col">Yang Menyerahkan<div class="sig-space"></div><div class="sig-name">${txn.menyerahkanNama||"....................."}</div></div>
-  </div>
+    <div class="sig-col">Mengetahui,<br>${asmanUser.jabatan||"ASMAN KONS UPT " + UPT}<div class="sig-space">${renderSigImg(sigAsman)}</div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
+    <div class="sig-col">Yang Menerima,<br>${penerimaUser.jabatan||"SPV LOG UPT " + UPT}<div class="sig-space">${renderSigImg(sigPenerima)}</div><div class="sig-name">${penerimaUser.name||"....................."}</div></div>
+    <div class="sig-col">Mengetahui,<br>SATPAM GUDANG${gudLabel?` ${gudLabel}`:""}<div class="sig-space">${renderSigImg(sigSatpam)}</div><div class="sig-name">${satpamUser.name||"....................."}</div></div>
+    <div class="sig-col">Yang Menyerahkan<div class="sig-space">${renderSigImg(sigMenyerahkan)}</div><div class="sig-name">${txn.menyerahkanNama||"....................."}</div></div>
+  </div>`;
+  })()}
   ${txn.requiredApprover==="TL" ? `<div style="font-size:9px;color:#16a34a;text-align:center;margin-top:6px;font-style:italic">* Disetujui oleh TL Logistik, Asman Konstruksi turut menyetujui sesuai ketentuan internal</div>` : ""}
 </div>
 
@@ -361,68 +837,163 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList) {
   const itemRows = (txn.stockItems||[]).map((si,idx)=>{
     const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
-      <td>${kat.name||"-"}</td>
-      <td style="text-align:center">${kat.katalog||"-"}</td>
-      <td style="text-align:center">${kat.satuan||"-"}</td>
-      <td style="text-align:center">${fmtNum(si.pemakaianBulan||0)}</td>
-      <td style="text-align:center">${fmtNum(si.sisaPersediaan||0)}</td>
-      <td style="text-align:center">${fmtNum(si.permintaan||0)}</td>
-      <td style="text-align:center"></td><td style="text-align:center"></td><td></td>
-      <td>${si.keterangan||""}</td>
+      <td style="border:1px solid #111;padding:4px 6px">${kat.name||"-"}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${kat.katalog||"-"}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${kat.satuan||"-"}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${si.pemakaianBulan ? fmtNum(si.pemakaianBulan) : ""}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${si.sisaPersediaan ? fmtNum(si.sisaPersediaan) : ""}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${fmtNum(si.permintaan||0)}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${si.diberikanJumlah ? fmtNum(si.diberikanJumlah) : ""}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${si.doNomor||""}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${si.tanggalDiberikan||""}</td>
+      <td style="border:1px solid #111;padding:4px 6px">${si.keterangan||""}</td>
     </tr>`;
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-5 ${txn.id}</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:2px 3px;font-size:10px}table.meta td.label{width:90px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:5px 5px;font-size:9px;text-align:center;border:1px solid #ccc}table.items td{padding:5px 5px;border:1px solid #ccc;font-size:9.5px}.sig-row{display:flex;justify-content:space-around;margin-top:20px;text-align:center}.sig-col{flex:1;font-size:10px}.sig-space{height:50px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}}</style></head><body>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#111;background:#e5e7eb}
+.page{padding:24px 32px;background:white;max-width:960px;margin:0 auto 16px;min-height:100vh;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
+.top-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.header-accent{display:flex;align-items:center}
+.logo-container{display:flex;flex-direction:column;align-items:flex-end}
+.pln-logo{height:36px;width:auto;display:block}
+.tug-tag{font-weight:900;font-size:14px;margin-top:2px;letter-spacing:0.5px}
+.doctitle{text-align:center;margin-bottom:14px}
+.doctitle h2{font-size:13.5px;font-weight:800;text-decoration:underline;letter-spacing:0.5px}
+.doctitle .docno{font-size:10px;font-style:italic;color:#333;margin-top:2px}
+.meta-wrapper{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;gap:16px}
+table.meta-left{border-collapse:collapse;font-size:10px;flex:1}
+table.meta-left td{padding:2px 4px;vertical-align:top}
+table.meta-left td.label{width:95px;color:#111}
+table.meta-left td.colon{width:8px}
+table.meta-right{border-collapse:collapse;font-size:10px;border:1px solid #111;width:170px}
+table.meta-right td{border:1px solid #111;padding:3px 6px}
+table.items{width:100%;border-collapse:collapse;margin-bottom:12px;border:1px solid #111}
+table.items th{background:#e6e6e6;color:#111;padding:5px 4px;font-size:9.5px;text-align:center;border:1px solid #111;font-weight:700}
+table.items td{padding:5px 5px;border:1px solid #111;font-size:9.5px;vertical-align:middle}
+.footer-meta{border:1px solid #111;margin-bottom:12px}
+.footer-meta-top{padding:4px 8px;border-bottom:1px solid #111;font-size:10px;display:flex}
+.footer-meta-top .label{width:95px;font-weight:bold}
+.footer-meta-bottom{display:flex;font-size:10px}
+.footer-meta-bottom > div{flex:1;padding:4px 8px;border-right:1px solid #111}
+.footer-meta-bottom > div:last-child{border-right:none}
+.date-row{text-align:right;font-size:10px;margin-bottom:16px;margin-top:8px}
+.sig-row{display:flex;justify-content:space-between;align-items:flex-start;margin-top:20px;text-align:center;padding:0 20px}
+.sig-col{width:260px;font-size:10px}
+.sig-space{height:55px;display:flex;align-items:center;justify-content:center}
+.sig-name{font-weight:700;text-decoration:underline;margin-top:4px}
+.bottom-accent{margin-top:24px;display:flex;justify-content:center}
+.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}
+.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}
+@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none}body{background:white}}
+</style></head><body>
 <div class="print-bar">📄 TUG-5 siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
-<div class="topbar"></div>
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-  <div><b>PT PLN (PERSERO)</b><br/>${UIT}</div>
-  <div style="font-weight:800;font-size:14px">TUG - 5</div>
+<div class="top-header">
+  <div class="header-accent">
+    <svg width="420" height="24" viewBox="0 0 420 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="4" width="300" height="16" fill="#00a3e0"/>
+      <path d="M295 4L315 20H302L282 4H295Z" fill="#004d80"/>
+      <path d="M312 4L332 20H319L299 4H312Z" fill="#00a3e0"/>
+      <path d="M329 4L349 20H336L316 4H329Z" fill="#004d80"/>
+    </svg>
+  </div>
+  <div class="logo-container">
+    <img src="${PLN_LOGO_DATA_URI}" class="pln-logo" alt="PLN Logo"/>
+    <div class="tug-tag">TUG - 5</div>
+  </div>
 </div>
-<div class="doctitle"><h2>DAFTAR PERMINTAAN BARANG - BARANG</h2><div class="docno">${docs?.tug5||txn.id}</div></div>
-<table class="meta" style="border:1px solid #ccc;padding:6px;border-radius:4px;margin-bottom:10px">
-  <tr>
-    <td class="label">Kepada</td><td class="colon">:</td>
-    <td colspan="3">${uit.nama||"-"}</td>
-    <td style="width:60px"><b>PLN</b></td><td>: ${uit.kode||"UIT-JBM"}</td>
-  </tr>
-  <tr>
-    <td class="label">Harap dikirim ke</td><td class="colon">:</td>
-    <td colspan="3">PT PLN (PERSERO) ${UIT} - UPT SURABAYA</td>
-    <td><b>UPT</b></td><td>: UPT SURABAYA</td>
-  </tr>
-  <tr>
-    <td class="label">Alamat</td><td class="colon">:</td>
-    <td colspan="5">JL. KETINTANG BARU NO. 9 SURABAYA KODE POS 60231</td>
-  </tr>
-</table>
+
+<div class="doctitle">
+  <h2>DAFTAR PERMINTAAN BARANG - BARANG</h2>
+  <div class="docno">${docs?.tug5||txn.id}</div>
+</div>
+
+<div class="meta-wrapper">
+  <table class="meta-left">
+    <tr>
+      <td class="label">Kepada</td><td class="colon">:</td>
+      <td>${uit.nama || "PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI"}</td>
+    </tr>
+    <tr>
+      <td class="label">Harap dikirim ke</td><td class="colon">:</td>
+      <td>PT. PLN (PERSERO) ${UIT} - ${UPT}</td>
+    </tr>
+    <tr>
+      <td class="label">Alamat</td><td class="colon">:</td>
+      <td>JL. KETINTANG BARU NO. 9 SURABAYA KODE POS 60231</td>
+    </tr>
+  </table>
+
+  <table class="meta-right">
+    <tr>
+      <td style="font-weight:bold;width:50px">PLN</td>
+      <td>: ${uit.kode||"UIT-JBM"}</td>
+    </tr>
+    <tr>
+      <td style="font-weight:bold">UPT</td>
+      <td>: ${UPT.replace(/^UPT\s+/i, "")}</td>
+    </tr>
+  </table>
+</div>
+
 <table class="items">
   <thead>
     <tr>
-      <th rowspan="2" style="width:22%">Nama Barang<br/>(Ditulis Selengkap–lengkapnya)</th>
-      <th rowspan="2">Nomor<br/>Normalisasi</th>
-      <th rowspan="2">Satuan</th>
-      <th rowspan="2">Pemakaian<br/>rata-rata<br/>per bulan</th>
-      <th rowspan="2">Sisa<br/>Persediaan</th>
-      <th rowspan="2">Permintaan</th>
-      <th colspan="3">Diberikan</th>
-      <th rowspan="2">Keterangan</th>
+      <th rowspan="2" style="width:25%">Nama Barang<br/>(Ditulis Selengkap – lengkapnya)</th>
+      <th rowspan="2" style="width:12%">Nomor Normalisasi</th>
+      <th rowspan="2" style="width:7%">Satuan</th>
+      <th rowspan="2" style="width:9%">Pemakaian<br/>rata-rata per<br/>bulan</th>
+      <th rowspan="2" style="width:9%">Sisa<br/>Persediaan</th>
+      <th rowspan="2" style="width:9%">Permintaan</th>
+      <th colspan="3" style="width:19%">Diberikan</th>
+      <th rowspan="2" style="width:10%">Keterangan</th>
     </tr>
-    <tr><th>Jumlah</th><th>DO Nomor</th><th>Tanggal</th></tr>
+    <tr>
+      <th style="width:6%">Jumlah</th>
+      <th style="width:7%">DO Nomor</th>
+      <th style="width:6%">Tanggal</th>
+    </tr>
   </thead>
   <tbody>${itemRows}</tbody>
 </table>
-<table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-  <tr><td class="label">Keterangan</td><td class="colon">:</td><td>${txn.keteranganUmum||"-"}</td></tr>
-  <tr><td class="label">Perintah Kerja</td><td class="colon">:</td><td>${txn.perintahKerja||""}</td><td style="width:80px">Kode Perkiraan</td><td class="colon">:</td><td>${txn.kodePerkiraan||""}</td><td style="width:50px">Fungsi</td><td class="colon">:</td><td>${txn.fungsi||""}</td></tr>
-</table>
-<div style="text-align:right;font-size:10px;margin-bottom:14px">${tanggal}</div>
-<div class="sig-row">
-  <div class="sig-col"><b>MANAGER UPT SURABAYA</b><div class="sig-space"></div><div class="sig-name">${managerUser.name||"....................."}</div></div>
-  <div class="sig-col"><b>ASMAN KONSTRUKSI</b><div class="sig-space"></div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
+
+<div class="footer-meta">
+  <div class="footer-meta-top">
+    <span class="label">Keterangan</span><span style="margin-right:4px">:</span><span>${[txn.keteranganPekerjaan || txn.keteranganUmum || "-", txn.lokasiPekerjaan ? `(Lokasi: ${txn.lokasiPekerjaan})` : ""].filter(Boolean).join(" ")}</span>
+  </div>
+  <div class="footer-meta-bottom">
+    <div><b>Perintah kerja :</b> ${txn.perintahKerja || ""}</div>
+    <div><b>Kode Perkiraan :</b> ${txn.kodePerkiraan || ""}</div>
+    <div><b>Fungsi :</b> ${txn.fungsi || ""}</div>
+  </div>
 </div>
+
+<div class="date-row">${tanggal}</div>
+
+<div class="sig-row">
+  <div class="sig-col">
+    <b>MANAGER ${UPT}</b>
+    <div class="sig-space">${managerUser.signatureUrl ? `<img src="${managerUser.signatureUrl}" style="max-height:50px"/>` : ''}</div>
+    <div class="sig-name">${(managerUser.name||".....................").toUpperCase()}</div>
+  </div>
+  <div class="sig-col">
+    <b>ASMAN KONSTRUKSI</b>
+    <div class="sig-space">${asmanUser.signatureUrl ? `<img src="${asmanUser.signatureUrl}" style="max-height:50px"/>` : ''}</div>
+    <div class="sig-name">${(asmanUser.name||".....................").toUpperCase()}</div>
+  </div>
+</div>
+
+<div class="bottom-accent">
+  <svg width="180" height="18" viewBox="0 0 180 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M30 0L50 14H37L17 0H30Z" fill="#00a3e0"/>
+    <path d="M47 0L67 14H54L34 0H47Z" fill="#004d80"/>
+    <path d="M55 12H180V16H45L55 12Z" fill="#004d80"/>
+  </svg>
+</div>
+
 </div></body></html>`;
 }
 
@@ -723,9 +1294,23 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users) 
     const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
     if (withHarga) {
       const jumlahHarga = (si.qty||0)*(si.harga||0);
-      return `<tr><td>${namaBarang}</td><td style="text-align:center">${katKode}</td><td style="text-align:center">${satuan}</td><td style="text-align:center">${fmtNum(si.qty)}</td><td>Pengadaan ${txn.dariSupplier||""}</td><td style="text-align:right">Rp ${fmtNum(si.harga||0)}</td><td style="text-align:right">Rp ${fmtNum(jumlahHarga)}</td></tr>`;
+      return `<tr>
+        <td style="border:1px solid #111;padding:4px 6px">${namaBarang}</td>
+        <td style="border:1px solid #111;padding:4px 6px;text-align:center">${katKode}</td>
+        <td style="border:1px solid #111;padding:4px 6px;text-align:center">${satuan}</td>
+        <td style="border:1px solid #111;padding:4px 6px;text-align:center">${fmtNum(si.qty)}</td>
+        <td style="border:1px solid #111;padding:4px 6px">${si.keterangan || (txn.dariSupplier ? "Pengadaan "+txn.dariSupplier : "-")}</td>
+        <td style="border:1px solid #111;padding:4px 6px;text-align:right">Rp ${fmtNum(si.harga||0)}</td>
+        <td style="border:1px solid #111;padding:4px 6px;text-align:right">Rp ${fmtNum(jumlahHarga)}</td>
+      </tr>`;
     }
-    return `<tr><td>${namaBarang}</td><td style="text-align:center">${katKode}</td><td style="text-align:center">${fmtNum(si.qty)}</td><td style="text-align:center">${satuan}</td><td>Pengadaan ${txn.dariSupplier||""}</td></tr>`;
+    return `<tr>
+      <td style="border:1px solid #111;padding:4px 6px">${namaBarang}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${katKode}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${fmtNum(si.qty)}</td>
+      <td style="border:1px solid #111;padding:4px 6px;text-align:center">${satuan}</td>
+      <td style="border:1px solid #111;padding:4px 6px">${si.keterangan || (txn.dariSupplier ? "Pengadaan "+txn.dariSupplier : "-")}</td>
+    </tr>`;
   }
   const totalHarga = txn.stockItems.reduce((a,si)=>a+(si.qty||0)*(si.harga||0),0);
 
@@ -737,7 +1322,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users) 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}
-.page{padding:28px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px}
+.page{padding:24px 32px;page-break-after:always;min-height:100vh;background:white;max-width:960px;margin:0 auto 16px;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .page:last-child{page-break-after:auto;margin-bottom:0}
 .topbar{height:6px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}
 .doctitle{text-align:center;margin-bottom:4px}
@@ -773,29 +1358,109 @@ table.items td{padding:6px 6px;border-bottom:1px solid #ddd;font-size:10px}
 
 <!-- ════════ PAGE 1: TUG-3 KARANTINA ════════ -->
 <div class="page">
-  <div class="topbar"></div>
-  <div style="text-align:right;font-weight:800;font-size:13px;margin-bottom:6px">TUG.3<br/><span style="font-size:9px;font-weight:400">Lembar 3: GUDANG — TUG-3 KARANTINA</span></div>
-  <div class="doctitle"><h2>BON PENERIMAAN BARANG-BARANG / SPARE PARTS</h2><div class="docno">${docs.tug3}</div></div>
-  ${txn.approvedByTL ? `<div style="text-align:center"><span class="status-stamp">✓ KARANTINA DISETUJUI TL</span></div>` : ""}
-  <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-    <tr><td class="label">Diterima Tanggal</td><td class="colon">:</td><td>${txn.tanggalDiterima||"-"}</td><td class="label" style="width:130px">No. Surat Jalan</td><td>: ${txn.noSuratJalan||"-"} Tgl. ${txn.tglSuratJalan||"-"}</td></tr>
-    <tr><td class="label">Dari</td><td class="colon">:</td><td>${txn.dariSupplier||"-"}</td><td class="label">No. SPK</td><td>: ${txn.noSpk||"-"} Tgl. ${txn.tglSpk||"-"}</td></tr>
-    <tr><td class="label">Dengan</td><td class="colon">:</td><td>${txn.denganKirim||"-"}</td><td class="label">Amandemen/Kontrak</td><td>: ${txn.noAmandemen||"-"}</td></tr>
-    <tr><td class="label">Biaya Angkutan</td><td class="colon">:</td><td>Rp ${fmtNum(txn.biayaAngkutan||0)}</td><td class="label">No. Faktur</td><td>: ${txn.noFaktur||"-"} Tgl. ${txn.tglFaktur||"-"}</td></tr>
+  <div class="top-header" style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+    <div class="header-accent">
+      <svg width="400" height="24" viewBox="0 0 400 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="0" y="4" width="280" height="16" fill="#00a3e0"/>
+        <path d="M275 4L295 20H282L262 4H275Z" fill="#004d80"/>
+        <path d="M292 4L312 20H299L279 4H292Z" fill="#00a3e0"/>
+        <path d="M309 4L329 20H316L296 4H309Z" fill="#004d80"/>
+      </svg>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end">
+      <div style="display:flex;align-items:center;gap:8px">
+        <table style="border-collapse:collapse;border:1px solid #111;font-size:9px;margin-right:10px">
+          <tr><td style="border:1px solid #111;padding:1px 5px;font-weight:bold">PLN</td><td style="border:1px solid #111;padding:1px 5px">: ${UIT}</td></tr>
+          <tr><td style="border:1px solid #111;padding:1px 5px;font-weight:bold">Unit</td><td style="border:1px solid #111;padding:1px 5px">: ${UPT}</td></tr>
+        </table>
+        <img src="${PLN_LOGO_DATA_URI}" style="height:34px;width:auto" alt="PLN Logo"/>
+      </div>
+      <div style="font-weight:900;font-size:13px;margin-top:2px">TUG.3</div>
+      <div style="font-size:9px;font-style:italic;color:#333">Lembar 3 : GUDANG</div>
+    </div>
+  </div>
+
+  <div class="doctitle" style="text-align:center;margin-bottom:12px">
+    <h2 style="font-size:13.5px;font-weight:800;text-decoration:underline">BON PENERIMAAN BARANG-BARANG / SPARE PARTS</h2>
+    <div class="docno" style="font-size:10px;font-style:italic;color:#333;margin-top:2px">${docs?.tug3||txn.id}</div>
+  </div>
+
+  ${txn.approvedByTL ? `<div style="text-align:center;margin-bottom:8px"><span class="status-stamp">✓ KARANTINA DISETUJUI TL</span></div>` : ""}
+
+  <table style="width:100%;border-collapse:collapse;border:1px solid #111;font-size:9.5px;margin-bottom:10px">
+    <tr>
+      <td style="width:50%;vertical-align:top;border-right:1px solid #111;padding:4px 6px">
+        <table style="width:100%;border-collapse:collapse">
+          <tr><td style="width:110px">Diterima Tanggal</td><td style="width:8px">:</td><td>${txn.tanggalDiterima||"-"}</td></tr>
+          <tr><td>Dari</td><td>:</td><td>${txn.dariSupplier||"-"}</td></tr>
+          <tr><td>Dengan</td><td>:</td><td>${txn.denganKirim||"Dikirim Langsung"}</td></tr>
+          <tr><td>Biaya angkutan / Ass</td><td>:</td><td>Rp ${fmtNum(txn.biayaAngkutan||0)}</td></tr>
+        </table>
+      </td>
+      <td style="width:50%;vertical-align:top;padding:4px 6px">
+        <table style="width:100%;border-collapse:collapse">
+          <tr><td style="width:200px">Pembelian di tempat, lihat faktur / Bukti Kas</td><td style="width:8px">:</td><td>No. ${txn.noFaktur||"-"} &nbsp; Tgl. ${txn.tglFaktur||"-"}</td></tr>
+          <tr><td>Diterima Bon Pengeluaran / Surat Jalan</td><td>:</td><td>No. ${txn.noSuratJalan||"-"} &nbsp; Tgl. ${txn.tglSuratJalan||"-"}</td></tr>
+          <tr><td>Menurut Surat Pesanan / Daftar Permintaan</td><td>:</td><td>No. ${txn.noSpk||"-"} &nbsp; Tgl. ${txn.tglSpk||"-"}</td></tr>
+          <tr><td>Amandemen / Kontrak Rinci</td><td>:</td><td>No. ${txn.noAmandemen||"-"} &nbsp; Tgl. -</td></tr>
+        </table>
+      </td>
+    </tr>
   </table>
-  <table class="items">
-    <thead><tr><th>Nama Barang/Spare Part</th><th>Kode Katalog</th><th>Sat</th><th>Jumlah</th><th>Keterangan</th><th>Harga Satuan</th><th>Jumlah</th></tr></thead>
-    <tbody>${txn.stockItems.map(si=>itemRow(si,true)).join("")}</tbody>
+
+  <table class="items" style="width:100%;border-collapse:collapse;border:1px solid #111;margin-bottom:10px">
+    <thead>
+      <tr style="background:#e6e6e6">
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:30%">Nama Barang/Spare Part (ditulis lengkap)</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:12%">Kode Katalog</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:6%">Sat</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:8%">Jumlah</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:22%">Keterangan</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:11%">Harga Satuan</th>
+        <th style="border:1px solid #111;padding:5px;font-size:9px;text-align:center;width:11%">Jumlah</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${txn.stockItems.map(si=>itemRow(si,true)).join("")}
+    </tbody>
   </table>
-  <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-    <tr><td class="label">Nota No.</td><td class="colon">:</td><td>${txn.notaNo||"-"}</td><td class="label">Kode Perkiraan</td><td>: ${txn.kodePerkiraan||"-"}</td></tr>
-    <tr><td class="label">Perintah Kerja</td><td class="colon">:</td><td>${txn.perintahKerja||"-"}</td><td class="label">Fungsi</td><td>: ${txn.fungsi||"-"}</td></tr>
-    <tr><td class="label">Jumlah</td><td class="colon">:</td><td colspan="3">Rp ${fmtNum(totalHarga)}</td></tr>
-  </table>
-  <div style="margin-bottom:10px"><b>Keterangan:</b> ${txn.keteranganTug3||"-"}</div>
-  <div class="sig-row">
-    <div class="sig-col">Diperiksa oleh,<br>Asisten Manager Konstruksi<div class="sig-space"></div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
-    <div class="sig-col">TL Logistik<div class="sig-space"></div><div class="sig-name">${tlUser.name||"....................."}</div></div>
+
+  <div style="border:1px solid #111;margin-bottom:10px">
+    <div style="display:flex;font-size:9.5px;border-bottom:1px solid #111">
+      <div style="flex:1;padding:4px 6px;border-right:1px solid #111"><b>Nota No. :</b> ${txn.notaNo||""}</div>
+      <div style="flex:1;padding:4px 6px;border-right:1px solid #111"><b>Kode Perkiraan :</b> ${txn.kodePerkiraan||""}</div>
+      <div style="flex:1;padding:4px 6px;border-right:1px solid #111"><b>Perintah Kerja :</b> ${txn.perintahKerja||""}</div>
+      <div style="flex:1;padding:4px 6px;border-right:1px solid #111"><b>Fungsi :</b> ${txn.fungsi||""}</div>
+      <div style="flex:1;padding:4px 6px;text-align:right"><b>Jumlah : Rp</b> ${fmtNum(totalHarga)}</div>
+    </div>
+    <div style="padding:4px 6px;font-size:9.5px">
+      <b>Keterangan :</b> ${txn.keteranganTug3||"-"}
+    </div>
+  </div>
+
+  <div class="sig-row" style="display:flex;justify-content:space-between;align-items:flex-start;margin-top:20px;text-align:center;padding:0 30px">
+    <div style="width:240px;font-size:10px">
+      Diperiksa oleh :<br/><b>Asisten Manager Konstruksi</b>
+      <div style="height:50px;display:flex;align-items:center;justify-content:center">
+        ${asmanUser.signatureUrl ? `<img src="${asmanUser.signatureUrl}" style="max-height:45px"/>` : ''}
+      </div>
+      <div style="font-weight:700;text-decoration:underline">${(asmanUser.name||".....................").toUpperCase()}</div>
+    </div>
+    <div style="width:240px;font-size:10px">
+      <br/><b>TL Logistik</b>
+      <div style="height:50px;display:flex;align-items:center;justify-content:center">
+        ${tlUser.signatureUrl ? `<img src="${tlUser.signatureUrl}" style="max-height:45px"/>` : ''}
+      </div>
+      <div style="font-weight:700;text-decoration:underline">${(tlUser.name||".....................").toUpperCase()}</div>
+    </div>
+  </div>
+
+  <div style="margin-top:20px;display:flex;justify-content:center">
+    <svg width="180" height="18" viewBox="0 0 180 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M30 0L50 14H37L17 0H30Z" fill="#00a3e0"/>
+      <path d="M47 0L67 14H54L34 0H47Z" fill="#004d80"/>
+      <path d="M55 12H180V16H45L55 12Z" fill="#004d80"/>
+    </svg>
   </div>
 </div>
 
@@ -912,3 +1577,221 @@ export async function buildBarcodeSheetHTML(katalogItems, lokasiByKatalog) {
 <div class="sheet">${labels.join("")}</div>
 </body></html>`;
 }
+
+// ─── TUG-2 DOCUMENT HTML BUILDERS (Kartu Gantung Barang TUG. 2 - Depan & Belakang) ────
+
+// Halaman 1 (Depan): Header + Metadata + Foto Barang + QR Code
+export async function buildTUG2FrontHTML(katalog, stocks, lokasiList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const scanUrl = `${window.location.origin}/?scan=${encodeURIComponent(katalog.id)}`;
+  const qrDataUrl = await QRCode.toDataURL(scanUrl, { margin: 1, width: 280 });
+
+  const lokasiTerkait = [...new Set((stocks||[]).filter(s=>s.katalogId===katalog.id).map(s=>s.lokasiId))]
+    .map(lid => (lokasiList||[]).find(l=>l.id===lid)?.kode)
+    .filter(Boolean);
+  const lokasiStr = lokasiTerkait.length > 0 ? lokasiTerkait.join(", ") : "-";
+  const sampleFoto = (stocks||[]).find(s=>s.katalogId===katalog.id && s.img)?.img || null;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Kartu Gantung Depan TUG.2 - ${esc(katalog.katalog)}</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; background: #e5e7eb; }
+  .bar { position: sticky; top: 0; background: #003087; color: #fff; padding: 8px 14px; text-align: center; font-size: 12px; font-weight: 700; z-index: 10; }
+  .bar button { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 12px; cursor: pointer; margin-left: 10px; }
+  .page { padding: 24px; background: white; max-width: 800px; margin: 0 auto 16px; min-height: 100vh; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .header-tbl { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .header-tbl td { vertical-align: top; }
+  .meta-tbl { width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 1.5px solid #111; }
+  .meta-tbl td { border: 1px solid #111; padding: 6px 8px; font-size: 11px; }
+  .meta-tbl .lbl { font-weight: bold; width: 110px; background: #f8fafc; }
+  .media-row { display: flex; gap: 16px; margin-bottom: 16px; justify-content: space-between; }
+  .media-box { flex: 1; border: 1.5px solid #111; padding: 12px; text-align: center; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px; }
+  .media-title { font-weight: 800; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #cbd5e1; width: 100%; padding-bottom: 4px; }
+  @media print { .bar { display: none; } body { background: white; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+</style></head><body>
+<div class="bar">📄 Kartu Gantung (Halaman Depan / QR Code) siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="page">
+  <table class="header-tbl">
+    <tr>
+      <td style="width:60px">
+        <img src="${PLN_LOGO_DATA_URI}" style="height:44px;width:auto" alt="PLN Logo"/>
+      </td>
+      <td style="padding-left:10px">
+        <div style="font-size:11px;font-weight:800;line-height:1.2">PT PLN (PERSERO)</div>
+        <div style="font-size:10px;font-weight:700;line-height:1.2">TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
+        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${UPT.toUpperCase()}</div>
+      </td>
+      <td style="text-align:right">
+        <div style="font-size:14px;font-weight:900;letter-spacing:1px">TUG. 2</div>
+      </td>
+    </tr>
+  </table>
+
+  <div style="text-align:center;margin:12px 0 14px">
+    <h2 style="font-size:16px;font-weight:900;text-decoration:underline;letter-spacing:0.5px;text-transform:uppercase">KARTU GANTUNG BARANG</h2>
+  </div>
+
+  <table class="meta-tbl">
+    <tr>
+      <td class="lbl">No. Katalog :</td>
+      <td style="font-weight:bold;color:#0284c7">${esc(katalog.katalog || "-")}</td>
+      <td class="lbl">Lokasi :</td>
+      <td style="font-weight:bold">${esc(lokasiStr)}</td>
+    </tr>
+    <tr>
+      <td class="lbl">No. Aset :</td>
+      <td style="font-weight:bold">${esc(katalog.noAset || "-")}</td>
+      <td class="lbl">KARTU No. :</td>
+      <td style="font-weight:bold">${esc(katalog.kartuNo || "-")}</td>
+    </tr>
+    <tr>
+      <td class="lbl">NAMA BARANG :</td>
+      <td colspan="2" style="font-weight:800;font-size:12px;color:#002b66">${esc(katalog.name || "-")}</td>
+      <td style="font-weight:bold;text-align:center"><span style="font-size:9px;color:#64748b">SATUAN</span><br/>${esc(katalog.satuan || "BH")}</td>
+    </tr>
+  </table>
+
+  <div class="media-row">
+    <div class="media-box">
+      <div class="media-title">FOTO BARANG</div>
+      ${sampleFoto ? `<img src="${sampleFoto}" style="max-width:100%;max-height:180px;object-fit:contain;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#94a3b8;font-size:11px;font-style:italic;padding:40px 0">&lt;&lt; [Foto Barang] &gt;&gt;</div>`}
+    </div>
+    <div class="media-box">
+      <div class="media-title">QR CODE</div>
+      <img src="${qrDataUrl}" style="width:160px;height:160px;display:block" alt="QR Code"/>
+    </div>
+  </div>
+</div>
+</body></html>`;
+}
+
+// Halaman 2 (Belakang): Header + Metadata + Tabel Riwayat Keluar-Masuk (SISA PERSEDIAAN: RAK / PETI / JMLH)
+export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const history = buildKartuGantungHistory(katalog, txns, stocks, lokasiList);
+  
+  const lokasiTerkait = [...new Set((stocks||[]).filter(s=>s.katalogId===katalog.id).map(s=>s.lokasiId))]
+    .map(lid => (lokasiList||[]).find(l=>l.id===lid)?.kode)
+    .filter(Boolean);
+  const lokasiStr = lokasiTerkait.length > 0 ? lokasiTerkait.join(", ") : "-";
+
+  const filledHistoryRows = history.map((h) => `
+    <tr>
+      <td style="border:1px solid #111;padding:6px 6px;text-align:center">${fmtDateOnly(h.tgl)}</td>
+      <td style="border:1px solid #111;padding:6px 6px">${esc(h.noBon || "-")}</td>
+      <td style="border:1px solid #111;padding:6px 6px;text-align:center;font-weight:bold;color:#15803d">${h.masuk > 0 ? fmtNum(h.masuk) : ""}</td>
+      <td style="border:1px solid #111;padding:6px 6px;text-align:center;font-weight:bold;color:#b91c1c">${h.keluar > 0 ? fmtNum(h.keluar) : ""}</td>
+      <td style="border:1px solid #111;padding:6px 6px;text-align:center">${fmtNum(h.sisa)}</td>
+      <td style="border:1px solid #111;padding:6px 6px;text-align:center">-</td>
+      <td style="border:1px solid #111;padding:6px 6px;text-align:center;font-weight:bold">${fmtNum(h.sisa)}</td>
+      <td style="border:1px solid #111;padding:6px 6px;color:#475569">${esc(h.catatan || "-")}</td>
+    </tr>
+  `);
+
+  const minRows = 14;
+  for (let i = history.length; i < minRows; i++) {
+    filledHistoryRows.push(`
+      <tr>
+        <td style="border:1px solid #111;height:26px">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+        <td style="border:1px solid #111">&nbsp;</td>
+      </tr>
+    `);
+  }
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Riwayat Keluar Masuk TUG.2 - ${esc(katalog.katalog)}</title>
+<style>
+  @page { size: A4 portrait; margin: 10mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 10px; color: #111; background: #e5e7eb; }
+  .bar { position: sticky; top: 0; background: #003087; color: #fff; padding: 8px 14px; text-align: center; font-size: 12px; font-weight: 700; z-index: 10; }
+  .bar button { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 12px; cursor: pointer; margin-left: 10px; }
+  .page { padding: 24px; background: white; max-width: 800px; margin: 0 auto 16px; min-height: 100vh; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  .header-tbl { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+  .header-tbl td { vertical-align: top; }
+  .meta-tbl { width: 100%; border-collapse: collapse; margin-bottom: 16px; border: 1.5px solid #111; }
+  .meta-tbl td { border: 1px solid #111; padding: 6px 8px; font-size: 11px; }
+  .meta-tbl .lbl { font-weight: bold; width: 110px; background: #f8fafc; }
+  .items-tbl { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1.5px solid #111; }
+  .items-tbl th { background: #f1f5f9; border: 1px solid #111; padding: 6px 4px; font-size: 10px; font-weight: bold; text-align: center; }
+  .items-tbl td { border: 1px solid #111; padding: 6px 6px; font-size: 9.5px; }
+  @media print { .bar { display: none; } body { background: white; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+</style></head><body>
+<div class="bar">📄 Lembar Riwayat Keluar-Masuk (TUG.2 Belakang) siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="page">
+  <table class="header-tbl">
+    <tr>
+      <td style="width:60px">
+        <img src="${PLN_LOGO_DATA_URI}" style="height:44px;width:auto" alt="PLN Logo"/>
+      </td>
+      <td style="padding-left:10px">
+        <div style="font-size:11px;font-weight:800;line-height:1.2">PT PLN (PERSERO)</div>
+        <div style="font-size:10px;font-weight:700;line-height:1.2">TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
+        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${UPT.toUpperCase()}</div>
+      </td>
+      <td style="text-align:right">
+        <div style="font-size:14px;font-weight:900;letter-spacing:1px">TUG. 2</div>
+      </td>
+    </tr>
+  </table>
+
+  <div style="text-align:center;margin:12px 0 14px">
+    <h2 style="font-size:16px;font-weight:900;text-decoration:underline;letter-spacing:0.5px;text-transform:uppercase">KARTU GANTUNG BARANG</h2>
+  </div>
+
+  <table class="meta-tbl">
+    <tr>
+      <td class="lbl">No. Katalog :</td>
+      <td style="font-weight:bold;color:#0284c7">${esc(katalog.katalog || "-")}</td>
+      <td class="lbl">Lokasi :</td>
+      <td style="font-weight:bold">${esc(lokasiStr)}</td>
+    </tr>
+    <tr>
+      <td class="lbl">No. Aset :</td>
+      <td style="font-weight:bold">${esc(katalog.noAset || "-")}</td>
+      <td class="lbl">KARTU No. :</td>
+      <td style="font-weight:bold">${esc(katalog.kartuNo || "-")}</td>
+    </tr>
+    <tr>
+      <td class="lbl">NAMA BARANG :</td>
+      <td colspan="2" style="font-weight:800;font-size:12px;color:#002b66">${esc(katalog.name || "-")}</td>
+      <td style="font-weight:bold;text-align:center"><span style="font-size:9px;color:#64748b">SATUAN</span><br/>${esc(katalog.satuan || "BH")}</td>
+    </tr>
+  </table>
+
+  <div style="font-weight:800;font-size:11px;margin-bottom:6px;color:#002b66">RIWAYAT KELUAR - MASUK BARANG</div>
+  <table class="items-tbl">
+    <thead>
+      <tr>
+        <th rowspan="2" style="width:75px">TGL</th>
+        <th rowspan="2" style="width:120px">NO. BON</th>
+        <th rowspan="2" style="width:60px">MASUK</th>
+        <th rowspan="2" style="width:60px">KELUAR</th>
+        <th colspan="3">SISA PERSEDIAAN</th>
+        <th rowspan="2">CATATAN</th>
+      </tr>
+      <tr>
+        <th style="width:45px">RAK</th>
+        <th style="width:45px">PETI</th>
+        <th style="width:55px">JMLH</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filledHistoryRows.join("")}
+    </tbody>
+  </table>
+</div>
+</body></html>`;
+}
+
+export async function buildTUG2HTML(katalog, stocks, txns, lokasiList, gudangList) {
+  return buildTUG2FrontHTML(katalog, stocks, lokasiList);
+}
+
+

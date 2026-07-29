@@ -54,6 +54,17 @@
     border-color: var(--color-accent);
   }
 
+  /* Remove number input up/down spinner arrows globally */
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
   /* ── Komponen #4: BARIS TABEL ──
      Hover halus pada baris tabel. Warnai <td> (bukan <tr>) supaya tampil di
      atas warna zebra inline yg ada di <tr>; transparan tipis agar tetap subtle. */

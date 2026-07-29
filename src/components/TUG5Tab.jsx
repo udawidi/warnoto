@@ -16,11 +16,22 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
   const [ultgExpandedId, setUltgExpandedId] = useState(null); // id TUG-5 ULTG yang sedang dibuka penuh
   const [ultgListPage, setUltgListPage] = useState(0); // 5 per halaman
 
+  function matchSt(t) {
+    if (!filterStatus || filterStatus === "ALL") return true;
+    const s = (t.status || "").toUpperCase();
+    const st = (t.stage || "").toUpperCase();
+    if (filterStatus === "PENDING") return s.includes("PENDING") || st.includes("PENDING") || st.startsWith("MENUNGGU_");
+    if (filterStatus === "APPROVED") return s.includes("APPROVED") || st.includes("APPROVED");
+    if (filterStatus === "REJECTED") return s.includes("REJECTED") || st.includes("REJECTED");
+    if (filterStatus === "DRAFT") return s.includes("DRAFT") || st.includes("DRAFT");
+    return s === filterStatus;
+  }
+
   // Show TUG-5 + TUG-7 drafts + TUG-8 drafts (from TUG-7) all in one view
-  const tug5Txns = txns.filter(t=>t.docType==="TUG5"&&!t.docSubType&&t.sourceType!=="ULTG");
-  const tug5UltgTxns = txns.filter(t=>t.docType==="TUG5"&&t.sourceType==="ULTG").sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
-  const tug7Txns = txns.filter(t=>t.docType==="TUG7");
-  const tug8Drafts = txns.filter(t=>t.docType==="TUG8"&&t.stage==="DRAFT_TUG8");
+  const tug5Txns = txns.filter(t=>t.docType==="TUG5"&&!t.docSubType&&t.sourceType!=="ULTG" && matchSt(t));
+  const tug5UltgTxns = txns.filter(t=>t.docType==="TUG5"&&t.sourceType==="ULTG" && matchSt(t)).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const tug7Txns = txns.filter(t=>t.docType==="TUG7" && matchSt(t));
+  const tug8Drafts = txns.filter(t=>t.docType==="TUG8"&&t.stage==="DRAFT_TUG8" && matchSt(t));
 
   // Pool pengajuan ULTG yang sudah disetujui Manager ULTG, siap di-adopt Admin/TL UPT induknya.
   // currentUser.uptId biasanya kosong untuk akun ADMIN/TL biasa — fallback cocokkan nama UPT
@@ -52,55 +63,66 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       {/* TUG-5 Permintaan UPT — disembunyikan untuk role ULTG (tidak relevan bagi mereka) */}
       {!hasRole(currentUser, "ADMIN_ULTG","MGR_ULTG") && (
       <>
-      <div style={{fontSize:13,fontWeight:800,color:C.accent,borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginBottom:4}}>📋 TUG-5 — Permintaan Barang UPT</div>
+      <div style={{fontSize:13,fontWeight:800,color:C.accent,borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginBottom:4}}>TUG-5 — Permintaan Barang UPT</div>
       {tug5Txns.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:20}}>Belum ada TUG-5.</div>}
       {tug5Txns.map(t=>{
         const uit = uitList.find(u=>u.id===t.uitId);
         const creator = users.find(u=>u.id===t.createdBy)||{};
         return (
-          <div key={t.id} style={{...sty.card}}>
-            <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:isMobile?"stretch":"flex-start",gap:8,marginBottom:8}}>
-              <div>
-                <div style={{fontWeight:800,fontSize:14}}>{t.docNumbers?.tug5}</div>
-                <div style={{fontSize:12,color:C.muted}}>Kepada: {uit?.kode||"-"} • {t.jenisTransfer} • {fmtDate(t.createdAt)}</div>
-                <div style={{fontSize:12,color:C.muted}}>👷 {creator.name} • {t.keteranganUmum||"-"}</div>
+          <div key={t.id} className="tug-card">
+              <div className="tug-card__head">
+                <div>
+                  <div className="tug-card__title">{t.keteranganUmum||t.namaPekerjaan||"Permintaan Material TUG-5"}</div>
+                  <div className="tug-card__docno">{t.docNumbers?.tug5}</div>
+                </div>
+                {stageBadge5(t)}
               </div>
-              {stageBadge5(t)}
+              <div className="tug-card__meta-grid">
+                <span className="tug-card__meta-item">Tujuan: {uit?.kode||"-"}</span>
+                <span className="tug-card__meta-item">Jenis: {t.jenisTransfer}</span>
+                <span className="tug-card__meta-item">Tgl: {fmtDate(t.createdAt)}</span>
+                <span className="tug-card__meta-item">Diajukan: {creator.name||"-"}</span>
+                {t.lokasiPekerjaan && <span className="tug-card__meta-item">Lokasi: {t.lokasiPekerjaan}</span>}
+              </div>
+              <div className="tug-card__items-box">
+                {(t.stockItems||[]).map((si,idx)=>{
+                  const kat = katalogList.find(k=>k.id===si.katalogId);
+                  return (
+                    <div key={idx} className="tug-card__item-row">
+                      <span className="tug-card__item-name">{kat?.name||"-"} {si.keterangan && <span style={{fontSize:11,color:C.muted}}>({si.keterangan})</span>}</span>
+                      <span className="tug-card__item-qty">{si.permintaan} {kat?.satuan||"BH"}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              {t.status==="REJECTED" && <div style={{fontSize:12,color:"#b91c1c",marginBottom:8,fontWeight:600}}>✕ Ditolak: {t.rejectReason}</div>}
+              {rejectingId===t.id && <div style={{marginBottom:8}}><input style={sty.input} placeholder="Alasan penolakan..." value={reason} onChange={e=>setReason(e.target.value)}/></div>}
+              <div className="tug-card__footer-actions">
+                {t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
+                  rejectingId===t.id
+                    ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Asman(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
+                    : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Asman(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Asman)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
+                )}
+                {t.stage==="PENDING_MANAGER" && hasRole(currentUser, "MANAGER") && (
+                  rejectingId===t.id
+                    ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Manager(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
+                    : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Manager(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager) → Generate {t.jenisTransfer==="INTRACOMPANY"?"TUG-7":"TUG-5 UIT"}</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
+                )}
+                <button className="tug-btn-preview" onClick={()=>setDocPreview(t)}>Lihat Dokumen TUG-5</button>
+              </div>
             </div>
-            <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
-              {(t.stockItems||[]).map((si,idx)=>{
-                const kat = katalogList.find(k=>k.id===si.katalogId);
-                return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
-              })}
-            </div>
-            {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ {t.rejectReason}</div>}
-            {rejectingId===t.id && <div style={{marginBottom:8}}><input style={sty.input} placeholder="Alasan penolakan..." value={reason} onChange={e=>setReason(e.target.value)}/></div>}
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
-                rejectingId===t.id
-                  ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Asman(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
-                  : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Asman(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Asman)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
-              )}
-              {t.stage==="PENDING_MANAGER" && hasRole(currentUser, "MANAGER") && (
-                rejectingId===t.id
-                  ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Manager(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
-                  : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Manager(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager) → Generate {t.jenisTransfer==="INTRACOMPANY"?"TUG-7":"TUG-5 UIT"}</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
-              )}
-              {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>}
-            </div>
-          </div>
-        );
-      })}
-      </>
-      )}
+          );
+        })}
+        </>
+        )}
 
       {/* TUG-5 dari ULTG */}
       {(hasRole(currentUser, "ADMIN_ULTG","MGR_ULTG","ADMIN","TL")) && (
         <>
-          <div style={{fontSize:13,fontWeight:800,color:"#0369a1",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginTop:8,marginBottom:4}}>🏘️ TUG-5 — Permintaan Material dari ULTG</div>
+          <div style={{fontSize:13,fontWeight:800,color:"#0369a1",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginTop:8,marginBottom:4}}>TUG-5 — Permintaan Material dari ULTG</div>
           {currentUser.role==="MGR_ULTG" && !currentUser.ultgId && (
             <div style={{...sty.card,background:"#fef2f2",border:"1px solid #fecaca",color:"#991b1b",fontSize:12,padding:12,marginBottom:8}}>
-              ⚠️ Akun kamu belum terhubung ke unit ULTG manapun, jadi tombol "Setujui" tidak akan muncul di list manapun. Hubungi Admin untuk melengkapi field ULTG di profil kamu.
+              Akun kamu belum terhubung ke unit ULTG manapun, jadi tombol "Setujui" tidak akan muncul di list manapun. Hubungi Admin untuk melengkapi field ULTG di profil kamu.
             </div>
           )}
           {tug5UltgTxns.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:20}}>Belum ada TUG-5 dari ULTG.</div>}
@@ -119,7 +141,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   <span style={{fontSize:12,color:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ultg?.nama||t.ultgId} • {t.namaPekerjaan||t.keteranganUmum||"-"} • {fmtDate(t.createdAt)}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     {stageBadge5(t)}
-                    {canAdopt && <span style={{fontSize:12,fontWeight:700,color:"#0369a1"}}>👉 Siap Diadopsi</span>}
+                    {canAdopt && <span style={{fontSize:12,fontWeight:700,color:"#0369a1"}}>Siap Diadopsi</span>}
                   </div>
                 </div>
               );
@@ -131,21 +153,21 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   <div>
                     <div style={{fontWeight:800,fontSize:14}}>{t.docNumbers?.tug5}</div>
                     <div style={{fontSize:12,color:C.muted}}>Dari: {ultg?.nama||t.ultgId} • {fmtDate(t.createdAt)}</div>
-                    <div style={{fontSize:12,color:C.muted}}>👤 {creator.name} • {t.namaPekerjaan||t.keteranganUmum||"-"}</div>
+                    <div style={{fontSize:12,color:C.muted}}>{creator.name} • {t.namaPekerjaan||t.keteranganUmum||"-"}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     {stageBadge5(t)}
-                    <button type="button" style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>setUltgExpandedId(null)}>▲ Tutup</button>
+                    <button type="button" style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>setUltgExpandedId(null)}>Tutup</button>
                   </div>
                 </div>
                 <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
                   {(t.stockItems||[]).map((si,idx)=>{
                     const kat = katalogList.find(k=>k.id===si.katalogId);
-                    return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
+                    return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>{kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
                   })}
                 </div>
-                {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ {t.rejectReason}</div>}
-                {t.adoptedBy && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Sudah diadopsi, jadi draft TUG-9</div>}
+                {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>✕ {t.rejectReason}</div>}
+                {t.adoptedBy && <div style={{fontSize:12,color:C.green,marginBottom:8}}>Sudah diadopsi, jadi draft TUG-9</div>}
                 {rejectingId===t.id && <div style={{marginBottom:8}}><input style={sty.input} placeholder="Alasan penolakan..." value={reason} onChange={e=>setReason(e.target.value)}/></div>}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {canApprove && (
@@ -154,9 +176,9 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                       : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_MgrULTG(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager ULTG)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
                   )}
                   {canAdopt && (
-                    <button style={sty.btn("primary","sm")} onClick={async()=>{ const draft = await adoptTUG5ULTG(t); if(draft) openDraftTug9(draft); }}>📋 Adopt → Buat Draft TUG-9</button>
+                    <button style={sty.btn("primary","sm")} onClick={async()=>{ const draft = await adoptTUG5ULTG(t); if(draft) openDraftTug9(draft); }}>Adopt → Buat Draft TUG-9</button>
                   )}
-                  {(t.stage==="APPROVED_ULTG"||t.status==="APPROVED") && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>}
+                  {(t.stage==="APPROVED_ULTG"||t.status==="APPROVED") && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>Lihat Dokumen TUG-5</button>}
                 </div>
               </div>
             );
@@ -174,7 +196,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       {/* TUG-7 Perintah Penyerahan (UIT) */}
       {(hasRole(currentUser, "ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","TL","ASMAN","MANAGER")) && (
         <>
-          <div style={{fontSize:13,fontWeight:800,color:"#7c3aed",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginTop:8,marginBottom:4}}>🏢 TUG-7 — Perintah Penyerahan Barang (Level UIT)</div>
+          <div style={{fontSize:13,fontWeight:800,color:"#7c3aed",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginTop:8,marginBottom:4}}>TUG-7 — Perintah Penyerahan Barang (Level UIT)</div>
           {tug7Txns.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:20}}>Belum ada TUG-7.</div>}
           {tug7Txns.map(t=>{
             const uptPengirim = uptList.find(u=>u.id===t.uptPengirimId);
@@ -194,20 +216,20 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
                   {(t.stockItems||[]).map((si,idx)=>{
                     const kat = katalogList.find(k=>k.id===si.katalogId);
-                    return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>x{si.qty||si.permintaan}</b> {kat?.satuan}</div>;
+                    return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>{kat?.name||"-"} <b>x{si.qty||si.permintaan}</b> {kat?.satuan}</div>;
                   })}
                 </div>
                 {rejectingId===t.id && <div style={{marginBottom:8}}><input style={sty.input} placeholder="Alasan penolakan..." value={reason} onChange={e=>setReason(e.target.value)}/></div>}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   {t.stage==="DRAFT_UIT" && hasRole(currentUser, "ADMIN_UIT") && (
-                    <button style={sty.btn("primary","sm")} onClick={()=>{setTug7Form({uptPengirimId:t.uptPengirimId||"",atasBebanRekening:t.atasBebanRekening||"",perintahKerja:t.perintahKerja||"",kodeAkun:t.kodeAkun||"",fungsi:t.fungsi||""});setTug7Modal(t);}}>📝 Lengkapi TUG-7</button>
+                    <button style={sty.btn("primary","sm")} onClick={()=>{setTug7Form({uptPengirimId:t.uptPengirimId||"",atasBebanRekening:t.atasBebanRekening||"",perintahKerja:t.perintahKerja||"",kodeAkun:t.kodeAkun||"",fungsi:t.fungsi||""});setTug7Modal(t);}}>Lengkapi TUG-7</button>
                   )}
                   {t.stage==="PENDING_MGR_LOGISTIK" && hasRole(currentUser, "MGR_LOGISTIK_UIT") && (
                     rejectingId===t.id
                       ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG7_MgrLogistik(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
                       : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG7_MgrLogistik(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-7 → Generate Draft TUG-8</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
                   )}
-                  {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat TUG-7</button>}
+                  <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>Lihat Dokumen TUG-7</button>
                 </div>
               </div>
             );
