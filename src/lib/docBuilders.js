@@ -15,178 +15,333 @@ import { resolveStockPhotoUrl } from "./stockCache.js";
 // (rendered in an iframe inside a modal) and for downloading as a
 // .html file the user can open in any browser and Print > Save as PDF.
 export function buildTUG9HTML(txn, stocks, users, satpamList) {
-  const docs = txn.docNumbers;
+  const docs = txn.docNumbers || {};
   const isTUG8 = txn.docType === "TUG8";
   const docKey = isTUG8 ? "tug8" : "tug9";
   const creator = users.find(u=>u.id===txn.createdBy) || {};
   const actualApprover = users.find(u=>u.id===txn.approvedBy) || {};
-  // Canonical documents show Asman only after that account explicitly approves.
   const asmanUser = txn.canonical
     ? (txn.status === "APPROVED" ? (users.find(u => u.id === txn.approvedBy && u.role === "ASMAN") || {}) : {})
     : (users.find(u => u.role === "ASMAN") || {});
-  // Canonical TUG documents freeze the responsible TL at creation. Legacy
-  // documents fall back only to a TL from the same UPT, never an arbitrary TL.
   const snapshotTl = txn.identitySnapshot?.tl_name ? { name:txn.identitySnapshot.tl_name, officialPhone:txn.identitySnapshot.tl_phone, jabatan:txn.identitySnapshot.tl_jabatan } : null;
   const scopedTl = users.find(u => u.role === "TL" && (!txn.uptId || u.uptId === txn.uptId)) || {};
   const menyerahkanUser = snapshotTl || (actualApprover.role === "TL" ? actualApprover : scopedTl);
   const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
-  const itemRows = txn.stockItems.map(si => {
+  const itemRows = (txn.stockItems || []).map(si => {
     const stock = stocks.find(s=>s.id===si.stockId) || {};
     return { stock, qty: si.qty };
   });
 
-  const materialRowsSJ = itemRows.map(({stock,qty}) => `
-    <tr><td>${stock.name||""}</td><td>${stock.lokasi||""}</td><td style="text-align:center">${fmtNum(qty)}</td><td style="text-align:center">${stock.unit||""}</td><td>${stock.jenisBarang==="Non-Stock"?"(NON-STOCK) ":""}${txn.keteranganBarang||""}</td></tr>`).join("");
+  const dateInfo = (() => {
+    const d = txn.createdAt ? new Date(txn.createdAt) : new Date();
+    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+    return {
+      hari: days[d.getDay()],
+      tanggal: d.getDate(),
+      bulan: months[d.getMonth()],
+      tahun: d.getFullYear(),
+      tanggalLengkap: fmtDateOnly(d.getTime())
+    };
+  })();
 
-  const materialRowsTUG9 = itemRows.map(({stock,qty}) => `
-    <tr><td style="text-align:center">${fmtNum(qty)}</td><td style="text-align:center">${stock.unit||""}</td><td>${stock.name||""}</td><td style="text-align:center">${stock.katalog||"-"}</td><td>${stock.jenisBarang==="Non-Stock"?"(NON-STOCK) ":""}${txn.keteranganBarang||""}</td></tr>`).join("");
+  const docNoSJ = docs.sj || `${txn.docSeq || "1"}.SJ/LOG.00.02/UPT-SBY/VII/2026`;
+  const docNoBA = docs.ba || docNoSJ.replace(".SJ/", ".BA/");
 
-  // ── Lampiran Foto: build photo rows (2 columns: Kendaraan/SIM-KTP, then Surat, then per-material) ──
-  const hasAnyAttachment = txn.fotoKendaraan || txn.fotoSimKtp || txn.fotoSuratPengembalian || (txn.fotoMaterial && txn.fotoMaterial.length > 0);
-  function photoCell(label, src) {
-    return `<div class="photo-cell"><div class="photo-label">${label}</div>${src ? `<img src="${src}" alt="${label}"/>` : `<div class="photo-empty">Tidak ada foto</div>`}</div>`;
-  }
-  const materialPhotoCells = itemRows.map(({stock}) => {
+  const materialRowsTable = itemRows.map(({stock,qty}) => `
+    <tr>
+      <td>${stock.name || "-"}</td>
+      <td style="text-align:center">${stock.lokasi || "GUDANG"}</td>
+      <td style="text-align:center">${fmtNum(qty)}</td>
+      <td style="text-align:center">${stock.unit || "-"}</td>
+      <td>${stock.jenisBarang ? `(${stock.jenisBarang}) ` : ""}${txn.keteranganBarang || ""}</td>
+    </tr>`).join("");
+
+  const materialPhotoRowsTable = itemRows.map(({stock}) => {
     const photo = (txn.fotoMaterial||[]).find(fm => fm.stockId === stock.id);
-    return photoCell(stock.name || "-", photo?.img);
+    return `
+      <tr>
+        <td style="padding:10px;vertical-align:top;font-weight:bold;width:35%">${stock.name || "-"}</td>
+        <td style="padding:10px;text-align:center">
+          ${photo?.img ? `<img src="${photo.img}" style="max-height:220px;max-width:100%;object-fit:contain;border:1px solid #ccc;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#9ca3af;font-style:italic;padding:20px">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
+        </td>
+      </tr>`;
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${isTUG8?"TUG-8":"TUG-9"} ${txn.id}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}
-.page{padding:28px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px}
+body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
+.page{padding:20px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
 .page:last-child{page-break-after:auto;margin-bottom:0}
-.topbar{height:6px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}
-.head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px}
-.head h1{font-size:13px;font-weight:800;letter-spacing:.3px}
-.head .sub{font-size:9px;color:#555}
-.logobox{display:flex;align-items:center;gap:6px}
-.logo{height:38px;width:auto;display:block;object-fit:contain}
-.doctitle{text-align:center;margin-bottom:4px}
-.doctitle h2{font-size:14px;font-weight:800;letter-spacing:.5px}
-.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;font-weight:700}
-table.meta{width:100%;margin-bottom:10px;font-size:10.5px}
-table.meta td{padding:2px 4px;vertical-align:top}
-table.meta td.label{width:140px;color:#333}
-table.meta td.colon{width:10px}
-table.items{width:100%;border-collapse:collapse;margin-bottom:10px}
-table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:left}
-table.items td{padding:6px 6px;border-bottom:1px solid #ddd;font-size:10px}
-.sig-row{display:flex;justify-content:space-between;margin-top:18px;text-align:center}
-.sig-col{flex:1;font-size:10px}
-.sig-space{height:50px}
-.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}
-.note{font-size:9.5px;font-style:italic;margin-bottom:10px}
-.status-stamp{display:inline-block;border:2px solid #16a34a;color:#16a34a;font-weight:800;padding:4px 14px;border-radius:6px;font-size:11px;transform:rotate(-8deg);margin-bottom:8px}
-.print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:10}
+.top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
+.bottom-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-top:16px}
+.header-kop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.pln-info{text-align:right}
+.pln-logo{height:28px;width:auto;display:block;margin-left:auto;margin-bottom:2px}
+.kop-text{font-size:8.5px;font-weight:bold;line-height:1.2;color:#000}
+.kop-sub{font-size:8px;font-weight:bold;line-height:1.2;color:#333}
+
+.section-box{border:1.5px solid #000;padding:12px;margin-bottom:14px;background:#fff}
+.doctitle{text-align:center;font-size:13px;font-weight:bold;letter-spacing:0.5px;margin-bottom:2px;text-transform:uppercase}
+.docno{text-align:center;font-size:10px;font-weight:bold;margin-bottom:10px}
+.docno a{color:#003087;text-decoration:underline}
+
+table.meta-tbl{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:9.5px}
+table.meta-tbl td{padding:2px 4px;vertical-align:top}
+table.meta-tbl td.lbl{width:140px;color:#111}
+
+table.items-tbl{width:100%;border-collapse:collapse;margin-top:6px;margin-bottom:8px;border:1px solid #000}
+table.items-tbl th{background:#d1d5db;color:#000;border:1px solid #000;padding:5px 4px;font-size:9.5px;font-weight:bold;text-align:center}
+table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
+
+.closing-note{font-size:9px;margin-top:6px;margin-bottom:10px;font-style:italic}
+.bast-intro{font-size:9.5px;line-height:1.4;margin-bottom:6px}
+
+.sig-row-3{display:flex;justify-content:space-between;margin-top:10px;text-align:center}
+.sig-row-2{display:flex;justify-content:space-around;margin-top:10px;text-align:center}
+.sig-col{flex:1;font-size:9.5px;padding:0 8px}
+.sig-role{font-weight:bold;margin-top:2px}
+.sig-space{height:45px}
+.sig-name{font-weight:bold;text-transform:uppercase}
+
+.print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:100}
 .print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
-.photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.photo-cell{border:1px solid #ccc;border-radius:6px;overflow:hidden}
-.photo-label{background:#f1f5f9;padding:6px 10px;font-size:10px;font-weight:700;border-bottom:1px solid #ccc}
-.photo-cell img{width:100%;height:160px;object-fit:cover;display:block}
-.photo-empty{height:160px;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:10px;font-style:italic;background:#fafafa}
-.section-heading{font-weight:800;font-size:11.5px;margin:14px 0 8px;color:#003087}
-@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none}body{background:white}}
+
+.page-title-center{text-align:center;font-size:12px;font-weight:bold;margin-bottom:10px;margin-top:6px}
+.photo-box-2col{border:1.5px solid #000;display:grid;grid-template-columns:1fr 1fr;min-height:500px}
+.photo-col-cell{border-right:1px solid #000;padding:8px;display:flex;flex-direction:column;align-items:center}
+.photo-col-cell:last-child{border-right:none}
+.cell-title{font-size:11px;font-weight:bold;margin-bottom:8px;text-align:center}
+.cell-img-wrap{flex:1;width:100%;display:flex;align-items:center;justify-content:center}
+.cell-img-wrap img{max-width:100%;max-height:440px;object-fit:contain}
+.photo-empty{color:#9ca3af;font-style:italic;font-size:10px;text-align:center}
+
+.photo-box-full{border:1.5px solid #000;padding:12px;min-height:550px;display:flex;flex-direction:column;align-items:center}
+.cell-img-wrap-large{flex:1;width:100%;display:flex;align-items:center;justify-content:center}
+.cell-img-wrap-large img{max-width:100%;max-height:500px;object-fit:contain}
+
+table.photo-items-tbl{width:100%;border-collapse:collapse;border:1.5px solid #000;margin-top:10px}
+table.photo-items-tbl th{background:#d1d5db;border:1px solid #000;padding:6px;font-size:10px;font-weight:bold;text-align:center}
+table.photo-items-tbl td{border:1px solid #000;padding:6px}
+
+@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;padding:15px}body{background:white}}
 </style></head><body>
 
-<div class="print-bar">📄 Dokumen TUG-9 siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="print-bar">📄 Dokumen TUG-9 / BAST-B siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 
-<!-- ════════ PAGE 1: SURAT JALAN ════════ -->
+<!-- ════════ PAGE 1: SURAT JALAN & BAST-B ════════ -->
 <div class="page">
-  <div class="topbar"></div>
-  <div class="head">
-    <div><h1>${UIT}</h1><div class="sub">Unit Pelaksana Transmisi Surabaya</div></div>
-    <div class="logobox"><img class="logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/></div>
-  </div>
-  <div class="doctitle"><h2>SURAT JALAN PENGAMBILAN MATERIAL</h2><div class="docno">${docs.sj}</div></div>
-
-  <table class="meta">
-    <tr><td class="label">Dibawa Ke</td><td class="colon">:</td><td>${txn.lokasiPekerjaan}</td><td class="label" style="width:120px">Kendaraan / Nopol</td><td class="colon">:</td><td>${txn.nopol||"-"}</td></tr>
-    <tr><td class="label">Tanggal Pengambilan</td><td class="colon">:</td><td>${fmtDateOnly(txn.createdAt)}</td><td class="label">No SIM / KTP Pengemudi</td><td class="colon">:</td><td>${txn.simKtp||"-"}</td></tr>
-    <tr><td class="label">PIC Gudang ${UPT}</td><td class="colon">:</td><td colspan="3">${creator.name||"-"}</td></tr>
-  </table>
-
-  <table class="items">
-    <thead><tr><th>Material</th><th>Gudang</th><th>Jumlah</th><th>Satuan</th><th>Keterangan</th></tr></thead>
-    <tbody>${materialRowsSJ}</tbody>
-  </table>
-
-  <div class="note">Demikian Surat Jalan ini kami buat agar dipergunakan sebagaimana mestinya</div>
-
-  <div class="sig-row">
-    <div class="sig-col">Transporter,<div class="sig-space"></div><div class="sig-name">${txn.namaPengemudi||"....................."}</div></div>
-    <div class="sig-col">Mengetahui,<br>SATPAM ${WAREHOUSE.toUpperCase()}<div class="sig-space"></div><div class="sig-name">${satpamUser.name||"....................."}</div></div>
-    <div class="sig-col">Yang menyerahkan,<br>ADMINISTRASI GUDANG<div class="sig-space"></div><div class="sig-name">${creator.name||"....................."}</div></div>
-  </div>
-</div>
-
-<!-- ════════ PAGE 2: BON PEMAKAIAN TUG-9 ════════ -->
-<div class="page">
-  <div class="topbar"></div>
-  <div class="head">
+  <div class="top-accent"></div>
+  <div class="header-kop">
     <div></div>
-    <div class="logobox"><img class="logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/></div>
+    <div class="pln-info">
+      <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
+      <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${(txn.uptId || UPT).toUpperCase()}</div>
+    </div>
   </div>
-  <div style="text-align:right;font-weight:800;font-size:13px;margin-bottom:6px">${isTUG8 ? "TUG 8" : "TUG 9"}</div>
-  <div class="doctitle"><h2>BON PEMAKAIAN</h2><div class="docno">${docs[docKey]}</div></div>
 
-  ${txn.status==="APPROVED" ? `<div style="text-align:center"><span class="status-stamp">✓ DISETUJUI</span></div>` : ""}
+  <!-- BOX 1: SURAT JALAN PENGAMBILAN MATERIAL -->
+  <div class="section-box">
+    <div class="doctitle">SURAT JALAN PENGAMBILAN MATERIAL</div>
+    <div class="docno"><a href="#">${docNoSJ}</a></div>
 
-  <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-    <tr><td colspan="6" style="font-weight:700;text-align:center;border-bottom:1px solid #ccc;padding-bottom:4px">${COMPANY.toUpperCase()} UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI</td></tr>
-    <tr><td class="label">PEKERJAAN</td><td class="colon">:</td><td colspan="2">${txn.pekerjaan}</td><td class="label" style="width:90px">UNIT/SEKTOR</td><td>: ${isTUG8 ? (txn.unitTujuan||"-") : UPT}</td></tr>
-    <tr><td class="label">NAMA PEKERJAAN</td><td class="colon">:</td><td colspan="2">${txn.namaPekerjaan}</td><td class="label">SURAT/NODIN</td><td>: ${txn.noNodin||"-"}</td></tr>
-    <tr><td class="label">LOKASI PEKERJAAN</td><td class="colon">:</td><td colspan="2">${txn.lokasiPekerjaan}</td><td class="label">TANGGAL</td><td>: ${fmtDateOnly(txn.createdAt)}</td></tr>
-  </table>
+    <table class="meta-tbl">
+      <tr>
+        <td class="lbl">Dibawa Ke</td><td style="width:10px">:</td><td>${txn.lokasiPekerjaan || "-"}</td>
+        <td class="lbl" style="width:140px">Kendaraan / Nopol</td><td style="width:10px">:</td><td>${txn.nopol || "-"}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Tanggal Pengambilan</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
+        <td class="lbl">No SIM / KTP Pengemudi</td><td>:</td><td>${txn.simKtp || "-"}</td>
+      </tr>
+      <tr>
+        <td class="lbl">PIC Gudang ${UPT}</td><td>:</td><td colspan="4">${creator.name || "-"}${creator.officialPhone ? ` (${creator.officialPhone})` : ""}</td>
+      </tr>
+    </table>
 
-  <table class="items">
-    <thead><tr><th>Banyaknya</th><th>Satuan</th><th>Nama Barang / Spare Parts</th><th>Nomor Katalog</th><th>Keterangan</th></tr></thead>
-    <tbody>${materialRowsTUG9}</tbody>
-  </table>
+    <table class="items-tbl">
+      <thead>
+        <tr>
+          <th style="width:30%">MATERIAL</th>
+          <th style="width:15%">GUDANG</th>
+          <th style="width:10%">JUMLAH</th>
+          <th style="width:10%">SATUAN</th>
+          <th style="width:35%">KETERANGAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsTable}</tbody>
+    </table>
 
-  <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:6px;margin-bottom:10px">
-    <tr><td class="label" style="width:160px">Perkiraan Pembebanan</td><td class="colon">:</td><td>${txn.perkiraanPembebanan||"-"}</td></tr>
-    <tr><td class="label">Kode Perkiraan</td><td class="colon">:</td><td>${txn.kodePerkiraan||"-"}</td></tr>
-    <tr><td class="label">Tanggal</td><td class="colon">:</td><td>${fmtDateOnly(txn.approvedAt||Date.now())}</td></tr>
-  </table>
+    <div class="closing-note">Demikian Surat Jalan ini kami buat agar dipergunakan sebagaimana mestinya</div>
 
-  <div class="sig-row">
-    <div class="sig-col">Yang Menerima,<br>${txn.penerimaUnit||"-"}<div class="sig-space"></div><div class="sig-name">${txn.penerimaNama||"....................."}</div></div>
-    <div class="sig-col">Mengetahui,<br>${asmanUser.jabatan||"ASMAN KONSTRUKSI " + UPT}<div class="sig-space"></div><div class="sig-name">${asmanUser.name||"....................."}</div></div>
-    <div class="sig-col">Yang Menyerahkan,<br>${menyerahkanUser.jabatan||"TL LOGISTIK " + UPT}${menyerahkanUser.officialPhone ? `<br><span style="font-size:8px">${menyerahkanUser.officialPhone}</span>` : ""}<div class="sig-space"></div><div class="sig-name">${menyerahkanUser.name||"....................."}</div></div>
+    <div class="sig-row-3">
+      <div class="sig-col">
+        <div><i>Transporter,</i></div>
+        <div class="sig-role">PENGEMUDI</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">${txn.namaPengemudi || "....................."}</div>
+      </div>
+      <div class="sig-col">
+        <div><i>Mengetahui,</i></div>
+        <div class="sig-role">SATPAM GUDANG ${(satpamUser.gudangNama || WAREHOUSE).toUpperCase()}</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">${satpamUser.name || "....................."}</div>
+      </div>
+      <div class="sig-col">
+        <div><i>Yang menyerahkan,</i></div>
+        <div class="sig-role">ADMINISTRASI GUDANG</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">${creator.name || "....................."}</div>
+      </div>
+    </div>
   </div>
-  ${txn.requiredApprover==="TL" && !txn.canonical ? `<div style="font-size:9px;color:#16a34a;text-align:center;margin-top:6px;font-style:italic">* Disetujui oleh TL Logistik, Asman Konstruksi turut menyetujui sesuai ketentuan internal</div>` : ""}
+
+  <!-- BOX 2: BERITA ACARA SERAH TERIMA BARANG (BAST-B) -->
+  <div class="section-box">
+    <div class="doctitle">BERITA ACARA SERAH TERIMA BARANG (BAST-B)</div>
+    <div class="docno"><a href="#">${docNoBA}</a></div>
+
+    <div class="bast-intro">
+      Pada hari ini <b>${dateInfo.hari}</b> tanggal <b>${dateInfo.tanggal}</b> bulan <b>${dateInfo.bulan}</b> tahun <b>${dateInfo.tahun}</b> (${dateInfo.tanggalLengkap}), Kami yang bertanda di bawah ini :
+    </div>
+
+    <table class="meta-tbl" style="margin-bottom:4px">
+      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${menyerahkanUser.name || creator.name || "-"}</td></tr>
+      <tr><td class="lbl">Jabatan</td><td>:</td><td>${menyerahkanUser.jabatan || "TL LOG UPT SURABAYA"}</td></tr>
+      <tr><td class="lbl">Unit</td><td>:</td><td>${(txn.uptId || UPT).toUpperCase()}</td></tr>
+      <tr><td colspan="3" style="font-weight:bold;padding-top:2px;padding-bottom:4px">Untuk selanjutnya disebut <u>PIHAK YANG MENYERAHKAN</u></td></tr>
+      <tr><td class="lbl">Nama</td><td>:</td><td>${txn.penerimaNama || "-"}</td></tr>
+      <tr><td class="lbl">Jabatan</td><td>:</td><td>${txn.penerimaJabatan || "-"}</td></tr>
+      <tr><td class="lbl">Unit</td><td>:</td><td>${txn.penerimaUnit || "-"}</td></tr>
+      <tr><td colspan="3" style="font-weight:bold;padding-top:2px;padding-bottom:4px">Untuk selanjutnya disebut <u>PIHAK YANG MENERIMA</u></td></tr>
+    </table>
+
+    <div class="bast-intro" style="margin-bottom:4px">Telah melaksanakan serah terima barang, sesuai dengan data sebagai berikut :</div>
+
+    <table class="items-tbl">
+      <thead>
+        <tr>
+          <th style="width:30%">MATERIAL</th>
+          <th style="width:15%">GUDANG</th>
+          <th style="width:10%">JUMLAH</th>
+          <th style="width:10%">SATUAN</th>
+          <th style="width:35%">KETERANGAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsTable}</tbody>
+    </table>
+
+    <table class="meta-tbl" style="margin-top:6px;margin-bottom:6px">
+      <tr><td class="lbl" style="width:190px">Sesuai Nodin / Surat Permintaan No</td><td style="width:10px">:</td><td>${txn.noNodin || "-"}</td></tr>
+      <tr><td class="lbl">Sesuai Surat Persetujuan No</td><td>:</td><td>${txn.noPersetujuan || "-"}</td></tr>
+      <tr><td class="lbl">Untuk Pekerjaan</td><td>:</td><td>${txn.namaPekerjaan || txn.pekerjaan || "-"}</td></tr>
+    </table>
+
+    <div class="closing-note">Demikian Berita Acara ini kami buat agar dipergunakan sebagaimana mestinya</div>
+
+    <div class="sig-row-2">
+      <div class="sig-col">
+        <div><i>Yang menerima,</i></div>
+        <div class="sig-role">${(txn.penerimaUnit || "PIHAK YANG MENERIMA").toUpperCase()}</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">${txn.penerimaNama || "....................."}</div>
+      </div>
+      <div class="sig-col">
+        <div><i>Yang menyerahkan,</i></div>
+        <div class="sig-role">${(menyerahkanUser.jabatan || "TL LOG UPT SURABAYA").toUpperCase()}</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">${menyerahkanUser.name || "....................."}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-accent"></div>
 </div>
 
-${hasAnyAttachment ? `
-<!-- ════════ PAGE 3: LAMPIRAN FOTO ════════ -->
+<!-- ════════ PAGE 2: LAMPIRAN FOTO KENDARAAN & SIM/KTP ════════ -->
 <div class="page">
-  <div class="topbar"></div>
-  <div class="head">
-    <div><h1>${UIT}</h1><div class="sub">Unit Pelaksana Transmisi Surabaya</div></div>
-    <div class="logobox"><img class="logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/></div>
-  </div>
-  <div class="doctitle"><h2>LAMPIRAN FOTO</h2><div class="docno">${docs[docKey]}</div></div>
-
-  <div class="section-heading">Foto Kendaraan &amp; SIM / KTP Pengemudi</div>
-  <div class="photo-grid">
-    ${photoCell("Foto Kendaraan", txn.fotoKendaraan)}
-    ${photoCell("SIM / KTP Pengemudi", txn.fotoSimKtp)}
+  <div class="top-accent"></div>
+  <div class="header-kop">
+    <div></div>
+    <div class="pln-info">
+      <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
+      <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${(txn.uptId || UPT).toUpperCase()}</div>
+    </div>
   </div>
 
-  ${txn.fotoSuratPengembalian ? `
-  <div class="section-heading">Surat Permintaan / Pengembalian</div>
-  <div class="photo-grid">
-    ${photoCell("Surat Permintaan / Pengembalian", txn.fotoSuratPengembalian)}
-  </div>` : ""}
+  <div class="page-title-center">Lampiran Foto</div>
 
-  ${itemRows.length > 0 ? `
-  <div class="section-heading">Foto Material</div>
-  <div class="photo-grid">
-    ${materialPhotoCells}
-  </div>` : ""}
-</div>` : ""}
+  <div class="photo-box-2col">
+    <div class="photo-col-cell">
+      <div class="cell-title">Foto Kendaraan</div>
+      <div class="cell-img-wrap">
+        ${txn.fotoKendaraan ? `<img src="${txn.fotoKendaraan}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
+      </div>
+    </div>
+    <div class="photo-col-cell">
+      <div class="cell-title">SIM / KTP</div>
+      <div class="cell-img-wrap">
+        ${txn.fotoSimKtp ? `<img src="${txn.fotoSimKtp}" alt="Foto SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM / KTP sopir]&gt;&gt;</div>`}
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom-accent"></div>
+</div>
+
+<!-- ════════ PAGE 3: LAMPIRAN FOTO SURAT PENGEMBALIAN / PERMINTAAN ════════ -->
+<div class="page">
+  <div class="top-accent"></div>
+  <div class="header-kop">
+    <div></div>
+    <div class="pln-info">
+      <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
+      <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${(txn.uptId || UPT).toUpperCase()}</div>
+    </div>
+  </div>
+
+  <div class="page-title-center">Lampiran Foto</div>
+
+  <div class="photo-box-full">
+    <div class="cell-title">Surat Pengembalian / Permintaan</div>
+    <div class="cell-img-wrap-large">
+      ${txn.fotoSuratPengembalian ? `<img src="${txn.fotoSuratPengembalian}" alt="Foto Surat"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat permintaan]&gt;&gt;</div>`}
+    </div>
+  </div>
+
+  <div class="bottom-accent"></div>
+</div>
+
+<!-- ════════ PAGE 4: LAMPIRAN FOTO BARANG ════════ -->
+<div class="page">
+  <div class="top-accent"></div>
+  <div class="header-kop">
+    <div></div>
+    <div class="pln-info">
+      <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
+      <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${(txn.uptId || UPT).toUpperCase()}</div>
+    </div>
+  </div>
+
+  <div class="page-title-center">Lampiran Foto Barang</div>
+
+  <table class="photo-items-tbl">
+    <thead>
+      <tr>
+        <th>Nama Material</th>
+        <th>Foto Barang</th>
+      </tr>
+    </thead>
+    <tbody>${materialPhotoRowsTable}</tbody>
+  </table>
+
+  <div class="bottom-accent"></div>
+</div>
 
 </body></html>`;
 }
