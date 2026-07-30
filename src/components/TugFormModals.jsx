@@ -154,12 +154,34 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
 
 export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, satpamList, enrichedStocks, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
   const isDerivedDraft = Boolean(editingDraftTxnId);
+  const handleFillDummy = () => {
+    const validStock = enrichedStocks.find(s => s.jenisBarang === "Non-Stock" || Number(s.qty) > 0) || enrichedStocks[0];
+    setTxnForm(tf => ({
+      ...tf,
+      namaPekerjaan: "Pemeliharaan Bay Trafo 70kV GI Ketintang",
+      pekerjaan: "Pemeliharaan Bay Trafo 70kV GI Ketintang",
+      lokasiPekerjaan: "GI Ketintang Surabaya",
+      unitTujuan: tf.docType === "TUG8" ? "UPT Malang" : (tf.unitTujuan || ""),
+      noNodin: "0012/LOG.00.02/UPT-SBY/2026",
+      noPersetujuan: "0045/DAN.01.03/UPT-SBY/2026",
+      penerimaNama: "Budi Santoso",
+      penerimaJabatan: "Supervisor Pemeliharaan",
+      penerimaUnit: "ULTG Surabaya",
+      nopol: "L 1234 ABC",
+      namaPengemudi: "Slamet",
+      simKtp: "3578012345670001",
+      satpamId: satpamList[0]?.id || tf.satpamId || "",
+      keteranganBarang: "Pemakaian urgent perbaikan sistem",
+      stockItems: validStock ? [{ stockId: validStock.id, qty: 1 }] : tf.stockItems,
+    }));
+  };
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div role="dialog" aria-modal="true" aria-label={`Formulir ${txnForm.docType.replace("TUG","TUG-")}`} style={{...sty.card,width:680,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir {txnForm.docType.replace("TUG","TUG-")} — {txnForm.docType==="TUG9"?"Bon Pemakaian":"Pemakaian Unit Lain"}</span>
-              <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                <button type="button" onClick={handleFillDummy} style={{background:"#2563eb",color:"white",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}} title="Isi otomatis dengan data sampel dummy">🧪 Isi Data Contoh</button>
                 <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>{isDerivedDraft ? "DRAFT — nomor resmi saat diajukan" : `No: ${docSeq}.${txnForm.docType.replace("TUG","TUG-")}/...`}</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>

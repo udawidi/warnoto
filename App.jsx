@@ -4072,15 +4072,17 @@ export default function PLNWarehouse() {
     // TUG-8/TUG-9 uses the canonical server record when its reviewed migration
     // is available. A deployment before the migration retains the legacy path.
     if (["TUG8", "TUG9"].includes(docType)) {
-      canonicalActionKeysRef.current ||= newCanonicalActionKeys();
-      canonicalSubmission = await createAndSubmitCanonicalTug({ docType, formData, currentUser, idempotencyKeys: canonicalActionKeysRef.current });
-      if (canonicalSubmission.unavailable && CANONICAL_TUG_REQUIRED) {
-        throw new Error("Penyimpanan transaksi TUG canonical belum tersedia. Dokumen resmi tidak dibuat.");
-      }
-      if (!canonicalSubmission.unavailable) {
-        txnId = canonicalSubmission.id;
-        seq = Number(canonicalSubmission.docSequence);
-        docNumbers = { ...docNumbers, [docKey]: canonicalSubmission.docNumber };
+      if (supabase && !isDemoMode()) {
+        canonicalActionKeysRef.current ||= newCanonicalActionKeys();
+        canonicalSubmission = await createAndSubmitCanonicalTug({ docType, formData, currentUser, idempotencyKeys: canonicalActionKeysRef.current });
+        if (canonicalSubmission.unavailable && CANONICAL_TUG_REQUIRED) {
+          throw new Error("Penyimpanan transaksi TUG canonical belum tersedia. Dokumen resmi tidak dibuat.");
+        }
+        if (!canonicalSubmission.unavailable) {
+          txnId = canonicalSubmission.id;
+          seq = Number(canonicalSubmission.docSequence);
+          docNumbers = { ...docNumbers, [docKey]: canonicalSubmission.docNumber };
+        }
       }
     }
 
