@@ -86,7 +86,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Manager(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
                   : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Manager(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager) → Generate {t.jenisTransfer==="INTRACOMPANY"?"TUG-7":"TUG-5 UIT"}</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
               )}
-              {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>}
+              <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>
             </div>
           </div>
         );
@@ -160,7 +160,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   {adoptedTug9?.status==="DRAFT" && hasRole(currentUser, "ADMIN","TL") && (
                     <button style={sty.btn("primary","sm")} onClick={()=>openDraftTug9(adoptedTug9)}>Lengkapi & Ajukan TUG-9</button>
                   )}
-                  {(t.stage==="APPROVED_ULTG"||t.status==="APPROVED") && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>}
+                  <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>
                 </div>
               </div>
             );
@@ -211,7 +211,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                       ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG7_MgrLogistik(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
                       : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG7_MgrLogistik(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-7 → Generate Draft TUG-8</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
                   )}
-                  {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat TUG-7</button>}
+                  <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat TUG-7</button>
                 </div>
               </div>
             );

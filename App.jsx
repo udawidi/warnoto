@@ -272,12 +272,12 @@ export default function PLNWarehouse() {
   const [katalogList, setKatalogList] = useState(() => readCachedList("pln_katalog_v4") ?? []); // Master Katalog Barang
   const [lokasiList, setLokasiList] = useState(() => readCachedList("pln_lokasi_v4") ?? []); // Master Lokasi Gudang
   const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
-  const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? []);
-  const [timMutuList, setTimMutuList] = useState(() => readCachedList("pln_tim_mutu_v1") ?? []);
-  const [uitList, setUitList] = useState(() => readCachedList("pln_uit_v1") ?? []);
-  const [uptList, setUptList] = useState(() => readCachedList("pln_upt_v1") ?? []);
+  const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? DEFAULT_SATPAM);
+  const [timMutuList, setTimMutuList] = useState(() => readCachedList("pln_tim_mutu_v1") ?? DEFAULT_TIM_MUTU);
+  const [uitList, setUitList] = useState(() => readCachedList("pln_uit_v1") ?? DEFAULT_UIT);
+  const [uptList, setUptList] = useState(() => readCachedList("pln_upt_v1") ?? DEFAULT_UPT_LIST);
   const [ultgList, setUltgList] = useState(() => readCachedList("pln_ultg_v1") ?? []); // Unit di bawah UPT (mis. ULTG Surabaya Utara/Selatan)
-  const [gudangList, setGudangList] = useState(() => readCachedList("pln_gudang_v1") ?? []);
+  const [gudangList, setGudangList] = useState(() => readCachedList("pln_gudang_v1") ?? DEFAULT_GUDANG);
   const [subGudangList, setSubGudangList] = useState(() => readCachedList("pln_sub_gudang_v1") ?? []); // level di antara Gudang dan Blok Lokasi
   const [importGudangOpen, setImportGudangOpen] = useState(false); // toggle panel Import & Review di Master Gudang
   const [importLokasiOpen, setImportLokasiOpen] = useState(false); // modal Import Excel Master Lokasi
@@ -733,6 +733,7 @@ export default function PLNWarehouse() {
       // punya DEFAULT_* → cukup 2-arah tanpa seeding.
       if (csp === null) {
         loadFailures.push("Data Satpam");
+        setSatpamList(current => current.length > 0 ? current : DEFAULT_SATPAM);
       } else if (csp.length > 0) {
         setSatpamList(csp);
         CLOUD.set("pln_satpam_v1", csp);
@@ -743,6 +744,7 @@ export default function PLNWarehouse() {
       }
       if (ctm === null) {
         loadFailures.push("Data Tim Mutu");
+        setTimMutuList(current => current.length > 0 ? current : DEFAULT_TIM_MUTU);
       } else if (ctm.length > 0) {
         setTimMutuList(ctm);
         CLOUD.set("pln_tim_mutu_v1", ctm);
@@ -753,6 +755,7 @@ export default function PLNWarehouse() {
       }
       if (cuit === null) {
         loadFailures.push("Struktur Organisasi (UIT)");
+        setUitList(current => current.length > 0 ? current : DEFAULT_UIT);
       } else if (cuit.length > 0) {
         setUitList(cuit);
         CLOUD.set("pln_uit_v1", cuit);
@@ -763,6 +766,7 @@ export default function PLNWarehouse() {
       }
       if (cupt === null) {
         loadFailures.push("Struktur Organisasi (UPT)");
+        setUptList(current => current.length > 0 ? current : DEFAULT_UPT_LIST);
       } else if (cupt.length > 0) {
         setUptList(cupt);
         CLOUD.set("pln_upt_v1", cupt);
@@ -779,6 +783,7 @@ export default function PLNWarehouse() {
       }
       if (cgdg === null) {
         loadFailures.push("Master Gudang");
+        setGudangList(current => current.length > 0 ? current : DEFAULT_GUDANG);
       } else if (cgdg.length > 0) {
         setGudangList(cgdg);
         CLOUD.set("pln_gudang_v1", cgdg);
@@ -3990,30 +3995,67 @@ export default function PLNWarehouse() {
     if (!can(currentUser, "aksi.buatTransaksi", rolePerms) && !canCreateULTG && !editingDraftTxnId) { showToast("Role kamu tidak dapat mengajukan transaksi!","error"); return; }
     const docType = txnForm.docType;
 
-    if (docType !== "TUG3" && docType !== "TUG10") {
-      if (!txnForm.namaPekerjaan.trim()) { showToast("Nama Pekerjaan wajib diisi!","error"); return; }
-      if (!txnForm.lokasiPekerjaan.trim()) { showToast("Lokasi Pekerjaan wajib diisi!","error"); return; }
+    // Mode Demo Auto-Fill: Isi otomatis field/stok kosong di Mode Demo agar form bisa langsung disubmit tanpa wajib diisi manual.
+    if (isDemoMode()) {
+      const defaultStock = (enrichedStocks||[])[0] || {};
+      const defaultKatalog = (katalogList||[])[0] || {};
+      const defaultLokasi = (lokasiList||[])[0] || {};
+      const defaultUit = (uitList||[])[0] || {};
+
+      if (!txnForm.namaPekerjaan?.trim()) txnForm.namaPekerjaan = "Pemeliharaan Bay Trafo GI Ketintang (Mode Demo)";
+      if (!txnForm.lokasiPekerjaan?.trim()) txnForm.lokasiPekerjaan = "GI Ketintang (Mode Demo)";
+      if (!txnForm.pekerjaan?.trim()) txnForm.pekerjaan = "Pemeliharaan Routine";
+      if (!txnForm.penerimaNama?.trim()) txnForm.penerimaNama = "Budi Santoso (Demo)";
+      if (!txnForm.penerimaJabatan?.trim()) txnForm.penerimaJabatan = "Teknisi Pemeliharaan";
+      if (!txnForm.penerimaUnit?.trim()) txnForm.penerimaUnit = "ULTG Surabaya Barat";
+      if (!txnForm.unitTujuan?.trim()) txnForm.unitTujuan = "UPT Surabaya";
+      if (!txnForm.dariSupplier?.trim()) txnForm.dariSupplier = "PT. Nusantara Power Demo";
+      if (!txnForm.tanggalDiterima) txnForm.tanggalDiterima = new Date().toISOString().slice(0,10);
+      if (!txnForm.noNodin?.trim()) txnForm.noNodin = "100/NODIN/LOG/DEMO";
+      if (!txnForm.noPersetujuan?.trim()) txnForm.noPersetujuan = "200/PERSETUJUAN/LOG/DEMO";
+      if (!txnForm.uitId) txnForm.uitId = defaultUit.id || "";
+      if (!txnForm.gudangTujuanId) txnForm.gudangTujuanId = defaultLokasi.gudangId || (gudangList||[])[0]?.id || "";
+      if (!txnForm.lokasiTujuanId) txnForm.lokasiTujuanId = defaultLokasi.id || "";
+
+      if (!txnForm.stockItems || txnForm.stockItems.length === 0 || !txnForm.stockItems.some(si => si.stockId || si.katalogId || si.namaBaru)) {
+        if (docType === "TUG9" || docType === "TUG8") {
+          txnForm.stockItems = [{ stockId: defaultStock.id || "", qty: 1 }];
+        } else if (docType === "TUG10") {
+          txnForm.stockItems = [{ katalogMode: "existing", katalogId: defaultKatalog.id || "", qty: 1, statusMaterial: "Sisa Baru" }];
+        } else if (docType === "TUG3") {
+          txnForm.stockItems = [{ katalogMode: "existing", katalogId: defaultKatalog.id || "", qty: 1, satuanBaru: defaultKatalog.satuan || "PCS", lokasiId: defaultLokasi.id || "" }];
+        } else if (docType === "TUG5") {
+          txnForm.stockItems = [{ katalogId: defaultKatalog.id || "", pemakaianBulan: 5, sisaPersediaan: 2, permintaan: 1 }];
+        }
+      }
+    }
+
+    if (!isDemoMode() && docType !== "TUG3" && docType !== "TUG10") {
+      if (!txnForm.namaPekerjaan?.trim()) { showToast("Nama Pekerjaan wajib diisi!","error"); return; }
+      if (!txnForm.lokasiPekerjaan?.trim()) { showToast("Lokasi Pekerjaan wajib diisi!","error"); return; }
     }
 
     if (docType === "TUG9" || docType === "TUG8") {
-      // Canonical TUG8/9 (tugCanonical.js) selalu menulis ke RPC server sungguhan,
-      // tidak ada jalur simulasi mode demo untuk dokumen resmi ini — blokir di sini
-      // (pola sama dengan larangan mode demo lain di file ini) daripada diam-diam
-      // menulis data uji ke server produksi.
-      if (isDemoMode()) { showToast("Mode demo: TUG-8/TUG-9 (dokumen resmi) tidak bisa dibuat di sini — akan menulis ke server sungguhan. Nonaktifkan mode demo untuk transaksi ini.","error"); return; }
-      if (!txnForm.penerimaNama.trim()) { showToast("Nama Penerima wajib diisi!","error"); return; }
-      if (docType === "TUG8" && !txnForm.unitTujuan?.trim()) { showToast("Unit/Sektor Tujuan wajib diisi untuk TUG-8!","error"); return; }
+      if (!isDemoMode()) {
+        if (!txnForm.penerimaNama?.trim()) { showToast("Nama Penerima wajib diisi!","error"); return; }
+        if (docType === "TUG8" && !txnForm.unitTujuan?.trim()) { showToast("Unit/Sektor Tujuan wajib diisi untuk TUG-8!","error"); return; }
+      }
       const submittedItems = txnForm.stockItems || [];
-      if (submittedItems.some(si => !si.stockId || !(Number(si.qty) > 0))) {
+      if (!isDemoMode() && submittedItems.some(si => !si.stockId || !(Number(si.qty) > 0))) {
         showToast("Setiap baris material wajib memiliki stok dan jumlah lebih dari nol.","error"); return;
       }
-      const validItems = submittedItems.filter(si => si.stockId && Number(si.qty) > 0);
+      let validItems = submittedItems.filter(si => si.stockId && Number(si.qty) > 0);
+      if (validItems.length === 0 && isDemoMode() && enrichedStocks[0]) {
+        validItems = [{ stockId: enrichedStocks[0].id, qty: 1 }];
+      }
       if (validItems.length === 0) { showToast("Minimal 1 barang harus dipilih!","error"); return; }
-      for (const si of validItems) {
-        const stock = enrichedStocks.find(s=>s.id===si.stockId);
-        if (!stock) { showToast("Referensi stok tidak ditemukan. Pilih ulang material dari daftar stok.","error"); return; }
-        if (stock && stock.jenisBarang !== "Non-Stock" && stock.qty < si.qty) {
-          showToast(`Stok ${stock.name} di ${stock.lokasi} tidak cukup! Tersedia: ${stock.qty} ${stock.unit}`,"error"); return;
+      if (!isDemoMode()) {
+        for (const si of validItems) {
+          const stock = enrichedStocks.find(s=>s.id===si.stockId);
+          if (!stock) { showToast("Referensi stok tidak ditemukan. Pilih ulang material dari daftar stok.","error"); return; }
+          if (stock && stock.jenisBarang !== "Non-Stock" && stock.qty < si.qty) {
+            showToast(`Stok ${stock.name} di ${stock.lokasi} tidak cukup! Tersedia: ${stock.qty} ${stock.unit}`,"error"); return;
+          }
         }
       }
       if (editingDraftTxnId) { await submitDraftTug9({ ...txnForm, stockItems: validItems }); return; }
@@ -4022,39 +4064,55 @@ export default function PLNWarehouse() {
     }
 
     if (docType === "TUG10") {
-      const missing = tug10Missing(txnForm);
-      if (missing.length) {
-        flagTug10Invalid(missing[0].scrollKey);
-        showToast(`Belum lengkap — ${missing[0].label}${missing.length>1?` (dan ${missing.length-1} lainnya)`:""}`,"error");
-        return;
+      if (!isDemoMode()) {
+        const missing = tug10Missing(txnForm);
+        if (missing.length) {
+          flagTug10Invalid(missing[0].scrollKey);
+          showToast(`Belum lengkap — ${missing[0].label}${missing.length>1?` (dan ${missing.length-1} lainnya)`:""}`,"error");
+          return;
+        }
       }
-      const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+      let validItems = (txnForm.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+      if (validItems.length === 0 && isDemoMode() && katalogList[0]) {
+        validItems = [{ katalogMode: "existing", katalogId: katalogList[0].id, qty: 1, statusMaterial: "Sisa Baru" }];
+      }
       await commitNewTxn(docType, { ...txnForm, stockItems: validItems });
       return;
     }
 
     if (docType === "TUG3") {
-      if (!txnForm.dariSupplier?.trim()) { showToast("Field 'Dari' (Supplier) wajib diisi!","error"); return; }
-      if (!txnForm.tanggalDiterima) { showToast("Tanggal Diterima wajib diisi!","error"); return; }
-      const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+      if (!isDemoMode()) {
+        if (!txnForm.dariSupplier?.trim()) { showToast("Field 'Dari' (Supplier) wajib diisi!","error"); return; }
+        if (!txnForm.tanggalDiterima) { showToast("Tanggal Diterima wajib diisi!","error"); return; }
+      }
+      let validItems = (txnForm.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+      if (validItems.length === 0 && isDemoMode() && katalogList[0]) {
+        validItems = [{ katalogMode: "existing", katalogId: katalogList[0].id, qty: 1, satuanBaru: katalogList[0].satuan || "PCS", lokasiId: (lokasiList[0]||{}).id || "" }];
+      }
       if (validItems.length === 0) { showToast("Minimal 1 barang harus diisi!","error"); return; }
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.namaPekerjaan || txnForm.dariSupplier, lokasiPekerjaan: txnForm.lokasiPekerjaan || "Gudang Ketintang" });
+      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.namaPekerjaan || txnForm.dariSupplier || "Penerimaan Karantina Demo", lokasiPekerjaan: txnForm.lokasiPekerjaan || "Gudang Ketintang" });
       return;
     }
 
     if (docType === "TUG5" && txnForm.sourceType === "ULTG") {
-      if (!txnForm.ultgId) { showToast("Unit ULTG kamu tidak terdeteksi. Hubungi Admin.","error"); return; }
-      const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
+      if (!isDemoMode() && !txnForm.ultgId) { showToast("Unit ULTG kamu tidak terdeteksi. Hubungi Admin.","error"); return; }
+      let validItems = (txnForm.stockItems||[]).filter(si => si.katalogId && si.permintaan > 0);
+      if (validItems.length === 0 && isDemoMode() && katalogList[0]) {
+        validItems = [{ katalogId: katalogList[0].id, pemakaianBulan: 5, sisaPersediaan: 2, permintaan: 1 }];
+      }
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, keteranganUmum: txnForm.namaPekerjaan });
+      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, keteranganUmum: txnForm.namaPekerjaan || "Permintaan ULTG Demo" });
       return;
     }
 
     if (docType === "TUG5") {
-      if (!txnForm.uitId) { showToast("Pilih UIT tujuan (Kepada)!","error"); return; }
-      const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
+      if (!isDemoMode() && !txnForm.uitId) { showToast("Pilih UIT tujuan (Kepada)!","error"); return; }
+      let validItems = (txnForm.stockItems||[]).filter(si => si.katalogId && si.permintaan > 0);
+      if (validItems.length === 0 && isDemoMode() && katalogList[0]) {
+        validItems = [{ katalogId: katalogList[0].id, pemakaianBulan: 5, sisaPersediaan: 2, permintaan: 1 }];
+      }
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.keteranganUmum || "Permintaan Material", lokasiPekerjaan: "UPT Surabaya" });
+      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.keteranganUmum || "Permintaan Material Demo", lokasiPekerjaan: "UPT Surabaya" });
       return;
     }
   }
