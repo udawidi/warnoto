@@ -124,7 +124,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                     </span>
                   )
                 )}
-                {t.stage==="APPROVED" && <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-3</button>}
+                <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat & Pratinjau Dokumen TUG-3 / TUG-4</button>
               </div>
             </div>
           );
