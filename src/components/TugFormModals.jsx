@@ -7,12 +7,38 @@ import { can } from "../lib/perms.js";
 import { ROLES } from "../lib/roles.js";
 
 export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C }) {
+  const handleFillDummy = () => {
+    const kat = (katalogList||[])[0] || {};
+    const uit = (uitList||[])[0] || {};
+    setTxnForm(tf => ({
+      ...tf,
+      uitId: uit.id || "",
+      jenisTransfer: "INTRACOMPANY",
+      lokasiPekerjaan: "GI Ketintang 150kV",
+      namaPekerjaan: "Pemeliharaan Bay Trafo 150kV GI Ketintang",
+      keteranganUmum: "Penggantian Isolator Komposit UPT Surabaya",
+      perintahKerja: "PK-LOG-2026/07/15",
+      kodePerkiraan: "54.1.002.10",
+      fungsi: "TRANSMISI",
+      stockItems: [
+        {
+          katalogId: kat.id || "",
+          pemakaianBulan: 5,
+          sisaPersediaan: 2,
+          permintaan: 10,
+          keterangan: "Insulator String 150kV High Tension"
+        }
+      ]
+    }));
+  };
+
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-5 — Daftar Permintaan Barang</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+                <button type="button" onClick={handleFillDummy} style={{background:"#f59e0b",color:"#78350f",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>🧪 Isi Data Contoh</button>
                 <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-5/...</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
@@ -154,12 +180,34 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
 
 export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, satpamList, enrichedStocks, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
   const isDerivedDraft = Boolean(editingDraftTxnId);
+  const handleFillDummy = () => {
+    const validStock = enrichedStocks.find(s => s.jenisBarang === "Non-Stock" || Number(s.qty) > 0) || enrichedStocks[0];
+    setTxnForm(tf => ({
+      ...tf,
+      namaPekerjaan: "Pemeliharaan Bay Trafo 70kV GI Ketintang",
+      pekerjaan: "Pemeliharaan Bay Trafo 70kV GI Ketintang",
+      lokasiPekerjaan: "GI Ketintang Surabaya",
+      unitTujuan: tf.docType === "TUG8" ? "UPT Malang" : (tf.unitTujuan || ""),
+      noNodin: "0012/LOG.00.02/UPT-SBY/2026",
+      noPersetujuan: "0045/DAN.01.03/UPT-SBY/2026",
+      penerimaNama: "Budi Santoso",
+      penerimaJabatan: "Supervisor Pemeliharaan",
+      penerimaUnit: "ULTG Surabaya",
+      nopol: "L 1234 ABC",
+      namaPengemudi: "Slamet",
+      simKtp: "3578012345670001",
+      satpamId: satpamList[0]?.id || tf.satpamId || "",
+      keteranganBarang: "Pemakaian urgent perbaikan sistem",
+      stockItems: validStock ? [{ stockId: validStock.id, qty: 1 }] : tf.stockItems,
+    }));
+  };
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div role="dialog" aria-modal="true" aria-label={`Formulir ${txnForm.docType.replace("TUG","TUG-")}`} style={{...sty.card,width:680,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir {txnForm.docType.replace("TUG","TUG-")} — {txnForm.docType==="TUG9"?"Bon Pemakaian":"Pemakaian Unit Lain"}</span>
-              <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                <button type="button" onClick={handleFillDummy} style={{background:"#2563eb",color:"white",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer"}} title="Isi otomatis dengan data sampel dummy">🧪 Isi Data Contoh</button>
                 <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>{isDerivedDraft ? "DRAFT — nomor resmi saat diajukan" : `No: ${docSeq}.${txnForm.docType.replace("TUG","TUG-")}/...`}</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
@@ -303,12 +351,45 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
   const selBlok = lokasiList.find(l=>l.id===txnForm.lokasiTujuanId);
   const breadcrumb = [selGud?.nama || (isLegacyGud?"Legacy (tanpa gudang)":null), selSub?.nama, selBlok?.kode].filter(Boolean).join(" › ");
   const missingList = tug10Missing(txnForm);
+  const handleFillDummy = () => {
+    const kat = (katalogList||[])[0] || {};
+    const lok = (lokasiList||[])[0] || {};
+    const sp = (satpamList||[])[0] || {};
+    setTxnForm(tf => ({
+      ...tf,
+      penyerahNama: "Ir. Ahmad Dahlan",
+      penyerahJabatan: "Supervisor Pemeliharaan GI",
+      penyerahUnit: "ULTG Surabaya Barat",
+      menyerahkanNama: "Ahmad Dahlan",
+      noNodin: "145/NODIN/LOG/2026",
+      noBa: "088/BA-RETUR/LOG/2026",
+      gudangTujuanId: lok.gudangId || (gudangList||[])[0]?.id || "",
+      lokasiTujuanId: lok.id || "",
+      satpamId: sp.id || "",
+      pekerjaan: "Pemeliharaan",
+      noBAPenggantian: "0266/PT-SD/VI/2026",
+      namaPekerjaan: "Pengembalian Material Relay GIS Darmo dan GIS Waru",
+      lokasiPekerjaan: "GIS Darmo dan GIS Waru",
+      stockItems: [
+        {
+          katalogMode: "existing",
+          katalogId: kat.id || "",
+          qty: 2,
+          statusMaterial: "Sisa Baru",
+          noAsset: "AST-2026-991",
+          noSeri: "SN-99882211"
+        }
+      ]
+    }));
+  };
+
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-10 — Bon Pengembalian</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+                <button type="button" onClick={handleFillDummy} style={{background:"#f59e0b",color:"#78350f",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>🧪 Isi Data Contoh</button>
                 <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-10/...</span>
                 <button onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
@@ -511,12 +592,41 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 }
 
 export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, katalogList, lokasiList, CATEGORIES, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C }) {
+  const handleFillDummy = () => {
+    const kat = (katalogList||[])[0] || {};
+    const lok = (lokasiList||[])[0] || {};
+    setTxnForm(tf => ({
+      ...tf,
+      dariSupplier: "PT. Sedayu Sejahtera",
+      denganKirim: "Dikirim Langsung Armada Supplier",
+      noSuratJalan: "SJ-SUPPLIER-2026/0991",
+      tglSuratJalan: new Date().toISOString().slice(0,10),
+      noSpk: "SPK/LOG/UPT-SBYA/2026/014",
+      tglSpk: new Date().toISOString().slice(0,10),
+      tanggalDiterima: new Date().toISOString().slice(0,10),
+      namaPekerjaan: "Pengadaan Cadang Trafo 70kV UPT Surabaya",
+      lokasiPekerjaan: "Gudang Utama Ketintang",
+      keterangan: "Penerimaan Tahap I Material Karantina TUG-3",
+      stockItems: [
+        {
+          katalogMode: "existing",
+          katalogId: kat.id || "",
+          qty: 5,
+          satuanBaru: kat.satuan || "PCS",
+          lokasiId: lok.id || "",
+          keterangan: "Kondisi fisik baru & segel pabrik lengkap"
+        }
+      ]
+    }));
+  };
+
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-3 Karantina — Bon Penerimaan</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+                <button type="button" onClick={handleFillDummy} style={{background:"#f59e0b",color:"#78350f",border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>🧪 Isi Data Contoh</button>
                 <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-3/...</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
