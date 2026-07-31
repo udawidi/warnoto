@@ -1300,9 +1300,29 @@ export default function PLNWarehouse() {
   showToastRef.current = showToast;
 
   async function handleLogin() {
-    if (!supabase) { setLoginErr("Supabase belum dikonfigurasi."); return; }
     if (!loginForm.username.trim() || !loginForm.password) { setLoginErr("Username dan password wajib diisi."); return; }
     setLoginBusy(true); setLoginErr("");
+
+    if (!supabase) {
+      const uname = loginForm.username.trim();
+      const userObj = {
+        id: "usr_dev_" + uname.toLowerCase(),
+        name: uname,
+        username: uname,
+        role: "ADMIN",
+        jabatan: "Fasilitator Gudang (Mode Lokal)",
+        uptId: "upt_sby",
+        upt: "Surabaya",
+        gudangIds: ["gdg_1"]
+      };
+      setCurrentUser(userObj);
+      writeCachedProfile(userObj);
+      setAuthLoading(false);
+      setLoginBusy(false);
+      showToast(`⚡ Login Mode Lokal Berhasil: Selamat datang, ${userObj.name}!`);
+      return;
+    }
+
     const payload = {
       email: usernameToAuthEmail(loginForm.username),
       password: loginForm.password,
