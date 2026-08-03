@@ -16,28 +16,29 @@ import { AuditLogPage } from "./AuditLogPage.jsx";
 import { PermMatrixPage } from "./PermMatrixPage.jsx";
 
 export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockSubTab, filteredKatalog, satpamList, timMutuList, uitList, uptList, ultgList, users, gudangList, lokasiList, subGudangList, visibleGudangList, openAddKatalog, openAddSatpam, openAddUIT, openAddGudang, openAddAkun, importGudangOpen, setImportGudangOpen, showGudangMaintenance, setShowGudangMaintenance, importLokasiOpen, setImportLokasiOpen, gudangCapacityImports, setGudangCapacityImports, saveToCloud, showToast, backfillGudangCoordFromCapacity, dedupeGudangDanSubGudang, isKodeDuplicateInSubGudang, setLokasiList, syncLokasi, maraUploadProgress, maraUploadLoading, uploadMaraToDB, katalogList, katalogSearch, setKatalogSearch, katalogFilterBelumMara, setKatalogFilterBelumMara, setBarcodePrintOpen, pagedKatalog, stocks, openEditKatalog, deleteKatalog, katalogPageSize, setKatalogPageSize, katalogPageClamped, setKatalogPage, katalogTotalPages, openEditSatpam, deleteSatpam, openEditTimMutu, orgSearch, setOrgSearch, collapsedUitIds, setCollapsedUitIds, openAddUPT, openEditUIT, deleteUIT, openAddULTG, openEditUPT, deleteUPT, openEditULTG, deleteULTG, expandedGudangId, setExpandedGudangId, openEditGudang, deleteGudang, showGudangDenahTools, setShowGudangDenahTools, uploadDenahGudang, denahLoading, mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, manualAddMode, setManualAddMode, ocrSuggestGudangId, setOcrSuggestGudangId, ocrSuggestSubGudangId, setOcrSuggestSubGudangId, ocrSuggestions, setOcrSuggestions, assignLokasiKoordinat, suggestKodeFromOcr, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds, uploadDenahSubGudang, denahSubLoading, mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub, assignLokasiKoordinatSub, openEditLokasi, requestDeleteLokasi, selectedSubGudangId, setSelectedSubGudangId, openEditAkun, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, setStocks, setKatalogList, setTxns, reloadRolePerms }) {
+  const activeSubTab = isMobile ? "katalog" : stockSubTab;
   return (
-          <div className={`workspace-page master-page master-page--${stockSubTab}`}>
+          <div className={`workspace-page master-page master-page--${activeSubTab}`}>
             <div className="workspace-page-toolbar">
               <div className="workspace-context-row">
                 <span>
-                  {stockSubTab==="katalog"?`${filteredKatalog.length} jenis barang terdaftar`:stockSubTab==="satpam"?`${satpamList.length} satpam terdaftar`:stockSubTab==="timmutu"?`${timMutuList.length} paket tim mutu`:stockSubTab==="organisasi"?`${uitList.length} UIT • ${uptList.length} UPT • ${ultgList.length} ULTG`:stockSubTab==="akun"?`${users.length} akun terdaftar`:stockSubTab==="migrasi"?"Cutover terkontrol data stok dari SAP — wajib backup sebelum apply":`${gudangList.length} gudang • ${lokasiList.length} blok lokasi terdaftar`}
+                  {activeSubTab==="katalog"?`${filteredKatalog.length} jenis barang terdaftar`:activeSubTab==="satpam"?`${satpamList.length} satpam terdaftar`:activeSubTab==="timmutu"?`${timMutuList.length} paket tim mutu`:activeSubTab==="organisasi"?`${uitList.length} UIT • ${uptList.length} UPT • ${ultgList.length} ULTG`:activeSubTab==="akun"?`${users.length} akun terdaftar`:activeSubTab==="migrasi"?"Cutover terkontrol data stok dari SAP — wajib backup sebelum apply":`${gudangList.length} gudang • ${lokasiList.length} blok lokasi terdaftar`}
                 </span>
               </div>
               <div className="workspace-page-toolbar__actions">
-                {can(currentUser, "aksi.kelolaMaster", rolePerms) && stockSubTab==="katalog" && <button style={sty.btn("primary")} onClick={openAddKatalog}>+ Tambah Katalog Barang</button>}
-                {can(currentUser, "aksi.kelolaMaster", rolePerms) && stockSubTab==="satpam" && <button style={sty.btn("primary")} onClick={openAddSatpam}>+ Tambah Satpam</button>}
-                {can(currentUser, "aksi.kelolaMaster", rolePerms) && stockSubTab==="organisasi" && <button style={sty.btn("primary")} onClick={openAddUIT}>+ Tambah UIT</button>}
-                {can(currentUser, "aksi.kelolaMaster", rolePerms) && stockSubTab==="gudang" && <button style={sty.btn("primary")} onClick={openAddGudang}>+ Tambah Gudang Baru</button>}
-                {can(currentUser, "aksi.kelolaAkun", rolePerms) && stockSubTab==="akun" && <button style={sty.btn("primary")} onClick={openAddAkun}>+ Daftarkan Akun Baru</button>}
+                {can(currentUser, "aksi.kelolaMaster", rolePerms) && activeSubTab==="katalog" && <button style={sty.btn("primary")} onClick={openAddKatalog}>+ Tambah Katalog Barang</button>}
+                {can(currentUser, "aksi.kelolaMaster", rolePerms) && activeSubTab==="satpam" && <button style={sty.btn("primary")} onClick={openAddSatpam}>+ Tambah Satpam</button>}
+                {can(currentUser, "aksi.kelolaMaster", rolePerms) && activeSubTab==="organisasi" && <button style={sty.btn("primary")} onClick={openAddUIT}>+ Tambah UIT</button>}
+                {can(currentUser, "aksi.kelolaMaster", rolePerms) && activeSubTab==="gudang" && <button style={sty.btn("primary")} onClick={openAddGudang}>+ Tambah Gudang Baru</button>}
+                {can(currentUser, "aksi.kelolaAkun", rolePerms) && activeSubTab==="akun" && <button style={sty.btn("primary")} onClick={openAddAkun}>+ Daftarkan Akun Baru</button>}
               </div>
             </div>
-            {stockSubTab==="gudang" && (
+            {activeSubTab==="gudang" && (
               <div style={{...sty.card,marginBottom:12,background:"#eff6ff",borderLeft:"4px solid #0369a1",padding:"10px 14px",fontSize:12,color:"#0369a1"}}>
                 ℹ️ Sebagian besar Gudang biasanya <b>otomatis terbentuk sendiri</b> dari import Excel Kapasitas Gudang (tombol di bawah) setelah disetujui Asman. Kalau ada Gudang yang belum tercakup di laporan itu, tambahkan manual lewat tombol "+ Tambah Gudang Baru" di kanan atas.
               </div>
             )}
-            {stockSubTab==="gudang" && can(currentUser, "aksi.import", rolePerms) && (
+            {activeSubTab==="gudang" && can(currentUser, "aksi.import", rolePerms) && (
               <div style={{marginBottom:16}}>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   <button style={sty.btn(importGudangOpen?"danger":"primary")} onClick={()=>setImportGudangOpen(o=>!o)}>
@@ -96,7 +97,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               />
             )}
             {/* ── SUB-TAB: MASTER KATALOG ── */}
-            {stockSubTab==="katalog" && hasRole(currentUser, "ADMIN") && (
+            {activeSubTab==="katalog" && hasRole(currentUser, "ADMIN") && (
               <div style={{...sty.card,marginBottom:12,borderLeft:"4px solid #0369a1",padding:14}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                   <div>
@@ -117,7 +118,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               </div>
             )}
 
-            {stockSubTab==="katalog" && katalogList.length>0 && (
+            {activeSubTab==="katalog" && katalogList.length>0 && (
               <div style={{marginBottom:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                 <div style={{position:"relative",maxWidth:420,flex:1,minWidth:220}}>
                   <input style={{...sty.input,paddingRight:32}} placeholder="🔍 Cari nama barang, no. katalog, kategori, jenis..." value={katalogSearch} onChange={e=>setKatalogSearch(e.target.value)}/>
@@ -142,7 +143,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               </div>
             )}
 
-            {stockSubTab==="katalog" && (
+            {activeSubTab==="katalog" && (
               katalogList.length===0
               ? <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada Master Katalog. {hasRole(currentUser, "ADMIN") && "Klik \"+ Tambah Katalog Barang\" untuk menambahkan."}</div>
               : filteredKatalog.length===0
@@ -196,7 +197,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               </div>
               )
             )}
-            {stockSubTab==="katalog" && katalogList.length>0 && (
+            {activeSubTab==="katalog" && katalogList.length>0 && (
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,flexWrap:"wrap",gap:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted}}>
                   Tampilkan
@@ -214,7 +215,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             )}
 
             {/* ── SUB-TAB: SATPAM (dikelompokkan per gudang) ── */}
-            {stockSubTab==="satpam" && (() => {
+            {activeSubTab==="satpam" && (() => {
               if (satpamList.length===0) return <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada data Satpam. {hasRole(currentUser, "ADMIN") && "Klik \"+ Tambah Satpam\" untuk menambahkan."}</div>;
               const groups = [
                 ...gudangList.map(g=>({ id:g.id, nama:g.nama, list:satpamList.filter(sp=>sp.gudangId===g.id) })),
@@ -278,7 +279,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             )}
 
             {/* ── SUB-TAB: STRUKTUR ORGANISASI (UIT → UPT → ULTG, satu kesatuan) ── */}
-            {stockSubTab==="organisasi" && (() => {
+            {activeSubTab==="organisasi" && (() => {
               const orgQ = orgSearch.trim().toLowerCase();
               const hit = (...vals) => vals.some(v => (v||"").toLowerCase().includes(orgQ));
               const uptMatchesSearch = (upt) => !orgQ || hit(upt.kode, upt.nama) || ultgList.some(x=>x.parentUptId===upt.id && hit(x.kode, x.nama));
@@ -409,7 +410,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             })()}
 
             {/* ── SUB-TAB: MASTER GUDANG ── */}
-            {stockSubTab==="gudang" && (
+            {activeSubTab==="gudang" && (
               <div className="master-warehouse-page">
                 {/* Notifikasi approval blok lokasi sudah dipindahkan ke menu "✅ Approval" — lihat di sana. */}
                 {gudangList.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada Master Gudang.</div>}
@@ -595,7 +596,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                             setOcrSuggestGudangId(g.id);
                                             setOcrSuggestSubGudangId(grp.sg.id);
                                           }}
-                                          onFinishAdding={()=>{setManualAddModeSub(false);setPendingMapLokasiSub(null);setMapConfigSubGudangId(null);}}
+                                          onFinishAdding={()=>{setManualAddModeSub(false);setPendingMapLokasiSub(null);setMapConfigGudangId(null);}}
                                           ocrNotReady={false}
                                           sty={sty} C={C} showToast={showToast}
                                         />
@@ -684,7 +685,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             )}
 
             {/* ── SUB-TAB: KELOLA AKUN (aksi.kelolaAkun, default ADMIN) ── */}
-            {stockSubTab==="akun" && can(currentUser, "aksi.kelolaAkun", rolePerms) && (
+            {activeSubTab==="akun" && can(currentUser, "aksi.kelolaAkun", rolePerms) && (
               <div style={sty.card}>
                 {users.length===0 ? (
                   <div style={{textAlign:"center",color:C.muted,padding:30}}>Belum ada akun terdaftar.</div>
@@ -722,7 +723,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             )}
 
             {/* ── SUB-TAB: MIGRASI DATA (ADMIN only) ── */}
-            {stockSubTab==="migrasi" && hasRole(currentUser, "ADMIN") && (
+            {activeSubTab==="migrasi" && hasRole(currentUser, "ADMIN") && (
               <MigrasiDataTab
                 stocks={stocks}
                 katalogList={katalogList}
@@ -749,12 +750,12 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             )}
 
             {/* ── SUB-TAB: AUDIT LOG (ADMIN only) ── */}
-            {stockSubTab==="auditLog" && hasRole(currentUser, "ADMIN") && (
+            {activeSubTab==="auditLog" && hasRole(currentUser, "ADMIN") && (
               <AuditLogPage sty={sty} C={C}/>
             )}
 
             {/* ── SUB-TAB: MATRIX IZIN (ADMIN only) ── */}
-            {stockSubTab==="perms" && hasRole(currentUser, "ADMIN") && (
+            {activeSubTab==="perms" && hasRole(currentUser, "ADMIN") && (
               <PermMatrixPage sty={sty} C={C} currentUser={currentUser} rolePerms={rolePerms} reloadRolePerms={reloadRolePerms} showToast={showToast}/>
             )}
           </div>

@@ -118,15 +118,17 @@ export function AppSidebar({
                   </button>
                   {masterExpanded && !sidebarCompact && (
                     <div className="sidebar-subnav" style={{marginBottom:4}}>
-                      {[
+                      {(isMobile ? [
+                        {id:"katalog",icon:<SidebarIcon name="catalog" size={16}/>,label:"Master Katalog"},
+                      ] : [
                         {id:"katalog",icon:<SidebarIcon name="catalog" size={16}/>,label:"Master Katalog"},
                         {id:"satpam",icon:<SidebarIcon name="shield" size={16}/>,label:"Satpam"},
                         {id:"timmutu",icon:<SidebarIcon name="users" size={16}/>,label:"Tim Mutu"},
                         {id:"organisasi",icon:<SidebarIcon name="organization" size={16}/>,label:"Struktur Organisasi"},
                         {id:"gudang",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Master Gudang"},
-        ...(can(currentUser, "aksi.kelolaAkun", rolePerms) ? [{id:"akun",icon:<SidebarIcon name="user" size={16}/>,label:"Kelola Akun"}] : []),
-        ...(hasRole(currentUser, "ADMIN") ? [{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"},{id:"auditLog",icon:<SidebarIcon name="shield" size={16}/>,label:"Audit Log"},{id:"perms",icon:<SidebarIcon name="shield" size={16}/>,label:"Matrix Izin"}] : []),
-                      ].map(sub=>{
+                        ...(can(currentUser, "aksi.kelolaAkun", rolePerms) ? [{id:"akun",icon:<SidebarIcon name="user" size={16}/>,label:"Kelola Akun"}] : []),
+                        ...(hasRole(currentUser, "ADMIN") ? [{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"},{id:"auditLog",icon:<SidebarIcon name="shield" size={16}/>,label:"Audit Log"},{id:"perms",icon:<SidebarIcon name="shield" size={16}/>,label:"Matrix Izin"}] : []),
+                      ]).map(sub=>{
                         const subActive = isActive && stockSubTab===sub.id;
                         return (
                           <button
