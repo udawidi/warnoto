@@ -1496,9 +1496,74 @@
   .dashboard-heavy-loan__upt { grid-column: 1; }
   .dashboard-heavy-loan__date { grid-column: 2; grid-row: 2; margin-left: 0; white-space: normal; }
   .dashboard-heavy-loan > span[style*="italic"] { display: none; }
-  .forecast-view-switch { width: 100%; }
-  .forecast-view-switch button { flex: 1; }
-  .forecast-overview__metrics { grid-template-columns: 1fr 1fr; }
+  .forecast-view-switch {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    gap: 4px;
+    padding: 4px;
+  }
+  .forecast-view-switch button {
+    flex: none;
+    width: 100%;
+    min-height: 44px;
+    height: 100%;
+    padding: 6px 4px;
+    font-size: 11px;
+    line-height: 1.2;
+    text-align: center;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .forecast-overview { grid-template-columns: 1fr; gap: 12px; padding: 14px; }
+  .forecast-overview__metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .forecast-overview__metrics span {
+    white-space: normal;
+    word-break: break-word;
+    font-size: 10.5px;
+    line-height: 1.2;
+  }
+  .forecast-overview__metrics strong { font-size: 16px; }
+  .forecast-procurement-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+    gap: 10px;
+    padding: 10px;
+  }
+  .forecast-procurement-head .forecast-overview__metrics {
+    flex: none;
+    width: 100%;
+    min-width: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .forecast-procurement-head .forecast-overview__metrics > * {
+    padding: 8px 6px;
+    min-height: 52px;
+  }
+  .forecast-procurement-head .forecast-overview__metrics span {
+    font-size: 10px;
+    line-height: 1.2;
+    white-space: normal;
+    word-break: break-word;
+  }
+  .forecast-procurement-head .forecast-overview__metrics strong {
+    font-size: 13.5px;
+    margin-top: 2px;
+    word-break: break-all;
+  }
+  .forecast-procurement-head > button {
+    width: 100%;
+    min-height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-size: 13px;
+  }
   .ai-conversation { height: calc(100dvh - 105px); min-height: 520px; }
   .ai-start { padding: 18px 14px; }
   .ai-quick-prompts > div { grid-template-columns: 1fr; }

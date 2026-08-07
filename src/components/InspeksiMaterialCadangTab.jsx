@@ -371,8 +371,8 @@ export function InspeksiMaterialCadangTab({
 
       {/* Sub-tab switch — segmented control navy aktif */}
       <div className="no-print" style={{
-        display: "flex",
-        flexDirection: isMobile ? "column" : "row",
+        display: "grid",
+        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
         gap: 6,
         background: C.bg,
         borderRadius: 12,
@@ -381,22 +381,21 @@ export function InspeksiMaterialCadangTab({
       }}>
         {tabs.map(t => (
           <button key={t.id} onClick={() => setView(t.id)} style={{
-            ...(isMobile ? {} : { flex: 1 }),
-            padding: "10px 16px",
+            padding: "10px 12px",
             minHeight: isMobile ? 44 : undefined,
             borderRadius: 8,
             border: "none",
             cursor: "pointer",
-            fontSize: 14,
+            fontSize: isMobile ? 13 : 14,
             fontWeight: 800,
             background: view === t.id ? "linear-gradient(180deg,#2f6bf0,#1d4ed8)" : "transparent",
             color: view === t.id ? "#ffffff" : C.text,
             boxShadow: view === t.id ? "0 3px 10px rgba(29,78,216,0.35)" : "none",
-            whiteSpace: isMobile ? "normal" : "nowrap",
+            whiteSpace: "nowrap",
             display: "inline-flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: 8,
+            gap: 6,
           }}>
             <ClipboardText size={16} weight={view === t.id ? "fill" : "regular"} />
             {t.label}

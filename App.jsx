@@ -1413,8 +1413,25 @@ export default function PLNWarehouse() {
   showToastRef.current = showToast;
 
   async function handleLogin() {
-    if (!supabase) { setLoginErr("Supabase belum dikonfigurasi."); return; }
     if (!loginForm.username.trim() || !loginForm.password) { setLoginErr("Username dan password wajib diisi."); return; }
+    if (!supabase) {
+      const usernameClean = loginForm.username.trim();
+      const demoUser = {
+        id: "DEMO-USER-001",
+        name: usernameClean,
+        username: usernameClean.toLowerCase(),
+        role: "SUPERADMIN",
+        jabatan: "Administrator (Mode Demo)",
+        uptId: "UPT-SBY",
+        upt: "Surabaya",
+        gudangIds: [],
+      };
+      try { localStorage.setItem(SUPABASE_AUTH_STORAGE_KEY, "demo-local-token"); } catch {}
+      writeCachedProfile(demoUser);
+      setCurrentUser(demoUser);
+      setAuthLoading(false);
+      return;
+    }
     setLoginBusy(true); setLoginErr("");
     const payload = {
       email: usernameToAuthEmail(loginForm.username),
