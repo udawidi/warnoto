@@ -1,0 +1,25 @@
+name: Daily snapshot tag
+
+# Backup harian "known-good": bikin tag snapshot-YYYY-MM-DD di main tiap hari
+# supaya rollback kode gampang (git reset --hard snapshot-<tgl>) tanpa berburu SHA.
+# Data DB sudah di-backup terpisah per-jam di minipc-gudang.
+
+on:
+  schedule:
+    - cron: "0 17 * * *"   # 17:00 UTC = 00:00 WIB
+  workflow_dispatch: {}
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Create dated tag
+        run: |
+          TAG="snapshot-$(date -u +%Y-%m-%d)"
+          git tag -f "$TAG"
+          git push -f origin "$TAG"
