@@ -2133,8 +2133,12 @@ export default function PLNWarehouse() {
       } else {
         if (!supabase) return;
         const vec = await cohereEmbedImage(photoSearchImg);
+        // p_upt=null (lintas-UPT) lalu difilter client-side via keepInScope. match_count
+        // sengaja besar (bukan 10): RPC ambil top-N GLOBAL dulu, jadi kalau cuma 10 dan
+        // top-10 didominasi UPT lain, match dalam scope user (UPT/UIT) bisa terpotong →
+        // hasil kosong palsu. 100 kandidat cukup untuk disaring keepInScope tanpa boros.
         const { data, error } = await supabase.rpc("match_stock_photos", {
-          query_embedding: vec, p_upt: null, match_count: 10, min_similarity: 0.75,
+          query_embedding: vec, p_upt: null, match_count: 100, min_similarity: 0.75,
         });
         if (error) throw error;
         setPhotoSearchOcrText("");
