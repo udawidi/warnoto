@@ -24,3 +24,4 @@
 - Tabel `wa_sync_status` MASIH DIPAKAI bot Telegram — jangan di-drop meski fitur WA sudah dihapus.
 - Tailwind v4 via `@tailwindcss/postcss`, preflight OFF; interaktivitas via CSS global element-selector, bukan className.
 - Gaya kerja: alur review-first / persetujuan manual; jangan auto-membuat aksi turunan tanpa persetujuan user.
+- Role Frontend Developer (Kevin): terikat dokumen [ROLE_FRONTEND_DEVELOPER.md](ROLE_FRONTEND_DEVELOPER.md) (perubahan ke `main` khusus frontend/tampilan, dilarang mengedit backend/skema Supabase).

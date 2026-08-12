@@ -283,7 +283,6 @@
   .operations-hero__summary-copy,
   .operations-hero--summary-only > .operations-hero__controls,
   .operations-hero--summary-only .operations-hero__footer { grid-column: 1; }
-  .operations-hero--summary-only > .operations-hero__controls { width: 100%; flex-basis: auto; border-right: 0; border-bottom: 1px solid rgba(219,234,254,.1); }
   /* Metrics hero ringkas di HP (Inspeksi dkk) — dari PR #12, font floor ≥12px */
   .operations-hero--summary-only .operations-hero__footer { display: block; min-width: 0; width: 100%; }
   .operations-hero--summary-only .operations-hero__metrics {
