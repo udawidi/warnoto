@@ -1925,7 +1925,7 @@ export default function PLNWarehouse() {
           <div style={{background:"#f3f4f6",borderRadius:20,height:8}}><div style={{width:`${pct}%`,background:barC,height:"100%",borderRadius:20}}/></div>
           {pct>=90 && <div style={{fontSize:12,color:C.red,marginTop:4,fontWeight:600}}>⚠️ Lokasi hampir penuh!</div>}
         </div>
-        {hasRole(currentUser, "ADMIN") && (
+        {hasRole(currentUser, "TL") && (
           <div style={{display:"flex",gap:6}}>
             <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditLokasi(l)} disabled={isPending}>✏️ Edit</button>
             <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>requestDeleteLokasi(l)} disabled={isPending}>🗑️ Hapus</button>
@@ -2462,7 +2462,7 @@ export default function PLNWarehouse() {
     return { created: newItems.length, skipped, removed: removedCount };
   }
   async function deleteAttbItem(id) {
-    if (!hasRole(currentUser, "ADMIN")) { showToast("Hanya Admin yang bisa menghapus item ATTB.","error"); return; }
+    if (!hasRole(currentUser, "TL")) { showToast("Hanya TL yang bisa menghapus item ATTB.","error"); return; }
     const next = attbList.filter(a=>a.id!==id);
     setAttbList(next);
     await saveToCloud({attbList: next});

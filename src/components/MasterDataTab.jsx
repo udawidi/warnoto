@@ -64,7 +64,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             {stockSubTab==="gudang" && can(currentUser, "aksi.import", rolePerms) && (
               <div style={{marginBottom:16}}>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-                  {hasRole(currentUser,"ADMIN") && (
+                  {hasRole(currentUser,"TL") && (
                     <button style={{...sty.btn("ghost","sm")}} onClick={()=>setShowGudangMaintenance(o=>!o)}>
                       {showGudangMaintenance?"✕ Tutup Alat Perbaikan":"🔧 Alat Perbaikan Data Lanjutan"}
                     </button>
@@ -77,7 +77,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     spesifik, bukan pemakaian rutin (keluhan user 2026-07-06: "kenapa ada 3
                     inputan"). Sekarang disembunyikan di balik toggle + dikasih penjelasan
                     kapan masing-masing dipakai. */}
-                {hasRole(currentUser,"ADMIN") && showGudangMaintenance && (
+                {hasRole(currentUser,"TL") && showGudangMaintenance && (
                   <div style={{marginTop:12,...sty.card,background:"#fafafa",border:`1px dashed ${C.border}`,padding:14}}>
                     <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
                       Dua alat ini <b>bukan untuk pemakaian rutin</b> — cuma dipakai kalau menemukan masalah data spesifik berikut:
@@ -107,7 +107,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               />
             )}
             {/* ── SUB-TAB: MASTER KATALOG ── */}
-            {stockSubTab==="katalog" && hasRole(currentUser, "ADMIN") && (
+            {stockSubTab==="katalog" && hasRole(currentUser, "TL") && (
               <div style={{...sty.card,marginBottom:12,border:"1px solid #bfdbfe",padding:14}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
                   <div>
@@ -146,7 +146,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     ⚠️ Belum Dicocokkan MARA ({katalogList.filter(k=>k.belumDicocokkanMara).length})
                   </button>
                 )}
-                {hasRole(currentUser, "ADMIN") && (
+                {hasRole(currentUser, "TL") && (
                   <button onClick={()=>setBarcodePrintOpen(true)} title="Cetak semua barcode/QR kartu gantung sekaligus"
                     style={{...sty.btn("primary","sm"),whiteSpace:"nowrap"}}>🖨️ Cetak Semua Barcode</button>
                 )}
@@ -155,7 +155,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
 
             {stockSubTab==="katalog" && (
               katalogList.length===0
-              ? <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada Master Katalog. {hasRole(currentUser, "ADMIN") && "Klik \"+ Tambah Katalog Barang\" untuk menambahkan."}</div>
+              ? <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada Master Katalog. {hasRole(currentUser, "TL") && "Klik \"+ Tambah Katalog Barang\" untuk menambahkan."}</div>
               : filteredKatalog.length===0
               ? <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Tidak ada hasil untuk "{katalogSearch}".</div>
               : (
@@ -192,7 +192,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                           <td data-label="Satuan" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{k.satuan}</td>
                           <td data-label="Status" style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{katalogSapLabel(k)}</span></td>
                           <td data-label="Aksi" style={{padding:"8px 10px"}}>
-                            {hasRole(currentUser, "ADMIN") && (
+                            {hasRole(currentUser, "TL") && (
                               <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                                 <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"6px 8px"}} onClick={()=>openEditKatalog(k)}>✏️</button>
                                 <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"6px 8px"}} onClick={()=>deleteKatalog(k.id)}>🗑️</button>
@@ -226,7 +226,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
 
             {/* ── SUB-TAB: SATPAM (dikelompokkan per gudang) ── */}
             {stockSubTab==="satpam" && (() => {
-              if (satpamList.length===0) return <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada data Satpam. {hasRole(currentUser, "ADMIN") && "Klik \"+ Tambah Satpam\" untuk menambahkan."}</div>;
+              if (satpamList.length===0) return <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada data Satpam. {hasRole(currentUser, "TL") && "Klik \"+ Tambah Satpam\" untuk menambahkan."}</div>;
               const groups = [
                 ...gudangList.map(g=>({ id:g.id, nama:g.nama, list:satpamList.filter(sp=>sp.gudangId===g.id) })),
                 { id:"__none__", nama:"Belum di-assign gudang", list:satpamList.filter(sp=>!sp.gudangId || !gudangList.some(g=>g.id===sp.gudangId)) },
@@ -242,7 +242,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                       <div style={{fontSize:12,color:C.muted}}>{sp.id}{sp.telp ? ` • ${sp.telp}` : ""}</div>
                     </div>
                   </div>
-                  {hasRole(currentUser, "ADMIN") && (
+                  {hasRole(currentUser, "TL") && (
                     <div style={{display:"flex",gap:6}}>
                       <button style={{...sty.btn("ghost","sm"),flex:1}} onClick={()=>openEditSatpam(sp)}>✏️ Edit</button>
                       <button style={{...sty.btn("danger","sm"),flex:1}} onClick={()=>deleteSatpam(sp.id)}>🗑️ Hapus</button>
@@ -280,7 +280,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                       <div><b>Anggota 2:</b> {tm.anggota2||"-"}</div>
                       <div><b>Anggota 3:</b> {tm.anggota3||"-"}</div>
                     </div>
-                    {hasRole(currentUser, "ADMIN") && (
+                    {hasRole(currentUser, "TL") && (
                       <button style={{...sty.btn("ghost","sm"),marginTop:10,width:"100%"}} onClick={()=>openEditTimMutu(tm)}>✏️ Edit Anggota</button>
                     )}
                   </div>
@@ -352,7 +352,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                             </div>
                           </div>
                           <div className="master-organization-card__actions" onClick={e=>e.stopPropagation()}>
-                            {hasRole(currentUser, "ADMIN") && (<>
+                            {hasRole(currentUser, "TL") && (<>
                               <button style={sty.btn("ghost","sm")} onClick={()=>openAddUPT(uit.id)}>+ UPT</button>
                               <button title="Edit" style={sty.btn("ghost","sm")} onClick={()=>openEditUIT(uit)}>✏️</button>
                               <button title="Hapus" style={sty.btn("danger","sm")} onClick={()=>deleteUIT(uit.id)}>🗑️</button>
@@ -381,7 +381,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                               <div style={{fontSize:12,color:C.muted,marginTop:2}}>{upt.alamat||"Alamat belum diisi"} • {ultgOfUpt.length} ULTG</div>
                                             </div>
                                           </div>
-                                          {hasRole(currentUser, "ADMIN") && (
+                                          {hasRole(currentUser, "TL") && (
                                             <div className="master-organization-upt__actions" style={{display:"flex",gap:4,flexShrink:0}}>
                                               <button style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>openAddULTG(upt.id)}>+ ULTG</button>
                                               <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>openEditUPT(upt)}>✏️</button>
@@ -394,7 +394,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                             {ultgOfUpt.map(ultg=>(
                                               <div className="master-organization-ultg" key={ultg.id} style={{display:"flex",alignItems:"center",gap:6,background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:20,padding:"4px 10px",fontSize:12}}>
                                                 <span>🏘️ <b>{ultg.kode}</b> {ultg.nama}</span>
-                                                {hasRole(currentUser, "ADMIN") && (
+                                                {hasRole(currentUser, "TL") && (
                                                   <span style={{display:"flex",gap:2,marginLeft:2}}>
                                                     <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"1px 4px",fontSize:12}} onClick={()=>openEditULTG(ultg)}>✏️</button>
                                                     <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"1px 4px",fontSize:12}} onClick={()=>deleteULTG(ultg.id)}>🗑️</button>
@@ -439,7 +439,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                           <div style={{fontSize:12,color:C.muted,marginTop:2}}>{bloklokasi.length} blok terkait, {blokWithCoord.length} sudah ter-peta{subsOfGudang.length>0?` • ${subsOfGudang.length} Sub Gudang`:""}</div>
                         </div>
                         <div className="master-warehouse-card__actions">
-                          {hasRole(currentUser, "ADMIN") && (
+                          {hasRole(currentUser, "TL") && (
                             <div className="master-warehouse-card__admin-actions" style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                               <button aria-label="Edit gudang" title="Edit gudang" style={sty.btn("ghost","sm")} onClick={()=>openEditGudang(g)}>{isMobile?"✏️":"✏️ Edit"}</button>
                               <button title="Hapus" style={sty.btn("danger","sm")} onClick={()=>deleteGudang(g.id)}>🗑️</button>
@@ -464,7 +464,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
 
                       {showGudangDenahTools && (
                       <div style={{marginBottom:12}}>
-                        {hasRole(currentUser, "ADMIN") && (
+                        {hasRole(currentUser, "TL") && (
                           <div style={{marginBottom:12}}>
                             <label style={sty.label}>Upload Denah Gudang (PNG / JPG) — peta keseluruhan</label>
                             <div style={{fontSize:12,color:C.muted,marginBottom:4}}>
@@ -493,7 +493,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                           </div>
                         )}
 
-                        {hasRole(currentUser, "ADMIN") && g.denahImageData && (
+                        {hasRole(currentUser, "TL") && g.denahImageData && (
                           subsOfGudang.length===0 ? (
                             <GudangCoordConfigPanel
                               label="Gudang"
@@ -569,7 +569,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                   </button>
                                   {isSubToolsOpen && (
                                     <div style={{marginTop:10}}>
-                                      {hasRole(currentUser, "ADMIN") && (
+                                      {hasRole(currentUser, "TL") && (
                                         <div style={{marginBottom:10}}>
                                           <label style={{...sty.label,fontSize:12}}>Upload Denah Sub Gudang (PNG / JPG) — opsional, fallback ke denah Gudang jika kosong</label>
                                           <div>
@@ -587,7 +587,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                           <img src={grp.sg.denahImageData} alt="Denah Sub Gudang" style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
                                         </div>
                                       )}
-                                      {hasRole(currentUser, "ADMIN") && grp.sg.denahImageData && (
+                                      {hasRole(currentUser, "TL") && grp.sg.denahImageData && (
                                         <GudangCoordConfigPanel
                                           label="Sub Gudang"
                                           denahImage={grp.sg.denahImageData}
@@ -624,7 +624,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
 
                               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                                 <div style={{fontSize:12,color:C.muted}}>📍 Daftar Blok Lokasi ({grp.blok.length})</div>
-                                {hasRole(currentUser, "ADMIN") && !isUnregistered && <span style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>➕ Tambah blok lewat 🛠️ Kelola Denah & Koordinat di atas</span>}
+                                {hasRole(currentUser, "TL") && !isUnregistered && <span style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>➕ Tambah blok lewat 🛠️ Kelola Denah & Koordinat di atas</span>}
                               </div>
                               {grp.blok.length===0
                                 ? <div style={{fontSize:12,color:C.muted,fontStyle:"italic",marginBottom:8}}>Belum ada blok lokasi di sub gudang ini.</div>
@@ -643,8 +643,8 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                           </div>
                                           <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                                             <span style={{fontSize:12,color:n>0?C.accent:C.muted,fontWeight:700}}>{n} item</span>
-                                            {hasRole(currentUser, "ADMIN") && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>openEditLokasi(l)}>✏️</button>}
-                                            {hasRole(currentUser, "ADMIN") && <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"2px 8px"}} onClick={()=>requestDeleteLokasi(l)}>🗑️</button>}
+                                            {hasRole(currentUser, "TL") && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>openEditLokasi(l)}>✏️</button>}
+                                            {hasRole(currentUser, "TL") && <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"2px 8px"}} onClick={()=>requestDeleteLokasi(l)}>🗑️</button>}
                                           </div>
                                         </div>
                                       );
@@ -782,7 +782,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             })()}
 
             {/* ── SUB-TAB: MIGRASI DATA (ADMIN only) ── */}
-            {stockSubTab==="migrasi" && hasRole(currentUser, "ADMIN") && (
+            {stockSubTab==="migrasi" && hasRole(currentUser, "TL") && (
               <MigrasiDataTab
                 stocks={stocks}
                 katalogList={katalogList}
@@ -807,7 +807,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             )}
 
             {/* ── SUB-TAB: AUDIT LOG (ADMIN only) ── */}
-            {stockSubTab==="auditLog" && hasRole(currentUser, "ADMIN") && (
+            {stockSubTab==="auditLog" && hasRole(currentUser, "TL") && (
               <AuditLogPage sty={sty} C={C}/>
             )}
 
