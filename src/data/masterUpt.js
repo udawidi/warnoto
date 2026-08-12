@@ -7,3 +7,7 @@ export const DEFAULT_UPT_LIST = [
   { id:"UPT-BLI", nama:"UPT Bali", kode:"UPT-BLI", alamat:"Bali", uitId:"UIT-JBM", createdAt:Date.now() },
   { id:"UPT-GRS", nama:"UPT Gresik", kode:"UPT-GRS", alamat:"Gresik, Jawa Timur", uitId:"UIT-JBM", createdAt:Date.now() },
 ];
+
+// Kode Plant SAP -> id UPT WARNOTO. Dipakai importer "SAP Langsung" (Migrasi Data) untuk
+// menentukan UPT tujuan tiap baris dari export SAP resmi (kolom Plant).
+export const SAP_PLANT_TO_UPT = { "3611":"UPT-SBY", "3612":"UPT-MLG", "3613":"UPT-MDN", "3614":"UPT-PBG", "3615":"UPT-BLI" };

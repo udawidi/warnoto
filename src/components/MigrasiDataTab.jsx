@@ -1,13 +1,14 @@
 // Komponen MigrasiDataTab — dipindah dari App.jsx (refactor Fase 5c).
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UPT } from "../constants.js";
-import { supabase } from "../supabaseClient.js";
-import { fmtDateOnly, parseSAPNumber, uid } from "../lib/utils.js";
+import { fmtDate, fmtDateOnly, parseIndoNumber, parseSAPNumber, uid } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { normalizeKatalog, resolveSapLabel } from "../lib/sap.js";
 import { logAudit } from "../lib/audit.js";
 import { can } from "../lib/perms.js";
 import { keepRemoteStockPhoto } from "../lib/stockCache.js";
+import { SAP_PLANT_TO_UPT } from "../data/masterUpt.js";
+import { supabase } from "../supabaseClient.js";
 import * as XLSX from "xlsx";
 
 // Jenis Barang enum persis dipakai template migrasi stok (lihat scripts/gen_template_migrasi_stok.mjs).
@@ -30,22 +31,25 @@ function normalizeJenis(v) { return String(v||"").replace(/[^A-Z0-9]/gi,"").toUp
 // MIGRASI DATA TAB
 // ════════════════════════════════════════════════════════════════════
 export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudangList, subGudangList, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, currentUser, sty, C, saveToCloud, setStocks, setKatalogList, setTxns, showToast, rolePerms }) {
-  const [step, setStep] = useState("upload"); // "upload" | "preview" | "backup" | "done"
-  const [sapFile, setSapFile] = useState(null);
-  const [sapRows, setSapRows] = useState([]);
-  // Baris "Match WARNOTO" (sudah ada di katalog) TIDAK ditimpa secara default —
-  // Admin harus centang eksplisit per baris kalau memang mau timpa dengan data
-  // import ini (2026-07-04, permintaan user: jangan pernah timpa data existing
-  // diam-diam).
-  const [overwriteRows, setOverwriteRows] = useState(new Set());
-  const [applyProgress, setApplyProgress] = useState(""); // teks progres tahap-per-tahap saat Apply Cutover, supaya kelihatan jalan/stuck
-  const [applyProgressPct, setApplyProgressPct] = useState(0); // 0-100, dipakai bareng applyProgress untuk progress bar bernomor
-  const [lastCutoverSummary, setLastCutoverSummary] = useState(null); // ringkasan hasil cutover terakhir, ditampilkan di step "done"
-  const [nonSapRows, setNonSapRows] = useState([]);
-  const [parsedSAP, setParsedSAP] = useState([]);
-  const [parsedNonSAP, setParsedNonSAP] = useState([]);
-  const [previewStats, setPreviewStats] = useState(null);
-  const [busy, setBusy] = useState(false);
+  // Import "SAP Langsung" (multi-UPT) — pelengkap data stock material dari file export
+  // SAP resmi (Cara lain / Legacy). Menggantikan wizard cutover Surabaya lama.
+  const [sapLangsungFile, setSapLangsungFile] = useState(null);
+  const [sapLangsungRows, setSapLangsungRows] = useState(null); // null = belum upload; array hasil parse+scoping
+  const [sapLangsungPreview, setSapLangsungPreview] = useState(null); // ringkasan KPI
+  const [sapLangsungChecked, setSapLangsungChecked] = useState(new Set()); // Set rowId ("plant|material") terpilih utk diterapkan
+  const [sapLangsungBusy, setSapLangsungBusy] = useState(false);
+  const [sapLog, setSapLog] = useState([]);
+  const [sapLogLoading, setSapLogLoading] = useState(true);
+  const [sapLogReload, setSapLogReload] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    if (!supabase) { setSapLog([]); setSapLogLoading(false); return; }
+    setSapLogLoading(true);
+    supabase.from("audit_log").select("at,user_name,detail").eq("entity","migrasi_sap_langsung").order("at",{ascending:false}).limit(15)
+      .then(({ data, error }) => { if (!cancelled) { setSapLog(error ? [] : (data||[])); setSapLogLoading(false); } })
+      .catch(() => { if (!cancelled) { setSapLog([]); setSapLogLoading(false); } });
+    return () => { cancelled = true; };
+  }, [sapLogReload]);
   // Import Transaksi TUG Lama — histori murni, independen dari wizard cutover SAP di atas.
   const [legacyTugRows, setLegacyTugRows] = useState(null); // null = belum upload; array grup per No Dokumen
   const [legacyTugChecked, setLegacyTugChecked] = useState(new Set());
@@ -62,403 +66,224 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
   const [tplSapMode, setTplSapMode] = useState("AUTO"); // "AUTO"|"SAP"|"NONSAP" — verifikasi Admin saat kolom "Status Material" kosong
   const [lastTplImport, setLastTplImport] = useState(null); // {katalogIdsBaru,stockIds,at,uptLabel,file} — undo import terakhir saja (YAGNI)
 
-  // Parse CSV SAP format PEMAT
-  // Referensi format export SAP (diajarkan user 2026-07-02, lihat memory
-  // warnoto_sap_export_format.md): Plant=kode UPT (3611=UPT Surabaya),
-  // Material Type ZST1=Persediaan/ZCAD=Cadang (sumber utama), panjang kode
-  // katalog (10 digit=Cadang) TETAP dipakai sebagai referensi pembanding/
-  // validasi silang (bukan cuma fallback) — kalau dua sinyal ini beda,
-  // di-flag `materialTypeMismatch` untuk direview, bukan diam-diam dipilih
-  // salah satu. Valuation Type (BURSA/PRE-MEMORY) HANYA berlaku untuk
-  // sub-klasifikasi material Persediaan (ZST1) — kalau ZCAD (Cadang), jangan
-  // di-override jadi Bursa/Pre-Memory walau valType kebetulan cocok string-nya.
-  // Quality Inspection/Blocked/In Transit Stock TIDAK auto-include maupun
-  // auto-exclude ke qty utama — cuma di-flag `needsStockReview` supaya Admin
-  // yang putuskan manual di preview, sesuai instruksi eksplisit user.
-  function parseSAPMigration(rows) {
-    return rows.map(row => {
-      const material = String(row["Material"]||row["material"]||"").trim();
-      const noKat = normalizeKatalog(material);
-      const desc = String(row["Material Description"]||row["material description"]||"").trim();
-      const satuan = String(row["Base Unit of Measure"]||"").trim() || "BH";
-      // Dulu SELALU menghapus semua titik dulu baru konversi koma — kalau nilai aslinya pakai
-      // SAP memakai koma sebagai desimal dan titik sebagai pemisah ribuan. Jangan pakai parser
-      // angka aplikasi di jalur ini: "2,627 M" harus menjadi 2.627, bukan 2627.
-      const qty = parseSAPNumber(row["Unrestricted Use Stock"]||row["unrestricted use stock"]);
-      const valType = String(row["Valuation Type"]||"").trim().toUpperCase();
-      const harga = parseSAPNumber(row["Harga Satuan"]);
-      const materialType = String(row["Material Type"]||"").trim().toUpperCase();
-      const plant = String(row["Plant"]||"").trim();
-      const qiStock = parseSAPNumber(row["Quality Inspection Stock"]);
-      const blockedStock = parseSAPNumber(row["Blocked Stock"]);
-      const transitStock = parseSAPNumber(row["In Transit Stock"]);
-
-      const kodePanjang10 = noKat.length === 10;
-      let jenisBarang;
-      if (materialType === "ZCAD") jenisBarang = "Cadang";
-      else if (materialType === "ZST1") jenisBarang = "Persediaan";
-      else jenisBarang = kodePanjang10 ? "Cadang" : "Persediaan"; // Material Type tidak dikenali, andalkan panjang kode
-      // Valuation Type cuma sub-klasifikasi untuk jalur Persediaan (ZST1) — default "Persediaan"
-      // (normal) kalau bukan BURSA/PRE-MEMORY. Tidak berlaku untuk Cadang (ZCAD).
-      if (jenisBarang === "Persediaan") {
-        if (valType === "BURSA") jenisBarang = "Persediaan Bursa";
-        else if (valType === "PRE-MEMORY") jenisBarang = "Pre Memory";
-      }
-      // Validasi silang: Material Type vs panjang kode katalog beda sinyal -> flag review,
-      // bukan diam-diam pilih salah satu (cuma relevan kalau Material Type dikenali).
-      const materialTypeMismatch = (materialType==="ZCAD" && !kodePanjang10) || (materialType==="ZST1" && kodePanjang10);
-
-      const plantMismatch = !!(plant && plant !== "3611");
-      const needsStockReview = qiStock>0 || blockedStock>0 || transitStock>0;
-
-      return { noKat, material, desc, satuan, qty, jenisBarang, harga, valType, materialType, plant, qiStock, blockedStock, transitStock, plantMismatch, needsStockReview, materialTypeMismatch, _valid: noKat.length > 0 && qty >= 0 };
-    }).filter(r => r.noKat);
-  }
-
-  async function handleSAPFile(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setBusy(true);
-    try {
-      let rows = [];
-      if (file.name.toLowerCase().endsWith(".csv")) {
-        const text = await file.text();
-        const clean = text.replace(/^﻿/, ""); // strip BOM
-        const lines = clean.replace(/\r/g,"").split("\n").filter(Boolean);
-        const sep = lines[0].includes(";") ? ";" : ",";
-        const headers = lines[0].split(sep).map(h=>h.trim().replace(/^"|"$/g,""));
-        rows = lines.slice(1).map(l => {
-          const vals = l.split(sep).map(v=>v.trim().replace(/^"|"$/g,""));
-          const obj = {}; headers.forEach((h,i)=>{ obj[h]=vals[i]||""; }); return obj;
-        });
-      } else {
-        const buf = await file.arrayBuffer();
-        const wb = XLSX.read(buf);
-        rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {defval:""});
-      }
-      const parsed = parseSAPMigration(rows);
-      setSapRows(parsed);
-      setSapFile(file.name);
-      showToast(`SAP: ${parsed.length} baris berhasil diparse.`, "success");
-    } catch(err) { showToast("Gagal parse SAP: " + err.message, "error"); }
-    setBusy(false);
-    e.target.value = "";
-  }
-
-  // BUG DITEMUKAN 2026-07-02: matchMara sebelumnya cek ke `maraReference` (state session-only,
-  // diisi lewat tombol upload TERPISAH khusus di tab ini) — BUKAN tabel Supabase `mara_catalog`
-  // yang sungguhan dipakai user (42.703 baris, diupload lewat Master Data → Master Katalog).
-  // Karena user tidak pernah upload lewat tombol yang di tab ini, maraReference selalu kosong,
-  // jadi SEMUA baris salah tampil "tidak match MARA". Fix: query mara_catalog langsung, dengan
-  // normalisasi kode (MARA pakai 15 digit zero-padded, App pakai kode pendek tanpa padding —
-  // sama seperti bug yang sudah pernah difix di applyMaraToKatalog/backfill kategori).
-  async function buildPreview() {
-    setBusy(true);
-    setApplyProgress("🔄 Menyiapkan perbandingan data...");
-    setApplyProgressPct(2);
-    const warnotoSet = new Set(katalogList.map(k=>normalizeKatalog(k.katalog)));
-
-    // BUG DITEMUKAN 2026-07-04: query tanpa .range() cuma balikin ~1000 baris
-    // pertama (default limit PostgREST/Supabase) — mara_catalog punya 42.703
-    // baris, jadi kode yang bukan di 1000 baris pertama SELALU "tidak match"
-    // walau sebenarnya ada di referensi MARA (dikonfirmasi manual oleh user).
-    // Fix: ambil semua baris per halaman 1000 sampai habis. Ini butuh puluhan
-    // request berurutan (~43 halaman untuk 42.703 baris) — kasih progress
-    // bernomor 1-100% per halaman supaya kelihatan jalan, bukan stuck
-    // (permintaan user 2026-07-04).
-    let maraSet = new Set();
-    if (supabase) {
-      // Hitung dulu total baris supaya persentase progres akurat (bukan cuma teks).
-      const { count: maraTotal } = await supabase.from("mara_catalog").select("*", { count: "exact", head: true });
-      let from = 0;
-      const pageSize = 1000;
-      let fetchError = null;
-      let page = 1;
-      while (true) {
-        const pct = maraTotal ? Math.min(98, 5 + Math.round((from / maraTotal) * 85)) : Math.min(90, 5 + page * 5);
-        setApplyProgressPct(pct);
-        setApplyProgress(`📥 Memuat referensi MARA (${maraSet.size}${maraTotal?`/${maraTotal}`:""} kode terbaca)...`);
-        const { data, error } = await supabase.from("mara_catalog").select("kode_material").range(from, from + pageSize - 1);
-        if (error) { fetchError = error; break; }
-        if (!data || data.length === 0) break;
-        data.forEach(m => maraSet.add(m.kode_material.replace(/^0+/, "")));
-        if (data.length < pageSize) break;
-        from += pageSize;
-        page++;
-      }
-      if (fetchError) showToast("Gagal cek referensi MARA: " + fetchError.message, "error");
-    }
-    setApplyProgressPct(95);
-    setApplyProgress("🧮 Menghitung status match & selisih qty...");
-
-    // Qty existing di aplikasi per No Katalog (dijumlah semua lokasi) — dipakai
-    // untuk banding qty file upload vs qty aplikasi (permintaan user 2026-07-04):
-    // sama persis → "Match", beda → otomatis tandai opsi Timpa (bukan cuma
-    // tersedia, tapi di-pre-check) supaya Admin sadar ada selisih qty.
-    const qtyByKatalog = new Map();
-    stocks.forEach(s => {
-      const k = katalogList.find(kk=>kk.id===s.katalogId);
-      if (!k) return;
-      const kode = normalizeKatalog(k.katalog);
-      qtyByKatalog.set(kode, (qtyByKatalog.get(kode)||0) + (s.qty||0));
-    });
-
-    const sapResult = sapRows.map(r => {
-      const matchWarnoto = warnotoSet.has(r.noKat);
-      const existingQty = matchWarnoto ? (qtyByKatalog.get(r.noKat)||0) : null;
-      const qtyMatch = matchWarnoto ? existingQty === r.qty : null;
-      return {
-        ...r,
-        matchWarnoto,
-        matchMara: maraSet.has(r.noKat),
-        existingQty,
-        qtyMatch,
-      };
-    });
-    // Baris matched dengan qty BEDA otomatis di-pre-check "Timpa" (bukan dipaksa,
-    // Admin masih bisa un-check kalau memang mau pertahankan qty existing) —
-    // baris dengan qty SAMA tidak perlu keputusan apa-apa, dibiarkan default.
-    setOverwriteRows(new Set(sapResult.filter(r=>r.matchWarnoto && r.qtyMatch===false).map(r=>r.noKat)));
-
-    const byJenis = {};
-    sapResult.forEach(r => { byJenis[r.jenisBarang] = (byJenis[r.jenisBarang]||0) + 1; });
-
-    const totalQty = sapResult.reduce((s,r)=>s+r.qty,0);
-    const totalNilai = sapResult.reduce((s,r)=>s+(r.qty*r.harga),0);
-
-    setPreviewStats({ sapResult, byJenis, totalQty, totalNilai });
-    setApplyProgressPct(100);
-    setStep("preview");
-    setBusy(false);
-    setApplyProgress("");
-    setApplyProgressPct(0);
-  }
-
-  // Recompute ringkasan (byJenis/totalQty/totalNilai) setelah sapResult diubah manual di preview.
-  function recomputeStats(sapResult) {
-    const byJenis = {};
-    sapResult.forEach(r => { byJenis[r.jenisBarang] = (byJenis[r.jenisBarang]||0) + 1; });
-    const totalQty = sapResult.reduce((s,r)=>s+r.qty,0);
-    const totalNilai = sapResult.reduce((s,r)=>s+(r.qty*r.harga),0);
-    return { sapResult, byJenis, totalQty, totalNilai };
-  }
-  // Aksi review manual: gabung qty Quality Inspection/Blocked/In Transit ke qty utama (Unrestricted).
-  function moveReviewToUnrestricted(noKat) {
-    setPreviewStats(ps => {
-      if (!ps) return ps;
-      const sapResult = ps.sapResult.map(r => {
-        if (r.noKat !== noKat) return r;
-        const tambahan = (r.qiStock||0) + (r.blockedStock||0) + (r.transitStock||0);
-        return { ...r, qty: r.qty + tambahan, qiStock:0, blockedStock:0, transitStock:0, needsStockReview:false };
-      });
-      return recomputeStats(sapResult);
-    });
-    showToast(`Qty review digabung ke Unrestricted untuk ${noKat}.`, "success");
-  }
-  // Aksi review manual: keluarkan baris ini total dari daftar yang akan diimpor.
-  function removeFromImportList(noKat) {
-    setPreviewStats(ps => {
-      if (!ps) return ps;
-      const sapResult = ps.sapResult.filter(r => r.noKat !== noKat);
-      return recomputeStats(sapResult);
-    });
-    showToast(`${noKat} dihapus dari daftar impor.`, "success");
-  }
-
-  async function handleBackupAndApply() {
-    if (!previewStats) return;
-    setBusy(true);
-    setApplyProgressPct(5);
-    setApplyProgress("⏳ Menyiapkan backup JSON...");
-    try {
-      // 1. Backup data sebelum cutover
-      const backup = {
-        stocks, katalogList, lokasiList, txns,
-        backupAt: Date.now(), by: currentUser.id,
-        note: "Pre-migration backup sebelum cutover SAP " + (sapFile||""),
-      };
-      const backupStr = JSON.stringify(backup, null, 2);
-      const blobBackup = new Blob([backupStr], {type:"application/json"});
-      const aBackup = document.createElement("a");
-      aBackup.href = URL.createObjectURL(blobBackup);
-      aBackup.download = `warnoto_backup_pre_migrasi_${new Date().toISOString().slice(0,10)}.json`;
-      aBackup.click();
-
-      setApplyProgressPct(25);
-      setApplyProgress("🔄 Menghitung baris yang perlu diperbarui...");
-
-      // 2. Build katalog — MERGE ke katalogList existing, BUKAN timpa total. Bug lama: array
-      // hasil cuma berisi baris dari file yang lagi diupload (previewStats.sapResult), jadi
-      // upload kedua (mis. file Material Cadang setelah Persediaan) menghapus semua katalog/
-      // stok dari upload pertama yang tidak ada di file kedua. Sekarang mulai dari list
-      // existing, cuma upsert baris yang ada di file ini — baris lain yang tidak disentuh
-      // TETAP ada.
-      // Baris "Match WARNOTO" (sudah ada di katalog): DEFAULT dibiarkan apa adanya,
-      // hanya ditimpa kalau Admin eksplisit centang "Timpa" untuk baris itu
-      // (overwriteRows). Baris baru (tidak match) TIDAK langsung masuk ke
-      // katalogList/stocks — dikumpulkan ke antrian migrasiPendingReview,
-      // menunggu Admin approve satu-satu (2026-07-04).
-      const now = Date.now();
-      const katalogById = new Map(katalogList.map(k=>[normalizeKatalog(k.katalog), k]));
-      const newPendingReview = [];
-      previewStats.sapResult.forEach(r => {
-        const existing = katalogById.get(r.noKat);
-        if (existing) {
-          if (overwriteRows.has(r.noKat)) {
-            katalogById.set(r.noKat, { ...existing, jenisBarang: r.jenisBarang, satuan: r.satuan || existing.satuan });
-          }
-          // else: biarkan data existing apa adanya, tidak disentuh.
-        } else {
-          newPendingReview.push({
-            id: "MIGREV-" + r.noKat + "-" + now,
-            noKat: r.noKat,
-            desc: r.desc,
-            satuan: r.satuan,
-            jenisBarang: r.jenisBarang,
-            harga: r.harga,
-            qty: r.qty,
-            sourceFile: sapFile || "",
-            status: "PENDING",
-            requestedBy: currentUser.id,
-            requestedAt: now,
-          });
-        }
-      });
-      const newKatalog = Array.from(katalogById.values());
-      const updatedPendingReview = [...(migrasiPendingReview||[]), ...newPendingReview];
-
-      // 3. Build stocks — HANYA update qty/harga baris yang match DAN ditandai timpa.
-      // Baris baru TIDAK dibuat di sini (masuk migrasiPendingReview di atas, baru
-      // dibuat stok-nya kalau Admin approve).
-      // BUG DITEMUKAN 2026-07-04: kalau 1 katalog punya >1 baris stok (beda lokasi/blok),
-      // Map stockByKode dulu cuma nyimpen baris TERAKHIR (yang lain ketiban/hilang dari
-      // Map) — qty SAP (angka total, bukan per-lokasi) ditimpakan ke SATU baris lokasi
-      // secara acak, baris lokasi lain dibiarkan basi. User laporkan "data stock tidak
-      // update" — akar masalahnya kemungkinan ini untuk katalog yang stoknya tersebar di
-      // banyak lokasi. Fix: kalau katalog ini py >1 baris stok, JANGAN auto-update (kita
-      // tidak tahu qty SAP itu harus dialokasikan ke lokasi mana) — masukkan ke daftar
-      // multiLokasiSkipped, biar Admin sesuaikan manual per lokasi lewat Edit Data Stok.
-      const stocksByKode = new Map(); // kode -> array baris stok
-      stocks.forEach(s => {
-        const k = katalogList.find(kk=>kk.id===s.katalogId);
-        if (!k) return;
-        const kode = normalizeKatalog(k.katalog);
-        if (!stocksByKode.has(kode)) stocksByKode.set(kode, []);
-        stocksByKode.get(kode).push(s);
-      });
-      const multiLokasiSkipped = [];
-      const stocksById = new Map(stocks.map(s=>[s.id, s]));
-      previewStats.sapResult.filter(r=>r.qty>0 && overwriteRows.has(r.noKat)).forEach(r => {
-        const kat = katalogById.get(r.noKat);
-        if (!kat) return; // baru/tidak match — ditangani lewat pending review
-        const rows = stocksByKode.get(r.noKat) || [];
-        if (rows.length > 1) {
-          multiLokasiSkipped.push({ noKat: r.noKat, desc: r.desc, qtyFile: r.qty, lokasiCount: rows.length });
-          return; // ambigu, jangan auto-timpa salah satu lokasi — Admin sesuaikan manual
-        }
-        // rows.length===0: BUG DITEMUKAN 2026-07-04 — sebelumnya kasus ini malah
-        // di-skip diam-diam (katalog match tapi belum pernah punya baris stok
-        // sama sekali), jadi katalog "masuk" tapi Data Stok Gudang tetap 0 baris.
-        // Sekarang: kalau belum ada baris stok, BUAT baris baru (bukan cuma
-        // update baris existing) — sama seperti perilaku untuk item benar-benar
-        // baru, cuma katalog-nya sudah ada duluan.
-        // BUG DITEMUKAN 2026-07-04 (laporan kedua): default ke lokasiList[0] (lokasi
-        // PERTAMA di seluruh Master Lokasi, tidak ada hubungannya dengan file yang
-        // diupload — kolom Storage Location di SAP memang sengaja diabaikan, jadi
-        // WARNOTO tidak punya info lokasi real untuk item baru). Sekarang dibiarkan
-        // KOSONG ("— Belum diisi —") — Admin isi manual lewat dropdown Gudang/Blok
-        // yang sudah ada di Data Stok, bukan ditebak sistem.
-        const existing = rows[0] || null;
-        const row = {
-          ...(existing || {}),
-          id: existing?.id || ("STK-MIG-"+r.noKat+"-"+now),
-          katalogId: kat.id,
-          lokasiId: existing?.lokasiId || null,
-          qty: r.qty,
-          price: r.harga || existing?.price || 0,
-          minQty: existing?.minQty || 0,
-          unit: r.satuan,
-          jenisBarang: r.jenisBarang,
-          name: r.desc,
-          katalog: r.noKat,
-          category: existing?.category || r.desc.split(";")[0].trim() || "Material",
-          sapBaselineQty: r.qty,
-          sapBaselineAt: now,
-          createdAt: existing?.createdAt || now,
-          updatedAt: now,
+  // Parser "SAP Langsung" (multi-UPT) — baca sheet "UPT LAIN SAP" dari export SAP resmi
+  // (layout tetap: preamble 6 baris, header di baris ber-kolom "Material"+"UU Stock", baris
+  // pemisah "---" di antaranya) tapi deteksi header dicari, bukan hardcode index, supaya tetap
+  // aman kalau preamble sedikit berubah panjang. Hanya baris Matl Type Desc mengandung
+  // "Stock"/"Cadang" yang diambil (SAP-Persediaan/SAP-Cadang) — jenis lain diabaikan.
+  function parseSapLangsung(workbook) {
+    const ws = workbook.Sheets["UPT LAIN SAP"] || workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    const norm = v => String(v||"").trim();
+    let col = null, startIdx = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r) continue;
+      const idxMaterial = r.findIndex(c => norm(c) === "Material");
+      const idxStock = r.findIndex(c => norm(c).includes("UU Stock"));
+      if (idxMaterial >= 0 && idxStock >= 0) {
+        col = {
+          plant: r.findIndex(c=>norm(c)==="Plant"),
+          material: idxMaterial,
+          name: r.findIndex(c=>norm(c)==="Material Description"),
+          unit: r.findIndex(c=>norm(c)==="Unit"),
+          matlType: r.findIndex(c=>norm(c).includes("Material Type Desc")),
+          qty: idxStock,
+          kategori: r.findIndex(c=>norm(c).includes("Valuation Description")),
         };
-        stocksById.set(row.id, row);
-      });
-      const newStocks = Array.from(stocksById.values());
-
-      // 4. Arsipkan histori TUG lama sebagai migrasi — cuma sekali (run pertama). Kalau wizard
-      // ini dijalankan berkali-kali (mis. Persediaan lalu Cadang), jangan wipe txns aktif yang
-      // sudah berjalan normal di antara 2 proses migrasi itu.
-      const isFirstMigration = (migratedTug15History||[]).length === 0;
-      const migHistory = isFirstMigration ? txns.map(t => ({...t, _migrasiSource:"WARNOTO_TEST"})) : migratedTug15History;
-      if (isFirstMigration) setMigratedTug15History(migHistory);
-      const newTxns = isFirstMigration ? [] : txns;
-
-      // 5. Apply cutover
-      setKatalogList(newKatalog);
-      setStocks(newStocks);
-      setTxns(newTxns);
-      setMigrasiPendingReview(updatedPendingReview);
-      setApplyProgressPct(60);
-      setApplyProgress("☁️ Menyimpan ke localStorage & Supabase (katalog, stok, antrian review)...");
-      await saveToCloud({
-        katalogList: newKatalog,
-        stocks: newStocks,
-        txns: newTxns,
-        migratedTug15History: migHistory,
-        migrasiPendingReview: updatedPendingReview,
-      });
-      logAudit(currentUser, "IMPORT", "migrasi", null, {rows: newPendingReview.length, sourceFile: sapFile || ""});
-
-      setApplyProgressPct(100);
-      setApplyProgress("✅ Selesai.");
-      setStep("done");
-      const overwriteCount = previewStats.sapResult.filter(r => katalogById.has(r.noKat) && overwriteRows.has(r.noKat)).length - multiLokasiSkipped.length;
-      setLastCutoverSummary({ overwriteCount, newItemCount: newPendingReview.length, multiLokasiSkipped });
-      showToast(
-        `Cutover selesai. ${overwriteCount} baris stok diperbarui, ` +
-        `${newPendingReview.length} item baru masuk antrian review Admin` +
-        (multiLokasiSkipped.length ? `, ${multiLokasiSkipped.length} baris DILEWATI karena tersebar di >1 lokasi (perlu update manual)` : "") +
-        `. Sisanya data existing dibiarkan apa adanya.`,
-        "success"
-      );
-    } catch(err) {
-      showToast("Cutover gagal: " + err.message, "error");
-      setApplyProgress("");
-      setApplyProgressPct(0);
+        startIdx = i + 1;
+        break;
+      }
     }
-    setBusy(false);
+    if (!col) return [];
+
+    // Agregasi per (plant+material) — 3 kasus di file resmi punya baris dobel dalam UPT
+    // yang sama (harus dijumlah qty-nya), bukan duplikat entitas berbeda.
+    const agg = new Map();
+    for (let i = startIdx; i < rows.length; i++) {
+      const r = rows[i];
+      if (!r) continue;
+      const materialRaw = r[col.material];
+      if (materialRaw === null || materialRaw === undefined || materialRaw === "") continue;
+      const matlType = norm(r[col.matlType]);
+      const isCadang = /cadang/i.test(matlType);
+      const isStock = /stock/i.test(matlType);
+      if (!isCadang && !isStock) continue; // hanya SAP-Persediaan / SAP-Cadang
+      const plant = norm(r[col.plant]);
+      const material = normalizeKatalog(materialRaw);
+      const name = norm(r[col.name]);
+      const unit = norm(r[col.unit]);
+      const qty = parseSAPNumber(r[col.qty]);
+      const kategori = norm(r[col.kategori]);
+      const jenisBarang = isCadang ? "Cadang" : "Persediaan";
+      const key = plant + "|" + material;
+      if (agg.has(key)) agg.get(key).qty += qty;
+      else agg.set(key, { plant, material, name, unit, qty, jenisBarang, kategori });
+    }
+    return Array.from(agg.values());
   }
 
-  // Progress bar bernomor 1-100% (bukan cuma teks "Memproses...") supaya
-  // Admin bisa lihat apakah proses jalan atau macet (permintaan user 2026-07-04).
-  function ProgressBar() {
-    if (!busy) return null;
-    const pct = Math.max(1, applyProgressPct);
-    return (
-      <div style={{width:"100%",maxWidth:420,marginTop:8}}>
-        <div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:C.accent,fontWeight:700,marginBottom:3}}>
-          <span>{applyProgress || "Memproses..."}</span>
-          <span>{pct}%</span>
-        </div>
-        <div style={{width:"100%",height:8,background:"#e5e7eb",borderRadius:6,overflow:"hidden"}}>
-          <div style={{width:`${pct}%`,height:"100%",background:C.accent,borderRadius:6,transition:"width 0.2s"}}/>
-        </div>
-      </div>
-    );
+  async function handleSapLangsungFile(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setSapLangsungBusy(true);
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf);
+      const parsed = parseSapLangsung(wb);
+      if (parsed.length === 0) { showToast("Tidak ada baris SAP-Persediaan/SAP-Cadang yang terbaca dari file ini.", "error"); setSapLangsungBusy(false); return; }
+
+      // Scoping: uptList sudah discope parent (super admin = semua UPT, user UPT = UPT-nya
+      // saja) — baris di luar scope atau Plant tak dikenal masuk "diabaikan", bukan error.
+      const katalogByKode = new Map(katalogList.map(k => [normalizeKatalog(k.katalog), k]));
+      // Stok existing per (uptId,katalogId) — dipakai hitung qty aktual & mode baru/update.
+      // Sengaja INLINE per-UPT (bukan totalQtyForKatalog, itu lintas-UPT semua gudang).
+      const stocksByUptKat = new Map();
+      stocks.forEach(s => {
+        const key = `${s.uptId||""}|${s.katalogId}`;
+        if (!stocksByUptKat.has(key)) stocksByUptKat.set(key, []);
+        stocksByUptKat.get(key).push(s);
+      });
+      let diabaikan = 0, baru = 0, updateBaseline = 0;
+      const byUpt = {}, byJenis = { Persediaan: 0, Cadang: 0 };
+      const katalogBaruSet = new Set();
+      const checked = new Set();
+      const rows = parsed.map(r => {
+        const uptId = SAP_PLANT_TO_UPT[r.plant] || null;
+        const katBaru = !katalogByKode.get(r.material);
+        if (!uptId || !(uptList||[]).some(u => u.id === uptId)) {
+          diabaikan++;
+          const diabaikanReason = !uptId ? "Plant SAP tak dikenal" : "UPT di luar akses Anda";
+          return { ...r, uptId, inScope: false, katBaru, diabaikanReason };
+        }
+        const upt = uptList.find(u => u.id === uptId);
+        byUpt[upt.nama] = (byUpt[upt.nama]||0) + 1;
+        byJenis[r.jenisBarang] = (byJenis[r.jenisBarang]||0) + 1;
+        const kat = katalogByKode.get(r.material);
+        const existingRows = kat ? (stocksByUptKat.get(`${uptId}|${kat.id}`) || []) : [];
+        const mode = existingRows.length === 0 ? "baru" : "update";
+        const qtyAktual = existingRows.reduce((s,x) => s + (Number(x.qty)||0), 0);
+        const selisih = mode === "update" ? (r.qty - qtyAktual) : null;
+        if (mode === "baru") baru++; else updateBaseline++;
+        if (katBaru) katalogBaruSet.add(r.material);
+        const rowId = r.plant + "|" + r.material;
+        if (mode === "baru") checked.add(rowId);
+        return { ...r, uptId, uptNama: upt.nama, inScope: true, katBaru, mode, qtyAktual, selisih, rowId };
+      });
+
+      // Urut: in-scope dulu (per UPT, lalu no katalog), diabaikan di paling bawah.
+      rows.sort((a,b) => (a.inScope===b.inScope?0:a.inScope?-1:1) || (a.uptNama||"").localeCompare(b.uptNama||"") || a.material.localeCompare(b.material));
+      setSapLangsungRows(rows);
+      setSapLangsungPreview({ total: rows.length, diabaikan, baru, updateBaseline, byUpt, byJenis, katalogBaru: katalogBaruSet.size });
+      setSapLangsungChecked(checked);
+      setSapLangsungFile(file.name);
+      showToast(`SAP Langsung: ${rows.length} baris terbaca.`, "success");
+    } catch (err) {
+      showToast("Gagal parse file: " + err.message, "error");
+    }
+    setSapLangsungBusy(false);
   }
 
-  function toggleOverwriteRow(noKat) {
-    setOverwriteRows(prev => {
-      const next = new Set(prev);
-      if (next.has(noKat)) next.delete(noKat); else next.add(noKat);
-      return next;
-    });
+  async function applySapLangsung() {
+    const validRows = (sapLangsungRows||[]).filter(r => r.inScope && sapLangsungChecked.has(r.rowId));
+    if (validRows.length === 0) { showToast("Pilih minimal satu baris untuk diterapkan.", "error"); return; }
+    setSapLangsungBusy(true);
+    try {
+      // 1. Backup JSON dulu — jaring pengaman (mirror applyTplImport).
+      const backup = { stocks, katalogList, backupAt: Date.now(), by: currentUser.id, note: "Pre-import backup SAP Langsung " + (sapLangsungFile||"") };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `warnoto_backup_pre_sap_langsung_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+
+      const now = Date.now();
+      // 2. Upsert katalog — mulai dari list existing, non-destruktif.
+      const katalogByKode = new Map(katalogList.map(k => [normalizeKatalog(k.katalog), k]));
+      const katalogChangedRows = [];
+      validRows.forEach(r => {
+        const existing = katalogByKode.get(r.material);
+        if (existing) {
+          const updated = { ...existing, name: existing.name || r.name, satuan: existing.satuan || r.unit, jenisBarang: existing.jenisBarang || r.jenisBarang, category: existing.category || r.kategori };
+          katalogByKode.set(r.material, updated);
+          katalogChangedRows.push(updated);
+        } else {
+          const kat = { id: "KAT-"+r.material, katalog: r.material, name: r.name, satuan: r.unit, jenisBarang: r.jenisBarang, category: r.kategori, sapStatus: "", createdAt: now };
+          katalogByKode.set(r.material, kat);
+          katalogChangedRows.push(kat);
+        }
+      });
+      const nextKat = Array.from(katalogByKode.values());
+
+      // 3. Upsert stocks — match existing by (uptId,katalogId) SAJA, ABAIKAN lokasiId (bug
+      // lama: key ikutkan lokasiId → begitu admin isi lokasi, re-import cari key lokasi-kosong,
+      // miss, bikin baris baru ber-ID sama "STK-SAP-plant-material" = collision). qty ADALAH
+      // angka hidup (dimutasi TUG masuk/keluar & opname) — material baru insert qty SAP,
+      // material sudah ada qty/lokasiId/id TIDAK disentuh, cuma baseline+identitas ringan.
+      const stocksByUptKat = new Map();
+      stocks.forEach(s => {
+        const key = `${s.uptId||""}|${s.katalogId}`;
+        if (!stocksByUptKat.has(key)) stocksByUptKat.set(key, []);
+        stocksByUptKat.get(key).push(s);
+      });
+      const stocksChangedRows = [];
+      validRows.forEach(r => {
+        const kat = katalogByKode.get(r.material);
+        const key = `${r.uptId}|${kat.id}`;
+        const existingRows = stocksByUptKat.get(key) || [];
+        if (existingRows.length === 0) {
+          const row = {
+            id: "STK-SAP-"+r.plant+"-"+r.material,
+            katalogId: kat.id, uptId: r.uptId, lokasiId: null,
+            qty: r.qty, unit: r.unit, name: r.name, katalog: r.material,
+            category: r.kategori, jenisBarang: r.jenisBarang,
+            sapBaselineQty: r.qty, sapBaselineAt: now,
+            createdAt: now, updatedAt: now,
+          };
+          stocksByUptKat.set(key, [row]);
+          stocksChangedRows.push(row);
+        } else {
+          const updatedRows = existingRows.map(s => ({
+            ...s,
+            name: s.name || r.name, unit: s.unit || r.unit,
+            category: s.category || r.kategori, jenisBarang: s.jenisBarang || r.jenisBarang,
+            sapBaselineQty: r.qty, sapBaselineAt: now, updatedAt: now,
+          }));
+          stocksByUptKat.set(key, updatedRows);
+          stocksChangedRows.push(...updatedRows);
+        }
+      });
+      const nextStocks = Array.from(stocksByUptKat.values()).flat();
+
+      setKatalogList(nextKat);
+      setStocks(nextStocks);
+      // Katalog dulu supaya FK stocks.katalog_id valid sebelum stok diupsert.
+      await saveToCloud({ katalogList: nextKat }, { katalogChangedRows });
+      await saveToCloud({ stocks: nextStocks }, { stocksChangedRows });
+      const baruCount = validRows.filter(r => r.mode==="baru").length;
+      logAudit(currentUser, "IMPORT", "migrasi_sap_langsung", null, { total: validRows.length, baru: baruCount, updateBaseline: validRows.length-baruCount, perUpt: sapLangsungPreview?.byUpt || {} });
+
+      showToast(`✅ SAP Langsung: ${baruCount} baru ditambah · ${validRows.length-baruCount} baseline diperbarui (qty aktual dijaga).`, "success");
+      setSapLangsungRows(null); setSapLangsungPreview(null); setSapLangsungFile(null); setSapLangsungChecked(new Set());
+      setSapLogReload(n => n+1);
+    } catch (err) {
+      showToast("Import gagal: " + err.message, "error");
+    }
+    setSapLangsungBusy(false);
+  }
+
+  function cancelSapLangsung() {
+    setSapLangsungRows(null); setSapLangsungPreview(null); setSapLangsungFile(null); setSapLangsungChecked(new Set());
+  }
+  function toggleSapLangsungRow(rowId) {
+    setSapLangsungChecked(prev => { const next = new Set(prev); next.has(rowId) ? next.delete(rowId) : next.add(rowId); return next; });
+  }
+  function toggleAllSapLangsung(checkedBool) {
+    setSapLangsungChecked(checkedBool ? new Set((sapLangsungRows||[]).filter(r=>r.inScope).map(r=>r.rowId)) : new Set());
+  }
+  function selectOnlyBaruSapLangsung() {
+    setSapLangsungChecked(new Set((sapLangsungRows||[]).filter(r=>r.inScope && r.mode==="baru").map(r=>r.rowId)));
   }
 
   // Admin approve 1 item dari antrian review — baru di sini katalog+stok
@@ -868,9 +693,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
     setTplBusy(false);
   }
 
-  // Blok "Import Histori Transaksi (TUG Lama)" — dipakai di 2 tempat: kolom kanan
-  // saat step==="upload" (sebelah Import Stok), dan posisi lama (di bawah, terpisah)
-  // untuk step wizard lain (preview/backup/done). Konten sama, gating sama, cuma posisi beda.
+  // Blok "Import Histori Transaksi (TUG Lama)" — kolom kanan, sebelah Import Stok.
   const histBlock = can(currentUser, "aksi.import", rolePerms) ? (
     <div>
       <div style={{fontWeight:800,fontSize:13,color:C.text,marginBottom:10}}>Import Histori Transaksi (TUG Lama)</div>
@@ -955,21 +778,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
         </div>
       )}
 
-      {/* Step indicator — hanya relevan saat sedang di dalam wizard cutover SAP (preview/backup/done) */}
-      {step!=="upload" && (
-        <div className="migration-stepper" style={{display:"flex",gap:4,marginBottom:20,flexWrap:"wrap"}}>
-          {["upload","preview","backup","done"].map((s,i)=>(
-            <div className={`migration-stepper__item${step===s?" is-current":""}`} key={s} style={{display:"flex",alignItems:"center",gap:4}}>
-              <div className="migration-stepper__number" style={{width:28,height:28,borderRadius:"50%",background:step===s?C.accent:["upload","preview","backup","done"].indexOf(step)>i?"#16a34a":"#e5e7eb",color:step===s?"white":["upload","preview","backup","done"].indexOf(step)>i?"white":"#9ca3af",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700}}>{i+1}</div>
-              <span style={{fontSize:12,fontWeight:step===s?700:400,color:step===s?C.accent:C.muted,textTransform:"capitalize"}}>{s==="backup"?"Backup & Apply":s}</span>
-              {i<3 && <span className="migration-stepper__connector" style={{color:C.border,marginLeft:4}}>→</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {step==="upload" && (
-        <div className="migration-upload-grid" style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,alignItems:"start"}}>
+      <div className="migration-upload-grid" style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,alignItems:"start"}}>
         <div>
           <div style={{fontWeight:800,fontSize:13,color:C.text,marginBottom:10}}>Import Stok</div>
           <div className="migration-upload-card migration-upload-card--tpl" style={{...sty.card,marginBottom:12,borderLeft:"4px solid #16a34a"}}>
@@ -1058,231 +867,125 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
           </div>
 
           <details className="migration-upload-card migration-upload-card--sap" style={{...sty.card,marginBottom:12}}>
-            <summary style={{fontWeight:700,cursor:"pointer"}}>Cara lain / Legacy — Import dari export SAP (setup awal)</summary>
-            <p style={{fontSize:12,color:C.muted,margin:"8px 0 10px"}}>Cutover awal dari export SAP (setup awal UPT Surabaya). Format CSV atau XLSX dengan kolom: Material, Material Description, Base Unit of Measure, Unrestricted Use Stock, Valuation Type, Harga Satuan.</p>
-            <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-              <label style={{...sty.btn("primary"),cursor:"pointer"}}>
-                {busy?"⏳ Memproses...":"📂 Upload File SAP (CSV/XLSX)"}
-                <input type="file" accept=".csv,.xlsx" style={{display:"none"}} onChange={handleSAPFile} disabled={busy}/>
-              </label>
-              {sapFile && <span style={{fontSize:12,color:C.green,fontWeight:700}}>✅ {sapFile} ({sapRows.length} baris)</span>}
+            <summary style={{fontWeight:700,cursor:"pointer"}}>Cara lain / Legacy — SAP Langsung (multi-UPT)</summary>
+            <div style={{padding:"14px 0 4px"}}>
+              <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Import SAP Langsung</div>
+              <p style={{fontSize:12,color:C.muted,margin:"0 0 12px",lineHeight:1.5}}>Lengkapi data stock material dari file export SAP resmi (sheet "UPT LAIN SAP"). Hanya material SAP-Persediaan &amp; SAP-Cadang yang diambil. {currentUser?.uptId ? "Baris di luar UPT Anda otomatis diabaikan." : "Semua UPT diproses, terpisah per UPT."}</p>
+              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+                <label style={{...sty.btn("primary"),cursor:"pointer"}}>
+                  {sapLangsungBusy?"⏳ Memproses...":"📂 Upload File Export SAP (.xlsx)"}
+                  <input type="file" accept=".xlsx" aria-label="Upload file export SAP Langsung (.xlsx)" style={{display:"none"}} onChange={handleSapLangsungFile} disabled={sapLangsungBusy}/>
+                </label>
+                {sapLangsungFile && <span style={{fontSize:12,color:C.text}}>{sapLangsungFile} · {sapLangsungRows?.length||0} baris terbaca</span>}
+              </div>
             </div>
-            {/* Tombol "Lanjut" sengaja DI DALAM kotak upload yang sama, dan baru
-                muncul setelah file berhasil diupload (bukan selalu tampil abu-abu
-                menunggu diaktifkan) — sebelumnya dirender terpisah di luar kotak
-                ini, terkesan tidak nyambung dengan langkah 1 (keluhan user 2026-07-06). */}
-            {sapRows.length>0 && (
-              <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.border}`,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <button style={sty.btn("primary")} disabled={busy} onClick={buildPreview}>
-                  {busy ? "⏳ Memproses..." : "Lanjut → Preview Rekonsiliasi"}
-                </button>
-                {busy && <button style={{...sty.btn("ghost","sm")}} onClick={()=>{setBusy(false);setApplyProgress("");setApplyProgressPct(0);}}>Reset (jika stuck)</button>}
+            {sapLangsungPreview && (
+              <div style={{marginTop:4,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+                <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"4px 14px",padding:"10px 14px",marginBottom:12,background:C.bg||"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,fontSize:12}}>
+                  <span><b style={{fontSize:14,color:C.accent}}>{sapLangsungChecked.size}</b> terpilih</span>
+                  <span style={{color:C.border}}>·</span>
+                  <span><b style={{fontSize:14,color:"#b45309"}}>{sapLangsungPreview.baru}</b> baru</span>
+                  <span style={{color:C.border}}>·</span>
+                  <span><b style={{fontSize:14,color:C.text}}>{sapLangsungPreview.updateBaseline}</b> update baseline</span>
+                  <span style={{color:C.border}}>·</span>
+                  <span><b style={{fontSize:14,color:C.text}}>{sapLangsungPreview.katalogBaru}</b> katalog baru</span>
+                  <span style={{color:C.border}}>·</span>
+                  <span><b style={{fontSize:14,color:sapLangsungPreview.diabaikan?C.red:C.text}}>{sapLangsungPreview.diabaikan}</b> diabaikan</span>
+                </div>
+                {Object.keys(sapLangsungPreview.byUpt).length>0 && (
+                  <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+                    Per UPT: {Object.entries(sapLangsungPreview.byUpt).map(([nama,n])=>`${nama} (${n})`).join(", ")}
+                  </div>
+                )}
+                <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginBottom:8}}>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>toggleAllSapLangsung(true)}>Pilih semua (in-scope)</button>
+                  <button style={sty.btn("ghost","sm")} onClick={selectOnlyBaruSapLangsung}>Hanya yang baru</button>
+                </div>
+                <div style={{maxHeight:360,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,marginBottom:12}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                    <thead style={{position:"sticky",top:0,background:C.surface,boxShadow:`0 1px 0 ${C.border}`}}>
+                      <tr>
+                        <th style={{padding:8,textAlign:"center",borderBottom:`1px solid ${C.border}`}}>
+                          <input type="checkbox" aria-label="Pilih semua"
+                            checked={sapLangsungRows.some(r=>r.inScope) && sapLangsungRows.filter(r=>r.inScope).every(r=>sapLangsungChecked.has(r.rowId))}
+                            onChange={e=>toggleAllSapLangsung(e.target.checked)}
+                          />
+                        </th>
+                        {["No Katalog","Nama Material","UPT","Jenis","Qty SAP","Status","Selisih"].map(h=>(
+                          <th key={h} style={{textAlign:h==="Qty SAP"?"right":"left",padding:8,borderBottom:`1px solid ${C.border}`,color:C.muted,fontWeight:800,fontSize:11,textTransform:"uppercase",letterSpacing:".3px"}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sapLangsungRows.map((r,i)=>(
+                        <tr key={r.plant+"-"+r.material+"-"+i} style={{opacity:r.inScope?1:0.45}}>
+                          <td style={{padding:8,textAlign:"center",borderBottom:`1px solid ${C.border}`}}>
+                            {r.inScope && <input type="checkbox" aria-label={`Pilih baris ${r.material}`} checked={sapLangsungChecked.has(r.rowId)} onChange={()=>toggleSapLangsungRow(r.rowId)}/>}
+                          </td>
+                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>
+                            {r.material}
+                            {r.katBaru && <span title="Katalog baru" style={{marginLeft:6,color:"#b45309",fontWeight:800}}>•</span>}
+                          </td>
+                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>{r.name}</td>
+                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>{r.uptNama||"—"}</td>
+                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}><span style={sty.jenisBadge(r.jenisBarang)}>{r.jenisBarang}</span></td>
+                          <td style={{padding:8,textAlign:"right",borderBottom:`1px solid ${C.border}`,fontVariantNumeric:"tabular-nums"}}>{fmtNum(r.qty)} {r.unit}</td>
+                          {r.inScope ? (
+                            <>
+                              <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>
+                                <span style={{display:"inline-block",padding:"2px 8px",borderRadius:999,fontWeight:700,background:r.mode==="baru"?"#fef3c7":"#dbeafe",color:r.mode==="baru"?"#b45309":"#1d4ed8"}}>{r.mode==="baru"?"Baru":"Update baseline"}</span>
+                              </td>
+                              <td style={{padding:8,borderBottom:`1px solid ${C.border}`,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+                                {r.mode==="update" ? (
+                                  <span style={{color:r.selisih<0?C.red:C.muted}}>{fmtNum(r.qtyAktual)} → {fmtNum(r.qty)} (Δ{r.selisih>0?"+":""}{fmtNum(r.selisih)})</span>
+                                ) : "—"}
+                              </td>
+                            </>
+                          ) : (
+                            <td colSpan={2} style={{padding:8,borderBottom:`1px solid ${C.border}`,color:C.muted,fontStyle:"italic"}}>Diabaikan — {r.diabaikanReason}</td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{display:"flex",gap:10,justifyContent:"space-between",alignItems:"center"}}>
+                  <button style={sty.btn("ghost")} disabled={sapLangsungBusy} onClick={cancelSapLangsung}>↺ Batal / Upload Ulang</button>
+                  <button style={{...sty.btn("primary"),opacity:(sapLangsungBusy||sapLangsungChecked.size===0)?0.6:1}} disabled={sapLangsungBusy||sapLangsungChecked.size===0} onClick={applySapLangsung}>
+                    {sapLangsungBusy?"⏳ Menerapkan...":`✅ Terapkan (${sapLangsungChecked.size} terpilih)`}
+                  </button>
+                </div>
               </div>
             )}
           </details>
-          <ProgressBar/>
+
+          <div style={{...sty.card,marginBottom:12}}>
+            <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Riwayat Import SAP Langsung</div>
+            {sapLogLoading ? (
+              <div style={{fontSize:12,color:C.muted}}>Memuat...</div>
+            ) : sapLog.length === 0 ? (
+              <div style={{fontSize:12,color:C.muted}}>Belum ada riwayat import.</div>
+            ) : (
+              <div>
+                {sapLog.map((log,i) => (
+                  <div key={i} style={{padding:"8px 0",borderBottom:i<sapLog.length-1?`1px solid ${C.border}`:"none"}}>
+                    <div style={{fontSize:12,color:C.text}}>
+                      {fmtDate(log.at)} · {log.user_name||"—"} · {log.detail?.total??0} material · {log.detail?.baru??0} baru · {log.detail?.updateBaseline??0} update baseline
+                    </div>
+                    {log.detail?.perUpt && Object.keys(log.detail.perUpt).length>0 && (
+                      <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                        {Object.entries(log.detail.perUpt).map(([nama,n])=>`${nama} ${n}`).join(" · ")}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                <div style={{fontSize:12,color:C.muted,marginTop:8}}>Riwayat lengkap ada di menu Audit Log.</div>
+              </div>
+            )}
+          </div>
         </div>
         {histBlock}
         </div>
-      )}
-
-      {step==="preview" && previewStats && (
-        <div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:16}}>
-            {[
-              {label:"Total Baris SAP",val:previewStats.sapResult.length,color:C.accent},
-              {label:"Total Qty",val:fmtNum(Math.round(previewStats.totalQty)),color:"#7c3aed"},
-              {label:"Total Nilai",val:"Rp "+fmtNum(previewStats.totalNilai),color:C.green,small:true},
-              {label:"Match WARNOTO",val:previewStats.sapResult.filter(r=>r.matchWarnoto).length,color:C.green},
-              {label:"Baru (tidak di WARNOTO)",val:previewStats.sapResult.filter(r=>!r.matchWarnoto).length,color:"#f59e0b"},
-              {label:"⚠️ Perlu Review Stok",val:previewStats.sapResult.filter(r=>r.needsStockReview).length,color:C.red},
-              {label:"⚠️ Plant ≠ 3611",val:previewStats.sapResult.filter(r=>r.plantMismatch).length,color:C.red},
-              {label:"⚠️ Jenis Barang Beda Sinyal",val:previewStats.sapResult.filter(r=>r.materialTypeMismatch).length,color:C.red},
-            ].map(kpi=>(
-              <div key={kpi.label} style={{...sty.card,borderTop:`3px solid ${kpi.color}`,padding:14}}>
-                <div style={{fontSize:12,color:C.muted,marginBottom:4}}>{kpi.label}</div>
-                <div style={{fontSize:kpi.small?13:20,fontWeight:800,color:kpi.color}}>{kpi.val}</div>
-              </div>
-            ))}
-          </div>
-          <div style={{...sty.card,marginBottom:12}}>
-            <div style={{fontWeight:700,marginBottom:8}}>Distribusi Jenis Barang</div>
-            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-              {Object.entries(previewStats.byJenis).map(([j,n])=>(
-                <div key={j} style={{padding:"6px 12px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,fontSize:12}}>
-                  <strong>{j}:</strong> {n} item
-                </div>
-              ))}
-            </div>
-          </div>
-          {previewStats.sapResult.some(r=>r.needsStockReview) && (
-            <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
-              <div style={{fontWeight:700,marginBottom:4,color:C.red}}>⚠️ Perlu Review Manual — Qty di luar "Unrestricted Use Stock"</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Baris ini punya qty di Quality Inspection/Blocked/In Transit Stock — TIDAK otomatis ditambahkan ke Data Stok. Putuskan per baris: gabung ke Unrestricted, atau hapus barisnya dari daftar impor. Kalau dibiarkan, qty tambahan ini tetap diabaikan (cuma qty Unrestricted yang ikut masuk).</div>
-              <div style={{maxHeight:220,overflowY:"auto",overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
-                <table style={{width:"100%",minWidth:640,borderCollapse:"collapse",fontSize:12}}>
-                  <thead><tr style={{background:"#fef2f2"}}>{["No Katalog","Deskripsi","Unrestricted","Quality Insp.","Blocked","In Transit","Aksi"].map(h=><th key={h} style={{padding:"5px 8px",textAlign:"left"}}>{h}</th>)}</tr></thead>
-                  <tbody>
-                    {previewStats.sapResult.filter(r=>r.needsStockReview).map((r,i)=>(
-                      <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
-                        <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat}</td>
-                        <td style={{padding:"5px 8px"}}>{r.desc}</td>
-                        <td style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
-                        <td style={{padding:"5px 8px",textAlign:"right",color:r.qiStock>0?C.red:C.muted}}>{r.qiStock||"-"}</td>
-                        <td style={{padding:"5px 8px",textAlign:"right",color:r.blockedStock>0?C.red:C.muted}}>{r.blockedStock||"-"}</td>
-                        <td style={{padding:"5px 8px",textAlign:"right",color:r.transitStock>0?C.red:C.muted}}>{r.transitStock||"-"}</td>
-                        <td style={{padding:"5px 8px",whiteSpace:"nowrap"}}>
-                          <button style={{...sty.btn("ghost","sm"),padding:"3px 8px",marginRight:4}} onClick={()=>moveReviewToUnrestricted(r.noKat)}>➡️ Ke Unrestricted</button>
-                          <button style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={()=>removeFromImportList(r.noKat)}>🗑️ Hapus</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-          {previewStats.sapResult.some(r=>r.plantMismatch) && (
-            <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
-              <div style={{fontWeight:700,color:C.red}}>⚠️ {previewStats.sapResult.filter(r=>r.plantMismatch).length} baris punya kode Plant selain 3611 (UPT Surabaya)</div>
-              <div style={{fontSize:12,color:C.muted,marginTop:4}}>Data ini tetap ikut diproses sebagai UPT Surabaya — kalau ini sebenarnya milik UPT lain, hapus dulu barisnya dari file sebelum upload ulang.</div>
-            </div>
-          )}
-          {previewStats.sapResult.some(r=>r.materialTypeMismatch) && (
-            <div style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.red}`}}>
-              <div style={{fontWeight:700,color:C.red}}>⚠️ {previewStats.sapResult.filter(r=>r.materialTypeMismatch).length} baris: Material Type dan panjang kode katalog beda sinyal</div>
-              <div style={{fontSize:12,color:C.muted,marginTop:4}}>Contoh: Material Type bilang ZCAD (Cadang) tapi kodenya bukan 10 digit, atau sebaliknya ZST1 (Persediaan) tapi kodenya 10 digit. Jenis barang yang dipakai sistem tetap ikut Material Type (kolom "Jenis" di tabel) — cek manual baris ini sebelum apply, siapa tahu ada data yang salah input.</div>
-            </div>
-          )}
-          <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:16,maxHeight:350,overflowY:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:700}}>
-              <thead style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
-                <tr>
-                  {["No Katalog","Deskripsi","Jenis","Qty File","Qty Aplikasi","Harga","Match WARNOTO","Match MARA","Timpa?","Review"].map(h=>(
-                    <th key={h} style={{padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {previewStats.sapResult.slice(0,200).map((r,i)=>(
-                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r.needsStockReview||r.plantMismatch||r.materialTypeMismatch?"#fef2f2":!r.matchWarnoto?"#fefce8":"white"}}>
-                    <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat}</td>
-                    <td style={{padding:"5px 8px",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.desc}</td>
-                    <td style={{padding:"5px 8px",fontSize:12}}>{r.jenisBarang}</td>
-                    <td style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
-                    <td style={{padding:"5px 8px",textAlign:"right",color:r.qtyMatch===false?C.red:r.qtyMatch===true?C.green:C.muted,fontWeight:r.qtyMatch===false?700:400}}>
-                      {r.matchWarnoto ? r.existingQty : "-"}
-                    </td>
-                    <td style={{padding:"5px 8px",textAlign:"right"}}>{r.harga?fmtNum(r.harga):"-"}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchWarnoto?"✅":"🆕"}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.matchMara?"✅":"-"}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center"}}>
-                      {!r.matchWarnoto ? (
-                        <span style={{fontSize:12,color:"#f59e0b",fontWeight:700}}>📋 Review Admin</span>
-                      ) : r.qtyMatch ? (
-                        <span style={{fontSize:12,color:C.green,fontWeight:700}}>✅ Qty sama</span>
-                      ) : (
-                        <label style={{display:"flex",alignItems:"center",justifyContent:"center",gap:4,cursor:"pointer",fontSize:12,color:overwriteRows.has(r.noKat)?C.red:C.muted}}>
-                          <input type="checkbox" checked={overwriteRows.has(r.noKat)} onChange={()=>toggleOverwriteRow(r.noKat)} />
-                          Timpa
-                        </label>
-                      )}
-                    </td>
-                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.needsStockReview?"⚠️ Stok":r.plantMismatch?"⚠️ Plant":r.materialTypeMismatch?"⚠️ Jenis":""}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.accent}`,fontSize:12}}>
-            <strong>ℹ️ Aturan Apply:</strong> baris <strong>Match WARNOTO ✅</strong> dengan qty file = qty aplikasi otomatis
-            <strong> "✅ Qty sama"</strong> — tidak ada yang perlu diputuskan, dibiarkan apa adanya.
-            Kalau qty-nya <strong>beda</strong>, kotak "Timpa" otomatis TERCENTANG (Admin bisa un-check kalau tetap mau
-            pertahankan qty aplikasi) — total <strong>{overwriteRows.size} baris</strong> ditandai timpa saat ini.
-            Baris <strong>🆕 baru</strong> (belum ada di katalog) TIDAK langsung ditambahkan — masuk ke antrian "Menunggu Review Admin"
-            di bawah, baru dibuat setelah di-approve satu-per-satu.
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button style={sty.btn("ghost")} onClick={()=>setStep("upload")}>← Kembali</button>
-            <button style={sty.btn("primary")} onClick={()=>setStep("backup")}>Lanjut → Backup & Apply</button>
-          </div>
-        </div>
-      )}
-
-      {step==="backup" && (() => {
-        const newItemCount = previewStats?.sapResult?.filter(r=>!r.matchWarnoto).length || 0;
-        const nothingToChange = overwriteRows.size === 0 && newItemCount === 0;
-        if (nothingToChange) {
-          return (
-            <div style={{...sty.card,textAlign:"center",padding:30}}>
-              <div style={{fontSize:36,marginBottom:10}}>✅</div>
-              <div style={{fontWeight:800,fontSize:15,marginBottom:6}}>Tidak ada perubahan yang perlu di-apply</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:16}}>
-                Semua {previewStats?.sapResult?.length||0} baris di file ini sudah cocok 100% dengan data di aplikasi
-                (qty sama, tidak ada item baru) — tidak perlu backup/cutover, data existing tidak disentuh sama sekali.
-              </div>
-              <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-                <button style={sty.btn("ghost")} onClick={()=>setStep("preview")}>← Kembali ke Preview</button>
-                <button style={sty.btn("primary")} onClick={()=>{ setStep("upload"); setSapFile(null); setSapRows([]); setPreviewStats(null); }}>Selesai, Upload File Lain</button>
-              </div>
-            </div>
-          );
-        }
-        return (
-        <div style={{...sty.card}}>
-          <div style={{fontWeight:700,fontSize:16,marginBottom:12}}>⚠️ Konfirmasi Backup & Apply Cutover</div>
-          <div style={{background:"#fef9c3",border:"1px solid #fbbf24",borderRadius:8,padding:14,marginBottom:16,fontSize:13}}>
-            <strong>Tindakan ini akan:</strong>
-            <ul style={{marginTop:8,paddingLeft:20,lineHeight:1.8}}>
-              <li>Mendownload backup JSON lengkap data sebelum cutover</li>
-              <li>Baris <strong>Match WARNOTO</strong> yang TIDAK dicentang "Timpa" akan dibiarkan apa adanya (aman)</li>
-              <li>Baris <strong>Match WARNOTO</strong> yang dicentang "Timpa" ({overwriteRows.size} baris) akan diperbarui dengan data dari file ini</li>
-              <li>Baris <strong>baru</strong> ({newItemCount} item) masuk antrian "Menunggu Review Admin" — belum masuk Master Katalog/Data Stok</li>
-              <li>Mengosongkan transaksi TUG test lama (disimpan ke histori migrasi, hanya sekali di run pertama)</li>
-              <li>Data yang ditimpa <strong>tidak bisa di-undo</strong> kecuali restore dari backup</li>
-            </ul>
-          </div>
-          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-            <button style={{...sty.btn("danger"),opacity:busy?0.6:1}} onClick={handleBackupAndApply} disabled={busy}>
-              {busy?"⏳ Memproses...":"📥 Download Backup & Apply Cutover"}
-            </button>
-            <button style={sty.btn("ghost")} onClick={()=>setStep("preview")} disabled={busy}>← Batal</button>
-            {busy && <button style={{...sty.btn("ghost","sm")}} onClick={()=>{setBusy(false);setApplyProgress("");setApplyProgressPct(0);}}>Reset (jika stuck)</button>}
-          </div>
-          <ProgressBar/>
-        </div>
-        );
-      })()}
-
-      {step==="done" && (
-        <div style={{...sty.card,textAlign:"center",padding:40}}>
-          <div style={{fontSize:40,marginBottom:12}}>✅</div>
-          <div style={{fontWeight:800,fontSize:18,marginBottom:8,color:C.green}}>Cutover Selesai!</div>
-          <div style={{fontSize:13,color:C.muted,marginBottom:12}}>
-            Data existing yang TIDAK dicentang "Timpa" dibiarkan apa adanya. Histori TUG lama tersimpan di "Migrasi TUG-15".
-          </div>
-          {lastCutoverSummary && (
-            <div style={{textAlign:"left",display:"inline-block",background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,padding:14,marginBottom:16,fontSize:12}}>
-              <div>✅ <strong>{lastCutoverSummary.overwriteCount}</strong> baris stok diperbarui (sesuai centang "Timpa")</div>
-              <div>📋 <strong>{lastCutoverSummary.newItemCount}</strong> item baru masuk antrian Menunggu Review Admin</div>
-              {lastCutoverSummary.multiLokasiSkipped.length > 0 && (
-                <div style={{marginTop:8,color:"#b91c1c"}}>
-                  <div>⚠️ <strong>{lastCutoverSummary.multiLokasiSkipped.length}</strong> baris DILEWATI — katalog ini tersebar di lebih dari 1 lokasi, sistem tidak tahu qty file SAP harus dialokasikan ke lokasi mana. Sesuaikan manual lewat Edit Data Stok:</div>
-                  <ul style={{marginTop:4,paddingLeft:18}}>
-                    {lastCutoverSummary.multiLokasiSkipped.slice(0,10).map((m,i)=>(
-                      <li key={i}>{m.noKat} — {m.desc} (qty file: {m.qtyFile}, tersebar di {m.lokasiCount} lokasi)</li>
-                    ))}
-                    {lastCutoverSummary.multiLokasiSkipped.length > 10 && <li>...dan {lastCutoverSummary.multiLokasiSkipped.length-10} lainnya</li>}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-          <div style={{display:"flex",gap:10,justifyContent:"center"}}>
-            <button style={sty.btn("primary")} onClick={()=>{setStep("upload");setLastCutoverSummary(null);}}>Lakukan Migrasi Lagi</button>
-          </div>
-        </div>
-      )}
 
       {/* Riwayat migrasi TUG-15 */}
       {migratedTug15History.length > 0 && (
@@ -1302,14 +1005,6 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
         </div>
       )}
 
-      {/* ── Import Transaksi TUG Lama — histori murni, independen dari wizard cutover SAP di atas.
-           Saat step==="upload" blok ini sudah dirender di kolom kanan (lihat grid di atas),
-           di sini cuma untuk step wizard lain (preview/backup/done). ── */}
-      {step!=="upload" && histBlock && (
-        <div style={{marginTop:24,paddingTop:16,borderTop:`1px solid ${C.border}`}}>
-          {histBlock}
-        </div>
-      )}
     </div>
   );
 }
