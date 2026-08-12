@@ -4009,7 +4009,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {katalogModal && <KatalogModal katalogModal={katalogModal} setKatalogModal={setKatalogModal} katalogForm={katalogForm} setKatalogForm={setKatalogForm} maraSearch={maraSearch} setMaraSearch={setMaraSearch} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} maraSearchResults={maraSearchResults} searchMaraCatalog={searchMaraCatalog} applyMaraToKatalog={applyMaraToKatalog} openScanner={openScanner} saveKatalog={saveKatalog} isMobile={isMobile} CATEGORIES={CATEGORIES} sty={sty} C={C} />}
 
       {/* USULAN BLOK DARI DENAH — popup terpusat, supaya tidak perlu scroll naik-turun ke peta */}
-      {hasRole(currentUser, "ADMIN") && ocrSuggestGudangId && ocrSuggestions.length>0 && (
+      {hasRole(currentUser, "TL") && ocrSuggestGudangId && ocrSuggestions.length>0 && (
         <OcrSuggestGudangModal ocrSuggestGudangId={ocrSuggestGudangId} ocrSuggestSubGudangId={ocrSuggestSubGudangId} ocrSuggestions={ocrSuggestions} updateOcrSuggestion={updateOcrSuggestion} removeOcrSuggestion={removeOcrSuggestion} dismissOcrSuggestions={dismissOcrSuggestions} confirmOcrSuggestions={confirmOcrSuggestions} isMobile={isMobile} sty={sty} C={C} />
       )}
 
@@ -4218,7 +4218,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <button className="approval-btn--cancel" onClick={()=>setConfirmDiscard(false)}>Lanjut edit</button>
                   <button className="approval-btn--danger" onClick={discardEdit}>Buang perubahan</button>
                 </div>
-              ) : (isEditing || hasRole(currentUser, "ADMIN")) && (
+              ) : (isEditing || kat || hasRole(currentUser, "TL")) && (
                 isEditing ? (
                   <div style={{...sty.stickyFooter,paddingBottom:14}}>
                     <button style={{...sty.btn("ghost"),flex:1}} onClick={backOrClose}>Batal</button>
@@ -4229,10 +4229,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   // flex-nya .approval-actions bikin lebar tombol timpang. Di HP 3 kolom
                   // terlalu sempit (label "Kartu Gantung" pecah), jadi 2 kolom + Hapus
                   // melebar sendiri di baris bawah.
-                  <div className="approval-actions" style={{...sty.stickyFooter,display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":`repeat(${kat?3:2},1fr)`,gap:10,paddingBottom:14}}>
-                    <button className="approval-btn--primary" disabled={st.deletePending} onClick={()=>{ setPendingFoto({}); openEditStock(st); }}>Edit</button>
+                  // Edit/Hapus khusus TL (ADMIN diturunkan otoritasnya — cuma boleh cetak
+                  // Kartu Gantung). Kartu Gantung tetap tampil utk siapa saja yang bisa buka
+                  // modal ini, termasuk ADMIN.
+                  <div className="approval-actions" style={{...sty.stickyFooter,display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":`repeat(${(hasRole(currentUser,"TL")?2:0)+(kat?1:0)||1},1fr)`,gap:10,paddingBottom:14}}>
+                    {hasRole(currentUser,"TL") && <button className="approval-btn--primary" disabled={st.deletePending} onClick={()=>{ setPendingFoto({}); openEditStock(st); }}>Edit</button>}
                     {kat && <button className="approval-btn--cancel" title="Cetak Kartu Gantung (TUG-2)" onClick={printKartuGantung}>Kartu Gantung</button>}
-                    <button className="approval-btn--danger" style={isMobile&&kat?{gridColumn:"1/-1"}:undefined} disabled={st.deletePending} onClick={()=>{ closeModal(); deleteStock(st.id); }}>Hapus</button>
+                    {hasRole(currentUser,"TL") && <button className="approval-btn--danger" style={isMobile&&kat?{gridColumn:"1/-1"}:undefined} disabled={st.deletePending} onClick={()=>{ closeModal(); deleteStock(st.id); }}>Hapus</button>}
                   </div>
                 )
               )}

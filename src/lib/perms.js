@@ -59,8 +59,11 @@ const FULL_MENUS = menus(
 export const DEFAULT_PERMS = {
   // ULTG create (TUG-5) tetap lewat jalur canCreateULTG terpisah di App.jsx,
   // jadi aksi.buatTransaksi ADMIN_ULTG sengaja false di sini (perilaku tak berubah).
-  ADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true },
-  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.import": true, "aksi.buatInspeksiMaterial": true },
+  // ADMIN diturunkan jadi vendor security (2026-08-12): cuma ajukan TUG + upload
+  // foto stok + pindah blok — TANPA menu master/approval/opname/rencana/maturity/
+  // inspeksiMaterial/attb, TANPA aksi kelola apa pun. Edit/Hapus/kelola pindah ke TL.
+  ADMIN: { ...menus("dashboard", "stock", "transaction", "forecastStok", "heavyEquipment", "kapasitasGudang", "ai"), "aksi.buatTransaksi": true },
+  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true },
   ASMAN: { ...FULL_MENUS },
   MANAGER: { ...FULL_MENUS },
   ADMIN_UIT: { ...FULL_MENUS },
