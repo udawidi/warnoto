@@ -54,6 +54,17 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **PENDING ITEM (per akhir sesi 2026-08-14 — semua kode ter-commit & push, tree bersih).**
+  - **Jangka pendek:**
+    1. **`war-uimobile` rename tertunda** — `.claude/skills/uimobile` → `war-uimobile` gagal (folder ke-lock file handle Windows, ada proses cwd di folder itu, bukan shell agent). 4 skill custom lain SUDAH di-prefix `war-` (`c968c61`). Fix: tutup editor/explorer/terminal yang buka folder itu (atau restart), lalu `git mv .claude/skills/uimobile .claude/skills/war-uimobile` + sed frontmatter `name: war-uimobile` + `/uimobile`→`/war-uimobile` + rename juga `.agents/skills/uimobile`.
+    2. **Jalankan `python ml/train_forecast.py`** (env Supabase service_role / GitHub Actions) → prediksi ML per-UPT terisi. Leak lintas-UPT SUDAH tertutup (migration+filter); ini untuk akurasi ke depan. Tak blocking.
+    3. **Verifikasi alur upload Material Cadang baru** default UIT-scope (read sudah verified: Gresik lihat analisa UIT-JBM).
+  - **Jangka panjang:**
+    1. **[FITUR BARU] Sinkron data MTU KHS** — belum didesain/dibangun. (definisikan sumber & mapping saat mulai.)
+    2. **[FITUR BARU] Sinkron data gudang MRWI** — belum didesain/dibangun. (definisikan sumber & mapping saat mulai.)
+    3. **Non-SBY UPT isi metadata operasional** — `minQty` (stok minimum) semua 0/kosong di 5 UPT non-SBY → Forecast Kritis & Rekomendasi Pengadaan mereka kosong (bukan bug, data gap). Perlu admin UPT isi minQty (+histori transaksi +analisa Material Cadang). Opsi: tambah kolom minQty di template import biar massal.
+    4. **Importer Template Migrasi Stok full-stock** di menu Migrasi Data (belum dibangun, lihat bagian "Lain").
+
 - **Sesi 2026-08-14 (Opus) — Forecast Stok ML isolasi per-UPT + rapikan Master Katalog. DI-PUSH (`b484180`, `fdca211`).**
   - **Forecast ML per-UPT (`b484180`):** `forecast_predictions` dulu tanpa `upt_id` → prediksi Prophet (praktis cuma SBY punya histori) bocor ke UPT lain yang menstok katalog sama (26 katalog). Migration `20260814_forecast_predictions_upt_id.sql` (kolom `upt_id`, unique `(katalog_id, upt_id, tanggal_prediksi)`, backfill lama→UPT-SBY) **APPLIED self-host**. `ml/train_forecast.py` grup `(upt_id, katalog_id)` (derive upt via `lokasi_id→gudang.upt_id`; baris legacy lokasi-diarsip 97/104 fallback UPT-SBY; current-qty per-UPT dari `stocks.upt_id`). `ForecastStokPage.jsx` query filter `.in("upt_id", dataScope)`. Verified: scope Gresik=0 prediksi (leak tutup), SBY=1440. **SISA (ops, tak blocking):** jalankan `python ml/train_forecast.py` (env service_role/CI) untuk akurasi per-UPT ke depan; leak sudah tertutup tanpa itu.
   - **TEMUAN DATA (bukan bug kode):** Forecast/Material Cadang/Rekomendasi Pengadaan "sama/kosong" di UPT non-SBY = **data gap, BUKAN gagal scoping**. Scoping stok terverifikasi benar (Fajar/SBY 266 vs superadmin/nasional 527). Non-SBY UPT baru masuk qty stok tapi **belum isi metadata operasional**: `minQty`=0/kosong semua (→ tak ada "di bawah minimum" → Rekomendasi Pengadaan kosong), tak ada histori transaksi (→ ML "histori belum cukup"), `material_cadang_state` cuma SBY. SBY satu-satunya UPT data matang.
