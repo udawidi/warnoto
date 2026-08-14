@@ -82,11 +82,14 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
   // Record lama tanpa uptId: infer UPT dari pembuatnya (baca-waktu saja, tidak menulis balik ke data).
   const broadScope = hasRole(currentUser, "ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT");
   const myUpt = currentUser?.uptId || null;
+  const userUit = currentUser?.uitId || (uptList||[]).find(u => u.id === myUpt)?.uitId || null;
   const recUptId = (rec) => rec?.uptId
     || (users||[]).find(u => u.id === (rec?.createdBy || rec?.requestedBy || rec?.importedBy || rec?.uploadedBy))?.uptId
     || null;
   const legacySurabayaId = (uptList||[]).find(u => /surabaya/i.test(u.nama || ""))?.id || null;
-  const inMcScope = (rec) => broadScope || (recUptId(rec) ? recUptId(rec) === myUpt : myUpt === legacySurabayaId);
+  const inMcScope = (rec) => broadScope
+    || ((rec?.__uitId || rec?.uitId) && (rec.__uitId || rec.uitId) === userUit)
+    || (recUptId(rec) ? recUptId(rec) === myUpt : myUpt === legacySurabayaId);
 
   // Analisis terakhir dari data tersimpan
   const latestAnalysis = mcData.analyses.filter(inMcScope).slice(-1)[0] || null;
@@ -173,6 +176,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       createdBy: currentUser.id,
       createdAt: Date.now(),
       uptId: currentUser?.uptId || null,
+      uitId: userUit,
       results,
       params: { periodYears:5, slMandatory:0.99, slOptimum:0.95, slEconomic:0.90 },
     };
@@ -182,6 +186,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       importedBy: currentUser.id,
       importedAt: Date.now(),
       uptId: currentUser?.uptId || null,
+      uitId: userUit,
       stats: importPreview.stats,
     };
     const healthRun = {
@@ -192,6 +197,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       createdBy: currentUser.id,
       createdAt: Date.now(),
       uptId: currentUser?.uptId || null,
+      uitId: userUit,
       modelAi: "llama-3.3-70b-versatile",
       params: newAnalysis.params,
     };
@@ -243,6 +249,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       requestedBy: currentUser.id,
       requestedAt: Date.now(),
       uptId: currentUser?.uptId || null,
+      uitId: userUit,
       notes: applyNotes.trim(),
     };
     const updated = { ...mcData, applyHistory: [...mcData.applyHistory, entry] };
@@ -378,7 +385,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       noKatalog: item.noKat, recommendedQty: item.recommendedQty, abcClass: item.abcClass, policy: item.policy,
       runId: item.runId, healthIndex: item.healthIndex, healthStatus: item.healthStatus,
       status: "APPROVED", requestedBy: currentUser.id, requestedAt: now, approvedBy: currentUser.id, approvedAt: now,
-      uptId: currentUser?.uptId || null, notes: "",
+      uptId: currentUser?.uptId || null, uitId: userUit, notes: "",
     };
     const updatedKatalog = katalogList.map(k => k.id === item.katalogId ? { ...k, minQty: item.recommendedQty, minQtyUpdatedAt: now, minQtyUpdatedBy: currentUser.id } : k);
     const updatedMC = { ...mcData, applyHistory: [...mcData.applyHistory, entry] };
@@ -408,7 +415,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       noKatalog: item.noKat, recommendedQty: item.recommendedQty, abcClass: item.abcClass, policy: item.policy,
       runId: item.runId, healthIndex: item.healthIndex, healthStatus: item.healthStatus,
       status: "APPROVED", requestedBy: currentUser.id, requestedAt: now, approvedBy: currentUser.id, approvedAt: now,
-      uptId: currentUser?.uptId || null, notes: "",
+      uptId: currentUser?.uptId || null, uitId: userUit, notes: "",
     }));
     const recommendedByKatalog = {};
     entries.forEach(e => { recommendedByKatalog[e.katalogId] = e.recommendedQty; });

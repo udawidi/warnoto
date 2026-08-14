@@ -152,16 +152,22 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
     const healthResults = materialCadangHealthData?.healthResults || [];
     // Run lama tanpa uptId: infer UPT dari pembuatnya (baca-waktu saja, tidak menulis balik ke data).
     const runUptId = (r) => r.uptId || (users||[]).find(u=>u.id===r.createdBy)?.uptId || null;
+    // Run ber-uit (dibuat scoped ke UIT, mis. oleh akun UIT tier) ikut terhitung untuk
+    // semua user dalam UIT yang sama, walau uptId asalnya bukan UPT lensa saat ini.
+    const runUitId = (r) => r.__uitId || r.uitId || null;
+    const userUit = currentUser?.uitId || (uptList||[]).find(u=>u.id===currentUser?.uptId)?.uitId || null;
     let scopedRuns = [];
     if (uptLens !== "ALL") {
-      const forThisUpt = runs.filter(r=>runUptId(r)===uptLens);
+      const forThisUpt = runs.filter(r=>runUptId(r)===uptLens || (userUit && runUitId(r)===userUit));
       if (forThisUpt.length) scopedRuns = [forThisUpt.reduce((a,b)=>a.createdAt>b.createdAt?a:b)];
     } else {
       const latestByUpt = {};
       runs.forEach(r => {
         const rUpt = runUptId(r);
-        if (!rUpt || !scopeUptIds.includes(rUpt)) return;
-        if (!latestByUpt[rUpt] || r.createdAt > latestByUpt[rUpt].createdAt) latestByUpt[rUpt] = r;
+        const inUitScope = userUit && runUitId(r) === userUit;
+        if (!inUitScope && (!rUpt || !scopeUptIds.includes(rUpt))) return;
+        const bucketKey = rUpt || ("uit:" + runUitId(r));
+        if (!latestByUpt[bucketKey] || r.createdAt > latestByUpt[bucketKey].createdAt) latestByUpt[bucketKey] = r;
       });
       scopedRuns = Object.values(latestByUpt);
     }
@@ -187,7 +193,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
       .sort((a,b)=> a.abcClass!==b.abcClass ? a.abcClass.localeCompare(b.abcClass) : b.gapQty-a.gapQty)
       .slice(0,10);
     return { summary, topPriority, hasData: results.length>0 };
-  }, [materialCadangHealthData, uptLens, scopeUptIds]);
+  }, [materialCadangHealthData, uptLens, scopeUptIds, currentUser, uptList]);
 
   // Strip banding per-UPT (pita 3, hanya lensa Agregat + scope ≥2 UPT) — usulan pengadaan
   // dihitung ulang per UPT dari computeProcurementList (rumus tidak berubah, cuma input).

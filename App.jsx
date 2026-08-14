@@ -1015,12 +1015,12 @@ export default function PLNWarehouse() {
       // (mengangkat data lama yang masih tersimpan di device ini agar durable & lintas-device).
       const mcMerge = (rows, key, arrKeys) => {
         const out = {}; arrKeys.forEach(k => out[k] = []);
-        (rows||[]).forEach(r => { const o = r?.[key] || {}; arrKeys.forEach(k => { if (Array.isArray(o[k])) out[k] = out[k].concat(o[k]); }); });
+        (rows||[]).forEach(r => { const o = r?.[key] || {}; arrKeys.forEach(k => { if (Array.isArray(o[k])) out[k] = out[k].concat((o[k]||[]).map(e => ({...e, __uptId: r.upt_id, __uitId: r.uit_id}))); }); });
         return out;
       };
       let mcServerRows = null;
       if (supabase) {
-        const { data: mcData_, error: mcErr_ } = await supabase.from("material_cadang_state").select("upt_id,data,health,ai");
+        const { data: mcData_, error: mcErr_ } = await supabase.from("material_cadang_state").select("upt_id,uit_id,data,health,ai");
         if (!mcErr_) mcServerRows = mcData_ || [];
       }
       if (mcServerRows && mcServerRows.length) {
@@ -1033,9 +1033,10 @@ export default function PLNWarehouse() {
         const lmcai = cmcai || { runs:[], materialInsights:[] };
         setMaterialCadangData(lmcd); setMaterialCadangHealthData(lmch); setMaterialCadangAiInsights(lmcai);
         const seedUpt = currentUser?.uptId || null;
+        const seedUit = currentUser?.uitId || uptList.find(u => u.id === seedUpt)?.uitId || null;
         const hasLocal = (lmcd.analyses?.length || lmcd.imports?.length || lmch.analysisRuns?.length || lmch.healthResults?.length);
         if (supabase && seedUpt && hasLocal) {
-          supabase.from("material_cadang_state").upsert({ upt_id: seedUpt, data: lmcd, health: lmch, ai: lmcai, updated_at: new Date().toISOString() }, { onConflict: "upt_id" });
+          supabase.from("material_cadang_state").upsert({ upt_id: seedUpt, uit_id: seedUit, data: lmcd, health: lmch, ai: lmcai, updated_at: new Date().toISOString() }, { onConflict: "upt_id" });
         }
       }
       // Kapasitas Gudang — Supabase (warehouse_capacity/_imports) sekarang sumber
@@ -1400,9 +1401,10 @@ export default function PLNWarehouse() {
     // Clear site data). Hanya untuk penulis ber-uptId (akun scoped); state mereka = data UPT
     // sendiri, jadi simpan utuh. Masuk failedLabels supaya kegagalan TIDAK senyap.
     const mcWriterUpt = stateRef.current.currentUser?.uptId || null;
+    const mcWriterUit = stateRef.current.currentUser?.uitId || stateRef.current.uptList.find(u => u.id === mcWriterUpt)?.uitId || null;
     if ((overrides.materialCadangData !== undefined || overrides.materialCadangHealthData !== undefined || overrides.materialCadangAiInsights !== undefined) && supabase && !isDemoMode() && mcWriterUpt) {
       syncTasks.push({ label: "Material Cadang", promise: supabase.from("material_cadang_state")
-        .upsert({ upt_id: mcWriterUpt, data: mcd, health: mch, ai: mcai, updated_at: new Date().toISOString() }, { onConflict: "upt_id" })
+        .upsert({ upt_id: mcWriterUpt, uit_id: mcWriterUit, data: mcd, health: mch, ai: mcai, updated_at: new Date().toISOString() }, { onConflict: "upt_id" })
         .then(({ error }) => { if (error) console.error("upsert material_cadang_state:", error.message); return !error; }) });
     }
     // Kapasitas Gudang — sebelumnya localStorage/CLOUD-only, sekarang auto-backup
