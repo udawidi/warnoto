@@ -357,11 +357,11 @@ async function isRateLimited(userId: string): Promise<boolean> {
 async function generateReply(question: string, userId: string, callerUptId: string | null): Promise<{ text: string; chunksUsed: number }> {
   const [{ context: ragContext, chunksUsed }, stateContext, conversationHistory] = await Promise.all([
     buildRagContext(question, callerUptId),
-    // ponytail: warnoto_state context masih nasional utk user scoped — item blob (top20ByValue,
-    // materialKritis, dst.) tidak punya penanda upt_id sama sekali, filter per-UPT butuh
-    // merestruktur buildWarnotoStateSnapshot() di App.jsx (blob nasional). Perlu keputusan
-    // restrukturisasi terpisah, bukan diperbaiki di sini.
-    buildWarnotoStateContext(),
+    // blob warnoto_state = ringkasan NASIONAL (top20ByValue, materialKritis, dst.) tanpa
+    // penanda upt_id per item. Untuk user scoped-UPT blob ini bocor lintas-UPT DAN salah
+    // (bukan data UPT-nya) — jadi hanya user global (callerUptId=null) yang disuntik.
+    // Per-UPT state summary butuh restruktur buildWarnotoStateSnapshot() di App.jsx; ditunda.
+    callerUptId ? Promise.resolve("") : buildWarnotoStateContext(),
     buildConversationHistory(userId),
   ]);
 

@@ -37,3 +37,6 @@ __pycache__/
 
 # Headroom penanda sesi lokal (spesifik mesin) — jangan commit.
 .claude/.headroom_wrap_marker.json
+
+# Laporan generate script fill_sap_photos (artefak, bisa di-generate ulang) — jangan commit.
+sap_foto_report.json
