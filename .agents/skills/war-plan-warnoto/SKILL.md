@@ -1,5 +1,5 @@
 ---
-name: plan-warnoto
+name: war-plan-warnoto
 description: Plan a WARNOTO feature in Indonesian without editing code, schema, data, or project files when the user asks to plan or brainstorm.
 ---
 

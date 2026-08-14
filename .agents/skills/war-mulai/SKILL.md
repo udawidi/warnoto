@@ -1,6 +1,6 @@
 ---
-name: mulai
-description: Start or verify the WARNOTO Vite development server when the user asks to boot the app, run local development, or use /mulai.
+name: war-mulai
+description: Start or verify the WARNOTO Vite development server when the user asks to boot the app, run local development, or use /war-mulai.
 ---
 
 # Mulai WARNOTO

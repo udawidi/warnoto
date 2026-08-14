@@ -1,5 +1,5 @@
 ---
-name: update-data
+name: war-update-data
 description: Review finished WARNOTO changes for a deliberate local commit and, only after separate explicit confirmation, Supabase schema application or git push.
 ---
 

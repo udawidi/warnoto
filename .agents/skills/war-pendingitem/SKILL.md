@@ -1,6 +1,6 @@
 ---
-name: pendingitem
-description: Produce a read-only Indonesian review of WARNOTO completed work and pending short- and long-term items when the user asks for pending work or /pendingitem.
+name: war-pendingitem
+description: Produce a read-only Indonesian review of WARNOTO completed work and pending short- and long-term items when the user asks for pending work or /war-pendingitem.
 ---
 
 # Pending Item WARNOTO

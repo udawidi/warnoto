@@ -1,6 +1,6 @@
 ---
-name: pendingitem
-description: Use this skill when the user types "/pendingitem" or asks for a review of pending/unfinished WARNOTO work, both short-term and long-term, plus a recap of what has already been done. Read-only review — does not edit code, commit, push, or touch pending-review data.
+name: war-pendingitem
+description: Use this skill when the user types "/war-pendingitem" or asks for a review of pending/unfinished WARNOTO work, both short-term and long-term, plus a recap of what has already been done. Read-only review — does not edit code, commit, push, or touch pending-review data.
 ---
 
 # Pending Item WARNOTO
@@ -60,4 +60,4 @@ Kalau ada ketidaksesuaian antar sumber (mis. memory bilang sesuatu masih pending
 - Jangan commit, push, atau jalankan `git add`.
 - Jangan memproses/approve data yang statusnya pending-review (histori TUG Surabaya, Material Cadang, dll) — skill ini cuma melaporkan bahwa itu masih ada, bukan menindaklanjuti.
 - Jangan menjalankan migrasi atau perubahan skema Supabase.
-- Kalau user, setelah membaca laporan, minta lanjut mengerjakan salah satu item — itu boleh, tapi itu sudah di luar scope skill ini (lanjutkan sebagai kerja normal, bukan lagi dalam mode `/pendingitem`).
+- Kalau user, setelah membaca laporan, minta lanjut mengerjakan salah satu item — itu boleh, tapi itu sudah di luar scope skill ini (lanjutkan sebagai kerja normal, bukan lagi dalam mode `/war-pendingitem`).

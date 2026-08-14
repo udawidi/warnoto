@@ -1,5 +1,5 @@
 ---
-name: plan-warnoto
+name: war-plan-warnoto
 description: Use this skill when the user says "plan warnoto", asks to brainstorm a new WARNOTO feature, or wants planning-only work for the WARNOTO project. This skill must produce planning, architecture, UX flow, risk analysis, checklist, and implementation strategy without editing code, touching JSX, modifying database schema, running migrations, or changing project files.
 ---
 

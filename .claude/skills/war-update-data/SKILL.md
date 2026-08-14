@@ -1,6 +1,6 @@
 ---
-name: update-data
-description: Use this skill when the user types "/update-data" or asks to sync/push all finished work to the repo and Supabase. Reviews git changes, commits and (after confirmation) pushes to GitHub, and flags Supabase schema.sql changes for manual/confirmed application. Does NOT touch pending-review data (e.g. batch imports awaiting manual approval).
+name: war-update-data
+description: Use this skill when the user types "/war-update-data" or asks to sync/push all finished work to the repo and Supabase. Reviews git changes, commits and (after confirmation) pushes to GitHub, and flags Supabase schema.sql changes for manual/confirmed application. Does NOT touch pending-review data (e.g. batch imports awaiting manual approval).
 ---
 
 # Update & Sinkronisasi Data WARNOTO

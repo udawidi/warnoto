@@ -1,6 +1,6 @@
 ---
-name: mulai
-description: Use this skill when the user types "/mulai" or asks to start/boot up the WARNOTO app for local development. Starts the Vite dev server (npm run dev) in the background and confirms the app is ready at its local URL.
+name: war-mulai
+description: Use this skill when the user types "/war-mulai" or asks to start/boot up the WARNOTO app for local development. Starts the Vite dev server (npm run dev) in the background and confirms the app is ready at its local URL.
 ---
 
 # Mulai WARNOTO
