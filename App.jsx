@@ -4005,6 +4005,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             saveToCloud={saveToCloud}
             showToast={showToast}
             currentUser={currentUser}
+            dataScope={dataScope}
             uptList={uptList}
             uptScopeOptions={stockUptFilterOptions}
             users={users}

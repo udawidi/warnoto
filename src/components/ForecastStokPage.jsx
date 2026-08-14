@@ -26,7 +26,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
   materialCadangHealthData, setMaterialCadangHealthData,
   materialCadangAiInsights, setMaterialCadangAiInsights,
   catalogMasterRef, setCatalogMasterRef, saveToCloud, showToast, currentUser,
-  uptList, uptScopeOptions, users,
+  uptList, uptScopeOptions, users, dataScope,
   C, sty }) {
   const [forecastView, setForecastView] = useState("forecast");
   const [uptLens, setUptLens] = useState("ALL");
@@ -50,9 +50,11 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
     if (!supabase) return;
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase.from("forecast_predictions")
-        .select("katalog_id,tanggal_prediksi,qty_prediksi,estimasi_hari_sampai_habis,model_version,updated_at")
+      let q = supabase.from("forecast_predictions")
+        .select("katalog_id,upt_id,tanggal_prediksi,qty_prediksi,estimasi_hari_sampai_habis,model_version,updated_at")
         .order("tanggal_prediksi", { ascending:true });
+      if (dataScope) q = q.in("upt_id", dataScope);
+      const { data, error } = await q;
       if (cancelled || error || !data) return;
       const grouped = {};
       data.forEach(row => {
@@ -76,7 +78,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
       setMlForecasts(result);
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [dataScope]);
 
   // Lensa UPT/UIT: turunkan uptId tiap baris stok dari lokasiId→gudangId→uptId (pola sama
   // dengan App.jsx runPhotoSearch). Dropdown lensa hanya tampil bila showLens (scope ≥2 UPT).
