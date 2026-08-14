@@ -14,7 +14,7 @@ import { MigrasiDataTab } from "./MigrasiDataTab.jsx";
 import { AuditLogPage } from "./AuditLogPage.jsx";
 import { PermMatrixPage } from "./PermMatrixPage.jsx";
 
-export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockSubTab, filteredKatalog, satpamList: rawSatpamList, timMutuList: rawTimMutuList, uitList: rawUitList, uptList: rawUptList, ultgList: rawUltgList, users, gudangList: rawGudangList, lokasiList, subGudangList, visibleGudangList: rawVisibleGudangList, openAddKatalog, openAddSatpam, openAddUIT, openAddGudang, openAddAkun, importGudangOpen, setImportGudangOpen, showGudangMaintenance, setShowGudangMaintenance, importLokasiOpen, setImportLokasiOpen, gudangCapacityImports, setGudangCapacityImports, saveToCloud, showToast, backfillGudangCoordFromCapacity, dedupeGudangDanSubGudang, isKodeDuplicateInSubGudang, setLokasiList, syncLokasi, maraUploadProgress, maraUploadLoading, uploadMaraToDB, katalogList, katalogSearch, setKatalogSearch, katalogFilterBelumMara, setKatalogFilterBelumMara, setBarcodePrintOpen, pagedKatalog, stocks, openEditKatalog, deleteKatalog, katalogPageSize, setKatalogPageSize, katalogPageClamped, setKatalogPage, katalogTotalPages, openEditSatpam, deleteSatpam, openEditTimMutu, orgSearch, setOrgSearch, collapsedUitIds, setCollapsedUitIds, openAddUPT, openEditUIT, deleteUIT, openAddULTG, openEditUPT, deleteUPT, openEditULTG, deleteULTG, expandedGudangId, setExpandedGudangId, openEditGudang, deleteGudang, showGudangDenahTools, setShowGudangDenahTools, uploadDenahGudang, denahLoading, mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, manualAddMode, setManualAddMode, ocrSuggestGudangId, setOcrSuggestGudangId, ocrSuggestSubGudangId, setOcrSuggestSubGudangId, ocrSuggestions, setOcrSuggestions, assignLokasiKoordinat, suggestKodeFromOcr, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds, uploadDenahSubGudang, denahSubLoading, mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub, assignLokasiKoordinatSub, openEditLokasi, requestDeleteLokasi, selectedSubGudangId, setSelectedSubGudangId, openEditAkun, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, setStocks, setKatalogList, setTxns, reloadRolePerms }) {
+export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockSubTab, filteredKatalog, satpamList: rawSatpamList, timMutuList: rawTimMutuList, uitList: rawUitList, uptList: rawUptList, ultgList: rawUltgList, users, gudangList: rawGudangList, lokasiList, subGudangList, visibleGudangList: rawVisibleGudangList, openAddKatalog, openAddSatpam, openAddUIT, openAddGudang, openAddAkun, importGudangOpen, setImportGudangOpen, showGudangMaintenance, setShowGudangMaintenance, importLokasiOpen, setImportLokasiOpen, gudangCapacityImports, setGudangCapacityImports, saveToCloud, showToast, backfillGudangCoordFromCapacity, dedupeGudangDanSubGudang, isKodeDuplicateInSubGudang, setLokasiList, syncLokasi, maraUploadProgress, maraUploadLoading, uploadMaraToDB, katalogList, katalogSearch, setKatalogSearch, katalogFilterBelumMara, setKatalogFilterBelumMara, pagedKatalog, stocks, openEditKatalog, deleteKatalog, katalogPageSize, setKatalogPageSize, katalogPageClamped, setKatalogPage, katalogTotalPages, openEditSatpam, deleteSatpam, openEditTimMutu, orgSearch, setOrgSearch, collapsedUitIds, setCollapsedUitIds, openAddUPT, openEditUIT, deleteUIT, openAddULTG, openEditUPT, deleteUPT, openEditULTG, deleteULTG, expandedGudangId, setExpandedGudangId, openEditGudang, deleteGudang, showGudangDenahTools, setShowGudangDenahTools, uploadDenahGudang, denahLoading, mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, manualAddMode, setManualAddMode, ocrSuggestGudangId, setOcrSuggestGudangId, ocrSuggestSubGudangId, setOcrSuggestSubGudangId, ocrSuggestions, setOcrSuggestions, assignLokasiKoordinat, suggestKodeFromOcr, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds, uploadDenahSubGudang, denahSubLoading, mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub, assignLokasiKoordinatSub, openEditLokasi, requestDeleteLokasi, selectedSubGudangId, setSelectedSubGudangId, openEditAkun, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, setStocks, setKatalogList, setTxns, reloadRolePerms }) {
   const [akunSearch, setAkunSearch] = useState("");
   const [akunUptFilter, setAkunUptFilter] = useState("");
   const [masterUptFilter, setMasterUptFilter] = useState("");
@@ -146,10 +146,6 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     ⚠️ Belum Dicocokkan MARA ({katalogList.filter(k=>k.belumDicocokkanMara).length})
                   </button>
                 )}
-                {hasRole(currentUser, "TL") && (
-                  <button onClick={()=>setBarcodePrintOpen(true)} title="Cetak semua barcode/QR kartu gantung sekaligus"
-                    style={{...sty.btn("primary","sm"),whiteSpace:"nowrap"}}>🖨️ Cetak Semua Barcode</button>
-                )}
               </div>
             )}
 
@@ -160,11 +156,11 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               ? <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Tidak ada hasil untuk "{katalogSearch}".</div>
               : (
               <div className="mobile-card-table catalog-card-table" style={{...sty.card,padding:0,overflowX:"auto"}}>
-                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:860}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:720}}>
                   <thead>
                     <tr style={{background:C.sidebar,color:"white"}}>
-                      {["Foto","No Katalog","Nama Barang","Kategori","Jenis","Satuan","Status","Aksi"].map(h=>(
-                        <th key={h} style={{padding:"9px 10px",textAlign:h==="Aksi"||h==="Foto"?"center":"left",whiteSpace:"nowrap",fontSize:12}}>{h}</th>
+                      {["Foto","No Katalog","Nama Barang","Kategori","Satuan","Status","Aksi"].map(h=>(
+                        <th key={h} style={{padding:"8px 10px",textAlign:h==="Aksi"||h==="Foto"?"center":"left",whiteSpace:"nowrap",fontSize:12}}>{h}</th>
                       ))}
                     </tr>
                   </thead>
@@ -179,18 +175,25 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                               : <div style={{width:40,height:40,background:"#eff6ff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
                           </td>
                           <td className="catalog-card-table__meta" data-label="No Katalog" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
-                            <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>📑 {k.katalog}</div>
-                            <div style={{fontSize:12,color:C.muted}}>{k.id}</div>
+                            <div title={k.id} style={{fontSize:12,color:"#0098da",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{k.katalog}</div>
                           </td>
                           <td className="mobile-card-table__title" data-label="Nama Barang" style={{padding:"8px 10px",minWidth:200,fontWeight:700}}>{k.name}</td>
-                          <td data-label="Kategori" style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:12,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{(k.name||"").split(";")[0]?.trim()||k.category||"Lainnya"}</span></td>
-                          <td data-label="Jenis" style={{padding:"8px 10px"}}>
-                            <span style={sty.jenisBadge(k.jenisBarang)}>{k.jenisBarang||"-"}</span>
-                            {k.pendingOpnameId && <div style={{marginTop:3}}><span style={{padding:"1px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#dbeafe",color:"#1e40af"}}>⏳ Pending Approval</span></div>}
-                            {k.belumDicocokkanMara && <div style={{marginTop:3}}><span style={{padding:"1px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>⚠️ Belum MARA</span></div>}
+                          <td data-label="Kategori" style={{padding:"8px 10px"}}>
+                            {(() => {
+                              const kat = (k.name||"").includes(";") ? k.name.split(";")[0].trim() : (k.category||"");
+                              return kat
+                                ? <span style={{padding:"2px 7px",borderRadius:6,fontSize:12,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{kat}</span>
+                                : <span style={{color:C.muted}}>-</span>;
+                            })()}
                           </td>
                           <td data-label="Satuan" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{k.satuan}</td>
-                          <td data-label="Status" style={{padding:"8px 10px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{katalogSapLabel(k)}</span></td>
+                          <td data-label="Status" style={{padding:"8px 10px"}}>
+                            <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
+                              <span style={{padding:"2px 7px",borderRadius:6,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{katalogSapLabel(k)}</span>
+                              {k.pendingOpnameId && <span style={{padding:"1px 6px",borderRadius:6,fontSize:12,fontWeight:700,background:"#dbeafe",color:"#1e40af",whiteSpace:"nowrap"}}>⏳ Pending Approval</span>}
+                              {k.belumDicocokkanMara && <span style={{padding:"1px 6px",borderRadius:6,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}>⚠️ Belum MARA</span>}
+                            </div>
+                          </td>
                           <td data-label="Aksi" style={{padding:"8px 10px"}}>
                             {hasRole(currentUser, "TL") && (
                               <div style={{display:"flex",gap:4,justifyContent:"center"}}>

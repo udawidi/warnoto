@@ -26,7 +26,7 @@ export function useMasterDataCrud({ currentUser, showToast, stateRef, askConfirm
 
   // ── MASTER KATALOG BARANG CRUD ──
   function openAddKatalog() {
-    setKatalogForm({ id:`KAT-${uid().slice(-6)}`, katalog:"", name:"", category:"Lainnya", satuan:"unit" });
+    setKatalogForm({ id:`KAT-${uid().slice(-6)}`, katalog:"", name:"", category:"Lainnya", satuan:"" });
     setKatalogModal("add");
   }
   function openEditKatalog(k) { setKatalogForm({...k}); setKatalogModal("edit"); }

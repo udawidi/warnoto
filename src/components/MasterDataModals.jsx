@@ -1,8 +1,10 @@
 // Modal-modal Master Data (dipindah dari App.jsx, refactor batch 1).
 // Katalog, Lokasi (Blok), Gudang edit, Gudang add (wizard 3 langkah).
 import { extractLatLngFromAddress } from "../lib/masterSync.js";
+import { katalogSapLabel } from "../lib/sap.js";
+import { STATUS_SAP } from "../constants.js";
 
-export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKatalogForm, maraSearch, setMaraSearch, setMaraSearchResults, maraSearchLoading, maraSearchError, maraSearchResults, searchMaraCatalog, applyMaraToKatalog, openScanner, saveKatalog, isMobile, CATEGORIES, sty, C }) {
+export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKatalogForm, maraSearch, setMaraSearch, setMaraSearchResults, maraSearchLoading, maraSearchError, maraSearchResults, searchMaraCatalog, applyMaraToKatalog, openScanner, saveKatalog, isMobile, CATEGORIES, maraSatuanOptions, sty, C }) {
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -39,9 +41,8 @@ export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKa
               <div style={{fontSize:12,color:"#94a3b8",marginTop:6}}>Klik item untuk auto-fill form. MARA tersimpan di database.</div>
             </div>
             {katalogForm._maraLocked && (
-              <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px"}}>
-                <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — Nomor Katalog, Nama, Kategori, Satuan tidak bisa diketik manual.</span>
-                <button type="button" style={{...sty.btn("ghost","sm"),flexShrink:0}} onClick={()=>setKatalogForm(kf=>({...kf,_maraLocked:false}))}>🔓 Lepas Kunci</button>
+              <div style={{marginBottom:12,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px"}}>
+                <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — Nomor Katalog, Nama, Kategori, Satuan, dan Status terkunci sebagai satu paket, tidak bisa diubah satu-satu.</span>
               </div>
             )}
             <div style={{marginBottom:12}}>
@@ -61,7 +62,38 @@ export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKa
                   <select style={sty.select} value={katalogForm.category||"Lainnya"} onChange={e=>setKatalogForm(kf=>({...kf,category:e.target.value}))}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select>
                 )}
               </div>
-              <div><label style={sty.label}>Satuan Default</label><input style={{...sty.input,...(katalogForm._maraLocked?{background:"#f3f4f6",color:C.muted}:{})}} disabled={!!katalogForm._maraLocked} value={katalogForm.satuan||""} placeholder="cth: unit, pcs, roll" onChange={e=>setKatalogForm(kf=>({...kf,satuan:e.target.value}))}/></div>
+              <div>
+                <label style={sty.label}>Satuan Default</label>
+                {katalogForm._maraLocked ? (
+                  <input style={{...sty.input,background:"#f3f4f6",color:C.muted}} disabled value={katalogForm.satuan||"-"}/>
+                ) : (
+                  <select style={sty.select} value={katalogForm.satuan||""} onChange={e=>setKatalogForm(kf=>({...kf,satuan:e.target.value}))}>
+                    <option value="">— Pilih Satuan —</option>
+                    {(maraSatuanOptions||[]).map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                )}
+              </div>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Status Material</label>
+              {katalogForm._maraLocked ? (
+                <>
+                  <input style={{...sty.input,background:"#f3f4f6",color:C.muted}} disabled value={katalogForm.sapStatus==="Non-SAP"?"Non-SAP":katalogSapLabel(katalogForm)}/>
+                  <label style={{display:"flex",alignItems:"center",gap:6,marginTop:6,fontSize:12,color:C.text}}>
+                    <input type="checkbox" checked={katalogForm.sapStatus==="Non-SAP"}
+                      onChange={e=>setKatalogForm(kf=>({...kf,sapStatus:e.target.checked?"Non-SAP":""}))}/>
+                    Tandai sebagai Non-SAP (material kandidat masuk SAP)
+                  </label>
+                </>
+              ) : (
+                <select style={sty.select} value={katalogForm.sapStatus||""} onChange={e=>setKatalogForm(kf=>({...kf,sapStatus:e.target.value}))}>
+                  <option value="">Otomatis (dari kode)</option>
+                  <option value={STATUS_SAP[0]}>{STATUS_SAP[0]}</option>
+                  <option value={STATUS_SAP[1]}>{STATUS_SAP[1]}</option>
+                  <option value="Non-SAP">Non-SAP</option>
+                </select>
+              )}
+              <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Non-SAP = kandidat yang akan dipindahkan ke SAP; boleh memakai katalog Persediaan/Cadang.</div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setKatalogModal(null)}>Batal</button>

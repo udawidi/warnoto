@@ -5,7 +5,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue, Fragment } from "react";
 import { X } from "@phosphor-icons/react";
 import * as Sentry from "@sentry/react";
-import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS } from "./src/constants.js";
+import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS, STATUS_SAP } from "./src/constants.js";
 import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError, isRetryableLoginError } from "./src/supabaseClient.js";
 import { CLOUD } from "./src/lib/cloud.js";
 import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.js";
@@ -18,7 +18,7 @@ import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
-import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel } from "./src/lib/sap.js";
+import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
@@ -65,7 +65,6 @@ import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "./src/data/auditAspects.js";
 import { StockOpnameTab } from "./src/components/StockOpnameTab.jsx";
 import { MigrasiDataTab } from "./src/components/MigrasiDataTab.jsx";
 import { KapasitasGudangImportTab } from "./src/components/KapasitasGudangImportTab.jsx";
-import { BarcodePrintModal } from "./src/components/BarcodePrintModal.jsx";
 import { KartuGantungModal } from "./src/components/KartuGantungModal.jsx";
 import { MaterialCadangTab } from "./src/components/MaterialCadangTab.jsx";
 import { InspeksiMaterialCadangTab } from "./src/components/InspeksiMaterialCadangTab.jsx";
@@ -357,6 +356,16 @@ export default function PLNWarehouse() {
   const [maraSearchError, setMaraSearchError] = useState(null);
   const [maraUploadLoading, setMaraUploadLoading] = useState(false);
   const [maraUploadProgress, setMaraUploadProgress] = useState(null);
+  const [maraSatuanOptions, setMaraSatuanOptions] = useState([]); // opsi dropdown "Satuan Default" katalog manual, dari distinct mara_catalog.satuan
+  const MARA_SATUAN_FALLBACK = ["BH","U","SET","M","KG","BTG","L","ROL","LBR","PAC","CAN","BOX","TON","PSG","EA"];
+  useEffect(() => {
+    if (!supabase) return;
+    (async () => {
+      const { data, error } = await supabase.from("mara_catalog").select("satuan").not("satuan", "is", null).neq("satuan", "");
+      const distinct = error ? [] : [...new Set((data||[]).map(r=>r.satuan).filter(Boolean))].sort();
+      setMaraSatuanOptions(distinct.length ? distinct : MARA_SATUAN_FALLBACK);
+    })();
+  }, []);
   const [catalogMasterRef, setCatalogMasterRef] = useState(null); // session-only hidden cataloger reference
   const [gudangCapacityList, setGudangCapacityList] = useState(() => readCachedList("pln_gudang_capacity_v1") ?? []);
   const [gudangCapacityImports, setGudangCapacityImports] = useState(() => readCachedList("pln_gudang_capacity_imports_v1") ?? []);
@@ -517,7 +526,6 @@ export default function PLNWarehouse() {
   const canonicalDecisionKeysRef = useRef({});
   const [docPreviewDoc, setDocPreviewDoc] = useState(null); // versi docPreview dgn SIM/KTP privat sudah jadi signed URL
   const [kartuGantungDetail, setKartuGantungDetail] = useState(null);
-  const [barcodePrintOpen, setBarcodePrintOpen] = useState(false); // modal cetak barcode massal (Admin, Master Katalog)
   const [petaMiniDetail, setPetaMiniDetail] = useState(null); // {stock, lokasi, gudang}
   const [stockDetailId, setStockDetailId] = useState(null); // id stok yang dibuka detailnya (klik baris Data Stok)
   const [stockDetailTab, setStockDetailTab] = useState("detail"); // "detail" | "riwayat" — reset tiap ganti barang
@@ -3773,7 +3781,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         )}
 
         {/* MASTER DATA — Master Katalog, Master Lokasi, Satpam (identity/reference data) */}
-        {tab==="master" && <MasterDataTab C={C} sty={sty} currentUser={currentUser} isMobile={isMobile} rolePerms={rolePerms} stockSubTab={stockSubTab} filteredKatalog={filteredKatalog} satpamList={satpamList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} users={users} gudangList={gudangList} lokasiList={lokasiList} subGudangList={subGudangList} visibleGudangList={visibleGudangList} openAddKatalog={openAddKatalog} openAddSatpam={openAddSatpam} openAddUIT={openAddUIT} openAddGudang={openAddGudang} openAddAkun={openAddAkun} importGudangOpen={importGudangOpen} setImportGudangOpen={setImportGudangOpen} showGudangMaintenance={showGudangMaintenance} setShowGudangMaintenance={setShowGudangMaintenance} importLokasiOpen={importLokasiOpen} setImportLokasiOpen={setImportLokasiOpen} gudangCapacityImports={gudangCapacityImports} setGudangCapacityImports={setGudangCapacityImports} saveToCloud={saveToCloud} showToast={showToast} backfillGudangCoordFromCapacity={backfillGudangCoordFromCapacity} dedupeGudangDanSubGudang={dedupeGudangDanSubGudang} isKodeDuplicateInSubGudang={isKodeDuplicateInSubGudang} setLokasiList={setLokasiList} syncLokasi={syncLokasi} maraUploadProgress={maraUploadProgress} maraUploadLoading={maraUploadLoading} uploadMaraToDB={uploadMaraToDB} katalogList={katalogList} katalogSearch={katalogSearch} setKatalogSearch={setKatalogSearch} katalogFilterBelumMara={katalogFilterBelumMara} setKatalogFilterBelumMara={setKatalogFilterBelumMara} setBarcodePrintOpen={setBarcodePrintOpen} pagedKatalog={pagedKatalog} stocks={stocks} openEditKatalog={openEditKatalog} deleteKatalog={deleteKatalog} katalogPageSize={katalogPageSize} setKatalogPageSize={setKatalogPageSize} katalogPageClamped={katalogPageClamped} setKatalogPage={setKatalogPage} katalogTotalPages={katalogTotalPages} openEditSatpam={openEditSatpam} deleteSatpam={deleteSatpam} openEditTimMutu={openEditTimMutu} orgSearch={orgSearch} setOrgSearch={setOrgSearch} collapsedUitIds={collapsedUitIds} setCollapsedUitIds={setCollapsedUitIds} openAddUPT={openAddUPT} openEditUIT={openEditUIT} deleteUIT={deleteUIT} openAddULTG={openAddULTG} openEditUPT={openEditUPT} deleteUPT={deleteUPT} openEditULTG={openEditULTG} deleteULTG={deleteULTG} expandedGudangId={expandedGudangId} setExpandedGudangId={setExpandedGudangId} openEditGudang={openEditGudang} deleteGudang={deleteGudang} showGudangDenahTools={showGudangDenahTools} setShowGudangDenahTools={setShowGudangDenahTools} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} mapConfigGudangId={mapConfigGudangId} setMapConfigGudangId={setMapConfigGudangId} pendingMapLokasi={pendingMapLokasi} setPendingMapLokasi={setPendingMapLokasi} manualAddMode={manualAddMode} setManualAddMode={setManualAddMode} ocrSuggestGudangId={ocrSuggestGudangId} setOcrSuggestGudangId={setOcrSuggestGudangId} ocrSuggestSubGudangId={ocrSuggestSubGudangId} setOcrSuggestSubGudangId={setOcrSuggestSubGudangId} ocrSuggestions={ocrSuggestions} setOcrSuggestions={setOcrSuggestions} assignLokasiKoordinat={assignLokasiKoordinat} suggestKodeFromOcr={suggestKodeFromOcr} expandedSubGudangToolsIds={expandedSubGudangToolsIds} setExpandedSubGudangToolsIds={setExpandedSubGudangToolsIds} uploadDenahSubGudang={uploadDenahSubGudang} denahSubLoading={denahSubLoading} mapConfigSubGudangId={mapConfigSubGudangId} setMapConfigSubGudangId={setMapConfigSubGudangId} pendingMapLokasiSub={pendingMapLokasiSub} setPendingMapLokasiSub={setPendingMapLokasiSub} manualAddModeSub={manualAddModeSub} setManualAddModeSub={setManualAddModeSub} assignLokasiKoordinatSub={assignLokasiKoordinatSub} openEditLokasi={openEditLokasi} requestDeleteLokasi={requestDeleteLokasi} selectedSubGudangId={selectedSubGudangId} setSelectedSubGudangId={setSelectedSubGudangId} openEditAkun={openEditAkun} txns={txns} migratedTug15History={migratedTug15History} setMigratedTug15History={setMigratedTug15History} migrasiPendingReview={migrasiPendingReview} setMigrasiPendingReview={setMigrasiPendingReview} maraReference={maraReference} setMaraReference={setMaraReference} setStocks={setStocks} setKatalogList={setKatalogList} setTxns={setTxns} reloadRolePerms={reloadRolePerms} />}
+        {tab==="master" && <MasterDataTab C={C} sty={sty} currentUser={currentUser} isMobile={isMobile} rolePerms={rolePerms} stockSubTab={stockSubTab} filteredKatalog={filteredKatalog} satpamList={satpamList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} users={users} gudangList={gudangList} lokasiList={lokasiList} subGudangList={subGudangList} visibleGudangList={visibleGudangList} openAddKatalog={openAddKatalog} openAddSatpam={openAddSatpam} openAddUIT={openAddUIT} openAddGudang={openAddGudang} openAddAkun={openAddAkun} importGudangOpen={importGudangOpen} setImportGudangOpen={setImportGudangOpen} showGudangMaintenance={showGudangMaintenance} setShowGudangMaintenance={setShowGudangMaintenance} importLokasiOpen={importLokasiOpen} setImportLokasiOpen={setImportLokasiOpen} gudangCapacityImports={gudangCapacityImports} setGudangCapacityImports={setGudangCapacityImports} saveToCloud={saveToCloud} showToast={showToast} backfillGudangCoordFromCapacity={backfillGudangCoordFromCapacity} dedupeGudangDanSubGudang={dedupeGudangDanSubGudang} isKodeDuplicateInSubGudang={isKodeDuplicateInSubGudang} setLokasiList={setLokasiList} syncLokasi={syncLokasi} maraUploadProgress={maraUploadProgress} maraUploadLoading={maraUploadLoading} uploadMaraToDB={uploadMaraToDB} katalogList={katalogList} katalogSearch={katalogSearch} setKatalogSearch={setKatalogSearch} katalogFilterBelumMara={katalogFilterBelumMara} setKatalogFilterBelumMara={setKatalogFilterBelumMara} pagedKatalog={pagedKatalog} stocks={stocks} openEditKatalog={openEditKatalog} deleteKatalog={deleteKatalog} katalogPageSize={katalogPageSize} setKatalogPageSize={setKatalogPageSize} katalogPageClamped={katalogPageClamped} setKatalogPage={setKatalogPage} katalogTotalPages={katalogTotalPages} openEditSatpam={openEditSatpam} deleteSatpam={deleteSatpam} openEditTimMutu={openEditTimMutu} orgSearch={orgSearch} setOrgSearch={setOrgSearch} collapsedUitIds={collapsedUitIds} setCollapsedUitIds={setCollapsedUitIds} openAddUPT={openAddUPT} openEditUIT={openEditUIT} deleteUIT={deleteUIT} openAddULTG={openAddULTG} openEditUPT={openEditUPT} deleteUPT={deleteUPT} openEditULTG={openEditULTG} deleteULTG={deleteULTG} expandedGudangId={expandedGudangId} setExpandedGudangId={setExpandedGudangId} openEditGudang={openEditGudang} deleteGudang={deleteGudang} showGudangDenahTools={showGudangDenahTools} setShowGudangDenahTools={setShowGudangDenahTools} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} mapConfigGudangId={mapConfigGudangId} setMapConfigGudangId={setMapConfigGudangId} pendingMapLokasi={pendingMapLokasi} setPendingMapLokasi={setPendingMapLokasi} manualAddMode={manualAddMode} setManualAddMode={setManualAddMode} ocrSuggestGudangId={ocrSuggestGudangId} setOcrSuggestGudangId={setOcrSuggestGudangId} ocrSuggestSubGudangId={ocrSuggestSubGudangId} setOcrSuggestSubGudangId={setOcrSuggestSubGudangId} ocrSuggestions={ocrSuggestions} setOcrSuggestions={setOcrSuggestions} assignLokasiKoordinat={assignLokasiKoordinat} suggestKodeFromOcr={suggestKodeFromOcr} expandedSubGudangToolsIds={expandedSubGudangToolsIds} setExpandedSubGudangToolsIds={setExpandedSubGudangToolsIds} uploadDenahSubGudang={uploadDenahSubGudang} denahSubLoading={denahSubLoading} mapConfigSubGudangId={mapConfigSubGudangId} setMapConfigSubGudangId={setMapConfigSubGudangId} pendingMapLokasiSub={pendingMapLokasiSub} setPendingMapLokasiSub={setPendingMapLokasiSub} manualAddModeSub={manualAddModeSub} setManualAddModeSub={setManualAddModeSub} assignLokasiKoordinatSub={assignLokasiKoordinatSub} openEditLokasi={openEditLokasi} requestDeleteLokasi={requestDeleteLokasi} selectedSubGudangId={selectedSubGudangId} setSelectedSubGudangId={setSelectedSubGudangId} openEditAkun={openEditAkun} txns={txns} migratedTug15History={migratedTug15History} setMigratedTug15History={setMigratedTug15History} migrasiPendingReview={migrasiPendingReview} setMigrasiPendingReview={setMigrasiPendingReview} maraReference={maraReference} setMaraReference={setMaraReference} setStocks={setStocks} setKatalogList={setKatalogList} setTxns={setTxns} reloadRolePerms={reloadRolePerms} />}
         {tab==="transaction" && (
           <TransactionHubTab
             C={C} sty={sty} currentUser={currentUser} isMobile={isMobile}
@@ -4010,7 +4018,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* STOCK MODAL (Data Stok = junction of Katalog x Lokasi) */}
 
       {/* MASTER KATALOG MODAL */}
-      {katalogModal && <KatalogModal katalogModal={katalogModal} setKatalogModal={setKatalogModal} katalogForm={katalogForm} setKatalogForm={setKatalogForm} maraSearch={maraSearch} setMaraSearch={setMaraSearch} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} maraSearchResults={maraSearchResults} searchMaraCatalog={searchMaraCatalog} applyMaraToKatalog={applyMaraToKatalog} openScanner={openScanner} saveKatalog={saveKatalog} isMobile={isMobile} CATEGORIES={CATEGORIES} sty={sty} C={C} />}
+      {katalogModal && <KatalogModal katalogModal={katalogModal} setKatalogModal={setKatalogModal} katalogForm={katalogForm} setKatalogForm={setKatalogForm} maraSearch={maraSearch} setMaraSearch={setMaraSearch} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} maraSearchResults={maraSearchResults} searchMaraCatalog={searchMaraCatalog} applyMaraToKatalog={applyMaraToKatalog} openScanner={openScanner} saveKatalog={saveKatalog} isMobile={isMobile} CATEGORIES={CATEGORIES} maraSatuanOptions={maraSatuanOptions} sty={sty} C={C} />}
 
       {/* USULAN BLOK DARI DENAH — popup terpusat, supaya tidak perlu scroll naik-turun ke peta */}
       {hasRole(currentUser, "TL") && ocrSuggestGudangId && ocrSuggestions.length>0 && (
@@ -4265,14 +4273,6 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           onClose={()=>setKartuGantungDetail(null)}
         />
       )}
-      {barcodePrintOpen && (
-        <BarcodePrintModal
-          katalogList={katalogList} stocks={stocks} lokasiList={lokasiList} gudangList={gudangList}
-          C={C} sty={sty}
-          onClose={()=>setBarcodePrintOpen(false)}
-        />
-      )}
-
       {/* UIT MODAL */}
 
       {/* GUDANG MODAL — mode "edit" satu langkah; mode "add" wizard 3 langkah (Data → Denah → Blok) */}
