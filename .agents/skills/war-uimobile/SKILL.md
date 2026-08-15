@@ -1,5 +1,5 @@
 ---
-name: uimobile
+name: war-uimobile
 description: Review and repair WARNOTO mobile UI when invoked with `/uimobile` or Indonesian requests such as perbaiki UI mobile, tampilan HP berantakan, responsif, overflow, tombol terlalu kecil, or layout gudang di ponsel. Enforces review-first approval and bounded presentation-only edits.
 ---
 

@@ -17,8 +17,9 @@ Ditandai awalan **`war-`** biar mudah dibedakan dari skill import saat memanggil
 | `war-mulai` | Start dev server WARNOTO (`npm run dev`, port 3001) |
 | `war-update-data` | Sync commit+push ke repo + flag Supabase schema |
 
-> Rename ada di 2 tempat: `.claude/skills/` (Claude Code) + `.agents/skills/` (Codex) biar konsisten lintas-vendor.
-> **`war-uimobile` masih pending rename** di `.claude/skills/` (folder ke-lock file handle Windows saat sesi ini) — selesaikan setelah editor/explorer yang membuka folder itu ditutup.
+> Skill custom ada di 2 tempat: `.claude/skills/` (Claude Code) + `.agents/skills/` (Codex) biar konsisten lintas-vendor.
+> **Isi keduanya harus sama.** Sampai 2026-08-15 sisi `.agents/` cuma berisi ringkasan 8-10 baris berbahasa Inggris sementara sisi `.claude/` berisi langkah lengkap 21-73 baris — artinya Codex selama ini menerima instruksi yang jauh lebih miskin. Sudah disamakan; kalau salah satu diubah, salin ke sisi satunya.
+> Rename `war-uimobile` sudah selesai di kedua sisi (folder `.claude/` sempat ke-lock file handle Windows, diselesaikan dengan membuat folder baru lalu menghapus yang lama, bukan `git mv`).
 
 ## 📦 Import (generik / pihak ketiga)
 Nol sebutan WARNOTO. Bundle desain generik, bisa dibuang/diganti tanpa kehilangan kerja sendiri.
@@ -29,10 +30,9 @@ Nol sebutan WARNOTO. Bundle desain generik, bisa dibuang/diganti tanpa kehilanga
 - `design` / `design-system` / `banner-design` = router yang memanggil `ui-styling` / `ui-ux-pro-max` (saling terkait — jangan hapus sebagian, nanti referensi menggantung).
 - Konvensi WARNOTO = Tailwind v4 CSS-global + inline `sty` (BUKAN shadcn/className). `ui-styling` (basis shadcn) & `ui-ux-pro-max` kurang cocok di sini; dipertahankan tapi nganggur.
 
-**Symlink dari luar project:** `design-taste-frontend` → `.agents/skills/`
-
 **Global (di luar project, otomatis tersedia di semua project):**
-- User-scope (`~/.claude/skills`): `frontend-design`, `redesign-existing-projects`, `web-design-guidelines`, `design-taste-frontend`
+- User-scope (`~/.claude/skills`): `frontend-design`, `redesign-existing-projects`, `web-design-guidelines`, `design-taste-frontend`, `brandkit`, `image-to-code`
+- Referensi non-skill: `~/.agents/reference/awesome-design-md` — 74 sistem desain merek (termasuk `apple/`, `linear.app/`, `stripe/`) dalam bentuk markdown. Dibaca manual saat butuh acuan rasa, bukan dipanggil sebagai skill.
 - Plugin (`~/.claude/plugins`): `caveman`, `ponytail`, `rtk-plugin`, `n8n-mcp-skills`, `speckit/specify`
 
 ## Catatan folder (penting)
