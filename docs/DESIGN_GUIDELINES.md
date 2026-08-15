@@ -242,3 +242,21 @@ filter, tanggal asesmen) — itu data, bukan penjelasan.
 `npx playwright test tests/e2e/mobile-minimal.spec.js --project=phone-360` membuktikan ketiga
 mekanisme di atas benar-benar hidup di viewport 360px. Screenshot mentah tiap menu ada di
 `test-results/<slug>-actual.png` setelah menjalankan `responsive.spec.js`.
+
+## 16. Skill gaya `minimalist-ui` — aturan mana yang menang
+
+Skill `minimalist-ui` (dari repo `Leonxlnx/taste-skill`, dipasang 2026-08-15) boleh dipakai
+sebagai sumber ide layout dan hierarki, **bukan** sebagai sumber nilai desain. Kalau isinya
+bertabrakan dengan dokumen ini, dokumen ini yang menang. Yang tetap tidak boleh diubah:
+
+- Skala tipografi seksi 11 (12/13/15/17/20/24/32, lantai 12 px, 16 px khusus field input) —
+  skill ini menyarankan kontras tipografi ekstrem; ambil kontras lewat `fontWeight` dan
+  jarak, jangan lewat ukuran di luar skala.
+- Sudut seksi 12 (10 / 14 / pill / 50%) dan tiga sumber bentuk tombol yang harus diubah bareng.
+- Banner navy `.kpi-banner` (seksi 1) dan `OperationsHero` (seksi 3) tetap dipakai apa adanya.
+  Skill ini menolak gradient; banner korporat WARNOTO adalah identitas PLN, bukan tren SaaS.
+- Pola tabel HP `.mobile-card-table` (seksi 8) dan breakpoint seksi 9.
+
+Yang boleh diambil: macro-whitespace, bento grid, ketenangan warna aksen, dan pengurangan
+bayangan/border ganda — selama lolos `node scripts/audit-mobile.mjs` (lantai skor 118) dan
+codemod penjaga lain di seksi 11–14.

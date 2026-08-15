@@ -181,6 +181,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+**Varian gaya Taste Skill — DITUNDA (keputusan user 2026-08-15).** `minimalist-skill` SUDAH dipasang (2026-08-15) sebagai `minimalist-ui` scope user, dengan pagar presedensi di `docs/DESIGN_GUIDELINES.md` seksi 16 (guideline WARNOTO menang atas skill). `brutalist`/`soft`/`stitch` sengaja BELUM dipasang; nanti dipilih/disesuaikan dulu dengan `docs/DESIGN_GUIDELINES.md` supaya tidak ada dua sumber gaya yang bertabrakan. Dari repo itu yang sudah terpasang scope user: `taste-skill` (nama lokal `design-taste-frontend`), `redesign-skill` (`redesign-existing-projects`), `brandkit`, `image-to-code`.
+
 **Verifikasi browser di rumah (sesi 2026-08-10, semua kode SUDAH di-push & deploy Vercel jalan):**
 1. **Alat Berat — transaksi pinjam Probolinggo→Surabaya end-to-end** sebagai super admin ATAU alur nyata: Ajukan (owner=Probolinggo) → **approve oleh Philips Sihombing (Asman UPT-PBG, sudah ada)** atau super admin → Tandai Kembali → **Cetak dokumen (PDF)**. Pastikan nama Asman di PDF = Philips (label "Pemilik Alat" kini cocok). Catatan: Gresik & Probolinggo kini punya Asman (Philips) — approval tak lagi wajib super admin untuk PBG.
 2. **Material Cadang** (Forecast Stok): setelah deploy, login fajar/UPT-SBY → data pulih tampil (server-durable). UPT lain lihat punyanya sendiri (isolasi RLS `material_cadang_state` sudah diuji: fajar diblok tulis UPT-GRS).
