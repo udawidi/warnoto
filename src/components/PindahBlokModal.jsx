@@ -20,10 +20,10 @@ export function PindahBlokModal({
       <div style={{ ...sty.card, width: 420, maxWidth: "100%" }} onClick={e => e.stopPropagation()}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
           <div>
-            <h3 style={{ fontSize: 16, fontWeight: 800 }}>Pindah Blok</h3>
+            <h3 style={{ fontSize: 15, fontWeight: 800 }}>Pindah Blok</h3>
             <p style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>{st.name}</p>
           </div>
-          <button aria-label="Tutup pindah blok" style={{ background: "#dc2626", color: "white", border: "none", borderRadius: 8, minWidth: 44, minHeight: 44, padding: "6px 10px", cursor: "pointer", fontSize: 12, fontWeight: 800 }} onClick={onClose}>Tutup</button>
+          <button aria-label="Tutup pindah blok" style={{ ...sty.btn("danger","sm"), minWidth: 44, minHeight: 44 }} onClick={onClose}>Tutup</button>
         </div>
 
         <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Gudang</div>

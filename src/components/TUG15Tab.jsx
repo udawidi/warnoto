@@ -152,7 +152,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
           <div style={{display:"flex",gap:8,marginTop:6,flexWrap:"wrap"}}>
             {[{id:"ALL",label:"Semua Sumber"},{id:"BARU",label:"Baru"},{id:"LAMA",label:"Lama"}].map(option=>{
               const active = (filter.source||"ALL") === option.id;
-              return <button key={option.id} type="button" style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${active?C.accent:C.border}`,background:active?C.accent:"white",color:active?"white":C.muted,fontSize:12,cursor:"pointer",fontWeight:active?700:400}} onClick={()=>setFilter(f=>({...f,source:option.id}))}>{option.label}</button>;
+              return <button key={option.id} type="button" style={{padding:"5px 14px",borderRadius: 10,border:`1px solid ${active?C.accent:C.border}`,background:active?C.accent:"white",color:active?"white":C.muted,fontSize:12,cursor:"pointer",fontWeight:active?700:400}} onClick={()=>setFilter(f=>({...f,source:option.id}))}>{option.label}</button>;
             })}
           </div>
         </div>
@@ -191,7 +191,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
       </div>
 
       <div style={{...sty.card, marginBottom:16, border:`2px solid ${C.accent}`, background:"#eff6ff"}}>
-        <div style={{fontSize:14,fontWeight:800,color:C.sidebar,marginBottom:8}}>Cari Riwayat Material</div>
+        <div style={{fontSize:13,fontWeight:800,color:C.sidebar,marginBottom:8}}>Cari Riwayat Material</div>
         <div className="tug15-date-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
           <div><label style={sty.label}>Dari Tanggal</label><input type="date" style={sty.input} value={filter.dateFrom} onChange={e=>setFilter(f=>({...f,dateFrom:e.target.value}))}/></div>
           <div><label style={sty.label}>Sampai Tanggal</label><input type="date" style={sty.input} value={filter.dateTo} onChange={e=>setFilter(f=>({...f,dateTo:e.target.value}))}/></div>
@@ -200,7 +200,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
           <input aria-label="Cari di Seluruh Riwayat" style={{...sty.input,flex:1,minWidth:220,fontSize:15,padding:12}} value={filter.searchText||""} placeholder="Pekerjaan, lokasi, vendor/ULTG, tanggal, dokumen, SPK/kontrak, atau catatan" onChange={e=>setFilter(f=>({...f,searchText:e.target.value}))}/>
           <button type="button" style={sty.btn("primary")} onClick={()=>setFilter(f=>({...f,searchText:f.searchText||""}))}>Cari</button>
         </div>
-        <div style={{fontSize:11,color:C.muted,marginTop:6}}>Bisa memakai beberapa kata sekaligus. Jika tanggal dan kata pencarian diisi, keduanya diterapkan bersama.</div>
+        <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:6}}>Bisa memakai beberapa kata sekaligus. Jika tanggal dan kata pencarian diisi, keduanya diterapkan bersama.</div>
         {exportState.error && <div role="alert" style={{marginTop:10,fontSize:12,color:C.red||"#dc2626"}}>Unduhan laporan gagal: {exportState.error}</div>}
         {exportState.kind && <div role="status" style={{marginTop:8,fontSize:12,color:C.muted}}>Menyiapkan {exportState.kind === "pdf" ? "PDF asli" : "workbook Excel"}...</div>}
         <div className="tug15-export-actions" aria-busy={Boolean(exportState.kind)} style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -212,12 +212,12 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
       {/* Preview Tabel */}
       {rows.length===0 ? (
         <div style={{...sty.card,textAlign:"center",color:C.muted,padding:40}}>
-          <div style={{fontSize:36,marginBottom:12}}>📊</div>
-          <div style={{fontSize:14,fontWeight:700}}>Tidak ada data mutasi untuk filter ini</div>
+          <div style={{fontSize:32,marginBottom:12}}>📊</div>
+          <div style={{fontSize:13,fontWeight:700}}>Tidak ada data mutasi untuk filter ini</div>
           <div style={{fontSize:12,color:C.muted,marginTop:4}}>Coba ubah rentang tanggal atau jenis transaksi</div>
         </div>
       ) : (
-        <div style={{overflowX:"auto"}}>
+        <div className="mobile-card-table" style={{overflowX:"auto"}}>
           <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Preview {rows.length} baris — scroll kanan untuk lihat semua kolom</div>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1050}}>
             <thead>
@@ -231,29 +231,29 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
               {pagedRows.map((r,i)=>{
                 const sapBs = getSAPBadgeStyle(r.katalog);
                 return (
-                  <tr key={i} role="button" tabIndex={0} aria-label={`Buka detail transaksi ${r.deskripsi || r.katalog}`} onClick={()=>openHistoryForRow(r)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openHistoryForRow(r);}}} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb",cursor:"pointer"}}>
-                    <td style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{(page-1)*pageSize+i+1}</td>
-                    <td style={{padding:"5px 8px"}}><span style={{padding:"2px 7px",borderRadius:20,fontSize:11,fontWeight:700,background:r.source==="LAMA"?"#fef3c7":"#dbeafe",color:r.source==="LAMA"?"#92400e":"#1d4ed8"}}>{r.sourceLabel||"Baru"}</span></td>
-                    <td style={{padding:"5px 8px",fontFamily:"monospace",fontSize:12}}>{r.katalog}</td>
-                    <td style={{padding:"5px 8px",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.deskripsi}</td>
-                    <td style={{padding:"5px 8px"}}><span style={{padding:"2px 6px",borderRadius:20,fontSize:12,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{r.sapStatus}</span></td>
-                    <td style={{padding:"5px 8px",fontSize:12}}>{r.jenisBarang||"-"}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center"}}>{r.satuan}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{r.affectsSaldo===false?"—":fmtNum(r.saldoAwal)}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center",color:C.green,fontWeight:r.masuk>0?700:400}}>{r.masuk>0?fmtNum(r.masuk):"-"}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center",color:C.red,fontWeight:r.keluar>0?700:400}}>{r.keluar>0?fmtNum(r.keluar):"-"}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center",fontWeight:700}}>{r.affectsSaldo===false?"—":fmtNum(r.saldoAkhir)}</td>
-                    <td style={{padding:"5px 8px",fontSize:12,color:"#0098da",whiteSpace:"nowrap"}}>{r.tugBaDoc}</td>
-                    <td style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.keterangan}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center",fontSize:12,whiteSpace:"nowrap"}}>{r.tanggalMutasi}</td>
-                    <td style={{padding:"5px 8px",textAlign:"center"}}><button type="button" style={{...sty.btn("ghost","sm"),whiteSpace:"nowrap"}} onClick={e=>{e.stopPropagation();openHistoryForRow(r,"FULL");}}>Riwayat lengkap</button></td>
+                  <tr className="mobile-card-table__row" key={i} role="button" tabIndex={0} aria-label={`Buka detail transaksi ${r.deskripsi || r.katalog}`} onClick={()=>openHistoryForRow(r)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openHistoryForRow(r);}}} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb",cursor:"pointer"}}>
+                    <td data-label="No" style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{(page-1)*pageSize+i+1}</td>
+                    <td data-label="Sumber" style={{padding:"5px 8px"}}><span style={{padding:"2px 7px",borderRadius: 14,fontSize:12,fontWeight:700,background:r.source==="LAMA"?"#fef3c7":"#dbeafe",color:r.source==="LAMA"?"#92400e":"#1d4ed8"}}>{r.sourceLabel||"Baru"}</span></td>
+                    <td data-label="No Katalog" style={{padding:"5px 8px",fontFamily:"monospace",fontSize:12}}>{r.katalog}</td>
+                    <td data-label="Deskripsi" className="mobile-card-table__title" style={{padding:"5px 8px",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.deskripsi}</td>
+                    <td data-label="Status SAP" style={{padding:"5px 8px"}}><span style={{padding:"2px 6px",borderRadius: 14,fontSize:12,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{r.sapStatus}</span></td>
+                    <td data-label="Jenis" style={{padding:"5px 8px",fontSize:12}}>{r.jenisBarang||"-"}</td>
+                    <td data-label="Satuan" style={{padding:"5px 8px",textAlign:"center"}}>{r.satuan}</td>
+                    <td data-label="Saldo Awal" style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{r.affectsSaldo===false?"—":fmtNum(r.saldoAwal)}</td>
+                    <td data-label="Masuk" style={{padding:"5px 8px",textAlign:"center",color:C.green,fontWeight:r.masuk>0?700:400}}>{r.masuk>0?fmtNum(r.masuk):"-"}</td>
+                    <td data-label="Keluar" style={{padding:"5px 8px",textAlign:"center",color:C.red,fontWeight:r.keluar>0?700:400}}>{r.keluar>0?fmtNum(r.keluar):"-"}</td>
+                    <td data-label="Saldo Akhir" style={{padding:"5px 8px",textAlign:"center",fontWeight:700}}>{r.affectsSaldo===false?"—":fmtNum(r.saldoAkhir)}</td>
+                    <td data-label="TUG/BA" style={{padding:"5px 8px",fontSize:12,color:"#0098da",whiteSpace:"nowrap"}}>{r.tugBaDoc}</td>
+                    <td data-label="Keterangan" style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.keterangan}</td>
+                    <td data-label="Tgl Mutasi" style={{padding:"5px 8px",textAlign:"center",fontSize:12,whiteSpace:"nowrap"}}>{r.tanggalMutasi}</td>
+                    <td data-label="Riwayat" style={{padding:"5px 8px",textAlign:"center"}}><button type="button" style={{...sty.btn("ghost","sm"),whiteSpace:"nowrap"}} onClick={e=>{e.stopPropagation();openHistoryForRow(r,"FULL");}}>Riwayat lengkap</button></td>
                   </tr>
                 );
               })}
-              <tr style={{background:"#f1f5f9",fontWeight:700,borderTop:`2px solid ${C.border}`}}>
+              <tr tabIndex={0} className="mobile-card-table__row" style={{background:"#f1f5f9",fontWeight:700,borderTop:`2px solid ${C.border}`}}>
                 <td colSpan={8} style={{padding:"6px 8px",textAlign:"right"}}>TOTAL</td>
-                <td style={{padding:"6px 8px",textAlign:"center",color:C.green}}>{fmtNum(rows.reduce((a,r)=>a+r.masuk,0))}</td>
-                <td style={{padding:"6px 8px",textAlign:"center",color:C.red}}>{fmtNum(rows.reduce((a,r)=>a+r.keluar,0))}</td>
+                <td data-label="Masuk" style={{padding:"6px 8px",textAlign:"center",color:C.green}}>{fmtNum(rows.reduce((a,r)=>a+r.masuk,0))}</td>
+                <td data-label="Keluar" style={{padding:"6px 8px",textAlign:"center",color:C.red}}>{fmtNum(rows.reduce((a,r)=>a+r.keluar,0))}</td>
                 <td colSpan={5}></td>
               </tr>
             </tbody>
@@ -266,7 +266,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
       )}
       {historyItem && (
         <div role="dialog" aria-modal="true" aria-label={historyViewMode === "ROW" ? "Detail transaksi material" : "Riwayat lengkap material"} style={{position:"fixed",inset:0,zIndex:10000,background:"rgba(15,23,42,.48)",display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onMouseDown={()=>setHistoryItem(null)}>
-          <aside style={{width:"min(760px,100%)",maxHeight:"min(86vh,760px)",overflowY:"auto",background:C.surface||"white",borderRadius:16,padding:24,boxShadow:"0 24px 60px rgba(15,23,42,.28)",border:`1px solid ${C.border}`}} onMouseDown={e=>e.stopPropagation()}>
+          <aside style={{width:"min(760px,100%)",maxHeight:"min(86vh,760px)",overflowY:"auto",background:C.surface||"white",borderRadius: 14,padding:24,boxShadow:"0 24px 60px rgba(15,23,42,.28)",border:`1px solid ${C.border}`}} onMouseDown={e=>e.stopPropagation()}>
             <div style={{display:"flex",gap:12,alignItems:"start",marginBottom:16}}>
               <div style={{flex:1}}>
                 <div style={{fontSize:17,fontWeight:800,color:C.sidebar}}>{historyViewMode === "ROW" ? "Detail transaksi material" : "Riwayat lengkap"}</div>
@@ -279,14 +279,14 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
               <span style={{fontSize:12,fontWeight:700,color:C.muted}}>Tampilkan:</span>
               {[{id:"ALL",label:"Semua"},{id:"MASUK",label:"Masuk"},{id:"KELUAR",label:"Keluar"}].map(option=>{
                 const active = historyTypeFilter === option.id;
-                return <button key={option.id} type="button" aria-pressed={active} onClick={()=>setHistoryTypeFilter(option.id)} style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${active?C.accent:C.border}`,background:active?C.accent:(C.surface||"white"),color:active?"white":C.muted,fontSize:12,fontWeight:active?700:500,cursor:"pointer"}}>{option.label}</button>;
+                return <button key={option.id} type="button" aria-pressed={active} onClick={()=>setHistoryTypeFilter(option.id)} style={{padding:"5px 12px",borderRadius: 14,border:`1px solid ${active?C.accent:C.border}`,background:active?C.accent:(C.surface||"white"),color:active?"white":C.muted,fontSize:12,fontWeight:active?700:500,cursor:"pointer"}}>{option.label}</button>;
               })}
             </div>}
             {historyViewMode === "FULL" && <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-              <div style={{padding:10,border:`1px solid ${C.border}`,borderRadius:8}}><div style={{fontSize:11,color:C.muted}}>Total masuk</div><div style={{fontWeight:800,color:C.green}}>{fmtNum(visibleHistoryRows.reduce((sum,row)=>sum+row.masuk,0))}</div></div>
-              <div style={{padding:10,border:`1px solid ${C.border}`,borderRadius:8}}><div style={{fontSize:11,color:C.muted}}>Total keluar</div><div style={{fontWeight:800,color:C.red}}>{fmtNum(visibleHistoryRows.reduce((sum,row)=>sum+row.keluar,0))}</div></div>
+              <div style={{padding:10,border:`1px solid ${C.border}`,borderRadius: 10}}><div style={{fontSize:12,color:C.muted}}>Total masuk</div><div style={{fontWeight:800,color:C.green}}>{fmtNum(visibleHistoryRows.reduce((sum,row)=>sum+row.masuk,0))}</div></div>
+              <div style={{padding:10,border:`1px solid ${C.border}`,borderRadius: 10}}><div style={{fontSize:12,color:C.muted}}>Total keluar</div><div style={{fontWeight:800,color:C.red}}>{fmtNum(visibleHistoryRows.reduce((sum,row)=>sum+row.keluar,0))}</div></div>
             </div>}
-            {historyViewMode === "FULL" && <div style={{fontSize:11,color:C.muted,marginBottom:12}}>Arsip lama ditautkan hanya bila nomor katalog sama persis; data arsip tidak mengubah saldo stok aktif.</div>}
+            {historyViewMode === "FULL" && <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>Arsip lama ditautkan hanya bila nomor katalog sama persis; data arsip tidak mengubah saldo stok aktif.</div>}
             {attachmentState.error && <div style={{fontSize:12,color:C.red||"#dc2626",marginBottom:10}}>{attachmentState.error}</div>}
             {attachmentState.loading && <div style={{fontSize:12,color:C.muted,marginBottom:10}}>Menyiapkan lampiran…</div>}
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -307,7 +307,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
                 const isInbound = row.eventKind === "MASUK";
                 const isOutbound = row.eventKind === "KELUAR";
                 const eventColor = isInbound ? (C.green || "#16a34a") : isOutbound ? (C.red || "#dc2626") : C.border;
-                return <div key={`${row.source}-${row.no}-${index}`} style={{padding:12,border:`1px solid ${C.border}`,borderRadius:8}}>
+                return <div key={`${row.source}-${row.no}-${index}`} style={{padding:12,border:`1px solid ${C.border}`,borderRadius: 10}}>
                   <div className="tug15-history-event-header" data-history-direction={isInbound?"MASUK":isOutbound?"KELUAR":"LAINNYA"} style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"stretch",borderLeft:`5px solid ${eventColor}`,background:(isInbound||isOutbound)?`${eventColor}18`:"transparent",padding:"7px 8px 7px 10px",margin:"-4px -4px 0 -4px",borderRadius:"0 6px 6px 0"}}>
                     <span style={{fontSize:12,fontWeight:800,color:eventColor}}>{row.eventKind || "EVENT"}</span>
                     <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:3}}><span style={{fontSize:12,color:C.muted}}>{row.tanggalMutasi}</span></div>
@@ -315,8 +315,8 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
                   <div style={{fontSize:13,fontWeight:700,marginTop:4}}>{row.eventKind || (row.docType === "TUG5" ? "PERMINTAAN" : "EVENT")} · {row.tugBaDoc}</div>
                   <div style={{fontSize:12,color:C.muted,marginTop:3}}>{row.keterangan}</div>
                   <div className="tug15-history-detail-grid" style={{fontSize:12,marginTop:8,display:"grid",gridTemplateColumns:"1fr 1fr",gap:5}}><span>Tanggal: {row.eventDate || row.tanggalMutasi}</span><span>Pekerjaan: {row.jobName && row.jobName!=="-" ? row.jobName : "Tidak tercatat"}</span><span>Dipakai/lokasi kerja: {row.workLocation && row.workLocation!=="-" ? row.workLocation : "Tidak tercatat"}</span><span>Vendor/ULTG/pihak: {(row.counterparty && row.counterparty!=="-" ? row.counterparty : row.unit) || "Tidak tercatat"}</span><span>Lokasi simpan: {row.storageLocation && row.storageLocation!=="-" ? row.storageLocation : "Tidak tercatat"}</span><span>Kontrak/penerimaan: {contractText}</span><span>Referensi dokumen: {row.documentRefs && row.documentRefs!=="-" ? row.documentRefs : "Tidak tersedia"}</span><span>Catatan: {row.notes && row.notes!=="-" ? row.notes : "Tidak tercatat"}</span></div>
-                  {row.eventKind === "KELUAR" && <div style={{fontSize:11,color:C.muted,marginTop:7}}>Penerimaan sebelumnya: {priorReceipt ? `${priorReceipt.contractRefs} · ${priorReceipt.tanggalMutasi}` : "tidak ditemukan pada history ini"} — hanya referensi, bukan penelusuran lot.</div>}
-                  {row.quality && row.quality !== "-" && <div style={{fontSize:11,color:"#92400e",marginTop:6}}>Quality flags: {row.quality}</div>}
+                  {row.eventKind === "KELUAR" && <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:7}}>Penerimaan sebelumnya: {priorReceipt ? `${priorReceipt.contractRefs} · ${priorReceipt.tanggalMutasi}` : "tidak ditemukan pada history ini"} — hanya referensi, bukan penelusuran lot.</div>}
+                  {row.quality && row.quality !== "-" && <div style={{fontSize:12,color:"#92400e",marginTop:6}}>Quality flags: {row.quality}</div>}
                   {row.docType === "TUG5" ? <div style={{fontSize:12,color:C.muted,marginTop:8}}>Permintaan (bukan mutasi stok); qty/saldo tidak berlaku.</div> : <div style={{display:"flex",gap:12,fontSize:12,marginTop:8}}><span style={{color:C.green}}>Masuk {fmtNum(row.masuk)}</span><span style={{color:C.red}}>Keluar {fmtNum(row.keluar)}</span></div>}
                   {attachments.length > 0 && <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:10}}>{attachments.map(([label,url])=><button key={label} type="button" style={sty.btn("ghost","sm")} onClick={()=>openAttachment(url)}>{label}</button>)}</div>}
                 </div>;

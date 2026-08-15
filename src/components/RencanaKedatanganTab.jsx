@@ -57,12 +57,12 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
       {showForm && (
         <div style={{...sty.card,marginBottom:20,borderLeft:`4px solid ${C.accent}`}}>
           <h3 style={{fontSize:15,fontWeight:800,marginBottom:12}}>Input Rencana Kedatangan</h3>
-          <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:8,padding:10,marginBottom:14}}>
+          <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:10,marginBottom:14}}>
             <div style={{fontSize:12,fontWeight:700,color:"#1d4ed8",marginBottom:6}}>🤖 Upload Surat Rencana Pengiriman Material dari Vendor — AI akan ekstrak otomatis</div>
             <input type="file" accept=".pdf" onChange={handlePdfUpload} style={{fontSize:12}}/>
             {aiLoading && <div style={{fontSize:12,color:"#1d4ed8",marginTop:6}}>⏳ AI sedang membaca surat...</div>}
             {aiError && <div style={{fontSize:12,color:C.red,marginTop:6}}>❌ {aiError}</div>}
-            <div style={{fontSize:12,color:C.muted,marginTop:4}}>Dokumen ini biasanya mencantumkan no. kontrak & tanggal rencana kirim/tiba barang. Setelah upload, review hasilnya di bawah dan edit jika perlu.</div>
+            <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:4}}>Dokumen ini biasanya mencantumkan no. kontrak & tanggal rencana kirim/tiba barang. Setelah upload, review hasilnya di bawah dan edit jika perlu.</div>
           </div>
           <div className="arrival-form-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
             <div><label style={sty.label}>No. Kontrak</label><input style={sty.input} value={form.noKontrak} onChange={e=>setForm(f=>({...f,noKontrak:e.target.value}))}/></div>
@@ -72,7 +72,7 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
           </div>
           <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8}}>Daftar Item Barang</div>
           {form.items.map((item,i)=>(
-            <div key={i} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:8,background:"#f9fafb"}}>
+            <div key={i} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:10,marginBottom:8,background:"#f9fafb"}}>
               <div className="arrival-item-main-grid" style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr",gap:8,marginBottom:6}}>
                 <div><label style={sty.label}>Nama Barang</label><input style={sty.input} value={item.namaBarang} onChange={e=>updateItem(i,"namaBarang",e.target.value)}/></div>
                 <div><label style={sty.label}>Jumlah</label><input type="number" inputMode="decimal" min="1" style={sty.input} value={item.jumlah} onChange={e=>updateItem(i,"jumlah",Number(e.target.value))}/></div>
@@ -107,8 +107,8 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
       {/* List Rencana */}
       {rencanaList.length===0 && !showForm && (
         <div style={{...sty.card,textAlign:"center",color:C.muted,padding:40}}>
-          <div style={{fontSize:36,marginBottom:12}}>📅</div>
-          <div style={{fontSize:14,fontWeight:700}}>Belum ada rencana kedatangan barang</div>
+          <div style={{fontSize:32,marginBottom:12}}>📅</div>
+          <div style={{fontSize:13,fontWeight:700}}>Belum ada rencana kedatangan barang</div>
           {canEdit && <div style={{fontSize:12,marginTop:4}}>Klik "+ Input Kontrak Baru" untuk menambahkan</div>}
         </div>
       )}
@@ -119,7 +119,7 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
           <div key={r.id} style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${isLate?C.red:C.green}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div>
-                <div style={{fontWeight:800,fontSize:14}}>{r.noKontrak||"No Kontrak -"}</div>
+                <div style={{fontWeight:800,fontSize:13}}>{r.noKontrak||"No Kontrak -"}</div>
                 <div style={{fontSize:12,color:C.muted}}>Supplier: {r.supplier||"-"} • Kontrak: {r.tanggalKontrak||"-"}</div>
                 <div style={{fontSize:12,fontWeight:700,color:isLate?C.red:C.green,marginTop:2}}>
                   📅 Serah Terima: {r.tanggalSerahTerima||"-"} {isLate && "⚠️ TERLAMBAT"}
@@ -127,7 +127,7 @@ export function RencanaKedatanganTab({ rencanaList, katalogList, currentUser, st
               </div>
               {canEdit && <button title="Hapus" style={{...sty.btn("danger","sm")}} onClick={()=>deleteRencana(r.id)}>🗑️</button>}
             </div>
-            <div style={{background:"#f9fafb",borderRadius:8,padding:8}}>
+            <div style={{background:"#f9fafb",borderRadius: 10,padding:8}}>
               {(r.items||[]).map((item,i)=>{
                 const kat = katalogList.find(k=>k.id===item.katalogId);
                 return (

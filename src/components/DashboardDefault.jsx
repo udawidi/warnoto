@@ -160,7 +160,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, uptLis
                 {dashModal==="kritis"&&<><Warning weight="fill" size={16} style={{verticalAlign:"-0.15em",marginRight:4}}/>Material Stok Kritis</>}
                 {dashModal==="tindakan"&&<><Hourglass weight="fill" size={16} style={{verticalAlign:"-0.15em",marginRight:4}}/>Butuh Tindakan Anda</>}
               </h3>
-              <button style={{background:"transparent",border:"none",fontSize:18,cursor:"pointer",color:C.muted,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setDashModal(null)}><X weight="bold" size={16}/></button>
+              <button style={{background:"transparent",border:"none",fontSize:17,cursor:"pointer",color:C.muted,width:44,height:44,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={()=>setDashModal(null)}><X weight="bold" size={16}/></button>
             </div>
 
             {(dashModal==="totalItem"||dashModal==="nilai") && (

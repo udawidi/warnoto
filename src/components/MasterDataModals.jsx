@@ -18,17 +18,17 @@ export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKa
                 {maraSearch && <button style={sty.btn("ghost","sm")} onClick={()=>{setMaraSearch("");setMaraSearchResults([])}}>✕</button>}
               </div>
               {maraSearchLoading && <div style={{fontSize:12,color:"#0369a1",marginTop:6}}>Mencari...</div>}
-              {maraSearchError && <div style={{fontSize:12,color:C.red,marginTop:6,padding:"6px 8px",background:"#fef2f2",borderRadius:6}}>⚠️ {maraSearchError}</div>}
+              {maraSearchError && <div style={{fontSize:12,color:C.red,marginTop:6,padding:"6px 8px",background:"#fef2f2",borderRadius: 10}}>⚠️ {maraSearchError}</div>}
               {maraSearchResults.length>0 && (
                 <div style={{marginTop:8,maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
                   {maraSearchResults.map(item=>(
                     <div key={item.kode_material} onClick={()=>applyMaraToKatalog(item)}
-                      style={{padding:"6px 10px",borderRadius:7,border:"1px solid #bae6fd",background:C.surface,cursor:"pointer",fontSize:12,display:"flex",justifyContent:"space-between",gap:8}}
+                      style={{padding:"6px 10px",borderRadius: 10,border:"1px solid #bae6fd",background:C.surface,cursor:"pointer",fontSize:12,display:"flex",justifyContent:"space-between",gap:8}}
                       onMouseEnter={e=>e.currentTarget.style.background="#e0f2fe"}
                       onMouseLeave={e=>e.currentTarget.style.background=C.surface}>
                       <div>
                         <span style={{fontWeight:700,color:"#0369a1"}}>{item.kode_material}</span>
-                        <span style={{color:"#334155",marginLeft:8}}>{item.nama}</span>
+                        <span style={{color: "#64748b",marginLeft:8}}>{item.nama}</span>
                       </div>
                       <span style={{color:"#64748b",flexShrink:0}}>{item.satuan}</span>
                     </div>
@@ -38,10 +38,10 @@ export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKa
               {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && (
                 <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}"</div>
               )}
-              <div style={{fontSize:12,color:"#94a3b8",marginTop:6}}>Klik item untuk auto-fill form. MARA tersimpan di database.</div>
+              <div style={{fontSize:12,color: "#64748b",marginTop:6}}>Klik item untuk auto-fill form. MARA tersimpan di database.</div>
             </div>
             {katalogForm._maraLocked && (
-              <div style={{marginBottom:12,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 10px"}}>
+              <div style={{marginBottom:12,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius: 10,padding:"8px 10px"}}>
                 <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — Nomor Katalog, Nama, Kategori, Satuan, dan Status terkunci sebagai satu paket, tidak bisa diubah satu-satu.</span>
               </div>
             )}
@@ -93,7 +93,7 @@ export function KatalogModal({ katalogModal, setKatalogModal, katalogForm, setKa
                   <option value="Non-SAP">Non-SAP</option>
                 </select>
               )}
-              <div style={{fontSize:12,color:"#94a3b8",marginTop:4}}>Non-SAP = kandidat yang akan dipindahkan ke SAP; boleh memakai katalog Persediaan/Cadang.</div>
+              <div style={{fontSize:12,color: "#64748b",marginTop:4}}>Non-SAP = kandidat yang akan dipindahkan ke SAP; boleh memakai katalog Persediaan/Cadang.</div>
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setKatalogModal(null)}>Batal</button>
@@ -110,9 +110,9 @@ export function LokasiModal({ lokasiModal, setLokasiModal, lokasiForm, setLokasi
           <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{lokasiModal==="edit"?"Edit Master Lokasi":"Tambah Lokasi Gudang Baru"}</span><button onClick={()=>setLokasiModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
             {gudangList.length===0 ? (
-              <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Belum ada Master Gudang. Tambahkan Gudang dulu di menu "Master Data" → "Master Gudang" sebelum bisa mengisi Blok — data harus berjenjang: Gudang dulu, baru Blok.</div>
+              <div tabIndex={0} className="info-note" style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Belum ada Master Gudang. Tambahkan Gudang dulu di menu "Master Data" → "Master Gudang" sebelum bisa mengisi Blok — data harus berjenjang: Gudang dulu, baru Blok.</div>
             ) : (
-              <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#1e40af",marginBottom:16}}>ℹ️ Pilih Gudang dulu, baru isi data Blok-nya (berjenjang).</div>
+              <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"10px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Pilih Gudang dulu, baru isi data Blok-nya (berjenjang).</div>
             )}
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Gudang *</label>
@@ -148,7 +148,7 @@ export function GudangEditModal({ gudangForm, setGudangForm, uptList, setGudangM
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <h3 style={{fontSize:18,fontWeight:800,marginBottom:20}}>Edit Gudang</h3>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:20}}>Edit Gudang</h3>
             <div style={{marginBottom:12}}><label style={sty.label}>Kode Gudang</label><input style={sty.input} value={gudangForm.kode||""} onChange={e=>setGudangForm(f=>({...f,kode:e.target.value}))} placeholder="cth: GTK"/></div>
             <div style={{marginBottom:12}}><label style={sty.label}>Nama Gudang</label><input style={sty.input} value={gudangForm.nama||""} onChange={e=>setGudangForm(f=>({...f,nama:e.target.value}))} placeholder="cth: Gudang Ketintang"/></div>
             <div style={{marginBottom:12}}>
@@ -158,7 +158,7 @@ export function GudangEditModal({ gudangForm, setGudangForm, uptList, setGudangM
                 const r = extractLatLngFromAddress(val);
                 setGudangForm(f=>({...f, alamat:val, lat:r?r.lat:f.lat, lng:r?r.lng:f.lng}));
               }} placeholder="cth: MRR6+9M Wonorejo, Surabaya, East Java"/>
-              <div style={{fontSize:12,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
+              <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
             </div>
             <div style={{marginBottom:16}}>
               <label style={sty.label}>UPT</label>
@@ -179,14 +179,14 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
           <div style={{...sty.card,width:540,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={{display:"flex",gap:6,marginBottom:18}}>
               {[1,2,3].map(n=>(
-                <div key={n} style={{flex:1,height:4,borderRadius:4,background:gudangWizardStep>=n?C.accent:C.border}}/>
+                <div key={n} style={{flex:1,height:4,borderRadius: 10,background:gudangWizardStep>=n?C.accent:C.border}}/>
               ))}
             </div>
 
             {/* STEP 1: Data Gudang */}
             {gudangWizardStep===1 && (
               <div>
-                <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Tambah Gudang Baru</h3>
+                <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Tambah Gudang Baru</h3>
                 <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Langkah 1 dari 3 — Data Gudang</p>
                 <div style={{marginBottom:12}}><label style={sty.label}>Kode Gudang</label><input style={sty.input} value={gudangForm.kode||""} onChange={e=>setGudangForm(f=>({...f,kode:e.target.value}))} placeholder="cth: GTK"/></div>
                 <div style={{marginBottom:12}}><label style={sty.label}>Nama Gudang</label><input style={sty.input} value={gudangForm.nama||""} onChange={e=>setGudangForm(f=>({...f,nama:e.target.value}))} placeholder="cth: Gudang Ketintang"/></div>
@@ -197,7 +197,7 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                     const r = extractLatLngFromAddress(val);
                     setGudangForm(f=>({...f, alamat:val, lat:r?r.lat:f.lat, lng:r?r.lng:f.lng}));
                   }} placeholder="cth: MRR6+9M Wonorejo, Surabaya, East Java"/>
-                  <div style={{fontSize:12,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
+                  <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:3}}>Tempel alamat persis seperti format Google Maps (kode + area) — koordinat untuk Peta Wilayah otomatis terisi, tidak perlu diisi manual.</div>
                 </div>
                 <div style={{marginBottom:16}}>
                   <label style={sty.label}>UPT</label>
@@ -218,14 +218,14 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
               const g = gudangList.find(x=>x.id===gudangForm.id);
               return (
                 <div>
-                  <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Upload Denah Gudang</h3>
+                  <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Upload Denah Gudang</h3>
                   <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Langkah 2 dari 3 — Opsional, tapi disarankan supaya bisa menambahkan blok di peta.</p>
                   <div style={{fontSize:12,color:C.muted,marginBottom:8}}>💡 Convert PDF denah ke gambar terlebih dahulu (screenshot, foto, atau export dari PDF viewer)</div>
                   <input type="file" accept="image/*" capture="environment" onChange={e=>{const f=e.target.files[0]; if(f) uploadDenahGudang(gudangForm.id,f);}} style={{fontSize:12,color:C.muted}}/>
                   {denahLoading && <div style={{fontSize:12,color:"#1d4ed8",marginTop:8}}>⏳ Mengompres, menyimpan, dan membaca label di gambar (OCR)...</div>}
                   {g?.denahImageData && !denahLoading && (
                     <div style={{marginTop:12}}>
-                      <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                      <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
                     </div>
                   )}
                   <div style={{display:"flex",gap:10,marginTop:18}}>
@@ -242,8 +242,8 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
               const bloklokasi = lokasiList.filter(l=>l.gudangId===gudangForm.id);
               return (
                 <div>
-                  <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Tambah Blok Lokasi</h3>
-                  <p style={{fontSize:12,color:C.muted,marginBottom:12}}>Langkah 3 dari 3 — Klik titik di denah untuk menambah blok. Kode diusulkan otomatis dari OCR, bisa diedit.</p>
+                  <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Tambah Blok Lokasi</h3>
+                  <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>Langkah 3 dari 3 — Klik titik di denah untuk menambah blok. Kode diusulkan otomatis dari OCR, bisa diedit.</p>
 
                   {/* Catatan: panel usulan blok dari OCR sekarang tampil sebagai popup terpusat (lihat USULAN BLOK DARI DENAH di luar wizard ini) */}
 
@@ -256,7 +256,7 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                         const kodeUsulan = suggestKodeFromOcr(g, xPct, yPct) || `${g.kode||"BLOK"}-${String(bloklokasi.length+1).padStart(2,"0")}`;
                         setWizardBlokDraft({ kode:kodeUsulan, keterangan:"", kapasitas:50, xPct, yPct });
                       }}>
-                      <img src={g.denahImageData} alt="Denah" style={{width:"100%",borderRadius:6,border:`2px dashed #3b82f6`,display:"block"}}/>
+                      <img src={g.denahImageData} alt="Denah" style={{width:"100%",borderRadius: 10,border:`2px dashed #3b82f6`,display:"block"}}/>
                       {bloklokasi.filter(l=>l.mapX!=null).map(l=>(
                         <div key={l.id} title={l.kode} style={{position:"absolute",left:`${l.mapX}%`,top:`${l.mapY}%`,transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:l.status==="PENDING"?"#9ca3af":"#dc2626",border:l.status==="PENDING"?"2px dashed white":"2px solid white",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
                       ))}
@@ -267,7 +267,7 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                   ) : <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Denah belum tersedia.</div>}
 
                   {wizardBlokDraft && (
-                    <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:8,padding:12,marginTop:12}} onClick={e=>e.stopPropagation()}>
+                    <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:12,marginTop:12}} onClick={e=>e.stopPropagation()}>
                       <div style={{marginBottom:8}}><label style={sty.label}>Kode Blok</label><input style={sty.input} value={wizardBlokDraft.kode} onChange={e=>setWizardBlokDraft(d=>({...d,kode:e.target.value}))}/></div>
                       <div style={{marginBottom:8}}><label style={sty.label}>Keterangan Area</label><input style={sty.input} value={wizardBlokDraft.keterangan} onChange={e=>setWizardBlokDraft(d=>({...d,keterangan:e.target.value}))}/></div>
                       <div style={{marginBottom:10}}><label style={sty.label}>Kapasitas Maksimal</label><input style={sty.input} type="number" inputMode="decimal" value={wizardBlokDraft.kapasitas} onChange={e=>setWizardBlokDraft(d=>({...d,kapasitas:Number(e.target.value)}))}/></div>

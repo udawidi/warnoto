@@ -73,15 +73,15 @@ export function AIFaqPanel({ sty, C, onSaved }) {
 
   return (
     <div style={{...sty.card, marginBottom:16}}>
-      <div style={{fontWeight:800,fontSize:14,marginBottom:4}}>🧠 Kelola FAQ Bot</div>
-      <p style={{fontSize:12,color:C.muted,marginBottom:12}}>Pertanyaan nyata dari bot Telegram yang dijawab kurang baik — tulis jawaban resmi supaya besok bot langsung tahu.</p>
+      <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>🧠 Kelola FAQ Bot</div>
+      <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>Pertanyaan nyata dari bot Telegram yang dijawab kurang baik — tulis jawaban resmi supaya besok bot langsung tahu.</p>
 
       {loading ? <div style={{fontSize:12,color:C.muted}}>Memuat...</div> : (
         <>
           <div style={{fontSize:12,fontWeight:700,marginBottom:8}}>⚠️ Perlu Jawaban Resmi ({badLogs.length})</div>
           {badLogs.length===0 && <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Tidak ada pertanyaan yang perlu diperbaiki saat ini. 👍</div>}
           {badLogs.slice(0,20).map(log=>(
-            <div key={`${log._table}_${log.id}`} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:10,marginBottom:8,background:"#fffbeb"}}>
+            <div key={`${log._table}_${log.id}`} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:10,marginBottom:8,background:"#fffbeb"}}>
               <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:4}}>
                 <div style={{fontSize:12,fontWeight:700}}>{log.message_in}</div>
                 <span style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>{log._channel} • {log.display_name||log.telegram_username||log.phone_number||"-"}</span>

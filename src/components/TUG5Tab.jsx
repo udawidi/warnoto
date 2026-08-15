@@ -44,7 +44,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       REJECTED:{label:"DITOLAK",bg:"#fee2e2",fg:"#991b1b"},
     };
     const m = map[t.stage]||{label:t.stage,bg:"#f3f4f6",fg:"#6b7280"};
-    return <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
+    return <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
   }
 
   return (
@@ -61,13 +61,13 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
           <div key={t.id} style={{...sty.card}}>
             <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:isMobile?"stretch":"flex-start",gap:8,marginBottom:8}}>
               <div>
-                <div style={{fontWeight:800,fontSize:14}}>{t.docNumbers?.tug5}</div>
+                <div style={{fontWeight:800,fontSize:13}}>{t.docNumbers?.tug5}</div>
                 <div style={{fontSize:12,color:C.muted}}>Kepada: {uit?.kode||"-"} • {t.jenisTransfer} • {fmtDate(t.createdAt)}</div>
                 <div style={{fontSize:12,color:C.muted}}>👷 {creator.name} • {t.keteranganUmum||"-"}</div>
               </div>
               {stageBadge5(t)}
             </div>
-            <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
+            <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
               {(t.stockItems||[]).map((si,idx)=>{
                 const kat = katalogList.find(k=>k.id===si.katalogId);
                 return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
@@ -99,7 +99,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
         <>
           <div style={{fontSize:13,fontWeight:800,color:"#0369a1",borderBottom:`1px solid ${C.border}`,paddingBottom:6,marginTop:8,marginBottom:4}}>🏘️ Slip Reservasi — dari ULTG</div>
           {currentUser.role==="MGR_ULTG" && !currentUser.ultgId && (
-            <div style={{...sty.card,background:"#fef2f2",border:"1px solid #fecaca",color:"#991b1b",fontSize:12,padding:12,marginBottom:8}}>
+            <div tabIndex={0} className="info-note" style={{...sty.card,background:"#fef2f2",border:"1px solid #fecaca",color:"#991b1b",fontSize:12,padding:12,marginBottom:8}}>
               ⚠️ Akun kamu belum terhubung ke unit ULTG manapun, jadi tombol "Setujui" tidak akan muncul di list manapun. Hubungi Admin untuk melengkapi field ULTG di profil kamu.
             </div>
           )}
@@ -115,9 +115,9 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
 
             if (!isExpanded) {
               return (
-                <div key={t.id} style={{display:"flex",alignItems:isMobile?"stretch":"center",flexDirection:isMobile?"column":"row",gap:10,border:`1px solid ${C.border}`,borderLeft:"3px solid #0369a1",borderRadius:8,padding:"8px 12px",marginBottom:6,background:"white",cursor:"pointer"}} onClick={()=>setUltgExpandedId(t.id)}>
+                <div key={t.id} style={{display:"flex",alignItems:isMobile?"stretch":"center",flexDirection:isMobile?"column":"row",gap:10,border:`1px solid ${C.border}`,borderLeft:"3px solid #0369a1",borderRadius: 10,padding:"8px 12px",marginBottom:6,background:"white",cursor:"pointer"}} onClick={()=>setUltgExpandedId(t.id)}>
                   <span style={{fontWeight:700,fontSize:12}}>{t.docNumbers?.tug5}</span>
-                  <span style={{fontSize:12,color:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ultg?.nama||t.ultgId} • {t.namaPekerjaan||t.keteranganUmum||"-"} • {fmtDate(t.createdAt)}</span>
+                  <span style={{fontSize:12,color:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{ultg?.nama||t.ultgId} • {t.namaPekerjaan||t.keteranganUmum||"-"} • {fmtDate(t.createdAt)}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     {stageBadge5(t)}
                     {canAdopt && <span style={{fontSize:12,fontWeight:700,color:"#0369a1"}}>👉 Siap Diadopsi</span>}
@@ -130,7 +130,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               <div key={t.id} style={{...sty.card,borderLeft:"3px solid #0369a1"}}>
                 <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:isMobile?"stretch":"flex-start",gap:8,marginBottom:8}}>
                   <div>
-                    <div style={{fontWeight:800,fontSize:14}}>{t.docNumbers?.tug5}</div>
+                    <div style={{fontWeight:800,fontSize:13}}>{t.docNumbers?.tug5}</div>
                     <div style={{fontSize:12,color:C.muted}}>Dari: {ultg?.nama||t.ultgId} • {fmtDate(t.createdAt)}</div>
                     <div style={{fontSize:12,color:C.muted}}>👤 {creator.name} • {t.namaPekerjaan||t.keteranganUmum||"-"}</div>
                   </div>
@@ -139,7 +139,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                     <button type="button" style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>setUltgExpandedId(null)}>▲ Tutup</button>
                   </div>
                 </div>
-                <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
+                <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                   {(t.stockItems||[]).map((si,idx)=>{
                     const kat = katalogList.find(k=>k.id===si.katalogId);
                     return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
@@ -187,15 +187,15 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               <div key={t.id} style={{...sty.card,borderLeft:`3px solid #7c3aed`}}>
                 <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:isMobile?"stretch":"flex-start",gap:8,marginBottom:8}}>
                   <div>
-                    <div style={{fontWeight:800,fontSize:14}}>{t.docNumbers?.tug7||t.id}</div>
+                    <div style={{fontWeight:800,fontSize:13}}>{t.docNumbers?.tug7||t.id}</div>
                     <div style={{fontSize:12,color:C.muted}}>Ref TUG-5: {tug5Ref?.docNumbers?.tug5||t.tug5DocNo||"-"}</div>
                     <div style={{fontSize:12,color:C.muted}}>UPT Pengirim: {uptPengirim?.nama||"Belum ditentukan"} • Penerima: {t.unitPenerima}</div>
                   </div>
-                  <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:t.stage==="APPROVED"?"#dcfce7":t.stage==="DRAFT_UIT"?"#f3e8ff":"#fef3c7",color:t.stage==="APPROVED"?"#166534":t.stage==="DRAFT_UIT"?"#7c3aed":"#92400e"}}>
+                  <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:t.stage==="APPROVED"?"#dcfce7":t.stage==="DRAFT_UIT"?"#f3e8ff":"#fef3c7",color:t.stage==="APPROVED"?"#166534":t.stage==="DRAFT_UIT"?"#7c3aed":"#92400e"}}>
                     {t.stage==="DRAFT_UIT"?"Draft (Perlu dilengkapi Admin UIT)":t.stage==="PENDING_MGR_LOGISTIK"?"Menunggu Mgr Logistik":t.stage==="APPROVED"?"APPROVED":"DITOLAK"}
                   </span>
                 </div>
-                <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
+                <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                   {(t.stockItems||[]).map((si,idx)=>{
                     const kat = katalogList.find(k=>k.id===si.katalogId);
                     return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>x{si.qty||si.permintaan}</b> {kat?.satuan}</div>;
@@ -227,19 +227,19 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             <div key={t.id} style={{...sty.card,borderLeft:`3px solid ${C.green}`}}>
               <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:isMobile?"stretch":"flex-start",gap:8,marginBottom:8}}>
                 <div>
-                  <div style={{fontWeight:800,fontSize:14}}>{t.docNumbers?.tug8||t.draftLabel||t.id}</div>
+                  <div style={{fontWeight:800,fontSize:13}}>{t.docNumbers?.tug8||t.draftLabel||t.id}</div>
                   <div style={{fontSize:12,color:C.muted}}>Berdasarkan: {t.noReferensiTug7} • Tujuan: {t.unitTujuan}</div>
                   <div style={{fontSize:12,color:C.muted}}>UPT Pengirim: {t.lokasiPekerjaan}</div>
                 </div>
-                <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#dcfce7",color:"#166534"}}>DRAFT</span>
+                <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#dcfce7",color:"#166534"}}>DRAFT</span>
               </div>
-              <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
+              <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                 {(t.stockItems||[]).map((si,idx)=>{
                   const kat = katalogList.find(k=>k.id===si.katalogId);
                   return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>x{si.qty}</b> {kat?.satuan}</div>;
                 })}
               </div>
-              <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",borderRadius:6,padding:"6px 10px",marginBottom:8}}>Draft ini perlu dilengkapi dan diajukan oleh Admin Gudang / TL UPT Pengirim. Nomor resmi dibuat saat diajukan.</div>
+              <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#92400e",background:"#fef3c7",borderRadius: 10,padding:"6px 10px",marginBottom:8}}>Draft ini perlu dilengkapi dan diajukan oleh Admin Gudang / TL UPT Pengirim. Nomor resmi dibuat saat diajukan.</div>
               {hasRole(currentUser, "ADMIN","TL") && (
                 <div className="approval-actions"><button className="approval-btn--approve" onClick={()=>konfirmasiDraftTUG8(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Lengkapi & Ajukan TUG-8</button></div>
               )}
@@ -252,7 +252,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       {tug7Modal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
           <div style={{...sty.card,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-            <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Lengkapi TUG-7</h3>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Lengkapi TUG-7</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Pilih UPT Pengirim dan lengkapi administrasi.</p>
             <div style={{marginBottom:12}}>
               <label style={sty.label}>UPT Pengirim *</label>

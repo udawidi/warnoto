@@ -33,7 +33,7 @@ export function SearchableSelect({ options, value, onChange, getLabel, getSearch
         onChange={e=>{setQuery(e.target.value); setOpen(true);}}
       />
       {open && (
-        <div style={{position:"absolute",zIndex:50,top:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius:8,marginTop:2,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
+        <div style={{position:"absolute",zIndex:50,top:"100%",left:0,right:0,background:"white",border:`1px solid ${C.border}`,borderRadius: 10,marginTop:2,maxHeight:260,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.15)"}}>
           {value && (
             <div onClick={()=>{onChange("");setOpen(false);setQuery("");}} style={{padding:"8px 10px",fontSize:12,color:C.muted,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>✕ Kosongkan pilihan</div>
           )}

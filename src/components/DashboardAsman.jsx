@@ -23,7 +23,7 @@ export function DashboardAsman({ stocks, txns, katalogList, uptList, rencanaKeda
           <div>
             <p style={{color:C.muted,fontSize:13}}>{uptNama} • {new Date().toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</p>
           </div>
-          <span style={{padding:"4px 12px",borderRadius:20,background:"#dbeafe",color:"#1d4ed8",fontSize:12,fontWeight:700}}>{uptNama}</span>
+          <span style={{padding:"4px 12px",borderRadius: 14,background:"#dbeafe",color:"#1d4ed8",fontSize:12,fontWeight:700}}>{uptNama}</span>
         </div>
       </div>
 
@@ -37,8 +37,8 @@ export function DashboardAsman({ stocks, txns, katalogList, uptList, rencanaKeda
           {label:"Butuh Approval Saya",val:myPendingApprovals.length,icon:<Hourglass weight="fill" size={22}/>,color:myPendingApprovals.length>0?"#f59e0b":"#16a34a"},
         ].map((s,i)=>(
           <div key={i} style={{...sty.card,borderTop:`3px solid ${s.color}`,padding:12}}>
-            <div style={{fontSize:18,marginBottom:4}}>{s.icon}</div>
-            <div style={{fontSize:16,fontWeight:900,color:s.color}}>{s.val}</div>
+            <div style={{fontSize:17,marginBottom:4}}>{s.icon}</div>
+            <div style={{fontSize:15,fontWeight:900,color:s.color}}>{s.val}</div>
             <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.label}</div>
           </div>
         ))}
@@ -73,7 +73,7 @@ export function DashboardAsman({ stocks, txns, katalogList, uptList, rencanaKeda
               {akanHabis.slice(0,4).map((item,i)=>(
                 <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`}}>
                   <div style={{display:"flex",justifyContent:"space-between"}}>
-                    <div style={{fontSize:12,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.nama}</div>
+                    <div style={{fontSize:12,fontWeight:600,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{item.nama}</div>
                     <span style={{fontSize:12,fontWeight:700,color:item.isKritis?"#dc2626":"#d97706",marginLeft:6}}>{item.badge}</span>
                   </div>
                   <div style={{fontSize:12,color:C.muted}}>{fmtNum(item.totalQty)} {item.satuan} • {item.estimasiHari===Infinity?"tidak ada data":`~${item.estimasiHari} hari`}</div>

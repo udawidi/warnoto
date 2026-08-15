@@ -14,7 +14,7 @@ export const C = C_LIGHT;
 // Judul halaman seragam: font tegas + bar aksen kiri. Statik (tak butuh isMobile)
 // supaya komponen di src/components/*.jsx bisa `import { pageTitleStyle }` langsung
 // tanpa plumbing prop `sty`. Di situs yang butuh flex/ikon: {...pageTitleStyle, display:"flex", ...}.
-export const pageTitleStyle = { fontSize:22, fontWeight:900, color:C.text, margin:0, paddingLeft:13, borderLeft:`4px solid ${C.accent}`, lineHeight:1.15, letterSpacing:"-.2px" };
+export const pageTitleStyle = { fontSize:20, fontWeight:900, color:C.text, margin:0, paddingLeft:13, borderLeft:`4px solid ${C.accent}`, lineHeight:1.15, letterSpacing:"-.2px" };
 
 // Header modal berwarna korporat. Margin negatif membleed ke tepi kartu modal
 // (sty.card padding 20) supaya bar menempel penuh di atas + sudut atas membulat.
@@ -24,7 +24,7 @@ export const modalHeaderStyle = { display:"flex", alignItems:"center", justifyCo
 // App.jsx meneruskan palet theme-aware (C_LIGHT/C_DARK) sebagai argumen kedua.
 export function makeSty(isMobile, C=C_LIGHT) {
   return {
-    btn:(v="primary",sz="md")=>({ padding:isMobile?(sz==="sm"?"10px 14px":"12px 18px"):(sz==="sm"?"5px 10px":"9px 18px"), minHeight:isMobile?44:undefined, borderRadius:10, border:"none", cursor:"pointer", fontWeight:600, fontSize:isMobile?(sz==="sm"?13:14):(sz==="sm"?11:13), background: v==="primary"?"linear-gradient(180deg,#2f6bf0,#1d4ed8)":v==="danger"?"linear-gradient(180deg,#ef4444,#dc2626)":v==="success"?"linear-gradient(180deg,#1db954,#16a34a)":v==="warn"?"linear-gradient(180deg,#fbb024,#f59e0b)":"#f3f4f6", color:v==="ghost"?C.text:"white", boxShadow:(v==="primary"||v==="danger"||v==="success"||v==="warn")?"0 1px 2px rgba(15,23,42,0.16), 0 1px 3px rgba(15,23,42,0.10)":"inset 0 0 0 1px rgba(15,23,42,0.07)" }),
+    btn:(v="primary",sz="md")=>({ padding:isMobile?(sz==="sm"?"10px 14px":"12px 18px"):(sz==="sm"?"5px 10px":"9px 18px"), minHeight:isMobile?44:undefined, borderRadius:10, border:"none", cursor:"pointer", fontWeight:700, fontSize:isMobile?(sz==="sm"?13:15):(sz==="sm"?12:13), background: v==="primary"?"linear-gradient(180deg,#2f6bf0,#1d4ed8)":v==="danger"?"linear-gradient(180deg,#ef4444,#dc2626)":v==="success"?"linear-gradient(180deg,#1db954,#16a34a)":v==="warn"?"linear-gradient(180deg,#fbb024,#f59e0b)":"#f3f4f6", color:v==="ghost"?C.text:"white", boxShadow:(v==="primary"||v==="danger"||v==="success"||v==="warn")?"0 1px 2px rgba(15,23,42,0.16), 0 1px 3px rgba(15,23,42,0.10)":"inset 0 0 0 1px rgba(15,23,42,0.07)" }),
     card:{ background:C.surface, borderRadius:14, border:`1px solid ${C.border}`, padding:20, boxShadow:"0 1px 2px rgba(16,24,40,0.04), 0 8px 20px -8px rgba(16,24,40,0.10)" },
     // Tombol Batal/Simpan "menempel" di bawah kartu modal (position:sticky)
     // supaya di form panjang (banyak baris material) user tidak perlu scroll
@@ -38,13 +38,13 @@ export function makeSty(isMobile, C=C_LIGHT) {
     // "Updating padding paddingRight").
     input:{ background: C===C_DARK?C.bg:"#f9fafb", border:`1px solid ${C.border}`, borderRadius:10, color:C.text, paddingTop:isMobile?12:8, paddingBottom:isMobile?12:8, paddingLeft:isMobile?14:12, paddingRight:isMobile?14:12, minHeight:isMobile?44:undefined, fontSize:isMobile?16:13, outline:"none", width:"100%" },
     select:{ background: C===C_DARK?C.bg:"#f9fafb", border:`1px solid ${C.border}`, borderRadius:10, color:C.text, paddingTop:isMobile?12:8, paddingBottom:isMobile?12:8, paddingLeft:isMobile?14:12, paddingRight:isMobile?14:12, minHeight:isMobile?44:undefined, fontSize:isMobile?16:13, outline:"none", width:"100%" },
-    label:{ fontSize:11, color:C.muted, display:"block", marginBottom:4, fontWeight:600, textTransform:"uppercase", letterSpacing:".5px" },
+    label:{ fontSize:12, color:C.muted, display:"block", marginBottom:4, fontWeight:600, textTransform:"uppercase", letterSpacing:".5px" },
     pageTitle: { ...pageTitleStyle, color:C.text, borderLeft:`4px solid ${C.accent}` },  // theme-aware (import langsung tetap versi terang)
     modalHeader: modalHeaderStyle, // header modal berwarna
     // Ring senada warna teks (inset box-shadow) memberi tepi tegas -> badge terbaca
     // "solid corporate" tanpa mengubah call-site (tetap style-only, propagate app-wide).
-    statusBadge:(s)=>{ const col=s==="APPROVED"?C.green:s==="PENDING"?C.yellow:s==="REJECTED"?C.red:C.muted; return { display:"inline-block", padding:"3px 11px", borderRadius:999, fontSize:isMobile?12:10, fontWeight:800, letterSpacing:".4px", textTransform:"uppercase", background:s==="APPROVED"?"#dcfce7":s==="PENDING"?"#fef3c7":s==="REJECTED"?"#fee2e2":"#f3f4f6", color:col, boxShadow:`inset 0 0 0 1px ${col}33` }; },
-    jenisBadge:(j)=>{ const col=j==="Pre Memory"?"#1d4ed8":j==="Cadang"?"#7c3aed":j==="Persediaan"?C.green:j==="Persediaan Bursa"?"#ea580c":j==="ATTB"?C.yellow:j==="Non-Stock"?"#be185d":C.muted; return { display:"inline-block", padding:"2px 9px", borderRadius:999, fontSize:isMobile?12:10, fontWeight:800, letterSpacing:".2px",
+    statusBadge:(s)=>{ const col=s==="APPROVED"?C.green:s==="PENDING"?C.yellow:s==="REJECTED"?C.red:C.muted; return { display:"inline-block", padding:"3px 11px", borderRadius:999, fontSize:12, fontWeight:800, letterSpacing:".4px", textTransform:"uppercase", background:s==="APPROVED"?"#dcfce7":s==="PENDING"?"#fef3c7":s==="REJECTED"?"#fee2e2":"#f3f4f6", color:col, boxShadow:`inset 0 0 0 1px ${col}33` }; },
+    jenisBadge:(j)=>{ const col=j==="Pre Memory"?"#1d4ed8":j==="Cadang"?"#7c3aed":j==="Persediaan"?C.green:j==="Persediaan Bursa"?"#ea580c":j==="ATTB"?C.yellow:j==="Non-Stock"?"#be185d":C.muted; return { display:"inline-block", padding:"2px 9px", borderRadius:999, fontSize:12, fontWeight:800, letterSpacing:".2px",
       background: j==="Pre Memory"?"#dbeafe":j==="Cadang"?"#f3e8ff":j==="Persediaan"?"#dcfce7":j==="Persediaan Bursa"?"#fff7ed":j==="ATTB"?"#fef3c7":j==="Non-Stock"?"#fce7f3":"#f3f4f6",
       color: col, boxShadow:`inset 0 0 0 1px ${col}33` }; },
   };

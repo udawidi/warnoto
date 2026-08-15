@@ -72,8 +72,8 @@ export function TelegramWhitelistPanel({ sty, C, currentUser, uptList }) {
 
   return (
     <div style={{...sty.card, marginBottom:16}}>
-      <div style={{fontWeight:800,fontSize:14,marginBottom:4}}>📱 Kelola User Bot Telegram</div>
-      <p style={{fontSize:12,color:C.muted,marginBottom:12}}>Hanya user aktif di daftar ini yang bisa chat dengan bot Telegram WARNOTO. User ID Telegram (angka) didapat dengan chat ke bot <b>@userinfobot</b> di Telegram — bukan @username.</p>
+      <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>📱 Kelola User Bot Telegram</div>
+      <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>Hanya user aktif di daftar ini yang bisa chat dengan bot Telegram WARNOTO. User ID Telegram (angka) didapat dengan chat ke bot <b>@userinfobot</b> di Telegram — bukan @username.</p>
 
       <div className="telegram-whitelist-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
         <div><label style={sty.label}>User ID Telegram *</label><input style={sty.input} value={form.telegram_user_id} onChange={e=>setForm(f=>({...f,telegram_user_id:e.target.value}))} placeholder="cth: 123456789"/></div>

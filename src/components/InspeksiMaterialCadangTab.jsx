@@ -381,7 +381,7 @@ export function InspeksiMaterialCadangTab({
         gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
         gap: 6,
         background: C.bg,
-        borderRadius: 12,
+        borderRadius: 14,
         padding: 5,
         border: `1.5px solid ${C.border}`,
         position: "sticky",
@@ -392,7 +392,7 @@ export function InspeksiMaterialCadangTab({
           <button key={t.id} onClick={() => setView(t.id)} style={{
             padding: isMobile ? "10px 12px" : "10px 16px",
             minHeight: 44,
-            borderRadius: 8,
+            borderRadius: 10,
             border: "none",
             cursor: "pointer",
             fontSize: isMobile ? 13 : 14,
@@ -424,7 +424,7 @@ export function InspeksiMaterialCadangTab({
                 border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px",
                 background: C.surface, display: "grid", gap: 2, minWidth: 0,
               }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".4px" }}>Gudang</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".4px" }}>Gudang</span>
                 <select
                   value={selectedGudangId}
                   onChange={e => setSelectedGudangId(e.target.value)}
@@ -442,7 +442,7 @@ export function InspeksiMaterialCadangTab({
               <ChipReadonly label="Gudang" value={lockedGudang?.nama || "—"} C={C} />
             )}
             {items.length > 0 && (
-              <p style={{ margin: 0, fontSize: 11, color: C.muted, gridColumn: "1/-1" }}>Gudang terkunci setelah material pertama ditambahkan.</p>
+              <p style={{ margin: 0, fontSize: 12, color: C.muted, gridColumn: "1/-1" }}>Gudang terkunci setelah material pertama ditambahkan.</p>
             )}
             <ChipReadonly label="Nomor BA" value={lastSavedBa?.nomorBa || "Otomatis saat simpan"} muted={!lastSavedBa} C={C} />
             <ChipReadonly label="Manager UPT" value={inspectionIdentity.managerUpt} C={C} />
@@ -477,7 +477,7 @@ export function InspeksiMaterialCadangTab({
             {activeGudangId && items.length < MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH && (
               <div style={{
                 border: `1.5px solid ${C.accent}40`,
-                borderRadius: 12,
+                borderRadius: 14,
                 padding: 14,
                 display: "grid",
                 gap: 10,
@@ -507,7 +507,7 @@ export function InspeksiMaterialCadangTab({
                       {pickerQuery && (
                         <button type="button" onClick={() => setPickerQuery("")} style={{
                           border: "none", background: "transparent", color: C.muted, cursor: "pointer",
-                          fontSize: 18, lineHeight: 1, padding: 8,
+                          fontSize: 17, lineHeight: 1, padding: 8,
                         }}>×</button>
                       )}
                     </div>
@@ -560,7 +560,7 @@ export function InspeksiMaterialCadangTab({
                   <Stack size={32} weight="thin" />
                 </div>
                 <div>
-                  <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>Belum ada material</h3>
+                  <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>Belum ada material</h3>
                   <p style={{ margin: 0, fontSize: 13, color: C.muted }}>
                     {activeGudangId ? "Cari dan pilih material Cadang di atas untuk mulai inspeksi." : "Pilih gudang dulu untuk mencari material."}
                   </p>
@@ -601,7 +601,7 @@ export function InspeksiMaterialCadangTab({
             borderTop: `1px solid ${C.border}`,
           }}>
             <div style={{ display: "grid", gap: 2, minWidth: 0, flex: "1 1 auto" }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>Langkah 4 · Simpan Berita Acara</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Langkah 4 · Simpan Berita Acara</span>
               <span style={{ fontSize: 12, color: C.muted }}>
                 {items.length === 0
                   ? "Tambahkan material dulu"
@@ -719,7 +719,7 @@ function StepHeader({ n, title, C, trailing }) {
         background: "#1d4ed8", color: "#fff",
         display: "grid", placeItems: "center", fontSize: 12, fontWeight: 900,
       }}>{n}</span>
-      <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: C.text }}>{title}</h3>
+      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>{title}</h3>
       {trailing && <span style={{ marginLeft: "auto" }}>{trailing}</span>}
     </div>
   );
@@ -731,7 +731,7 @@ function ChipReadonly({ label, value, muted, C }) {
       border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px",
       background: C.surface, display: "grid", gap: 2,
     }}>
-      <span style={{ fontSize: 11, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</span>
       <span style={{ fontSize: 13, fontWeight: 700, color: muted ? C.muted : C.text }}>{value}</span>
     </div>
   );
@@ -742,7 +742,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
   const complete = itemComplete(item);
   return (
     <div style={{
-      border: `1.5px solid ${expanded ? C.accent : C.border}`, borderRadius: 12, overflow: "hidden",
+      border: `1.5px solid ${expanded ? C.accent : C.border}`, borderRadius: 14, overflow: "hidden",
       boxShadow: expanded ? "0 6px 18px -8px rgba(29,78,216,0.25)" : "none",
       transition: "border-color .12s, box-shadow .12s",
     }}>
@@ -865,16 +865,16 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
                     padding: 8, minHeight: 120, display: "grid", gap: 6, placeItems: "center",
                     background: file ? "#dcfce722" : "transparent", position: "relative",
                   }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: C.muted, textTransform: "uppercase" }}>Foto {slot + 1}</span>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: C.muted, textTransform: "uppercase" }}>Foto {slot + 1}</span>
                     {url ? (
                       <div style={{ position: "relative" }}>
-                        <img src={url} alt={`Foto ${slot + 1}`} style={{ width: "100%", height: 92, objectFit: "cover", borderRadius: 8, border: `1px solid ${C.border}` }} />
+                        <img src={url} alt={`Foto ${slot + 1}`} style={{ width: "100%", height: 92, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.border}` }} />
                         <button onClick={() => onRemovePhoto(slot)} style={{ position: "absolute", top: -8, right: -8, borderRadius: "50%", border: "none", background: "#dc2626", color: "#fff", width: 22, height: 22, fontSize: 13, cursor: "pointer", lineHeight: 1, display: "grid", placeItems: "center" }}>×</button>
                       </div>
                     ) : (
                       <label style={{ display: "grid", gap: 4, justifyItems: "center", cursor: "pointer", color: C.muted }}>
                         <Camera size={22} weight="thin" />
-                        <span style={{ fontSize: 11 }}>Tambah foto</span>
+                        <span style={{ fontSize: 12 }}>Tambah foto</span>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp"
@@ -899,7 +899,7 @@ function MicroStep({ n, title, C, trailing, children }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 800, color: C.accent }}>{n}</span>
+        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent }}>{n}</span>
         <span style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: ".3px" }}>{title}</span>
         {trailing && <span style={{ marginLeft: "auto" }}>{trailing}</span>}
       </div>
@@ -911,7 +911,7 @@ function MicroStep({ n, title, C, trailing, children }) {
 function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onPrint }) {
   return (
     <div style={{
-      border: `1px solid ${C.border}`, borderRadius: 12, padding: 12, display: "grid", gap: 10,
+      border: `1px solid ${C.border}`, borderRadius: 14, padding: 12, display: "grid", gap: 10,
       boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -943,7 +943,7 @@ function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onP
       {expanded && (batch.items || []).length > 0 && (
         <div style={{ display: "grid", gap: 8, marginTop: 4, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
           {(batch.items || []).map((it, i) => (
-            <div key={it.id || i} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 10, fontSize: 13, display: "grid", gap: 4 }}>
+            <div key={it.id || i} style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: 10, fontSize: 13, display: "grid", gap: 4 }}>
               <div style={{ fontWeight: 800 }}>{it.namaBarang || "Material"}</div>
               <div style={{ color: C.muted, fontSize: 12 }}>{it.noKatalog || "—"} · {it.lokasiNama || "—"} · {it.qtyStok} {it.satuan}</div>
               <div style={{ fontSize: 12 }}>Kondisi: <b>{it.kondisi || "—"}</b> · Kelayakan: <b>{it.statusKelayakan || "—"}</b></div>
@@ -951,7 +951,7 @@ function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onP
               {it.photoPaths?.length > 0 && (
                 <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                   {it.photoPaths.map((p, pi) => photoUrls[p] ? (
-                    <img key={pi} src={photoUrls[p]} alt={`Foto ${pi + 1}`} style={{ width: 70, height: 70, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.border}` }} />
+                    <img key={pi} src={photoUrls[p]} alt={`Foto ${pi + 1}`} style={{ width: 70, height: 70, objectFit: "cover", borderRadius: 10, border: `1px solid ${C.border}` }} />
                   ) : null)}
                 </div>
               )}
@@ -966,7 +966,7 @@ function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onP
 function MetaChip({ C, children, bold }) {
   return (
     <span style={{
-      display: "inline-block", padding: "3px 9px", borderRadius: 999, fontSize: 11, fontWeight: bold ? 800 : 600,
+      display: "inline-block", padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: bold ? 800 : 600,
       background: C.bg, color: bold ? C.text : C.muted, border: `1px solid ${C.border}`,
     }}>{children}</span>
   );

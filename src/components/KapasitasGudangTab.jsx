@@ -124,7 +124,7 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
           <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:16}}>Menyinkron data kapasitas…</div>
           <div style={{width:"100%",maxWidth:900,padding:"0 16px"}}>
             {[0,1,2,3,4].map(i=>(
-              <div key={i} className="capacity-skeleton" style={{height:16,background:"#eef2f7",borderRadius:8,marginBottom:10}}/>
+              <div key={i} className="capacity-skeleton" style={{height:16,background:"#eef2f7",borderRadius: 10,marginBottom:10}}/>
             ))}
           </div>
         </div>
@@ -135,7 +135,7 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
           {gudangCapacityList.length === 0 ? (
             <div style={{...sty.card,textAlign:"center",padding:40,color:C.muted}}>
               <Warehouse size={40} weight="regular" aria-hidden style={{color:C.muted,marginBottom:12}}/>
-              <div style={{fontWeight:700,fontSize:16,marginBottom:8}}>Data kapasitas gudang belum tersedia</div>
+              <div style={{fontWeight:700,fontSize:15,marginBottom:8}}>Data kapasitas gudang belum tersedia</div>
               <div style={{fontSize:13,marginBottom:8}}>
                 {pendingImports>0
                   ? `${pendingImports} file import masih menunggu approval Asman. Data akan tampil setelah import disetujui.`
@@ -157,8 +157,8 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
                       </div>
                       <div style={{textAlign:"right"}}>
                         <div style={{fontWeight:800,color:u.util>=0.9?C.red:u.util>=0.75?"#b45309":"#15803d",fontVariantNumeric:"tabular-nums"}}>{(u.util*100).toFixed(1)}%</div>
-                        <div style={{width:80,height:6,background:"#e6eaf1",borderRadius:3,marginTop:3}}>
-                          <div style={{width:(u.util*100)+"%",height:"100%",background:u.util>=0.9?C.red:u.util>=0.75?"#f59e0b":C.green,borderRadius:3}}/>
+                        <div style={{width:80,height:6,background:"#e6eaf1",borderRadius: 10,marginTop:3}}>
+                          <div style={{width:(u.util*100)+"%",height:"100%",background:u.util>=0.9?C.red:u.util>=0.75?"#f59e0b":C.green,borderRadius: 10}}/>
                         </div>
                       </div>
                     </div>
@@ -219,8 +219,8 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
                     <td data-label="Sisa" style={{padding:"6px 10px",textAlign:"right"}}>{fmtNum(Math.round(r.sisaLuasM2))} m²</td>
                     <td data-label="Utilisasi" style={{padding:"6px 10px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <div style={{width:60,height:6,background:"#e6eaf1",borderRadius:3}}>
-                          <div style={{width:Math.min(100,(r.persentaseTerpakai*100))+"%",height:"100%",background:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green,borderRadius:3}}/>
+                        <div style={{width:60,height:6,background:"#e6eaf1",borderRadius: 10}}>
+                          <div style={{width:Math.min(100,(r.persentaseTerpakai*100))+"%",height:"100%",background:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green,borderRadius: 10}}/>
                         </div>
                         <span style={{fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#b45309":"#15803d",fontVariantNumeric:"tabular-nums"}}>{(r.persentaseTerpakai*100).toFixed(1)}%</span>
                       </div>
@@ -273,7 +273,7 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
                 ["Komposisi Persediaan",(detailRecord.persediaanPct*100).toFixed(0)+"%"],["Komposisi Cadang",(detailRecord.cadangPct*100).toFixed(0)+"%"],
                 ["Narahubung",detailRecord.contactPerson||"-"],["Diperbarui",detailRecord.waktuUpdate||"-"],
               ].map(([k,v])=>(
-                <div key={k} style={{padding:"6px 8px",background:"#f9fafb",borderRadius:6}}>
+                <div key={k} style={{padding:"6px 8px",background:"#f9fafb",borderRadius: 10}}>
                   <div style={{fontSize:12,color:C.muted}}>{k}</div>
                   <div style={{fontWeight:700,marginTop:2}}>{v}</div>
                 </div>

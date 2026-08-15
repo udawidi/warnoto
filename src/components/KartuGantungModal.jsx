@@ -60,7 +60,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                 key={v.id} 
                 style={{
                   padding:"6px 16px",
-                  borderRadius:20,
+                  borderRadius: 10,
                   border:`1px solid ${view===v.id?C.accent:C.border}`,
                   background:view===v.id?C.accent:"#f8fafc",
                   color:view===v.id?"white":"#475569",
@@ -74,7 +74,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
               </button>
             ))}
           </div>
-          <button style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600}} onClick={onClose}>✕ Tutup</button>
+          <button style={sty.btn("danger","sm")} onClick={onClose}>✕ Tutup</button>
         </div>
 
         {/* TAB 1: HALAMAN DEPAN (FOTO BARANG & QR CODE) — SESUAI FOTO 1 */}

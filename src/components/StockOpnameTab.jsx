@@ -313,7 +313,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
                 </label>
               </div>
-              <div style={{fontSize:12,color:C.muted,marginTop:8}}>
+              <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:8}}>
                 "Tambah Material" untuk barang yang belum pernah tercatat di mana pun. "Upload Usulan Pencocokan" untuk file review yang sudah disiapkan sebelumnya (kode MARA sudah dicocokkan, tinggal diverifikasi fisik).
               </div>
             </div>
@@ -328,14 +328,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </div>
                   <button title="Batalkan & tutup antrian ini" style={sty.btn("ghost","sm")} onClick={()=>{ if(window.confirm("Batalkan antrian ini? Baris yang belum diproses akan hilang dari daftar (material yang sudah tersimpan TIDAK ikut terhapus).")) setTambahQueue([]); }}>✕ Batal</button>
                 </div>
-                <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
+                <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:10}}>
                   Qty di file ini data lama (AppSheet) — bukan angka final. Tetap wajib dihitung fisik ulang & isi lokasi tiap kali diproses.
                 </div>
                 <div style={{maxHeight:280,overflowY:"auto"}}>
                   {tambahQueue.map(q=>(
                     <div key={q.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderBottom:`1px solid ${C.border}`,opacity:q.status!=="PENDING"?0.5:1}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{q.nama}</div>
+                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{q.nama}</div>
                         <div style={{fontSize:12,color:C.muted}}>
                           Katalog asli: {q.katalogAsli||"-"} • Qty file: {q.qtyFile||"-"} •{" "}
                           <span style={{fontWeight:700,color:q.skor==="KUAT"?"#166534":q.skor==="LEMAH"?"#92400e":"#991b1b"}}>{q.skor}</span>
@@ -378,7 +378,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 ✅ {activeOpname.totalRowsSAP} baris SAP dibaca • {items.length} item total • {fmtDate(activeOpname.sapUploadedAt)}
               </div>
             )}
-            <div style={{fontSize:12,color:C.muted,marginTop:6}}>
+            <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:6}}>
               Format: CSV/XLSX export SAP MM (PEMAT_DDMMYYYY). Kolom yang dipakai: Material, Material Description, Base Unit of Measure, Unrestricted Use Stock, Valuation Type. Kalau file punya lebih dari 1 sheet dengan header sama, semua ikut terbaca.
             </div>
           </div>
@@ -394,8 +394,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   {selisihCount>0?`⚠️ ${selisihCount} item selisih`:"✅ Belum ada selisih"}
                 </div>
               </div>
-              <div style={{background:"#f1f5f9",borderRadius:6,height:8}}>
-                <div style={{width:`${prog.pct}%`,height:8,borderRadius:6,background:prog.pct===100?C.green:C.accent,transition:"width 0.3s"}}/>
+              <div style={{background:"#f1f5f9",borderRadius: 10,height:8}}>
+                <div style={{width:`${prog.pct}%`,height:8,borderRadius: 10,background:prog.pct===100?C.green:C.accent,transition:"width 0.3s"}}/>
               </div>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",gap:8,marginTop:10}}>
                 {[
@@ -404,8 +404,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   {label:"Selisih",val:selisihCount,color:C.red},
                   {label:"Tidak di SAP/Sistem",val:items.filter(i=>["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length,color:"#f59e0b"},
                 ].map((s,i)=>(
-                  <div key={i} style={{textAlign:"center",padding:"6px",borderRadius:6,background:"#f9fafb",border:`1px solid ${C.border}`}}>
-                    <div style={{fontSize:16,fontWeight:800,color:s.color}}>{s.val}</div>
+                  <div key={i} style={{textAlign:"center",padding:"6px",borderRadius: 10,background:"#f9fafb",border:`1px solid ${C.border}`}}>
+                    <div style={{fontSize:15,fontWeight:800,color:s.color}}>{s.val}</div>
                     <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
                   </div>
                 ))}
@@ -414,7 +414,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
             {/* Validation errors */}
             {validationErrors.length>0 && (
-              <div style={{background:"#fee2e2",border:`1px solid #fca5a5`,borderRadius:8,padding:10,marginBottom:12}}>
+              <div style={{background:"#fee2e2",border:`1px solid #fca5a5`,borderRadius: 10,padding:10,marginBottom:12}}>
                 <div style={{fontSize:12,fontWeight:700,color:"#991b1b",marginBottom:4}}>❌ Perlu diperbaiki sebelum submit:</div>
                 {validationErrors.slice(0,5).map((e,i)=><div key={i} style={{fontSize:12,color:"#991b1b"}}>• {e}</div>)}
                 {validationErrors.length>5 && <div style={{fontSize:12,color:"#991b1b"}}>... dan {validationErrors.length-5} lainnya</div>}
@@ -434,7 +434,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   Tampilkan:
                   {[10,20,50].map(n=>(
                     <button key={n} onClick={()=>{setPageSize(n);setPage(0);}}
-                      style={{padding:"3px 9px",borderRadius:5,border:`1px solid ${pageSize===n?C.accent:C.border}`,background:pageSize===n?C.accent:"white",color:pageSize===n?"white":C.text,fontSize:12,fontWeight:pageSize===n?700:400,cursor:"pointer"}}>
+                      style={{padding:"3px 9px",borderRadius: 10,border:`1px solid ${pageSize===n?C.accent:C.border}`,background:pageSize===n?C.accent:"white",color:pageSize===n?"white":C.text,fontSize:12,fontWeight:pageSize===n?700:400,cursor:"pointer"}}>
                       {n}
                     </button>
                   ))}
@@ -475,13 +475,13 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     return (
                       <tr key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none"}}>
                         {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
-                        <td style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        <td style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
                           {item.namaBarang}
                           {item.statusItem==="TIDAK_ADA_DI_SISTEM" && (
-                            <div style={{fontSize:12,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
+                            <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
                           )}
                           {item.statusItem==="MATERIAL_BARU_NONSAP" && (
-                            <div style={{fontSize:12,fontWeight:700,color:"#1e40af",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
+                            <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color: "#1d4ed8",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
                           )}
                         </td>
                         {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.noKatalog}</td>}
@@ -492,7 +492,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {!isReadOnly
                             ? <input type="number" inputMode="decimal" min="0" value={item.qtsFisik} ref={el=>{qtyInputRefs.current[realIdx]=el;}}
                                 onChange={e=>updateItem(realIdx,"qtsFisik",Number(e.target.value))}
-                                style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius:4,fontSize:12,textAlign:"center"}}/>
+                                style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,textAlign:"center"}}/>
                             : <span style={{fontWeight:700}}>{fmtNum(item.qtsFisik)}</span>}
                         </td>
                         <td style={{padding:"6px 8px",textAlign:"center",fontWeight:700,
@@ -509,13 +509,13 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             {!isReadOnly ? (
                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
                                 <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); }}
-                                  style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius:4,fontSize:12}}>
+                                  style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
                                   <option value="">-- Gudang --</option>
                                   {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                                 </select>
                                 <select value={item.lokasiId||""} onChange={e=>updateItem(realIdx,"lokasiId",e.target.value)}
                                   disabled={!itemGudangId && !item._gudangTmp}
-                                  style={{width:110,padding:"3px 4px",border:`1px solid ${!item.lokasiId?C.red:C.border}`,borderRadius:4,fontSize:12}}>
+                                  style={{width:110,padding:"3px 4px",border:`1px solid ${!item.lokasiId?C.red:C.border}`,borderRadius: 10,fontSize:12}}>
                                   <option value="">-- Blok --</option>
                                   {(lokasiList||[]).filter(l=>l.gudangId===(itemGudangId||item._gudangTmp)).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                                 </select>
@@ -530,17 +530,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             ? <input value={item.keterangan||""}
                                 onChange={e=>updateItem(realIdx,"keterangan",e.target.value)}
                                 placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
-                                style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius:4,fontSize:12}}/>
+                                style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:12}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
                         </td>
                         <td style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                             {[["fotoKeseluruhan","🖼️","Foto Keseluruhan"],["fotoNameplate","🏷️","Foto Nameplate"]].map(([field,icon,label])=>(
                               <label key={field} title={label}
-                                style={{width:28,height:28,borderRadius:5,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReadOnly?"default":"pointer",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
+                                style={{width:28,height:28,borderRadius: 10,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReadOnly?"default":"pointer",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
                                 {item[field]
                                   ? <img src={item[field]} alt={label} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                                  : <span style={{fontSize:12,color:"#9ca3af"}}>{icon}</span>}
+                                  : <span style={{fontSize:12,color: "#64748b"}}>{icon}</span>}
                                 {!isReadOnly && (
                                   <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
                                     onChange={e=>{
@@ -570,7 +570,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     const pg = totalPages<=7?i:(page<=3?i:page>=totalPages-4?totalPages-7+i:page-3+i);
                     return (
                       <button key={pg} onClick={()=>setPage(pg)}
-                        style={{width:30,height:30,borderRadius:6,border:`1px solid ${pg===page?C.accent:C.border}`,background:pg===page?C.accent:"white",color:pg===page?"white":C.text,fontSize:12,cursor:"pointer",fontWeight:pg===page?700:400}}>
+                        style={{width:30,height:30,borderRadius: 10,border:`1px solid ${pg===page?C.accent:C.border}`,background:pg===page?C.accent:"white",color:pg===page?"white":C.text,fontSize:12,cursor:"pointer",fontWeight:pg===page?700:400}}>
                         {pg+1}
                       </button>
                     );
@@ -627,7 +627,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
               {qrResult ? (
                 <>
-                  <h3 style={{fontSize:16,fontWeight:800,marginBottom:14}}>🏷️ Label QR Siap Dicetak</h3>
+                  <h3 style={{fontSize:15,fontWeight:800,marginBottom:14}}>🏷️ Label QR Siap Dicetak</h3>
                   {(() => {
                     const scanUrl = scanUrlFor(qrResult.id);
                     const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(scanUrl)}`;
@@ -636,7 +636,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         <img src={qrImgUrl} alt="QR" width={160} height={160} style={{display:"block",margin:"0 auto"}}/>
                         <div style={{fontSize:13,fontWeight:800,marginTop:10}}>{qrResult.name}</div>
                         <div style={{fontSize:12,color:C.muted,marginTop:4}}>Kode: {qrResult.katalog}</div>
-                        <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#dbeafe",color:"#1e40af"}}>Non-Stock — Pending Approval</span>
+                        <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#dbeafe",color: "#1d4ed8"}}>Non-Stock — Pending Approval</span>
                       </div>
                     );
                   })()}
@@ -650,11 +650,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 </>
               ) : (
                 <>
-                  <h3 style={{fontSize:16,fontWeight:800,marginBottom:14}}>➕ Tambah Material Ditemukan</h3>
+                  <h3 style={{fontSize:15,fontWeight:800,marginBottom:14}}>➕ Tambah Material Ditemukan</h3>
                   {activeQueueId && (() => {
                     const q = tambahQueue.find(x=>x.id===activeQueueId);
                     return q ? (
-                      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:10,marginBottom:12,fontSize:12}}>
+                      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius: 10,padding:10,marginBottom:12,fontSize:12}}>
                         📋 Dari file usulan — Katalog asli AppSheet: <b>{q.katalogAsli||"-"}</b>, Qty file (data lama, cek ulang fisik): <b>{q.qtyFile||"-"}</b>
                       </div>
                     ) : null;
@@ -665,7 +665,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </div>
                   {maraLoading && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Mencari ke MARA...</div>}
                   {!maraPicked && maraResults.length>0 && (
-                    <div style={{border:`1px solid ${C.border}`,borderRadius:8,marginBottom:10,maxHeight:160,overflowY:"auto"}}>
+                    <div style={{border:`1px solid ${C.border}`,borderRadius: 10,marginBottom:10,maxHeight:160,overflowY:"auto"}}>
                       {maraResults.map(r=>(
                         <div key={r.kode_material} onClick={()=>{setMaraPicked(r); setMaraResults([]); setMaraSkip(false);}}
                           style={{padding:"6px 8px",fontSize:12,borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}>
@@ -675,7 +675,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     </div>
                   )}
                   {maraPicked ? (
-                    <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:10,marginBottom:10,fontSize:12}}>
+                    <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius: 10,padding:10,marginBottom:10,fontSize:12}}>
                       ✅ Dipilih: <b>{maraPicked.kode_material}</b> — {maraPicked.nama}
                       <button style={{...sty.btn("ghost","sm"),marginLeft:8}} onClick={()=>setMaraPicked(null)}>Ganti</button>
                     </div>
@@ -715,7 +715,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
                         onChange={e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setTambahForm(fm=>({...fm,foto:ev.target.result})); r.readAsDataURL(f); }}/>
                     </label>
-                    {tambahForm.foto && <img src={tambahForm.foto} alt="preview" style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius:8,marginTop:8}}/>}
+                    {tambahForm.foto && <img src={tambahForm.foto} alt="preview" style={{width:"100%",maxHeight:160,objectFit:"cover",borderRadius: 10,marginTop:8}}/>}
                   </div>
                   <div style={{display:"flex",gap:10}}>
                     <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTambahModal(false);setActiveQueueId(null);}} disabled={tambahBusy}>Batal</button>
@@ -754,7 +754,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       {pendingForMe.map(opn=>(
         <div key={opn.id} style={{...sty.card,borderLeft:`4px solid #f59e0b`,marginBottom:12}}>
           <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:4}}>⏳ Menunggu Approval Kamu ({ROLES[currentUser.role]})</div>
-          <div style={{fontWeight:800,fontSize:14,marginBottom:2}}>Opname {opn.semester} — {opn.jenisAlur}</div>
+          <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>Opname {opn.semester} — {opn.jenisAlur}</div>
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
             {opn.items?.length||0} item • Selisih: {opn.items?.filter(i=>i.selisih!==0).length||0} item
           </div>
@@ -782,7 +782,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       {/* Filter status */}
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
         {["semua","DRAFT","PENDING_ASMAN","PENDING_MANAGER","SELESAI","DITOLAK"].map(s=>(
-          <button key={s} style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"white",color:filterStatus===s?"white":C.muted,fontSize:12,cursor:"pointer"}}
+          <button key={s} style={{padding:"5px 14px",borderRadius: 10,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"white",color:filterStatus===s?"white":C.muted,fontSize:12,cursor:"pointer"}}
             onClick={()=>setFilterStatus(s)}>
             {s==="semua"?"Semua":statusLabel[s]||s}
           </button>
@@ -799,10 +799,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <div key={opn.id} style={{...sty.card,marginBottom:10}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
                 <div>
-                  <div style={{fontWeight:800,fontSize:14}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
+                  <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
                   <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
                 </div>
-                <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
+                <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
                   {statusLabel[opn.status]||opn.status}
                 </span>
               </div>
@@ -819,8 +819,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
       {opnameList.length===0 && (
         <div style={{...sty.card,textAlign:"center",padding:50,color:C.muted}}>
-          <div style={{fontSize:40,marginBottom:12}}>📋</div>
-          <div style={{fontSize:14,fontWeight:700}}>Belum ada sesi Stock Opname</div>
+          <div style={{fontSize:32,marginBottom:12}}>📋</div>
+          <div style={{fontSize:13,fontWeight:700}}>Belum ada sesi Stock Opname</div>
           <div style={{fontSize:12,marginTop:4}}>Klik "+ Opname SAP" atau "+ Opname Non-SAP" untuk memulai</div>
         </div>
       )}

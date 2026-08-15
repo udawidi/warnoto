@@ -25,8 +25,8 @@ export function SatpamModal({ satpamModal, setSatpamModal, satpamForm, setSatpam
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Foto (opsional)</label>
               <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                <div style={{width:96,height:96,borderRadius:12,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {satpamForm.foto ? <img src={satpamForm.foto} alt="Foto satpam" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:30}}>🛡️</span>}
+                <div style={{width:96,height:96,borderRadius: 14,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {satpamForm.foto ? <img src={satpamForm.foto} alt="Foto satpam" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🛡️</span>}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   <label style={{...sty.btn("ghost","sm"),textAlign:"center",cursor:"pointer"}}>

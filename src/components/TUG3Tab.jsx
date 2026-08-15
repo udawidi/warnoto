@@ -25,7 +25,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       REJECTED: { label:"DITOLAK", bg:"#fee2e2", fg:"#991b1b" },
     };
     const m = map[stage] || { label:stage, bg:"#f3f4f6", fg:C.muted };
-    return <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
+    return <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
   }
 
   function openTug4Modal(txn) { setTug4Form({ timMutuId:"", lokasiPenyerahan:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan" }); setTug4Modal(txn); }
@@ -45,7 +45,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             <div key={t.id} style={{...sty.card}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                 <div>
-                  <div style={{fontWeight:800,fontSize:14}}>{t.dariSupplier}</div>
+                  <div style={{fontWeight:800,fontSize:13}}>{t.dariSupplier}</div>
                   <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers.tug3}</div>
                 </div>
                 {stageBadge(t.stage)}
@@ -55,7 +55,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 <span>🚚 {t.denganKirim}</span>
                 <span>👷 Diajukan oleh {creator.name||"-"}</span>
               </div>
-              <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
+              <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                 {t.stockItems.map((si,idx)=>{
                   const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
                   return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b></div>;
@@ -135,7 +135,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       {tug4Modal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:480,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Formulir TUG-4 — Pemeriksaan Mutu</h3>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Formulir TUG-4 — Pemeriksaan Mutu</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>untuk {tug4Modal.docNumbers.tug3}</p>
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Paket Tim Mutu</label>
@@ -164,28 +164,28 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       {finalModal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:500,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>Lampiran Final TUG-3</h3>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Lampiran Final TUG-3</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>untuk {finalModal.docNumbers.tug3}</p>
             <div className="tug3-attachment-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
               <div>
                 <label style={sty.label}>Foto Kendaraan</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoKendaraan:img})))} style={{fontSize:12,color:C.muted}}/>
-                {finalForm.fotoKendaraan && <img src={finalForm.fotoKendaraan} alt="kendaraan" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                {finalForm.fotoKendaraan && <img src={finalForm.fotoKendaraan} alt="kendaraan" style={{width:"100%",height:70,objectFit:"cover",borderRadius: 10,marginTop:6}}/>}
               </div>
               <div>
                 <label style={sty.label}>SIM / KTP</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoSimKtp:img})))} style={{fontSize:12,color:C.muted}}/>
-                {finalForm.fotoSimKtp && <img src={finalForm.fotoSimKtp} alt="sim ktp" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                {finalForm.fotoSimKtp && <img src={finalForm.fotoSimKtp} alt="sim ktp" style={{width:"100%",height:70,objectFit:"cover",borderRadius: 10,marginTop:6}}/>}
               </div>
               <div>
                 <label style={sty.label}>Surat Jalan</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoSuratJalanImg:img})))} style={{fontSize:12,color:C.muted}}/>
-                {finalForm.fotoSuratJalanImg && <img src={finalForm.fotoSuratJalanImg} alt="surat jalan" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                {finalForm.fotoSuratJalanImg && <img src={finalForm.fotoSuratJalanImg} alt="surat jalan" style={{width:"100%",height:70,objectFit:"cover",borderRadius: 10,marginTop:6}}/>}
               </div>
               <div>
                 <label style={sty.label}>Foto Kontrak</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setFinalForm(f=>({...f,fotoKontrak:img})))} style={{fontSize:12,color:C.muted}}/>
-                {finalForm.fotoKontrak && <img src={finalForm.fotoKontrak} alt="kontrak" style={{width:"100%",height:70,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                {finalForm.fotoKontrak && <img src={finalForm.fotoKontrak} alt="kontrak" style={{width:"100%",height:70,objectFit:"cover",borderRadius: 10,marginTop:6}}/>}
               </div>
             </div>
             <div style={{display:"flex",gap:10}}>

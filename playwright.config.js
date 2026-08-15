@@ -42,7 +42,7 @@ module.exports = defineConfig({
   projects: [
     ...phoneProjects.map(([name, width, height]) => ({
     name,
-    testMatch: "responsive.spec.js",
+    testMatch: name === "phone-360" ? ["responsive.spec.js", "mobile-minimal.spec.js"] : "responsive.spec.js",
     use: {
       viewport: { width, height },
       screen: { width, height },

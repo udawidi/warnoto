@@ -39,10 +39,10 @@ export function AppSidebar({
             </button>
           ) : (
           <div style={{display:"flex",alignItems:"center",gap:11,minWidth:0}}>
-            <div className="app-sidebar__brand-mark" style={{width:38,height:38,background:"white",borderRadius:9,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,padding:5,boxShadow:"0 2px 8px rgba(0,0,0,0.22)"}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
+            <div className="app-sidebar__brand-mark" style={{width:38,height:38,background:"white",borderRadius: 10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,padding:5,boxShadow:"0 2px 8px rgba(0,0,0,0.22)"}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{maxWidth:"100%",maxHeight:"100%",objectFit:"contain"}}/></div>
             <div style={{minWidth:0,lineHeight:1.15,flex:1}}>
               <div style={{color:"white",fontWeight:800,fontSize:17,letterSpacing:".5px"}}>WARNOTO</div>
-              <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,letterSpacing:".5px",textTransform:"uppercase",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{uptNama}</div>
+              <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,letterSpacing:".5px",textTransform:"uppercase",whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{uptNama}</div>
             </div>
             {isMobile && (
             <button
@@ -87,7 +87,7 @@ export function AppSidebar({
                         return (
                           <button
                             key={sub.id}
-                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
+                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius: 10,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
                             onClick={()=>{setTab("transaction"); setTugGroup(sub.id); setTugSubTab(sub.defaultSub); setMobileMenuOpen(false);}}
                           >
                             <span>{sub.icon}</span> {sub.label}
@@ -131,7 +131,7 @@ export function AppSidebar({
                         return (
                           <button
                             key={sub.id}
-                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
+                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius: 10,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
                             onClick={()=>{setTab("master"); setStockSubTab(sub.id); setMobileMenuOpen(false);}}
                           >
                             <span>{sub.icon}</span> {sub.label}
@@ -170,10 +170,10 @@ export function AppSidebar({
                         return (
                           <button
                             key={sub.id}
-                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius:8,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
+                            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 12px 7px 32px",minHeight:isMobile?44:undefined,borderRadius: 10,border:"none",cursor:"pointer",background:subActive?"rgba(255,255,255,0.12)":"transparent",color:subActive?"white":"rgba(255,255,255,0.55)",fontSize:12,fontWeight:subActive?700:400,marginBottom:1,textAlign:"left",borderLeft:subActive?"2px solid rgba(255,255,255,0.4)":"2px solid transparent"}}
                             onClick={()=>{setTab("opname"); setOpnameSubTab(sub.id); setMobileMenuOpen(false);}}
                           >
-                            <span>{sub.icon}</span> {sub.label} {sub.badge>0 && <span style={{background:"#dc2626",color:"white",borderRadius:20,padding:"1px 6px",fontSize:12,fontWeight:800,marginLeft:4}}>{sub.badge}</span>}
+                            <span>{sub.icon}</span> {sub.label} {sub.badge>0 && <span style={{background:"#dc2626",color:"white",borderRadius: 14,padding:"1px 6px",fontSize:12,fontWeight:800,marginLeft:4}}>{sub.badge}</span>}
                           </button>
                         );
                       })}

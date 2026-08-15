@@ -295,7 +295,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
       <div className="operations-section-heading"><div><span>Process Pipeline</span><h2>Tahapan Penghapusan</h2></div><small>Klik tahap untuk memfilter daftar</small></div>
       <div className="operations-segments">
         <button className={stageFilter==="ALL"?"is-active":""} onClick={()=>setStageFilter("ALL")} style={{"--segment-color":C.accent}}>
-          <span style={{fontWeight:900,fontSize:14}}>{scopedList.length}</span><span>Semua Tahap</span>
+          <span style={{fontWeight:900,fontSize:13}}>{scopedList.length}</span><span>Semua Tahap</span>
         </button>
         {belumLanjutCount>0 && (
           <button className={belumLanjutOnly?"is-active":""} onClick={()=>setBelumLanjutOnly(b=>!b)} style={{"--segment-color":C.red}}>
@@ -308,7 +308,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
         {(()=>{ const active = stageFilter==="SUMBER"; const color="#6b7280"; return (
           <Fragment key="SUMBER">
             <button className={`attb-stage-card is-source${active?" is-active":""}`} onClick={()=>setStageFilter("SUMBER")} title="Material Bongkaran ATTB dari TUG-10"
-              style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px dashed ${active?color:"#cbd5e1"}`,background:active?color:"#f8fafc",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
+              style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius: 14,border:`2px dashed ${active?color:"#cbd5e1"}`,background:active?color:"#f8fafc",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
               <div className="attb-pipeline__node-head">
                 <Package size={15} weight="duotone" aria-hidden="true" />
                 <span className="attb-stage-code">SRC</span>
@@ -324,7 +324,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
           return (
             <Fragment key={s.code}>
               <button className={`attb-stage-card${active?" is-active":""}`} onClick={()=>setStageFilter(s.code)} title={`Filter: ${s.label}`}
-                style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius:12,border:`2px solid ${active?color:C.border}`,background:active?color:"white",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
+                style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"10px 12px",minWidth:120,borderRadius: 14,border:`2px solid ${active?color:C.border}`,background:active?color:"white",color:active?"white":C.text,cursor:"pointer",boxShadow:active?`0 2px 10px ${color}55`:"none",transition:"all .15s"}}>
                 <div className="attb-pipeline__node-head">
                   <span className="attb-pipeline__step" style={{background:active?"rgba(255,255,255,0.25)":color+"22",color:active?"white":color}}>{i+1}</span>
                   <span className="attb-pipeline__count" style={{color:active?"white":color}}>{stageCounts[s.code]||0}</span>
@@ -365,19 +365,19 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
               </thead>
               <tbody>
                 {bongkaranPool.length===0 && (
-                  <tr className="mobile-card-table__row"><td colSpan={8} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada material Bongkaran ATTB (MTU) dari TUG-10.</td></tr>
+                  <tr tabIndex={0} className="mobile-card-table__row"><td colSpan={8} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada material Bongkaran ATTB (MTU) dari TUG-10.</td></tr>
                 )}
                 {bongkaranPool.map(p=>{
                   const sudah = promotedKeys.has(p.key);
                   return (
-                    <tr key={p.key} className="mobile-card-table__row" style={{borderBottom:`1px solid ${C.border}`,"--row-accent":sudah?C.green:"#6b7280",opacity:sudah?0.65:1}}>
+                    <tr tabIndex={0} key={p.key} className="mobile-card-table__row" style={{borderBottom:`1px solid ${C.border}`,"--row-accent":sudah?C.green:"#6b7280",opacity:sudah?0.65:1}}>
                       <td className="mobile-card-table__title" style={{padding:"8px 10px",fontWeight:600,minWidth:180}}>{p.nama}</td>
                       <td data-label="Qty" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.qty} {p.satuan}</td>
                       <td data-label="No Seri" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.noSeri||"—"}</td>
                       <td data-label="No Asset" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.noAsset||"—"}</td>
                       <td data-label="Sumber TUG-10" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.tug10No}{p.namaPekerjaan?<div style={{fontSize:12,color:C.muted}}>{p.namaPekerjaan}</div>:null}</td>
                       <td data-label="Tanggal" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{p.tanggal?new Date(p.tanggal).toLocaleDateString("id-ID"):"—"}</td>
-                      <td data-label="Status TUG-10" style={{padding:"8px 10px"}}><span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:p.status==="APPROVED"?"#dcfce7":"#fef3c7",color:p.status==="APPROVED"?C.green:"#92400e"}}>{p.status||"-"}</span></td>
+                      <td data-label="Status TUG-10" style={{padding:"8px 10px"}}><span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:700,background:p.status==="APPROVED"?"#dcfce7":"#fef3c7",color:p.status==="APPROVED"?C.green:"#92400e"}}>{p.status||"-"}</span></td>
                       <td data-label="Aksi" style={{padding:"8px 10px",textAlign:"center"}}>
                         {sudah
                           ? <span style={{fontSize:12,fontWeight:700,color:C.green}}><CheckCircle className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Sudah diusulkan</span>
@@ -426,7 +426,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
 
       {/* Tabel desktop — format identik Data Stok Gudang */}
       <div className="attb-table-wrap">
-      <div className="operations-table-card" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:0,boxShadow:"none",borderRadius:0}}>
+      <div className="mobile-card-table operations-table-card" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:0,boxShadow:"none",borderRadius: 10}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,minWidth:760}}>
           <thead>
             <tr style={{background:C.sidebar,color:"white"}}>
@@ -437,7 +437,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
           </thead>
           <tbody>
             {filteredList.length===0 && (
-              <tr><td colSpan={7} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
+              <tr tabIndex={0} className="mobile-card-table__row"><td colSpan={7} style={{padding:30,textAlign:"center",color:C.muted}}>Belum ada item ATTB untuk filter ini.</td></tr>
             )}
             {pagedList.map(item=>{
               const canApproveThis = isPendingAttbApproval(item) && canApproveAttb(currentUser, item, uptList);
@@ -463,53 +463,53 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
               const locationBlok = loc?.lok && `Blok: ${loc.lok.kode || loc.lok.nama}`;
               return (
                 <Fragment key={item.id}>
-                  <tr className="attb-preview-trigger" onClick={()=>setPreviewId(item.id)} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
+                  <tr tabIndex={0} className="mobile-card-table__row attb-preview-trigger" onClick={()=>setPreviewId(item.id)} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
                     {/* Foto */}
-                    <td style={{padding:"8px 12px",width:52}}>
-                      <div style={{width:40,height:40,borderRadius:6,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <td data-label="Foto" className="mobile-card-table__photo" style={{padding:"8px 12px",width:52}}>
+                      <div style={{width:40,height:40,borderRadius: 10,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         {item.foto
                           ? <img src={item.foto} alt="foto" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                           : <Package size={18} weight="duotone" color="#9ca3af" aria-label="Tidak ada foto" />}
                       </div>
                     </td>
                     {/* Nama Barang — ATTB No + AT kode di bawah (mirip Nama + kode SAP) */}
-                    <td style={{padding:"8px 12px",maxWidth:200}}>
+                    <td data-label="Nama Barang" className="mobile-card-table__title" style={{padding:"8px 12px",maxWidth:200}}>
                       <div style={{fontWeight:700,color:C.text,fontSize:13,lineHeight:1.3,overflow:"hidden",display:"-webkit-box",WebkitLineClamp:2,WebkitBoxOrient:"vertical"}}>{item.description||item.nomorATTB||"-"}</div>
                       <div style={{display:"flex",alignItems:"center",gap:4,marginTop:2}}>
                         <span style={{fontSize:12,color:C.muted}}><FileText className="attb-inline-icon" size={13} weight="fill" aria-hidden="true" /> {item.nomorATTB||item.nomorAT||item.id}</span>
                       </div>
                     </td>
                     {/* Kategori — badge jenis + UPT + waktu usulan */}
-                    <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                    <td data-label="Kategori" style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
                       <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:2}}>
-                        <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:jenisColor+"22",color:jenisColor,whiteSpace:"nowrap"}}>
+                        <span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:700,background:jenisColor+"22",color:jenisColor,whiteSpace:"nowrap"}}>
                           {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}
                         </span>
-                        {item.bay && <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:600,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{item.bay}</span>}
+                        {item.bay && <span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:600,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap",minWidth:0,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{item.bay}</span>}
                       </div>
                       <div style={{fontSize:12,color:C.muted}}>{item.upt}</div>
                     </td>
                     {/* Qty / Nilai — nilai perolehan + waktu usulan di bawah */}
-                    <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                    <td data-label="Qty / Nilai" style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
                       <div style={{fontWeight:700,color:C.text,fontSize:13}}>
                         {item.nilaiPerolehan ? `Rp ${Number(item.nilaiPerolehan).toLocaleString("id-ID")}` : "Rp 0"}
                       </div>
                       {item.waktuUsulanPenghapusan && <div style={{fontSize:12,color:C.muted,marginTop:1}}>{item.waktuUsulanPenghapusan}</div>}
                     </td>
                     {/* Lokasi — ringkas dan read-only; pengeditan tetap melalui Edit/modal */}
-                    <td style={{padding:"8px 12px",minWidth:180,maxWidth:230}} title={locationTitle} aria-label={`Lokasi: ${locationTitle}`}>
-                      <div style={{fontSize:12,color:locationGudang?C.text:C.muted,fontStyle:locationGudang?"normal":"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    <td data-label="Lokasi" style={{padding:"8px 12px",minWidth:180,maxWidth:230}} title={locationTitle} aria-label={`Lokasi: ${locationTitle}`}>
+                      <div style={{fontSize:12,color:locationGudang?C.text:C.muted,fontStyle:locationGudang?"normal":"italic",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
                         {locationGudang || "—"}
                       </div>
                       {(locationSub || locationBlok) && (
-                        <div style={{display:"flex",gap:6,marginTop:2,fontSize:12,color:C.muted,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                        <div style={{display:"flex",gap:6,marginTop:2,fontSize:12,color:C.muted,whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>
                           {locationSub && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationSub}</span>}
                           {locationBlok && <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{locationBlok}</span>}
                         </div>
                       )}
                     </td>
                     {/* Status — format identik dengan "SAP — Persediaan" */}
-                    <td style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                    <td data-label="Status" style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
                       {(() => {
                         let bg = "#dbeafe";
                         let fg = "#1d4ed8";
@@ -530,14 +530,14 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                         }
 
                         return (
-                          <span style={{ padding: "2px 7px", borderRadius: 20, fontSize: 12, fontWeight: 700, background: bg, color: fg, whiteSpace: "nowrap" }}>
+                          <span style={{ padding: "2px 7px", borderRadius: 14, fontSize: 12, fontWeight: 700, background: bg, color: fg, whiteSpace: "nowrap" }}>
                             {label}
                           </span>
                         );
                       })()}
                     </td>
                     {/* Aksi — persis Data Stok: Edit | Hapus | inline action buttons */}
-                    <td onClick={e => e.stopPropagation()} style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
+                    <td data-label="Aksi" onClick={e => e.stopPropagation()} style={{padding:"8px 12px",whiteSpace:"nowrap"}}>
                       <div className="table-actions">
                         {canManage && (
                           <button className="table-action-button" title="Edit data ATTB"
@@ -573,7 +573,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                     </td>
                   </tr>
                   {(rejectingId===item.id || belumLanjutId===item.id) && (
-                    <tr style={{borderLeft:`3px solid ${borderColor}`}}>
+                    <tr tabIndex={0} className="mobile-card-table__row" style={{borderLeft:`3px solid ${borderColor}`}}>
                       <td colSpan={7} style={{padding:"10px 12px",background:"#fef2f2"}}>
                         {rejectingId===item.id && (
                           <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
@@ -627,8 +627,8 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                   {item.waktuUsulanPenghapusan && <div style={{fontSize:12,color:C.muted}}>{item.waktuUsulanPenghapusan}</div>}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-end",flexShrink:0}}>
-                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
-                  {item.lanjutBelumLanjut && <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}><Warning className="attb-inline-icon" size={13} weight="fill" aria-hidden="true" /> Ditahan</span>}
+                  <span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:800,background:stageColor(item.stage)+"22",color:stageColor(item.stage),whiteSpace:"nowrap"}}>{attbStageLabel(item.stage)}</span>
+                  {item.lanjutBelumLanjut && <span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:800,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}><Warning className="attb-inline-icon" size={13} weight="fill" aria-hidden="true" /> Ditahan</span>}
                 </div>
               </div>
               {/* Body: deskripsi, jenis, lokasi, nilai */}
@@ -644,7 +644,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                   </span>
                 </div>
                 <div className="attb-mobile-card__row">
-                  <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{item.approvalStatus||"DRAFT"}</span>
+                  <span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{item.approvalStatus||"DRAFT"}</span>
                   {item.nilaiPerolehan && <span style={{fontSize:12,color:C.muted}}>Perolehan: <b style={{color:C.text}}>{Number(item.nilaiPerolehan).toLocaleString("id-ID")}</b></span>}
                 </div>
               </div>
@@ -658,7 +658,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                   </span>
                 )}
                 {canManage && ["USULAN_AE1","AE1_AE4"].includes(item.stage) && (
-                  <div style={{display:"inline-flex",borderRadius:8,overflow:"hidden",border:`1px solid ${C.border}`}}>
+                  <div style={{display:"inline-flex",borderRadius: 10,overflow:"hidden",border:`1px solid ${C.border}`}}>
                     <button className="attb-stage-action" title="Lanjut ke tahap berikutnya" onClick={()=>advanceStage(item.id)}
                       style={{border:"none",cursor:"pointer",padding:"5px 10px",fontSize:12,fontWeight:800,background:"#dcfce7",color:C.green,whiteSpace:"nowrap"}}><CaretRight size={15} weight="bold" aria-hidden="true" /> Lanjut</button>
                     <button title={item.lanjutBelumLanjut?"Sedang Belum Lanjut — klik untuk lanjutkan lagi":"Tandai Belum Lanjut"}
@@ -726,7 +726,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
       {showImportPanel && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div className="attb-import-dialog" style={{...sty.card,width:640,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}><FileText className="attb-inline-icon" size={18} weight="duotone" aria-hidden="true" /> Import Excel ATTB (Material)</h3>
+            <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}><FileText className="attb-inline-icon" size={18} weight="duotone" aria-hidden="true" /> Import Excel ATTB (Material)</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Baris data dideteksi otomatis lewat kolom Nomor AT/ATTB. Baris yang nomor AT-nya sudah ada di daftar akan otomatis dilewati (tidak dobel). <Info className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Kalau punya kedua file (kandidat baru + yang sudah disetujui), import <b>Tahap 2 dulu</b>, baru Tahap 1 — supaya item yang sudah disetujui otomatis ke-skip saat import Tahap 1, tidak dobel-catat.</p>
 
             <div style={{marginBottom:8}}>
@@ -758,7 +758,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
             </div>
             <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Tersimpan sebagai: <b style={{color:C.accent}}>{importWaktu}</b></div>
 
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:8,cursor:"pointer",padding:"8px 10px",background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:8,cursor:"pointer",padding:"8px 10px",background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius: 10}}>
               <input type="checkbox" checked={importIncludeHidden} onChange={e=>setImportIncludeHidden(e.target.checked)}/>
               <span>Sertakan baris yang di-<b>hide</b>/di-filter di Excel
                 {importPreview && importPreview.hiddenCount>0 && <span style={{color:"#92400e",fontWeight:700}}> — ada {importPreview.hiddenCount} baris hidden, saat ini <b>{importIncludeHidden?"disertakan":"dilewati"}</b></span>}
@@ -766,7 +766,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
               </span>
             </label>
 
-            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:12,cursor:"pointer",padding:"8px 10px",background:importOverwrite?"#fef2f2":"#f8fafc",border:`1px solid ${importOverwrite?"#fecaca":C.border}`,borderRadius:8}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,marginBottom:12,cursor:"pointer",padding:"8px 10px",background:importOverwrite?"#fef2f2":"#f8fafc",border:`1px solid ${importOverwrite?"#fecaca":C.border}`,borderRadius: 10}}>
               <input type="checkbox" checked={importOverwrite} onChange={e=>setImportOverwrite(e.target.checked)}/>
               <span><ArrowsClockwise className="attb-inline-icon" size={15} weight="bold" aria-hidden="true" /> <b>Tiban (timpa)</b> semua data eksisting dengan Waktu Usulan = <b>{importWaktu}</b>
                 {importOverwrite && importPreview && <span style={{color:C.red,fontWeight:700}}> — {importPreview.overwriteCount} item lama akan dihapus & diganti isi file</span>}
@@ -783,33 +783,33 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
               <div>
                 <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Preview: {importPreview.fileName} (Sheet: {importPreview.sheetName})</div>
                 <div className="attb-import-preview-stats" style={{display:"flex",flexWrap:"wrap",gap:10,marginBottom:10}}>
-                  <div style={{padding:"6px 12px",borderRadius:8,background:"#f0fdf4",border:`1px solid #bbf7d0`,textAlign:"center"}}>
+                  <div style={{padding:"6px 12px",borderRadius: 10,background:"#f0fdf4",border:`1px solid #bbf7d0`,textAlign:"center"}}>
                     <div style={{fontSize:12,color:C.muted}}>Baru</div>
-                    <div style={{fontSize:16,fontWeight:800,color:C.green}}>{importPreview.newCount}</div>
+                    <div style={{fontSize:15,fontWeight:800,color:C.green}}>{importPreview.newCount}</div>
                   </div>
-                  <div style={{padding:"6px 12px",borderRadius:8,background:"#f3f4f6",border:`1px solid ${C.border}`,textAlign:"center"}}>
+                  <div style={{padding:"6px 12px",borderRadius: 10,background:"#f3f4f6",border:`1px solid ${C.border}`,textAlign:"center"}}>
                     <div style={{fontSize:12,color:C.muted}}>Dilewati (duplikat)</div>
-                    <div style={{fontSize:16,fontWeight:800,color:C.muted}}>{importPreview.dupCount}</div>
+                    <div style={{fontSize:15,fontWeight:800,color:C.muted}}>{importPreview.dupCount}</div>
                   </div>
                   {importPreview.hiddenCount>0 && (
-                    <div style={{padding:"6px 12px",borderRadius:8,background:"#fef9c3",border:`1px solid #fde68a`,textAlign:"center"}}>
+                    <div style={{padding:"6px 12px",borderRadius: 10,background:"#fef9c3",border:`1px solid #fde68a`,textAlign:"center"}}>
                       <div style={{fontSize:12,color:"#92400e"}}>Hidden di Excel (dilewati)</div>
-                      <div style={{fontSize:16,fontWeight:800,color:"#92400e"}}>{importPreview.hiddenCount}</div>
+                      <div style={{fontSize:15,fontWeight:800,color:"#92400e"}}>{importPreview.hiddenCount}</div>
                     </div>
                   )}
                 </div>
-                <div style={{overflowX:"auto",maxHeight:280,overflowY:"auto",marginBottom:12,border:`1px solid ${C.border}`,borderRadius:8}}>
+                <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:280,overflowY:"auto",marginBottom:12,border:`1px solid ${C.border}`,borderRadius: 10}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:480}}>
                     <thead style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
                       <tr>{["Nomor AT","Description","Nilai Perolehan","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr>
                     </thead>
                     <tbody>
                       {importPreview.records.map((r,i)=>(
-                        <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r._duplicate?"#f9fafb":"white",opacity:r._duplicate?0.6:1}}>
-                          <td style={{padding:"4px 8px"}}>{r.nomorAT}</td>
-                          <td style={{padding:"4px 8px"}}>{r.description}</td>
-                          <td style={{padding:"4px 8px",textAlign:"right"}}>{r.nilaiPerolehan?.toLocaleString("id-ID")}</td>
-                          <td style={{padding:"4px 8px"}}>{r._duplicate?"Duplikat — dilewati":"Baru"}</td>
+                        <tr tabIndex={0} className="mobile-card-table__row" key={i} style={{borderBottom:`1px solid ${C.border}`,background:r._duplicate?"#f9fafb":"white",opacity:r._duplicate?0.6:1}}>
+                          <td data-label="Nomor AT" style={{padding:"4px 8px"}}>{r.nomorAT}</td>
+                          <td data-label="Description" className="mobile-card-table__title" style={{padding:"4px 8px"}}>{r.description}</td>
+                          <td data-label="Nilai Perolehan" style={{padding:"4px 8px",textAlign:"right"}}>{r.nilaiPerolehan?.toLocaleString("id-ID")}</td>
+                          <td data-label="Status" style={{padding:"4px 8px"}}>{r._duplicate?"Duplikat — dilewati":"Baru"}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -832,7 +832,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
       {showAddForm && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div style={{...sty.card,width:480,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-            <h3 style={{fontSize:16,fontWeight:800,marginBottom:16}}>+ Tambah Kandidat ATTB (Tahap 1)</h3>
+            <h3 style={{fontSize:15,fontWeight:800,marginBottom:16}}>+ Tambah Kandidat ATTB (Tahap 1)</h3>
             <div style={{marginBottom:8}}>
               <label style={sty.label}>Jenis Aset</label>
               <select style={sty.select} value={addForm.jenisAset} onChange={e=>setAddForm(f=>({...f,jenisAset:e.target.value}))}>
@@ -857,14 +857,14 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
             <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-              <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}><PencilSimple className="attb-inline-icon" size={18} weight="bold" aria-hidden="true" /> Edit ATTB</h3>
+              <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}><PencilSimple className="attb-inline-icon" size={18} weight="bold" aria-hidden="true" /> Edit ATTB</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{item.nomorATTB||item.id} — {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
 
               {/* Foto barang — bisa ditambah/diperbarui di semua tahap. Untuk material
                   eks Bongkaran TUG-10, foto awal sudah ter-isi dari input TUG-10. */}
               <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Foto Barang</div>
               <div style={{height:170,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:8}}>
-                {editForm.foto ? <img src={editForm.foto} alt="Foto barang ATTB" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:36,color:"#9ca3af"}}><Package size={36} weight="duotone" aria-label="Tidak ada foto" /></div>}
+                {editForm.foto ? <img src={editForm.foto} alt="Foto barang ATTB" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:32,color: "#64748b"}}><Package size={36} weight="duotone" aria-label="Tidak ada foto" /></div>}
               </div>
               <div style={{display:"flex",gap:8,marginBottom:16}}>
                 <label style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer"}}>

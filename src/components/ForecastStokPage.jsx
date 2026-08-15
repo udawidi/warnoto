@@ -365,7 +365,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
                     <div><span>Avg Health</span><strong>{cockpitHealth.summary.avgHealth}/100</strong></div>
                     <div><span>Data Confidence</span><strong>{cockpitHealth.summary.avgConfidence}%</strong></div>
                   </div>
-                  <div style={{overflowX:"auto"}}>
+                  <div className="mobile-card-table" style={{overflowX:"auto"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                       <thead>
                         <tr style={{background:"#f9fafb"}}>
@@ -379,17 +379,17 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
                           const status = r.currentQty===0?"Kosong/Kritis":r.currentQty<r.recommendedQty?"Kurang":"Aman";
                           const statusColor = r.currentQty===0?C.red:r.currentQty<r.recommendedQty?"#f59e0b":C.green;
                           return (
-                            <tr key={i} style={{borderBottom:`1px solid ${C.border}`}}>
-                              <td style={{padding:"6px 8px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
-                              <td style={{padding:"6px 8px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.katalogName||r.namaMaterial}</td>
-                              <td style={{padding:"6px 8px",fontSize:12,color:C.muted,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.merk||"-"}</td>
-                              <td style={{padding:"6px 8px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius:4,fontWeight:700,fontSize:12}}>{r.abcClass}</span></td>
-                              <td style={{padding:"6px 8px",fontSize:12,color:C.muted}}>{r.policy}</td>
-                              <td style={{padding:"6px 8px",fontWeight:700}}>{r.currentQty}</td>
-                              <td style={{padding:"6px 8px",fontWeight:700}}>{r.recommendedQty}</td>
-                              <td style={{padding:"6px 8px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
-                              <td style={{padding:"6px 8px"}}><span style={{color:statusColor,fontWeight:700,fontSize:12}}>{status}</span></td>
-                              <td style={{padding:"6px 8px",color:r.gapQty>0?"#7c3aed":C.muted}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
+                            <tr tabIndex={0} className="mobile-card-table__row" key={i} style={{borderBottom:`1px solid ${C.border}`}}>
+                              <td data-label="No Katalog" style={{padding:"6px 8px",color:"#0098da",fontWeight:700}}>{r.noKat}</td>
+                              <td data-label="Nama" className="mobile-card-table__title" style={{padding:"6px 8px",maxWidth:180,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.katalogName||r.namaMaterial}</td>
+                              <td data-label="Merk" style={{padding:"6px 8px",fontSize:12,color:C.muted,maxWidth:120,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.merk||"-"}</td>
+                              <td data-label="Kelas" style={{padding:"6px 8px"}}><span style={{background:r.abcClass==="A1"?"#fef2f2":r.abcClass==="A2"?"#fff7ed":r.abcClass==="B1"?"#eff6ff":"#f9fafb",color:r.abcClass==="A1"?C.red:r.abcClass==="A2"?"#ea580c":C.accent,padding:"2px 6px",borderRadius: 10,fontWeight:700,fontSize:12}}>{r.abcClass}</span></td>
+                              <td data-label="Policy" style={{padding:"6px 8px",fontSize:12,color:C.muted}}>{r.policy}</td>
+                              <td data-label="Stok" style={{padding:"6px 8px",fontWeight:700}}>{r.currentQty}</td>
+                              <td data-label="Ideal" style={{padding:"6px 8px",fontWeight:700}}>{r.recommendedQty}</td>
+                              <td data-label="Gap" style={{padding:"6px 8px",fontWeight:700,color:r.gapQty>0?C.red:C.green}}>{r.gapQty>0?"-"+r.gapQty:0}</td>
+                              <td data-label="Status" style={{padding:"6px 8px"}}><span style={{color:statusColor,fontWeight:700,fontSize:12}}>{status}</span></td>
+                              <td data-label="Nilai Gap" style={{padding:"6px 8px",color:r.gapQty>0?"#7c3aed":C.muted}}>{r.gapQty>0?"Rp "+fmtNum(r.gapQty*(r.harga||0)):"-"}</td>
                             </tr>
                           );
                         })}
@@ -418,7 +418,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
                 <table className="forecast-table">
                   <thead><tr><th>Material</th><th>Status</th><th>Stok saat ini</th><th>Estimasi habis</th><th>Usulan qty beli</th><th>Estimasi nilai</th><th>Aksi</th></tr></thead>
                   <tbody>
-                    {pagedProcurementList.map(entry=><tr key={entry.kat.id} className="mobile-card-table__row" style={{"--risk-accent":RISK_COLORS[entry.risk.key]}}>
+                    {pagedProcurementList.map(entry=><tr tabIndex={0} key={entry.kat.id} className="mobile-card-table__row" style={{"--risk-accent":RISK_COLORS[entry.risk.key]}}>
                       <td className="mobile-card-table__title"><strong>{entry.kat.name}</strong><span>{entry.kat.katalog} · {entry.kat.satuan}</span></td>
                       <td data-label="Status"><span className={`forecast-risk is-${entry.risk.key}`}>{entry.risk.label}</span></td>
                       <td data-label="Stok"><strong>{fmtNum(entry.totalQty)}</strong><span>min {fmtNum(entry.risk.minQty)} {entry.kat.satuan}{entry.risk.minQtySource==="computed"?" · dihitung dari histori":""}</span></td>
@@ -482,7 +482,7 @@ export function ForecastStokPage({ katalogList, setKatalogList, stocks, allStock
             <table className="forecast-table">
               <thead><tr><th>Material</th><th>Status</th><th>Stok saat ini</th><th>Estimasi heuristik</th><th>Prediksi ML</th><th>Validasi</th><th>Aksi</th></tr></thead>
               <tbody>
-                {pagedList.map(entry=><tr key={entry.kat.id} className="mobile-card-table__row" onClick={()=>openDetail(entry)} style={{"--risk-accent":RISK_COLORS[entry.risk.key]}}>
+                {pagedList.map(entry=><tr tabIndex={0} key={entry.kat.id} className="mobile-card-table__row" onClick={()=>openDetail(entry)} style={{"--risk-accent":RISK_COLORS[entry.risk.key]}}>
                   <td className="mobile-card-table__title"><strong>{entry.kat.name}</strong><span>{entry.kat.katalog} · {entry.kat.satuan}</span></td>
                   <td data-label="Status"><span className={`forecast-risk is-${entry.risk.key}`}>{entry.risk.label}</span></td>
                   <td data-label="Stok"><strong>{fmtNum(entry.totalQty)}</strong><span>{entry.kat.satuan}</span></td>

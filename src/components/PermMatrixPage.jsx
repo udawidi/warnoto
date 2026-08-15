@@ -80,12 +80,12 @@ export function PermMatrixPage({ sty, C, currentUser, rolePerms, reloadRolePerms
   }
 
   const cellStyle = { padding: "6px 8px", textAlign: "center", borderBottom: `1px solid ${C.border}`, whiteSpace: "nowrap" };
-  const headStyle = { padding: "8px 8px", textAlign: "center", borderBottom: `2px solid ${C.border}`, fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" };
+  const headStyle = { padding: "8px 8px", textAlign: "center", borderBottom: `2px solid ${C.border}`, fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" };
 
   return (
     <div className="admin-mobile-page permission-matrix-page" style={sty.card}>
       <div className="permission-matrix-page__intro">
-        <div style={{ fontSize: 12, color: C.muted, maxWidth: 620 }}>
+        <div tabIndex={0} className="info-note" style={{ fontSize: 12, color: C.muted, maxWidth: 620 }}>
           Centang izin per role. Titik • menandai izin yang <b>berbeda dari default</b>. Perubahan approval bisnis (persetujuan TUG) tetap terkunci di kode dan tidak diatur di sini. Kolom Super Admin selalu penuh.
         </div>
         <button style={{ ...sty.btn("primary"), opacity: (saving || changedRoles.length === 0) ? 0.55 : 1 }}
@@ -108,7 +108,7 @@ export function PermMatrixPage({ sty, C, currentUser, rolePerms, reloadRolePerms
             {ALL_ROWS.map(section => (
               <Fragment key={section.group}>
                 <tr>
-                  <td colSpan={MATRIX_ROLES.length + 1} style={{ padding: "8px 8px 4px", fontSize: 11, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: ".4px" }}>{section.group}</td>
+                  <td colSpan={MATRIX_ROLES.length + 1} style={{ padding: "8px 8px 4px", fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: ".4px" }}>{section.group}</td>
                 </tr>
                 {section.items.map(row => (
                   <tr key={row.key}>
@@ -133,11 +133,11 @@ export function PermMatrixPage({ sty, C, currentUser, rolePerms, reloadRolePerms
               </Fragment>
             ))}
             <tr>
-              <td style={{ padding: "8px 8px", fontSize: 11, fontWeight: 700, color: C.muted, position: "sticky", left: 0, background: C.card || "#fff" }}>Reset</td>
+              <td style={{ padding: "8px 8px", fontSize: 12, fontWeight: 700, color: C.muted, position: "sticky", left: 0, background: C.card || "#fff" }}>Reset</td>
               {MATRIX_ROLES.map(role => (
                 <td data-role={ROLES[role] || role} key={role} style={cellStyle}>
                   {role === "SUPERADMIN"
-                    ? <span style={{ color: C.muted, fontSize: 11 }}>—</span>
+                    ? <span style={{ color: C.muted, fontSize: 12 }}>—</span>
                     : <button style={sty.btn("ghost", "sm")} disabled={saving} onClick={() => resetRole(role)} title="Kembalikan ke default">↩️</button>}
                 </td>
               ))}

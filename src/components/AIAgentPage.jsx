@@ -99,7 +99,7 @@ export function AIAgentPage({
             <div className="ai-start__intro">
               <span>Mulai percakapan</span>
               <h2>Apa yang perlu diperiksa hari ini?</h2>
-              <p>Pak War membantu merangkum stok, transaksi, approval, dan forecast. Pilih pertanyaan cepat atau tulis pertanyaan sendiri.</p>
+              <p tabIndex={0} className="info-note">Pak War membantu merangkum stok, transaksi, approval, dan forecast. Pilih pertanyaan cepat atau tulis pertanyaan sendiri.</p>
               <div className="ai-start__status"><i></i><span>Siap membaca data gudang terbaru</span></div>
             </div>
             <div className="ai-quick-prompts">

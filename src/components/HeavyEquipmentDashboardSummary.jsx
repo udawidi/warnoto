@@ -68,7 +68,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
     <div className="dashboard-heavy-summary" style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${overdueLoans.length?C.red:C.accent}`,cursor:"pointer"}} onClick={()=>setTab("heavyEquipment")}>
       <div className="dashboard-heavy-summary__heading">
         <div>
-          <div style={{fontSize:14,fontWeight:900}}><Tractor weight="fill" size={17} style={{verticalAlign:"-0.15em",marginRight:5}}/>Ringkasan Alat Berat</div>
+          <div style={{fontSize:13,fontWeight:900}}><Tractor weight="fill" size={17} style={{verticalAlign:"-0.15em",marginRight:5}}/>Ringkasan Alat Berat</div>
           <div style={{fontSize:12,color:C.muted}}>Scope: <b>{scopeLabel}</b> — status peminjaman, ketersediaan &amp; kondisi alat.</div>
         </div>
         <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("heavyEquipment");}}>Buka Menu</button>
@@ -95,7 +95,7 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
           {label:"Pending", val:pendingLoans.length, color:pendingLoans.length?"#92400e":C.green},
           {label:"Perlu Tindakan", val:issueCount, color:issueCount?C.red:C.green},
         ].map(k=>(
-          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10,padding:10}}>
             <div style={{fontSize:12,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
             <div style={{fontSize:20,fontWeight:900,color:k.color}}>{k.val}</div>
           </div>

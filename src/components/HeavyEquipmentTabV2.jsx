@@ -24,7 +24,7 @@ function EquipmentFields({ form, setForm, sty }) {
 function EquipmentPhotoInput({ foto, nama, handleImg, setForm, sty, C, showToast }) {
   return <>
     <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:12}}>
-      {foto ? <img src={foto} alt={nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:38,color:"#9ca3af"}}>🚜</div>}
+      {foto ? <img src={foto} alt={nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:32,color: "#64748b"}}>🚜</div>}
     </div>
     <label style={{...sty.btn("ghost","sm"),textAlign:"center",display:"block",marginBottom:16}}>
       📷 {foto?"Ganti Foto":"Upload Foto"}
@@ -144,7 +144,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const Badge = ({metaKey}) => {
     const key = normalizeHeavyEquipmentLoanStatus(metaKey);
     const m = statusMeta[key] || {label:key, bg:"#f3f4f6", fg:C.muted};
-    return <span style={{padding:"3px 9px",borderRadius:20,fontSize:12,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
+    return <span style={{padding:"3px 9px",borderRadius: 14,fontSize:12,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
   };
   const loanBorderColor = status => status==="OVERDUE" ? C.red : status==="PENDING_OWNER_ASMAN" ? C.yellow : status==="DIPINJAM" ? "#c2410c" : status==="REJECTED" ? C.red : "#0369a1";
   const loanUserName = userId => users.find(u=>u.id===userId)?.name || "-";
@@ -247,7 +247,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     {id:"ALL",      label:"Semua Alat",     color:C.accent,   count:equipmentList.filter(e=>!effectiveUptFilter||e.upt===effectiveUptFilter).length},
     {id:"LAYAK",    label:"Layak",          color:C.green,    count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="LAYAK").length},
     {id:"DIPINJAM", label:"Dipinjam",       color:"#c2410c",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&activeLoanForEquipment(e.id)).length},
-    {id:"MAINTENANCE", label:"Maintenance", color:"#4b5563",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="MAINTENANCE").length},
+    {id:"MAINTENANCE", label:"Maintenance", color: "#64748b",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="MAINTENANCE").length},
     {id:"KIR",      label:"Sedang KIR",     color:"#1d4ed8",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="KIR").length},
     {id:"PERLU_SERVICE", label:"Perlu Servis", color:"#f59e0b", count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="PERLU_SERVICE").length},
     {id:"RUSAK",    label:"Rusak",          color:C.red,      count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="RUSAK").length},
@@ -288,7 +288,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       <div className="dashboard-mode-switch" role="tablist" aria-label="Tampilan alat berat" style={{marginBottom:12}}>
         {[{id:"armada",label:"Daftar Alat",caption:"Registry & kondisi armada"},{id:"peminjaman",label:"Peminjaman & Histori",caption:"Pengajuan, approval, dan riwayat"}].map(item=>(
           <button key={item.id} className={viewMode===item.id?"is-active":""} onClick={()=>setViewMode(item.id)} role="tab" aria-selected={viewMode===item.id}>
-            <strong>{item.label}{item.id==="peminjaman"&&pendingCount>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius:20,fontSize:12,fontWeight:800,background:C.red,color:"#fff"}}>{pendingCount}</span>}</strong><span>{item.caption}</span>
+            <strong>{item.label}{item.id==="peminjaman"&&pendingCount>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius: 14,fontSize:12,fontWeight:800,background:C.red,color:"#fff"}}>{pendingCount}</span>}</strong><span>{item.caption}</span>
           </button>
         ))}
       </div>
@@ -318,7 +318,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         <label className="equipment-condition-filter" style={{display:"flex",flexDirection:"column",gap:4,flex:"0 0 auto",width:190}}>
           <span style={{fontSize:12,fontWeight:700,color:C.muted}}>Kondisi</span>
           <select value={kondisiFilter} onChange={e=>setKondisiFilter(e.target.value)}
-            style={{width:"100%",minHeight:36,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius:9,outline:0,background:"#fff",color:C.text,fontSize:13}}>
+            style={{width:"100%",minHeight:36,padding:"7px 10px",border:`1px solid ${C.border}`,borderRadius: 10,outline:0,background:"#fff",color:C.text,fontSize:13}}>
             {kondisiGroups.map(g=>(
               <option key={g.id} value={g.id}>{g.label} ({g.count})</option>
             ))}
@@ -340,13 +340,13 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 {eq.foto ? <img src={eq.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div className="equipment-placeholder">EQ</div>}
               </div>
               <div className="equipment-card__header" style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
-                <div><div style={{fontSize:14,fontWeight:900}}>{eq.nama}</div><div style={{fontSize:12,color:C.muted}}>{eq.upt} • {eq.lokasi}</div></div>
+                <div><div style={{fontSize:13,fontWeight:900}}>{eq.nama}</div><div style={{fontSize:12,color:C.muted}}>{eq.upt} • {eq.lokasi}</div></div>
                 <Badge metaKey={activeLoan?.runtimeStatus || eq.availabilityStatus || "TERSEDIA"}/>
               </div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius:20,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
               <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>Merk/Type: <b>{eq.merkType||"-"}</b><br/>Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>No Seri: <b>{eq.nomorSeri||"-"}</b><br/>Kondisi: <b>{eq.kondisi||"-"}</b><br/>Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b></div>
-              {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius:8,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
-              {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius:8,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:"#4b5563"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
+              {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius: 10,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
+              {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius: 10,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color: "#64748b"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
               {lastLoan && <div style={{fontSize:12,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
               {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm(canEditAll ? {...eq} : {statusAlat:eq.statusAlat||"LAYAK", foto:eq.foto||null});}}>Edit data alat</button>}
             </div>
@@ -483,7 +483,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
             <div role="dialog" aria-label="Edit Alat Berat" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-              <h3 style={{fontSize:16,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
+              <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{eq.nama} — {eq.upt}</div>
               {canEditAll && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty}/>}
               <EquipmentPhotoInput foto={editForm.foto} nama={eq.nama} handleImg={handleImg} setForm={setEditForm} sty={sty} C={C} showToast={showToast}/>
@@ -505,7 +505,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       })()}
       {addingEquipment && <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
         <div role="dialog" aria-label="Tambah Alat Berat" style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-          <h3 style={{fontSize:16,fontWeight:800,marginBottom:12}}>Tambah Alat Berat</h3>
+          <h3 style={{fontSize:15,fontWeight:800,marginBottom:12}}>Tambah Alat Berat</h3>
           <EquipmentFields form={addForm} setForm={setAddForm} sty={sty}/>
           <EquipmentPhotoInput foto={addForm.foto} nama={addForm.nama||"Alat berat baru"} handleImg={handleImg} setForm={setAddForm} sty={sty} C={C} showToast={showToast}/>
           <label style={{...sty.label,marginTop:10}}>Status Alat

@@ -8,12 +8,12 @@ export function AkunModal({ akunModal, setAkunModal, akunForm, setAkunForm, akun
           <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             {akunResult ? (
               <>
-                <h3 style={{fontSize:18,fontWeight:800,marginBottom:14}}>✅ Akun Berhasil Didaftarkan</h3>
-                <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius:8,padding:14,marginBottom:14,fontSize:13}}>
+                <h3 style={{fontSize:17,fontWeight:800,marginBottom:14}}>✅ Akun Berhasil Didaftarkan</h3>
+                <div style={{background:"#f0fdf4",border:"1px solid #86efac",borderRadius: 10,padding:14,marginBottom:14,fontSize:13}}>
                   <div style={{marginBottom:6}}><b>Username:</b> {akunResult.username}</div>
                   <div><b>Password:</b> {akunResult.password}</div>
                 </div>
-                <div style={{fontSize:12,color:C.muted,marginBottom:16}}>⚠️ Sampaikan kredensial ini ke pemilik akun secara aman. Password ini tidak akan ditampilkan lagi setelah ditutup.</div>
+                <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:16}}>⚠️ Sampaikan kredensial ini ke pemilik akun secara aman. Password ini tidak akan ditampilkan lagi setelah ditutup.</div>
                 <button style={{...sty.btn("primary"),width:"100%"}} onClick={()=>{setAkunModal(null);setAkunResult(null);}}>Selesai</button>
               </>
             ) : (

@@ -78,10 +78,10 @@ export function ScanPublicView({ katalogId }) {
   // di layar HP tabel itu terpaksa 10.5px dan tetap harus digeser ke samping.
   const page = { minHeight:"100dvh", background:"#eef2f7", fontFamily:"'Inter',system-ui,sans-serif", padding:"14px 12px calc(84px + env(safe-area-inset-bottom))" };
   const shell = { maxWidth:560, margin:"0 auto", display:"flex", flexDirection:"column", gap:12 };
-  const card = { background:"#fff", border:"1px solid #e2e8f0", borderRadius:16, boxShadow:"0 6px 20px -12px rgba(15,23,42,.35)" };
+  const card = { background:"#fff", border:"1px solid #e2e8f0", borderRadius: 14, boxShadow:"0 6px 20px -12px rgba(15,23,42,.35)" };
 
   if (state.loading) {
-    return <div style={page}><div style={shell}><div style={{...card,padding:20,fontSize:13,color:"#475569",textAlign:"center"}}>Memuat data material…</div></div></div>;
+    return <div style={page}><div style={shell}><div style={{...card,padding:20,fontSize:13,color: "#64748b",textAlign:"center"}}>Memuat data material…</div></div></div>;
   }
   if (state.error) {
     return (
@@ -89,8 +89,8 @@ export function ScanPublicView({ katalogId }) {
         <div style={{...card,padding:20,display:"flex",gap:10,alignItems:"flex-start"}}>
           <Warning size={22} weight="fill" color="#dc2626"/>
           <div>
-            <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>Data tidak bisa ditampilkan</div>
-            <div style={{fontSize:13,color:"#475569",marginTop:2}}>{state.error}</div>
+            <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>Data tidak bisa ditampilkan</div>
+            <div style={{fontSize:13,color: "#64748b",marginTop:2}}>{state.error}</div>
           </div>
         </div>
       </div></div>
@@ -160,11 +160,11 @@ export function ScanPublicView({ katalogId }) {
           <div style={{display:"flex",gap:12,alignItems:"center",padding:"10px 16px 14px"}}>
             {katalog.fotoKeseluruhanUrl && (
               <a href={katalog.fotoKeseluruhanUrl} target="_blank" rel="noreferrer" style={{flexShrink:0,lineHeight:0}}>
-                <img src={katalog.fotoKeseluruhanUrl} alt={`Foto material ${katalog.name}`} style={{width:76,height:76,objectFit:"cover",borderRadius:12,border:"1px solid rgba(255,255,255,.3)"}}/>
+                <img src={katalog.fotoKeseluruhanUrl} alt={`Foto material ${katalog.name}`} style={{width:76,height:76,objectFit:"cover",borderRadius: 14,border:"1px solid rgba(255,255,255,.3)"}}/>
               </a>
             )}
             <div style={{minWidth:0}}>
-              <h1 style={{fontSize:18,fontWeight:800,lineHeight:1.25,margin:"0 0 8px"}}>{katalog.name}</h1>
+              <h1 style={{fontSize:17,fontWeight:800,lineHeight:1.25,margin:"0 0 8px"}}>{katalog.name}</h1>
               <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
                 {chips.map((c,i)=>(
                   <span key={i} style={{fontSize:12,fontWeight:700,padding:"3px 10px",borderRadius:999,background:"rgba(255,255,255,.16)",border:"1px solid rgba(255,255,255,.22)"}}>{c}</span>
@@ -183,10 +183,10 @@ export function ScanPublicView({ katalogId }) {
         {/* Angka utama: yang dicari orang di depan rak adalah sisa stok. */}
         <div style={{...card,padding:"18px 16px",textAlign:"center"}}>
           <div style={{fontSize:12,fontWeight:800,letterSpacing:".6px",color:"#64748b"}}>SISA BARANG SAAT INI</div>
-          <div style={{fontSize:40,fontWeight:800,lineHeight:1.1,color: qty>0 ? "#047857" : "#b91c1c",margin:"2px 0 6px"}}>
+          <div style={{fontSize:32,fontWeight:800,lineHeight:1.1,color: qty>0 ? "#047857" : "#b91c1c",margin:"2px 0 6px"}}>
             {fmtNum(qty)} <span style={{fontSize:15,fontWeight:700,color:"#64748b"}}>{satuan}</span>
           </div>
-          <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:"4px 14px",fontSize:12,color:"#475569",borderTop:"1px solid #e2e8f0",paddingTop:10}}>
+          <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:"4px 14px",fontSize:12,color: "#64748b",borderTop:"1px solid #e2e8f0",paddingTop:10}}>
             <span style={{display:"inline-flex",alignItems:"center",gap:4}}><MapPin size={14} weight="fill" color="#64748b"/> Blok {rakTerakhir}</span>
             {last && (
               <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
@@ -195,7 +195,7 @@ export function ScanPublicView({ katalogId }) {
               </span>
             )}
           </div>
-          <div style={{fontSize:13,color:"#334155",lineHeight:1.55,textAlign:"left",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"10px 12px",marginTop:12}}>
+          <div style={{fontSize:13,color: "#64748b",lineHeight:1.55,textAlign:"left",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius: 14,padding:"10px 12px",marginTop:12}}>
             {ringkasan}
           </div>
         </div>
@@ -230,10 +230,10 @@ export function ScanPublicView({ katalogId }) {
           {lokasiRows.length > 0 ? (
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {lokasiRows.map((l,i)=>(
-                <div key={i} style={{border:"1px solid #e2e8f0",borderLeft:`3px solid ${l.perkiraan?"#94a3b8":"#1d4ed8"}`,borderRadius:12,padding:"10px 12px"}}>
+                <div key={i} style={{border:"1px solid #e2e8f0",borderLeft:`3px solid ${l.perkiraan?"#94a3b8":"#1d4ed8"}`,borderRadius: 14,padding:"10px 12px"}}>
                   {/* Jalur gudang ditulis bertingkat, blok dicetak paling besar —
                       itu yang dicari orang sambil berdiri di depan rak. */}
-                  <div style={{fontSize:12,color:"#64748b",fontWeight:700}}>
+                  <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#64748b",fontWeight:700}}>
                     {[l.gudang, l.subGudang && `Sub Gudang ${l.subGudang}`].filter(Boolean).join(" › ") || "Jalur gudang belum tersinkron"}
                   </div>
                   <div style={{display:"flex",alignItems:"baseline",gap:8,marginTop:3,flexWrap:"wrap"}}>
@@ -244,11 +244,11 @@ export function ScanPublicView({ katalogId }) {
                 </div>
               ))}
               {lokasiRows[0]?.perkiraan && (
-                <div style={{fontSize:12,color:"#64748b"}}>Perkiraan posisi dihitung dari riwayat keluar-masuk barang; rincian gudang menyusul setelah sinkronisasi berikutnya.</div>
+                <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#64748b"}}>Perkiraan posisi dihitung dari riwayat keluar-masuk barang; rincian gudang menyusul setelah sinkronisasi berikutnya.</div>
               )}
             </div>
           ) : (
-            <div style={{fontSize:13,color:"#475569",lineHeight:1.55}}>
+            <div style={{fontSize:13,color: "#64748b",lineHeight:1.55}}>
               Rincian gudang untuk barang ini belum tersinkron ke halaman publik.{rakTerakhir!=="-" && <> Posisi terakhir tercatat: <b style={{color:"#0f172a"}}>Blok {rakTerakhir}</b>.</>} Tanyakan ke petugas gudang bila perlu dipastikan.
             </div>
           )}
@@ -281,8 +281,8 @@ export function ScanPublicView({ katalogId }) {
           <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
             <ClockCounterClockwise size={16} weight="fill" color="#1d4ed8"/>
             <span style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>Riwayat Keluar-Masuk Barang</span>
-            <span style={{fontSize:12,color:"#94a3b8",fontWeight:700}}>(TUG-2)</span>
-            {history.length>0 && <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color:"#475569",background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:999,padding:"2px 9px"}}>{fmtNum(history.length)} baris</span>}
+            <span style={{fontSize:12,color: "#64748b",fontWeight:700}}>(TUG-2)</span>
+            {history.length>0 && <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color: "#64748b",background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:999,padding:"2px 9px"}}>{fmtNum(history.length)} baris</span>}
           </div>
           {history.length===0 ? (
             <div style={{fontSize:13,color:"#64748b",textAlign:"center",padding:"18px 0",lineHeight:1.55}}>Belum ada catatan keluar-masuk untuk barang ini.<br/>Stok yang tercatat berasal dari data awal gudang.</div>
@@ -292,7 +292,7 @@ export function ScanPublicView({ katalogId }) {
                 const masuk = h.jenis_transaksi==="MASUK";
                 const warna = masuk ? "#16a34a" : "#dc2626";
                 return (
-                  <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",border:"1px solid #e2e8f0",borderLeft:`3px solid ${warna}`,borderRadius:12,padding:"10px 12px"}}>
+                  <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",border:"1px solid #e2e8f0",borderLeft:`3px solid ${warna}`,borderRadius: 14,padding:"10px 12px"}}>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:5,fontSize:13,fontWeight:800,color:warna}}>
                         {masuk ? <ArrowDown size={14} weight="bold"/> : <ArrowUp size={14} weight="bold"/>}
@@ -313,7 +313,7 @@ export function ScanPublicView({ katalogId }) {
                 );
               })}
               {!showAll && newest.length>15 && (
-                <button type="button" onClick={()=>setShowAll(true)} style={{minHeight:44,border:"1px solid #cbd5e1",borderRadius:12,background:"#fff",color:"#1d4ed8",fontSize:13,fontWeight:800,fontFamily:"inherit",cursor:"pointer"}}>
+                <button type="button" onClick={()=>setShowAll(true)} style={{minHeight:44,border:"1px solid #cbd5e1",borderRadius: 14,background:"#fff",color:"#1d4ed8",fontSize:13,fontWeight:800,fontFamily:"inherit",cursor:"pointer"}}>
                   Tampilkan semua ({newest.length})
                 </button>
               )}
@@ -324,7 +324,7 @@ export function ScanPublicView({ katalogId }) {
         {/* Pembaca halaman ini sering bukan orang gudang — jelaskan halamannya apa. */}
         <div style={{...card,padding:"14px",background:"#f8fafc"}}>
           <div style={{fontSize:13,fontWeight:800,color:"#0f172a",marginBottom:6}}>Apa arti halaman ini?</div>
-          <div style={{fontSize:13,color:"#475569",lineHeight:1.6}}>
+          <div style={{fontSize:13,color: "#64748b",lineHeight:1.6}}>
             Halaman ini muncul setelah Anda memindai QR pada kartu gantung barang. Isinya data resmi gudang
             PT PLN (Persero) UPT Surabaya: jumlah barang yang tersisa, tempat penyimpanannya, dan catatan
             keluar-masuk barang. Data diperbarui otomatis oleh sistem WARNOTO setiap ada transaksi disetujui.
@@ -333,7 +333,7 @@ export function ScanPublicView({ katalogId }) {
 
         <div style={{textAlign:"center",lineHeight:1.5,padding:"2px 8px"}}>
           <div style={{height:1,background:"#dbe3ee",margin:"2px auto 10px",maxWidth:180}}/>
-          <div style={{fontSize:12,fontWeight:800,color:"#334155",letterSpacing:".5px"}}>WARNOTO · GUDANG UPT SURABAYA</div>
+          <div style={{fontSize:12,fontWeight:800,color: "#64748b",letterSpacing:".5px"}}>WARNOTO · GUDANG UPT SURABAYA</div>
           <div style={{fontSize:12,color:"#64748b",marginTop:3}}>
             Data langsung dari sistem, tanpa perlu login. Dibuka {fmtDateOnly(new Date().toISOString())}.<br/>
             Hubungi petugas gudang bila angka di rak berbeda dengan halaman ini.
@@ -345,7 +345,7 @@ export function ScanPublicView({ katalogId }) {
       <div style={{position:"fixed",left:0,right:0,bottom:0,background:"linear-gradient(120deg,#0b2559 0%,#123d83 58%,#1d4ed8 100%)",color:"#fff",boxShadow:"0 -6px 20px -12px rgba(15,23,42,.6)",padding:"10px 14px calc(10px + env(safe-area-inset-bottom))"}}>
         <div style={{maxWidth:560,margin:"0 auto",display:"flex",alignItems:"center",gap:10}}>
           <div style={{fontSize:12,fontWeight:700,opacity:.85}}>Sisa</div>
-          <div style={{fontSize:16,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{fmtNum(qty)} {satuan}</div>
+          <div style={{fontSize:15,fontWeight:800,fontVariantNumeric:"tabular-nums"}}>{fmtNum(qty)} {satuan}</div>
           <div style={{marginLeft:"auto",display:"inline-flex",alignItems:"center",gap:5,fontSize:13,fontWeight:800}}>
             <MapPin size={15} weight="fill"/> {blokUtama ? `Blok ${blokUtama}` : "Blok belum tercatat"}
           </div>

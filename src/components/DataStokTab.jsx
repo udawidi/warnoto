@@ -93,12 +93,12 @@ export function DataStokTab({
               <div style={{display:"flex",gap:8,alignItems:"stretch"}}>
                 <div style={{position:"relative",flex:1}}>
                   <label className="stock-search-label" htmlFor="stock-search-input">Cari Data Stok</label>
-                  <input ref={searchInputRef} id="stock-search-input" aria-label="Cari Data Stok" style={{...sty.input,paddingRight:32,fontSize:16}} placeholder="Cari nama/no. katalog… (tekan /)" value={search} onChange={e=>setSearch(e.target.value)}/>
+                  <input ref={searchInputRef} id="stock-search-input" aria-label="Cari Data Stok" style={{...sty.input,paddingRight:32,fontSize:15}} placeholder="Cari nama/no. katalog… (tekan /)" value={search} onChange={e=>setSearch(e.target.value)}/>
                   {search && (
                     <button
                       onClick={()=>setSearch("")}
                       title="Hapus pencarian"
-                      style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:C.muted,padding:4,lineHeight:1}}
+                      style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:13,color:C.muted,padding:4,lineHeight:1}}
                     ><X size={16} aria-hidden="true" /></button>
                   )}
                 </div>
@@ -162,7 +162,7 @@ export function DataStokTab({
                     <button style={sty.btn("ghost","sm")} onClick={()=>setPhotoSearchResults(null)}><X size={15} aria-hidden="true" /> Reset</button>
                   </div>
                   {photoSearchResultMode==="nameplate" && photoSearchOcrText && (
-                    <div style={{fontSize:12,color:C.muted,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius:6,padding:"6px 8px",marginBottom:10,whiteSpace:"pre-wrap",maxHeight:60,overflowY:"auto"}}>
+                    <div style={{fontSize:12,color:C.muted,background:"#f8fafc",border:`1px solid ${C.border}`,borderRadius: 10,padding:"6px 8px",marginBottom:10,whiteSpace:"pre-wrap",maxHeight:60,overflowY:"auto"}}>
                       <b>Teks nameplate terbaca:</b> {photoSearchOcrText}
                     </div>
                   )}
@@ -176,9 +176,9 @@ export function DataStokTab({
                         const pct = Math.round((r.similarity||0)*100);
                         return (
                           <div key={r.katalog} onClick={()=>est&&setStockDetailId(est.id)} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,cursor:est?"pointer":"default",display:"flex",gap:10,alignItems:"center",background:C.surface}}>
-                            {thumb ? <img src={thumb} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius:8,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius:8,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ImageSquare size={22} color={C.accent} aria-hidden="true"/></div>}
+                            {thumb ? <img src={thumb} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius: 10,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius: 10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ImageSquare size={22} color={C.accent} aria-hidden="true"/></div>}
                             <div style={{minWidth:0,flex:1}}>
-                              <div style={{fontWeight:700,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{est?.name||"(tidak ada di Data Stok)"}</div>
+                              <div style={{fontWeight:700,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{est?.name||"(tidak ada di Data Stok)"}</div>
                               <div style={{fontSize:12,color:"#0098da",fontWeight:700}}><Tag size={13} style={{verticalAlign:"-0.15em",marginRight:3}} aria-hidden="true"/> {r.katalog}</div>
                               <div style={{fontSize:12,fontWeight:800,color:pct>=80?C.green:pct>=70?"#d97706":C.muted,marginTop:2}}>{pct}% {photoSearchResultMode==="nameplate"?"cocok":"mirip"}</div>
                             </div>
@@ -191,7 +191,7 @@ export function DataStokTab({
               )}
             </div>
             {katalogList.length===0 && (
-              <div style={{...sty.card,textAlign:"center",color:C.muted,padding:20,marginBottom:16}}>
+              <div tabIndex={0} className="info-note" style={{...sty.card,textAlign:"center",color:C.muted,padding:20,marginBottom:16}}>
                 ℹ️ Belum ada Master Katalog. Tambahkan jenis barang dulu di menu "Master Data" → "Master Katalog" sebelum membuat Data Stok.
               </div>
             )}
@@ -258,8 +258,8 @@ export function DataStokTab({
                         onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); openDetail(); } }}
                         style={{cursor:"pointer",background:st.deletePending?"#fef2f2":undefined,borderBottom:`1px solid ${C.border}`,borderLeft:`3px ${st.deletePending?"dashed #dc2626":"solid"} ${st.deletePending?"#dc2626":noLokasi?"#f59e0b":isLow?C.red:st.jenisBarang==="Non-Stock"?"#be185d":C.green}`}}>
                         <td className="mobile-card-table__photo" data-label="Foto" onClick={e=>{ if(st.fotoKeseluruhan){e.stopPropagation(); setLightboxImg(resolveStockPhotoUrl(st.fotoKeseluruhan));} }} style={{padding:"8px 10px",textAlign:"center",cursor:st.fotoKeseluruhan?"zoom-in":"default"}}>
-                          {st.fotoKeseluruhan ? <img src={resolveStockPhotoUrl(st.fotoKeseluruhan)} alt={st.name} width={48} height={48} loading="lazy" style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:`1px solid ${C.border}`}}/>
-                            : <div style={{width:48,height:48,background:"#eff6ff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,border:`1px solid #bfdbfe`,margin:"0 auto"}}><ImageSquare size={22} color="#1d4ed8" aria-hidden="true"/></div>}
+                          {st.fotoKeseluruhan ? <img src={resolveStockPhotoUrl(st.fotoKeseluruhan)} alt={st.name} width={48} height={48} loading="lazy" style={{width:48,height:48,borderRadius: 10,objectFit:"cover",border:`1px solid ${C.border}`}}/>
+                            : <div style={{width:48,height:48,background:"#eff6ff",borderRadius: 10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,border:`1px solid #bfdbfe`,margin:"0 auto"}}><ImageSquare size={22} color="#1d4ed8" aria-hidden="true"/></div>}
                         </td>
                         <td className="stock-mobile-summary" aria-label={`Ringkasan ${st.name}`}>
                           <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{st.katalog||"-"}</span></div>
@@ -275,7 +275,7 @@ export function DataStokTab({
                           </div>
                           {(st.deletePending || st.editPending) && (
                             <div title={[st.deletePending&&"Menunggu approval Hapus", st.editPending&&"Ada perubahan menunggu approval TL"].filter(Boolean).join(" • ")}
-                              style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:4,padding:"2px 7px",borderRadius:7,fontSize:12,fontWeight:700,background:"#fffbeb",color:"#a16207"}}>
+                              style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:4,padding:"2px 7px",borderRadius: 10,fontSize:12,fontWeight:700,background:"#fffbeb",color:"#a16207"}}>
                               <Clock size={12} weight="bold" aria-hidden="true"/> Menunggu approval
                             </div>
                           )}

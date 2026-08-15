@@ -258,7 +258,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
   return (
     <div>
       <div style={{...sty.card,marginBottom:16}}>
-        <div style={{fontWeight:700,fontSize:14,marginBottom:8}}>📥 Import Laporan Kapasitas Gudang (XLSX)</div>
+        <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📥 Import Laporan Kapasitas Gudang (XLSX)</div>
         <p style={{fontSize:12,color:C.muted,marginBottom:12}}>Upload file KAPASITAS GUDANG UIT JBM.xlsx. Sheet yang dibaca: <strong>KAPASITAS GUDANG</strong>.</p>
         {canEdit && (
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -285,20 +285,20 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
               {label:"Warning",val:importPreview.warnings.length,color:"#f59e0b"},
               {label:"Invalid",val:importPreview.invalid.length,color:C.red},
             ].map(s=>(
-              <div key={s.label} style={{padding:"8px 14px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`,textAlign:"center"}}>
+              <div key={s.label} style={{padding:"8px 14px",borderRadius: 10,background:"#f9fafb",border:`1px solid ${C.border}`,textAlign:"center"}}>
                 <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
-                <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
+                <div style={{fontSize:17,fontWeight:800,color:s.color}}>{s.val}</div>
               </div>
             ))}
           </div>
           {importPreview.invalid.length > 0 && (
-            <div style={{color:C.red,fontWeight:700,fontSize:12,marginBottom:8}}>⚠️ Ada {importPreview.invalid.length} baris invalid — edit langsung di tabel (sel putih = bisa diedit) untuk memperbaiki, atau baris akan diabaikan saat submit.</div>
+            <div tabIndex={0} className="info-note" style={{color:C.red,fontWeight:700,fontSize:12,marginBottom:8}}>⚠️ Ada {importPreview.invalid.length} baris invalid — edit langsung di tabel (sel putih = bisa diedit) untuk memperbaiki, atau baris akan diabaikan saat submit.</div>
           )}
           {canEdit && (()=>{
             const uptsInPreview = [...new Set(importPreview.records.map(r=>r.upt))].filter(Boolean).sort();
             if (uptsInPreview.length <= 1) return null;
             return (
-              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10,padding:"8px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8}}>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginBottom:10,padding:"8px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10}}>
                 <span style={{fontSize:12,color:C.muted,fontWeight:700}}>File berisi {uptsInPreview.length} UPT — hapus cepat:</span>
                 {uptsInPreview.map(u=>(
                   <span key={u} style={{display:"inline-flex",alignItems:"center",gap:4}}>
@@ -309,7 +309,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
               </div>
             );
           })()}
-          <div style={{overflowX:"auto",maxHeight:440,overflowY:"auto",marginBottom:14}}>
+          <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:440,overflowY:"auto",marginBottom:14}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:1050}}>
               <thead style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
                 <tr>
@@ -320,18 +320,18 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
               </thead>
               <tbody>
                 {importPreview.records.map((r,i)=>{
-                  const cellStyle = {padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius:5,fontSize:12,width:"100%",background:"white"};
+                  const cellStyle = {padding:"3px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,width:"100%",background:"white"};
                   return (
-                  <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:!r._valid?"#fef2f2":r._warnings.length>0?"#fefce8":"white"}}>
-                    <td style={{padding:"4px 6px"}}><input style={cellStyle} value={r.upt} onChange={e=>updatePreviewField(i,"upt",e.target.value.toUpperCase())} disabled={!canEdit}/></td>
-                    <td style={{padding:"4px 6px"}}><input style={cellStyle} value={r.gudang} onChange={e=>updatePreviewField(i,"gudang",e.target.value)} disabled={!canEdit}/></td>
-                    <td style={{padding:"4px 6px"}}><input style={{...cellStyle,fontWeight:600,minWidth:160}} value={r.subGudang} onChange={e=>updatePreviewField(i,"subGudang",e.target.value)} disabled={!canEdit}/></td>
-                    <td style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasLahanM2} onChange={e=>updatePreviewField(i,"luasLahanM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
-                    <td style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasTerpakaiM2} onChange={e=>updatePreviewField(i,"luasTerpakaiM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
-                    <td style={{padding:"5px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{(r.persentaseTerpakai*100).toFixed(1)}%</td>
-                    <td style={{padding:"5px 8px"}}><span style={{fontSize:12,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</span></td>
-                    <td style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:200}}>{[...r._errors,...r._warnings].join(", ")||"-"}</td>
-                    <td style={{padding:"4px 6px"}}>{canEdit && <button style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={()=>deletePreviewRow(i)} title="Hapus baris ini">🗑️</button>}</td>
+                  <tr tabIndex={0} className="mobile-card-table__row" key={i} style={{borderBottom:`1px solid ${C.border}`,background:!r._valid?"#fef2f2":r._warnings.length>0?"#fefce8":"white"}}>
+                    <td data-label="UPT" style={{padding:"4px 6px"}}><input style={cellStyle} value={r.upt} onChange={e=>updatePreviewField(i,"upt",e.target.value.toUpperCase())} disabled={!canEdit}/></td>
+                    <td data-label="Gudang" style={{padding:"4px 6px"}}><input style={cellStyle} value={r.gudang} onChange={e=>updatePreviewField(i,"gudang",e.target.value)} disabled={!canEdit}/></td>
+                    <td data-label="Sub Gudang" style={{padding:"4px 6px"}}><input style={{...cellStyle,fontWeight:600,minWidth:160}} value={r.subGudang} onChange={e=>updatePreviewField(i,"subGudang",e.target.value)} disabled={!canEdit}/></td>
+                    <td data-label="Luas Lahan (m²)" style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasLahanM2} onChange={e=>updatePreviewField(i,"luasLahanM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
+                    <td data-label="Terpakai (m²)" style={{padding:"4px 6px"}}><input style={{...cellStyle,textAlign:"right",width:80}} type="number" value={r.luasTerpakaiM2} onChange={e=>updatePreviewField(i,"luasTerpakaiM2",parseFloat(e.target.value)||0)} disabled={!canEdit}/></td>
+                    <td data-label="Utilization" style={{padding:"5px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{(r.persentaseTerpakai*100).toFixed(1)}%</td>
+                    <td data-label="Status" style={{padding:"5px 8px"}}><span style={{fontSize:12,fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</span></td>
+                    <td data-label="Warning" style={{padding:"5px 8px",fontSize:12,color:C.muted,maxWidth:200}}>{[...r._errors,...r._warnings].join(", ")||"-"}</td>
+                    <td data-label="Aksi" style={{padding:"4px 6px"}}>{canEdit && <button style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={()=>deletePreviewRow(i)} title="Hapus baris ini">🗑️</button>}</td>
                   </tr>
                 );})}
               </tbody>

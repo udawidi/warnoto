@@ -26,7 +26,7 @@ export function GudangCoordConfigPanel({
   return (
     <div>
       <button style={{...sty.btn("danger","sm"),marginBottom:8}} onClick={onToggleOpen}>✕ Tutup Mode Konfigurasi</button>
-      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:12}}>
+      <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius: 10,padding:12}}>
         <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap"}}>
           <button style={sty.btn(manualAddMode?"danger":"primary","sm")} onClick={()=>{setManualAddMode(m=>!m);setPendingMapLokasi(null);}}>
             {manualAddMode?"✕ Batal Mode Tambah Blok Baru":"➕ Mode Tambah Blok Baru"}
@@ -34,7 +34,7 @@ export function GudangCoordConfigPanel({
         </div>
 
         {manualAddMode ? (
-          <div style={{fontSize:12,color:"#1d4ed8",fontWeight:700,marginBottom:8}}>Klik titik-titik di denah untuk menambah blok baru (bisa beberapa kali). Usulan akan muncul di panel untuk dikonfirmasi & dikirim ke TL.</div>
+          <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#1d4ed8",fontWeight:700,marginBottom:8}}>Klik titik-titik di denah untuk menambah blok baru (bisa beberapa kali). Usulan akan muncul di panel untuk dikonfirmasi & dikirim ke TL.</div>
         ) : (
           <div style={{marginBottom:10}}>
             <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Atau, blok yang belum punya koordinat — klik untuk pilih, lalu klik titik di denah:</div>
@@ -63,7 +63,7 @@ export function GudangCoordConfigPanel({
               if (manualAddMode) { onAddDraft(xPct, yPct); }
               else if (pendingMapLokasi) { onAssignCoord(pendingMapLokasi, xPct, yPct); setPendingMapLokasi(null); }
             }}>
-            <img src={denahImage} alt="Denah" style={{width:"100%",height:"auto",borderRadius:6,border:"2px dashed #3b82f6",display:"block"}}/>
+            <img src={denahImage} alt="Denah" style={{width:"100%",height:"auto",borderRadius: 10,border:"2px dashed #3b82f6",display:"block"}}/>
             {withCoord.map(l=>{
               const c = getCoord(l);
               return (
@@ -81,7 +81,7 @@ export function GudangCoordConfigPanel({
         {manualAddMode && (
           <button style={{...sty.btn("success","sm"),marginTop:10}} onClick={onFinishAdding}>💾 Save Blok</button>
         )}
-        <div style={{fontSize:12,color:C.muted,marginTop:6}}>💡 Klik titik yang sudah ada, lalu klik posisi baru di denah untuk memindahkan koordinatnya (titik jadi hijau saat aktif). Titik hijau putus-putus = blok baru draft (belum dikirim ke TL).</div>
+        <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:6}}>💡 Klik titik yang sudah ada, lalu klik posisi baru di denah untuk memindahkan koordinatnya (titik jadi hijau saat aktif). Titik hijau putus-putus = blok baru draft (belum dikirim ke TL).</div>
       </div>
     </div>
   );

@@ -44,8 +44,8 @@ export function BarcodeScanner({ onDetect, onClose }) {
   return (
     <div style={{position:"fixed",inset:0,background:"black",zIndex:2000,display:"flex",flexDirection:"column"}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:16,background:"#111"}}>
-        <span style={{color:"white",fontWeight:700,fontSize:14}}>📷 Scan Barcode / QR Barang</span>
-        <button onClick={onClose} style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:13}}>✕ Tutup</button>
+        <span style={{color:"white",fontWeight:700,fontSize:13}}>📷 Scan Barcode / QR Barang</span>
+        <button onClick={onClose} style={{background:"#dc2626",color:"white",border:"none",borderRadius: 10,padding:"6px 14px",cursor:"pointer",fontSize:13}}>✕ Tutup</button>
       </div>
       <div style={{flex:1,position:"relative",overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
         {error ? (
@@ -53,11 +53,11 @@ export function BarcodeScanner({ onDetect, onClose }) {
         ) : (
           <>
             <video ref={videoRef} style={{width:"100%",height:"100%",objectFit:"cover"}} muted playsInline/>
-            <div style={{position:"absolute",width:240,height:240,border:"3px solid #22d3ee",borderRadius:16,boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)"}}/>
+            <div style={{position:"absolute",width:240,height:240,border:"3px solid #22d3ee",borderRadius: 14,boxShadow:"0 0 0 9999px rgba(0,0,0,0.45)"}}/>
           </>
         )}
       </div>
-      <div style={{padding:14,background:"#111",color:"#9ca3af",fontSize:12,textAlign:"center"}}>Arahkan kamera ke barcode / QR code label barang</div>
+      <div style={{padding:14,background:"#111",color: "#64748b",fontSize:12,textAlign:"center"}}>Arahkan kamera ke barcode / QR code label barang</div>
     </div>
   );
 }

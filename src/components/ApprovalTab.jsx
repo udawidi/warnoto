@@ -82,7 +82,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
     if (t.docType==="TUG10") return (t.stockItems||[]).map((si,i)=>{
       const nama = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
       const bs = statusMaterialBadgeStyle(si.statusMaterial);
-      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {nama} <b>x{si.qty}</b> <span style={{padding:"2px 6px",borderRadius:20,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></div>;
+      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {nama} <b>x{si.qty}</b> <span style={{padding:"2px 6px",borderRadius: 14,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></div>;
     });
     if (t.docType==="TUG5") return (t.stockItems||[]).map((si,i)=>{
       const kat = (katalogList||[]).find(k=>k.id===si.katalogId);
@@ -116,7 +116,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
       {pendingTxns.length===0 && pendingCapacityImports.length===0 && pendingLokasiChanges.length===0 && pendingStockCount===0 && !(heavyEquipmentPendingCount>0) && !(opnamePendingCount>0) && !(stockCountPendingCount>0) ? (
         <div className="approval-empty" style={{...sty.card,textAlign:"center",padding:40}}>
           <div className="approval-empty__icon">✓</div>
-          <div style={{fontSize:16,fontWeight:800}}>Semua pengajuan sudah diproses</div>
+          <div style={{fontSize:15,fontWeight:800}}>Semua pengajuan sudah diproses</div>
           <div style={{fontSize:12,color:C.muted,marginTop:5}}>Tidak ada keputusan yang menunggu tindakan Anda.</div>
         </div>
       ) : !showTug ? null : <>
@@ -136,35 +136,35 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                 <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{docNoOf(t)}</div>
                 {creator.name && <div style={{fontSize:12,color:C.muted}}>Diajukan: {creator.name} ({ROLES[creator.role]}) • {fmtDate(t.createdAt)}</div>}
               </div>
-              <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>
+              <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e"}}>
                 {isTUG8Draft?"DRAFT":isTUG7Draft?"DRAFT UIT":"PENDING"}
               </span>
             </div>
 
             {/* Info khusus per tipe */}
             {isTUG8Draft && (
-              <div style={{background:"#f3e8ff",border:`1px solid #c4b5fd`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#7c3aed",marginBottom:8}}>
+              <div tabIndex={0} className="info-note" style={{background:"#f3e8ff",border:`1px solid #c4b5fd`,borderRadius: 10,padding:"6px 10px",fontSize:12,color:"#7c3aed",marginBottom:8}}>
                 📦 Draft TUG-8 dari TUG-7 {t.noReferensiTug7} — UPT Pengirim: {t.lokasiPekerjaan}. Lengkapi data lalu ajukan; nomor resmi dibuat oleh server.
               </div>
             )}
             {isTUG10 && (
-              <div style={{background:"#dcfce7",border:`1px solid #86efac`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#166534",marginBottom:8}}>
+              <div style={{background:"#dcfce7",border:`1px solid #86efac`,borderRadius: 10,padding:"6px 10px",fontSize:12,color:"#166534",marginBottom:8}}>
                 ℹ️ Pengembalian material — stok akan BERTAMBAH saat disetujui.
               </div>
             )}
             {t.docType==="TUG5" && t.sourceType==="ULTG" && (
-              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#1d4ed8",marginBottom:8}}>
+              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"6px 10px",fontSize:12,color:"#1d4ed8",marginBottom:8}}>
                 🏘️ Dari ULTG {(ultgList||[]).find(u=>u.id===t.ultgId)?.nama||t.ultgId||"-"} — setelah disetujui, siap di-adopt Admin/TL UPT induk menjadi TUG-9.
               </div>
             )}
             {t.docType==="TUG5" && t.sourceType!=="ULTG" && (
-              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:6,padding:"6px 10px",fontSize:12,color:"#1d4ed8",marginBottom:8}}>
+              <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"6px 10px",fontSize:12,color:"#1d4ed8",marginBottom:8}}>
                 {t.jenisTransfer==="INTRACOMPANY"?"🔄 Intracompany — setelah approved akan generate draft TUG-7 di UIT":"🌐 Intercompany — setelah approved akan generate draft TUG-5 UIT"}
               </div>
             )}
 
             {/* Items */}
-            <div style={{background:"#f9fafb",borderRadius:8,padding:8,border:`1px solid ${C.border}`,marginBottom:10}}>
+            <div style={{background:"#f9fafb",borderRadius: 10,padding:8,border:`1px solid ${C.border}`,marginBottom:10}}>
               {itemsOf(t)}
             </div>
 
@@ -225,27 +225,27 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               <div style={{fontWeight:800,fontSize:13,marginTop:2}}>{imp.sourceFile}</div>
               <div style={{fontSize:12,color:C.muted}}>Diajukan {new Date(imp.importedAt).toLocaleString("id")} oleh {imp.importedBy}</div>
             </div>
-            <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:"#fefce8",color:"#92400e"}}>⏳ Pending</span>
+            <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#fefce8",color:"#92400e"}}>⏳ Pending</span>
           </div>
           <div style={{display:"flex",gap:14,fontSize:12,marginBottom:10}}>
             <span>Total: <b>{imp.totalRows}</b></span>
             <span style={{color:C.green}}>Valid: <b>{imp.validRows}</b></span>
             <span style={{color:C.red}}>Invalid: <b>{imp.invalidRows}</b></span>
           </div>
-          <div style={{overflowX:"auto",maxHeight:200,overflowY:"auto",marginBottom:10,border:`1px solid ${C.border}`,borderRadius:8}}>
+          <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:200,overflowY:"auto",marginBottom:10,border:`1px solid ${C.border}`,borderRadius: 10}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead style={{background:"#f9fafb",position:"sticky",top:0}}>
                 <tr>{["UPT","Gudang","Sub Gudang","Luas Lahan","Terpakai","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left"}}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {imp.records.slice(0,50).map((r,i)=>(
-                  <tr key={i} style={{borderTop:`1px solid ${C.border}`}}>
-                    <td style={{padding:"4px 8px"}}>{r.upt}</td>
-                    <td style={{padding:"4px 8px"}}>{r.gudang}</td>
-                    <td style={{padding:"4px 8px"}}>{r.subGudang}</td>
-                    <td style={{padding:"4px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasLahanM2))}</td>
-                    <td style={{padding:"4px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasTerpakaiM2))}</td>
-                    <td style={{padding:"4px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</td>
+                  <tr tabIndex={0} className="mobile-card-table__row" key={i} style={{borderTop:`1px solid ${C.border}`}}>
+                    <td data-label="UPT" style={{padding:"4px 8px"}}>{r.upt}</td>
+                    <td data-label="Gudang" className="mobile-card-table__title" style={{padding:"4px 8px"}}>{r.gudang}</td>
+                    <td data-label="Sub Gudang" style={{padding:"4px 8px"}}>{r.subGudang}</td>
+                    <td data-label="Luas Lahan" style={{padding:"4px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasLahanM2))}</td>
+                    <td data-label="Terpakai" style={{padding:"4px 8px",textAlign:"right"}}>{fmtNum(Math.round(r.luasTerpakaiM2))}</td>
+                    <td data-label="Status" style={{padding:"4px 8px",fontWeight:700,color:r.statusKapasitas==="KRITIS"?C.red:r.statusKapasitas==="WASPADA"?"#f59e0b":C.green}}>{KAPASITAS_LABEL[r.statusKapasitas]||r.statusKapasitas}</td>
                   </tr>
                 ))}
               </tbody>

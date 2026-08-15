@@ -698,8 +698,8 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
     <div>
       <div style={{fontWeight:800,fontSize:13,color:C.text,marginBottom:10}}>Import Histori Transaksi (TUG Lama)</div>
       <div className="migration-upload-card migration-upload-card--legacy" style={{...sty.card,borderLeft:"4px solid #7c3aed"}}>
-      <div style={{fontWeight:800,fontSize:14,marginBottom:6,color:"#6d28d9"}}>🕘 Import Transaksi TUG Lama</div>
-      <p style={{fontSize:12,color:C.muted,marginBottom:12}}>
+      <div style={{fontWeight:800,fontSize:13,marginBottom:6,color:"#6d28d9"}}>🕘 Import Transaksi TUG Lama</div>
+      <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>
         Import histori transaksi TUG lama yang belum tercatat di WARNOTO. Hasilnya <b>histori murni</b> berstatus APPROVED — TIDAK memutasi stok, TIDAK masuk antrian approval. Baris dengan No Dokumen sama digabung jadi 1 transaksi multi-barang.
       </p>
       <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:legacyTugRows?14:0}}>
@@ -718,7 +718,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
             <span style={{color:C.red}}>Error: <b>{legacyTugRows.filter(g=>g.errors.length>0).length}</b></span>
             <span style={{color:"#92400e"}}>Sudah Ada: <b>{legacyTugRows.filter(g=>g.alreadyExists).length}</b></span>
           </div>
-          <div style={{overflowX:"auto",maxHeight:340,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,marginBottom:14}}>
+          <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:340,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius: 10,marginBottom:14}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead style={{background:"#f9fafb",position:"sticky",top:0}}>
                 <tr>{["","No Dokumen","Jenis","Tanggal","Item","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left"}}>{h}</th>)}</tr>
@@ -728,13 +728,13 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
                   const disabled = g.errors.length>0 || g.alreadyExists;
                   const statusText = g.alreadyExists ? "Sudah ada, dilewati" : g.errors.length>0 ? g.errors.join("; ") : "OK";
                   return (
-                    <tr key={g.docNo} style={{borderTop:`1px solid ${C.border}`,background:g.errors.length>0?"#fef2f2":g.alreadyExists?"#fefce8":undefined}}>
-                      <td style={{padding:"4px 8px"}}><input type="checkbox" checked={legacyTugChecked.has(g.docNo)} disabled={disabled} onChange={()=>toggleLegacyTugDoc(g.docNo)}/></td>
-                      <td style={{padding:"4px 8px",fontWeight:700}}>{g.docNo}</td>
-                      <td style={{padding:"4px 8px"}}>{g.docType||"-"}</td>
-                      <td style={{padding:"4px 8px"}}>{g.tanggal||"-"}</td>
-                      <td style={{padding:"4px 8px"}}>{g.items.length}</td>
-                      <td style={{padding:"4px 8px",fontWeight:700,color:g.errors.length>0?C.red:g.alreadyExists?"#92400e":C.green}}>{statusText}</td>
+                    <tr tabIndex={0} className="mobile-card-table__row" key={g.docNo} style={{borderTop:`1px solid ${C.border}`,background:g.errors.length>0?"#fef2f2":g.alreadyExists?"#fefce8":undefined}}>
+                      <td data-label="" style={{padding:"4px 8px"}}><input type="checkbox" checked={legacyTugChecked.has(g.docNo)} disabled={disabled} onChange={()=>toggleLegacyTugDoc(g.docNo)}/></td>
+                      <td data-label="No Dokumen" className="mobile-card-table__title" style={{padding:"4px 8px",fontWeight:700}}>{g.docNo}</td>
+                      <td data-label="Jenis" style={{padding:"4px 8px"}}>{g.docType||"-"}</td>
+                      <td data-label="Tanggal" style={{padding:"4px 8px"}}>{g.tanggal||"-"}</td>
+                      <td data-label="Item" style={{padding:"4px 8px"}}>{g.items.length}</td>
+                      <td data-label="Status" style={{padding:"4px 8px",fontWeight:700,color:g.errors.length>0?C.red:g.alreadyExists?"#92400e":C.green}}>{statusText}</td>
                     </tr>
                   );
                 })}
@@ -758,14 +758,14 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
 
       {(migrasiPendingReview||[]).some(i=>i.status==="PENDING") && (
         <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid #f59e0b`}}>
-          <div style={{fontWeight:800,fontSize:14,marginBottom:10,color:"#92400e"}}>
+          <div style={{fontWeight:800,fontSize:13,marginBottom:10,color:"#92400e"}}>
             📋 Menunggu Review Admin ({migrasiPendingReview.filter(i=>i.status==="PENDING").length} item baru dari Migrasi Data)
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:320,overflowY:"auto"}}>
             {migrasiPendingReview.filter(i=>i.status==="PENDING").map(item=>(
-              <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 12px",background:"white"}}>
+              <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${C.border}`,borderRadius: 10,padding:"8px 12px",background:"white"}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.desc}</div>
+                  <div style={{fontWeight:700,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{item.desc}</div>
                   <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.noKat} • {item.jenisBarang} • Qty {item.qty} {item.satuan} • {item.harga?("Rp "+fmtNum(item.harga)):"-"} • dari {item.sourceFile}</div>
                 </div>
                 <span className="approval-actions approval-actions--compact">
@@ -782,7 +782,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
         <div>
           <div style={{fontWeight:800,fontSize:13,color:C.text,marginBottom:10}}>Import Stok</div>
           <div className="migration-upload-card migration-upload-card--tpl" style={{...sty.card,marginBottom:12,borderLeft:"4px solid #16a34a"}}>
-            <div style={{fontWeight:800,fontSize:16,marginBottom:4,color:"#166534"}}>📦 Import Data Stok (Template WARNOTO)</div>
+            <div style={{fontWeight:800,fontSize:15,marginBottom:4,color:"#166534"}}>📦 Import Data Stok (Template WARNOTO)</div>
             <p style={{fontSize:12,color:C.muted,marginBottom:10}}>Migrasi stok per-UPT: katalog, qty, harga, foto, lokasi. Untuk semua UPT.</p>
             <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
               <button style={sty.btn("ghost")} onClick={downloadTplTemplate}>⬇️ Download Template Kosong</button>
@@ -799,11 +799,11 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
             {tplPreview && (
               <div style={{marginTop:14,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
                 {!tplGuard?.ok ? (
-                  <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:12,marginBottom:12,fontSize:12,color:"#991b1b"}}>
+                  <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius: 10,padding:12,marginBottom:12,fontSize:12,color:"#991b1b"}}>
                     <strong>⚠️ Import diblokir:</strong> {tplGuard?.message}
                   </div>
                 ) : (
-                  <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:12,marginBottom:12,fontSize:12,color:"#166534"}}>
+                  <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius: 10,padding:12,marginBottom:12,fontSize:12,color:"#166534"}}>
                     ✅ Guard UPT lolos — file untuk <strong>{tplTargetUpt?.nama}</strong>.
                   </div>
                 )}
@@ -819,27 +819,27 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
                   ].map(kpi=>(
                     <div key={kpi.label} style={{...sty.card,padding:10}}>
                       <div style={{fontSize:12,color:C.muted}}>{kpi.label}</div>
-                      <div style={{fontSize:16,fontWeight:800,color:kpi.color||C.text}}>{kpi.val}</div>
+                      <div style={{fontSize:15,fontWeight:800,color:kpi.color||C.text}}>{kpi.val}</div>
                     </div>
                   ))}
                 </div>
-                <div style={{...sty.card,padding:0,overflowX:"auto",marginBottom:12,maxHeight:300,overflowY:"auto"}}>
+                <div className="mobile-card-table" style={{...sty.card,padding:0,overflowX:"auto",marginBottom:12,maxHeight:300,overflowY:"auto"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:760}}>
                     <thead style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
                       <tr>{["Baris","No Katalog","Nama","Jenis","Status SAP","Qty","Lokasi","Foto","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>)}</tr>
                     </thead>
                     <tbody>
                       {tplRows.slice(0,200).map((r,i)=>(
-                        <tr key={i} style={{borderBottom:`1px solid ${C.border}`,background:r.errors.length?"#fef2f2":r.isNew?"#fefce8":"white"}}>
-                          <td style={{padding:"5px 8px"}}>{r.excelRow}</td>
-                          <td style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat||"-"}</td>
-                          <td style={{padding:"5px 8px",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.nama||"-"}</td>
-                          <td style={{padding:"5px 8px"}}>{r.jenisBarang||"-"}</td>
-                          <td style={{padding:"5px 8px"}}>{resolveSapLabel(r.noKat, r.sapStatus || (tplSapMode==="SAP"?"SAP":tplSapMode==="NONSAP"?"Non-SAP":""))}</td>
-                          <td style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
-                          <td style={{padding:"5px 8px"}}>{r.lokasiId ? r.lokasiLabel : <span style={{color:"#f59e0b"}}>— belum termapping</span>}</td>
-                          <td style={{padding:"5px 8px",textAlign:"center"}}>{(r.fotoNameplate||r.fotoKeseluruhan)?"✅":"-"}</td>
-                          <td style={{padding:"5px 8px",fontWeight:700,color:r.errors.length?C.red:r.isNew?"#f59e0b":C.green}}>
+                        <tr tabIndex={0} className="mobile-card-table__row" key={i} style={{borderBottom:`1px solid ${C.border}`,background:r.errors.length?"#fef2f2":r.isNew?"#fefce8":"white"}}>
+                          <td data-label="Baris" style={{padding:"5px 8px"}}>{r.excelRow}</td>
+                          <td data-label="No Katalog" style={{padding:"5px 8px",fontWeight:700,color:"#0098da"}}>{r.noKat||"-"}</td>
+                          <td data-label="Nama" className="mobile-card-table__title" style={{padding:"5px 8px",maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.nama||"-"}</td>
+                          <td data-label="Jenis" style={{padding:"5px 8px"}}>{r.jenisBarang||"-"}</td>
+                          <td data-label="Status SAP" style={{padding:"5px 8px"}}>{resolveSapLabel(r.noKat, r.sapStatus || (tplSapMode==="SAP"?"SAP":tplSapMode==="NONSAP"?"Non-SAP":""))}</td>
+                          <td data-label="Qty" style={{padding:"5px 8px",textAlign:"right"}}>{r.qty}</td>
+                          <td data-label="Lokasi" style={{padding:"5px 8px"}}>{r.lokasiId ? r.lokasiLabel : <span style={{color:"#f59e0b"}}>— belum termapping</span>}</td>
+                          <td data-label="Foto" style={{padding:"5px 8px",textAlign:"center"}}>{(r.fotoNameplate||r.fotoKeseluruhan)?"✅":"-"}</td>
+                          <td data-label="Status" style={{padding:"5px 8px",fontWeight:700,color:r.errors.length?C.red:r.isNew?"#f59e0b":C.green}}>
                             {r.errors.length ? r.errors.join("; ") : r.isNew ? "🆕 Katalog baru" : "✅ Existing"}
                           </td>
                         </tr>
@@ -870,7 +870,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
             <summary style={{fontWeight:700,cursor:"pointer"}}>Cara lain / Legacy — SAP Langsung (multi-UPT)</summary>
             <div style={{padding:"14px 0 4px"}}>
               <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Import SAP Langsung</div>
-              <p style={{fontSize:12,color:C.muted,margin:"0 0 12px",lineHeight:1.5}}>Lengkapi data stock material dari file export SAP resmi (sheet "UPT LAIN SAP"). Hanya material SAP-Persediaan &amp; SAP-Cadang yang diambil. {currentUser?.uptId ? "Baris di luar UPT Anda otomatis diabaikan." : "Semua UPT diproses, terpisah per UPT."}</p>
+              <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,margin:"0 0 12px",lineHeight:1.5}}>Lengkapi data stock material dari file export SAP resmi (sheet "UPT LAIN SAP"). Hanya material SAP-Persediaan &amp; SAP-Cadang yang diambil. {currentUser?.uptId ? "Baris di luar UPT Anda otomatis diabaikan." : "Semua UPT diproses, terpisah per UPT."}</p>
               <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
                 <label style={{...sty.btn("primary"),cursor:"pointer"}}>
                   {sapLangsungBusy?"⏳ Memproses...":"📂 Upload File Export SAP (.xlsx)"}
@@ -881,16 +881,16 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
             </div>
             {sapLangsungPreview && (
               <div style={{marginTop:4,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
-                <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"4px 14px",padding:"10px 14px",marginBottom:12,background:C.bg||"#f8fafc",border:`1px solid ${C.border}`,borderRadius:8,fontSize:12}}>
-                  <span><b style={{fontSize:14,color:C.accent}}>{sapLangsungChecked.size}</b> terpilih</span>
+                <div style={{display:"flex",flexWrap:"wrap",alignItems:"baseline",gap:"4px 14px",padding:"10px 14px",marginBottom:12,background:C.bg||"#f8fafc",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
+                  <span><b style={{fontSize:13,color:C.accent}}>{sapLangsungChecked.size}</b> terpilih</span>
                   <span style={{color:C.border}}>·</span>
-                  <span><b style={{fontSize:14,color:"#b45309"}}>{sapLangsungPreview.baru}</b> baru</span>
+                  <span><b style={{fontSize:13,color:"#b45309"}}>{sapLangsungPreview.baru}</b> baru</span>
                   <span style={{color:C.border}}>·</span>
-                  <span><b style={{fontSize:14,color:C.text}}>{sapLangsungPreview.updateBaseline}</b> update baseline</span>
+                  <span><b style={{fontSize:13,color:C.text}}>{sapLangsungPreview.updateBaseline}</b> update baseline</span>
                   <span style={{color:C.border}}>·</span>
-                  <span><b style={{fontSize:14,color:C.text}}>{sapLangsungPreview.katalogBaru}</b> katalog baru</span>
+                  <span><b style={{fontSize:13,color:C.text}}>{sapLangsungPreview.katalogBaru}</b> katalog baru</span>
                   <span style={{color:C.border}}>·</span>
-                  <span><b style={{fontSize:14,color:sapLangsungPreview.diabaikan?C.red:C.text}}>{sapLangsungPreview.diabaikan}</b> diabaikan</span>
+                  <span><b style={{fontSize:13,color:sapLangsungPreview.diabaikan?C.red:C.text}}>{sapLangsungPreview.diabaikan}</b> diabaikan</span>
                 </div>
                 {Object.keys(sapLangsungPreview.byUpt).length>0 && (
                   <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
@@ -901,7 +901,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
                   <button style={sty.btn("ghost","sm")} onClick={()=>toggleAllSapLangsung(true)}>Pilih semua (in-scope)</button>
                   <button style={sty.btn("ghost","sm")} onClick={selectOnlyBaruSapLangsung}>Hanya yang baru</button>
                 </div>
-                <div style={{maxHeight:360,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,marginBottom:12}}>
+                <div className="mobile-card-table" style={{maxHeight:360,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius: 10,marginBottom:12}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                     <thead style={{position:"sticky",top:0,background:C.surface,boxShadow:`0 1px 0 ${C.border}`}}>
                       <tr>
@@ -912,30 +912,30 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
                           />
                         </th>
                         {["No Katalog","Nama Material","UPT","Jenis","Qty SAP","Status","Selisih"].map(h=>(
-                          <th key={h} style={{textAlign:h==="Qty SAP"?"right":"left",padding:8,borderBottom:`1px solid ${C.border}`,color:C.muted,fontWeight:800,fontSize:11,textTransform:"uppercase",letterSpacing:".3px"}}>{h}</th>
+                          <th key={h} style={{textAlign:h==="Qty SAP"?"right":"left",padding:8,borderBottom:`1px solid ${C.border}`,color:C.muted,fontWeight:800,fontSize:12,textTransform:"uppercase",letterSpacing:".3px"}}>{h}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {sapLangsungRows.map((r,i)=>(
-                        <tr key={r.plant+"-"+r.material+"-"+i} style={{opacity:r.inScope?1:0.45}}>
-                          <td style={{padding:8,textAlign:"center",borderBottom:`1px solid ${C.border}`}}>
+                        <tr tabIndex={0} className="mobile-card-table__row" key={r.plant+"-"+r.material+"-"+i} style={{opacity:r.inScope?1:0.45}}>
+                          <td data-label="" style={{padding:8,textAlign:"center",borderBottom:`1px solid ${C.border}`}}>
                             {r.inScope && <input type="checkbox" aria-label={`Pilih baris ${r.material}`} checked={sapLangsungChecked.has(r.rowId)} onChange={()=>toggleSapLangsungRow(r.rowId)}/>}
                           </td>
-                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>
+                          <td data-label="No Katalog" className="mobile-card-table__title" style={{padding:8,borderBottom:`1px solid ${C.border}`}}>
                             {r.material}
                             {r.katBaru && <span title="Katalog baru" style={{marginLeft:6,color:"#b45309",fontWeight:800}}>•</span>}
                           </td>
-                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>{r.name}</td>
-                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>{r.uptNama||"—"}</td>
-                          <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}><span style={sty.jenisBadge(r.jenisBarang)}>{r.jenisBarang}</span></td>
-                          <td style={{padding:8,textAlign:"right",borderBottom:`1px solid ${C.border}`,fontVariantNumeric:"tabular-nums"}}>{fmtNum(r.qty)} {r.unit}</td>
+                          <td data-label="Nama Material" style={{padding:8,borderBottom:`1px solid ${C.border}`}}>{r.name}</td>
+                          <td data-label="UPT" style={{padding:8,borderBottom:`1px solid ${C.border}`}}>{r.uptNama||"—"}</td>
+                          <td data-label="Jenis" style={{padding:8,borderBottom:`1px solid ${C.border}`}}><span style={sty.jenisBadge(r.jenisBarang)}>{r.jenisBarang}</span></td>
+                          <td data-label="Qty SAP" style={{padding:8,textAlign:"right",borderBottom:`1px solid ${C.border}`,fontVariantNumeric:"tabular-nums"}}>{fmtNum(r.qty)} {r.unit}</td>
                           {r.inScope ? (
                             <>
-                              <td style={{padding:8,borderBottom:`1px solid ${C.border}`}}>
+                              <td data-label="Status" style={{padding:8,borderBottom:`1px solid ${C.border}`}}>
                                 <span style={{display:"inline-block",padding:"2px 8px",borderRadius:999,fontWeight:700,background:r.mode==="baru"?"#fef3c7":"#dbeafe",color:r.mode==="baru"?"#b45309":"#1d4ed8"}}>{r.mode==="baru"?"Baru":"Update baseline"}</span>
                               </td>
-                              <td style={{padding:8,borderBottom:`1px solid ${C.border}`,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+                              <td data-label="Selisih" style={{padding:8,borderBottom:`1px solid ${C.border}`,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                                 {r.mode==="update" ? (
                                   <span style={{color:r.selisih<0?C.red:C.muted}}>{fmtNum(r.qtyAktual)} → {fmtNum(r.qty)} (Δ{r.selisih>0?"+":""}{fmtNum(r.selisih)})</span>
                                 ) : "—"}
@@ -991,13 +991,13 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
       {migratedTug15History.length > 0 && (
         <div style={{...sty.card,marginTop:16}}>
           <div style={{fontWeight:700,marginBottom:8}}>📋 Histori TUG-15 Migrasi ({migratedTug15History.length} transaksi)</div>
-          <p style={{fontSize:12,color:C.muted,marginBottom:8}}>Data histori dari sebelum cutover — tampil di TUG-15 dengan badge "MIGRASI", tidak mempengaruhi stok aktif.</p>
+          <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:8}}>Data histori dari sebelum cutover — tampil di TUG-15 dengan badge "MIGRASI", tidak mempengaruhi stok aktif.</p>
           <div style={{maxHeight:200,overflowY:"auto"}}>
             {migratedTug15History.slice(0,20).map((t,i)=>(
               <div key={i} style={{padding:"6px 0",borderBottom:`1px solid ${C.border}`,fontSize:12,display:"flex",gap:12}}>
                 <span style={{fontWeight:700,color:C.accent}}>{t.id}</span>
                 <span style={{color:C.muted}}>{t.docType} — {fmtDateOnly(t.createdAt)}</span>
-                <span style={{padding:"1px 6px",borderRadius:4,background:"#f3f4f6",fontSize:12}}>MIGRASI</span>
+                <span style={{padding:"1px 6px",borderRadius: 10,background:"#f3f4f6",fontSize:12}}>MIGRASI</span>
               </div>
             ))}
             {migratedTug15History.length > 20 && <div style={{padding:8,color:C.muted,fontSize:12,textAlign:"center"}}>...dan {migratedTug15History.length-20} transaksi lainnya</div>}

@@ -57,7 +57,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               </div>
             </div>
             {stockSubTab==="gudang" && (
-              <div style={{...sty.card,marginBottom:12,background:"#eff6ff",border:"1px solid #bfdbfe",padding:"10px 14px",fontSize:12,color:"#0369a1"}}>
+              <div tabIndex={0} className="info-note" style={{...sty.card,marginBottom:12,background:"#eff6ff",border:"1px solid #bfdbfe",padding:"10px 14px",fontSize:12,color:"#0369a1"}}>
                 ℹ️ Sebagian besar Gudang biasanya <b>otomatis terbentuk sendiri</b> dari import Excel Kapasitas Gudang (tombol di bawah) setelah disetujui Asman. Kalau ada Gudang yang belum tercakup di laporan itu, tambahkan manual lewat tombol "+ Tambah Gudang Baru" di kanan atas.
               </div>
             )}
@@ -79,17 +79,17 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     kapan masing-masing dipakai. */}
                 {hasRole(currentUser,"TL") && showGudangMaintenance && (
                   <div style={{marginTop:12,...sty.card,background:"#fafafa",border:`1px dashed ${C.border}`,padding:14}}>
-                    <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+                    <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>
                       Dua alat ini <b>bukan untuk pemakaian rutin</b> — cuma dipakai kalau menemukan masalah data spesifik berikut:
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:12}}>
                       <div>
                         <button style={sty.btn("ghost","sm")} onClick={backfillGudangCoordFromCapacity}>🔄 Sinkron Koordinat dari Kapasitas Gudang</button>
-                        <div style={{fontSize:12,color:C.muted,marginTop:4}}>Pakai kalau titik lokasi Gudang di peta hilang/salah, padahal data Kapasitas Gudang untuk gudang itu sudah live — menarik ulang koordinat lat/lng dari sana.</div>
+                        <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:4}}>Pakai kalau titik lokasi Gudang di peta hilang/salah, padahal data Kapasitas Gudang untuk gudang itu sudah live — menarik ulang koordinat lat/lng dari sana.</div>
                       </div>
                       <div>
                         <button style={sty.btn("ghost","sm")} onClick={() => dedupeGudangDanSubGudang()}>🧹 Gabungkan Gudang Duplikat</button>
-                        <div style={{fontSize:12,color:C.muted,marginTop:4}}>Pakai kalau ada 2 Gudang/Sub Gudang dengan nama sama yang seharusnya satu (biasanya bikin denah/koordinat kelihatan "hilang" karena data nyasar ke ID yang berbeda).</div>
+                        <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:4}}>Pakai kalau ada 2 Gudang/Sub Gudang dengan nama sama yang seharusnya satu (biasanya bikin denah/koordinat kelihatan "hilang" karena data nyasar ke ID yang berbeda).</div>
                       </div>
                     </div>
                   </div>
@@ -116,7 +116,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                     {maraUploadProgress && (
-                      <span style={{fontSize:12,color:"#0369a1",fontWeight:700,padding:"4px 10px",background:"#e0f2fe",borderRadius:6}}>{maraUploadProgress}</span>
+                      <span style={{fontSize:12,color:"#0369a1",fontWeight:700,padding:"4px 10px",background:"#e0f2fe",borderRadius: 10}}>{maraUploadProgress}</span>
                     )}
                     <label style={{...sty.btn(maraUploadLoading?"ghost":"ghost","sm"),cursor:"pointer",borderColor:"#0369a1",color:"#0369a1"}}>
                       {maraUploadLoading ? "⏳ Mengupload..." : "📂 Upload MARA (.xlsx)"}
@@ -136,13 +136,13 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     <button
                       onClick={()=>setKatalogSearch("")}
                       title="Hapus pencarian"
-                      style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:C.muted,padding:4,lineHeight:1}}
+                      style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:13,color:C.muted,padding:4,lineHeight:1}}
                     >✕</button>
                   )}
                 </div>
                 {katalogList.some(k=>k.belumDicocokkanMara) && (
                   <button onClick={()=>setKatalogFilterBelumMara(v=>!v)}
-                    style={{padding:"6px 12px",borderRadius:20,border:`1px solid ${katalogFilterBelumMara?"#f59e0b":C.border}`,background:katalogFilterBelumMara?"#fef3c7":"white",color:katalogFilterBelumMara?"#92400e":C.text,fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                    style={{padding:"6px 12px",borderRadius: 14,border:`1px solid ${katalogFilterBelumMara?"#f59e0b":C.border}`,background:katalogFilterBelumMara?"#fef3c7":"white",color:katalogFilterBelumMara?"#92400e":C.text,fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
                     ⚠️ Belum Dicocokkan MARA ({katalogList.filter(k=>k.belumDicocokkanMara).length})
                   </button>
                 )}
@@ -169,10 +169,10 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                       const sampleFoto = stocks.find(s=>s.katalogId===k.id && s.img)?.img || null;
                       const bs = sapBadgeStyleForLabel(katalogSapLabel(k));
                       return (
-                        <tr className="mobile-card-table__row" key={k.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                        <tr tabIndex={0} className="mobile-card-table__row" key={k.id} style={{borderBottom:`1px solid ${C.border}`}}>
                           <td className="mobile-card-table__photo" data-label="Foto" style={{padding:"8px 10px",textAlign:"center"}}>
-                            {sampleFoto ? <img src={sampleFoto} alt={k.name} style={{width:40,height:40,borderRadius:6,objectFit:"cover",border:`1px solid ${C.border}`}}/>
-                              : <div style={{width:40,height:40,background:"#eff6ff",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
+                            {sampleFoto ? <img src={sampleFoto} alt={k.name} style={{width:40,height:40,borderRadius: 10,objectFit:"cover",border:`1px solid ${C.border}`}}/>
+                              : <div style={{width:40,height:40,background:"#eff6ff",borderRadius: 10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
                           </td>
                           <td className="catalog-card-table__meta" data-label="No Katalog" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
                             <div title={k.id} style={{fontSize:12,color:"#0098da",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{k.katalog}</div>
@@ -182,16 +182,16 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                             {(() => {
                               const kat = (k.name||"").includes(";") ? k.name.split(";")[0].trim() : (k.category||"");
                               return kat
-                                ? <span style={{padding:"2px 7px",borderRadius:6,fontSize:12,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{kat}</span>
+                                ? <span style={{padding:"2px 7px",borderRadius: 10,fontSize:12,background:"#f3f4f6",color:C.muted,whiteSpace:"nowrap"}}>{kat}</span>
                                 : <span style={{color:C.muted}}>-</span>;
                             })()}
                           </td>
                           <td data-label="Satuan" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>{k.satuan}</td>
                           <td data-label="Status" style={{padding:"8px 10px"}}>
                             <div style={{display:"flex",flexDirection:"column",gap:3,alignItems:"flex-start"}}>
-                              <span style={{padding:"2px 7px",borderRadius:6,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{katalogSapLabel(k)}</span>
-                              {k.pendingOpnameId && <span style={{padding:"1px 6px",borderRadius:6,fontSize:12,fontWeight:700,background:"#dbeafe",color:"#1e40af",whiteSpace:"nowrap"}}>⏳ Pending Approval</span>}
-                              {k.belumDicocokkanMara && <span style={{padding:"1px 6px",borderRadius:6,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}>⚠️ Belum MARA</span>}
+                              <span style={{padding:"2px 7px",borderRadius: 10,fontSize:12,fontWeight:700,background:bs.bg,color:bs.fg,whiteSpace:"nowrap"}}>{katalogSapLabel(k)}</span>
+                              {k.pendingOpnameId && <span style={{padding:"1px 6px",borderRadius: 10,fontSize:12,fontWeight:700,background:"#dbeafe",color: "#1d4ed8",whiteSpace:"nowrap"}}>⏳ Pending Approval</span>}
+                              {k.belumDicocokkanMara && <span style={{padding:"1px 6px",borderRadius: 10,fontSize:12,fontWeight:700,background:"#fef3c7",color:"#92400e",whiteSpace:"nowrap"}}>⚠️ Belum MARA</span>}
                             </div>
                           </td>
                           <td data-label="Aksi" style={{padding:"8px 10px"}}>
@@ -239,9 +239,9 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                   <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
                     {sp.foto
                       ? <img src={sp.foto} alt={sp.name} style={{width:44,height:44,borderRadius:"50%",objectFit:"cover",border:`1px solid #bfdbfe`,flexShrink:0}}/>
-                      : <div style={{width:44,height:44,borderRadius:"50%",background:"#0b2559",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,flexShrink:0}}>{(sp.name||"?").trim().charAt(0).toUpperCase()}</div>}
+                      : <div style={{width:44,height:44,borderRadius:"50%",background:"#0b2559",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:800,flexShrink:0}}>{(sp.name||"?").trim().charAt(0).toUpperCase()}</div>}
                     <div>
-                      <div style={{fontWeight:700,fontSize:14}}>{sp.name}</div>
+                      <div style={{fontWeight:700,fontSize:13}}>{sp.name}</div>
                       <div style={{fontSize:12,color:C.muted}}>{sp.id}{sp.telp ? ` • ${sp.telp}` : ""}</div>
                     </div>
                   </div>
@@ -259,7 +259,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     <div key={grp.id}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,fontSize:13,fontWeight:800,color:grp.id==="__none__"?C.muted:C.accent}}>
                         <span>{grp.id==="__none__"?"⚠️":"🏢"} {grp.nama}</span>
-                        <span style={{fontSize:12,fontWeight:600,color:C.muted,background:"#eef2ff",borderRadius:20,padding:"1px 8px"}}>{grp.list.length}</span>
+                        <span style={{fontSize:12,fontWeight:600,color:C.muted,background:"#eef2ff",borderRadius: 14,padding:"1px 8px"}}>{grp.list.length}</span>
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
                         {grp.list.map(renderCard)}
@@ -275,7 +275,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:14}}>
                 {timMutuList.map(tm=>(
                   <div key={tm.id} style={{...sty.card,borderTop:`3px solid ${C.accent}`}}>
-                    <div style={{fontWeight:800,fontSize:14,marginBottom:8}}>👥 {tm.label}</div>
+                    <div style={{fontWeight:800,fontSize:13,marginBottom:8}}>👥 {tm.label}</div>
                     <div style={{fontSize:12,lineHeight:1.8}}>
                       <div><b>Ketua:</b> {tm.ketua||"-"}</div>
                       <div><b>Sekretaris:</b> {tm.sekretaris||"-"}</div>
@@ -321,7 +321,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                     <input style={{...sty.input,paddingRight:32}} placeholder="🔍 Cari UIT, UPT, atau ULTG..." value={orgSearch} onChange={e=>setOrgSearch(e.target.value)}/>
                     {orgSearch && (
                       <button onClick={()=>setOrgSearch("")} title="Hapus pencarian"
-                        style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:14,color:C.muted,padding:4,lineHeight:1}}
+                        style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",background:"transparent",border:"none",cursor:"pointer",fontSize:13,color:C.muted,padding:4,lineHeight:1}}
                       >✕</button>
                     )}
                   </div>
@@ -344,11 +344,11 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                       <div className="master-organization-card" key={uit.id} style={{...sty.card,padding:0,overflow:"hidden",border:"1px solid #dbe2ea"}}>
                         <div className="master-organization-card__header" style={{background:"#f8fafc"}} onClick={toggleUit}>
                           <div style={{display:"flex",gap:10,alignItems:"flex-start",minWidth:0}}>
-                            <div style={{fontSize:22,flexShrink:0}}>🏢</div>
+                            <div style={{fontSize:20,flexShrink:0}}>🏢</div>
                             <div style={{minWidth:0}}>
                               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                                <span style={{fontSize:12,fontWeight:800,color:"white",background:C.sidebar,padding:"2px 6px",borderRadius:4,letterSpacing:0.5}}>UIT</span>
-                                <span style={{fontWeight:800,fontSize:14}}>{uit.kode} — {uit.nama}</span>
+                                <span style={{fontSize:12,fontWeight:800,color:"white",background:C.sidebar,padding:"2px 6px",borderRadius: 10,letterSpacing:0.5}}>UIT</span>
+                                <span style={{fontWeight:800,fontSize:13}}>{uit.kode} — {uit.nama}</span>
                               </div>
                               <div style={{fontSize:12,color:C.muted,marginTop:3}}>📍 {uit.alamat||"Alamat belum diisi"}</div>
                               <div style={{fontSize:12,color:C.muted,marginTop:1}}>{uptOfUit.length} UPT • {totalUltgOfUit} ULTG</div>
@@ -360,7 +360,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                               <button title="Edit" style={sty.btn("ghost","sm")} onClick={()=>openEditUIT(uit)}>✏️</button>
                               <button title="Hapus" style={sty.btn("danger","sm")} onClick={()=>deleteUIT(uit.id)}>🗑️</button>
                             </>)}
-                            <span onClick={toggleUit} style={{fontSize:14,color:C.muted,transition:"transform 0.15s",transform:isOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",marginLeft:4,cursor:"pointer"}}>▶</span>
+                            <span onClick={toggleUit} style={{fontSize:13,color:C.muted,transition:"transform 0.15s",transform:isOpen?"rotate(90deg)":"rotate(0deg)",display:"inline-block",marginLeft:4,cursor:"pointer"}}>▶</span>
                           </div>
                         </div>
 
@@ -372,13 +372,13 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                   {uptOfUit.map(upt=>{
                                     const ultgOfUpt = ultgList.filter(x=>x.parentUptId===upt.id).filter(x=>!orgQ || hit(x.kode,x.nama) || hit(upt.kode,upt.nama));
                                     return (
-                                      <div className="master-organization-upt" key={upt.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+                                      <div className="master-organization-upt" key={upt.id} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius: 10,padding:10}}>
                                         <div className="master-organization-upt__header" style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
                                           <div style={{display:"flex",gap:8,alignItems:"flex-start",minWidth:0}}>
-                                            <div style={{fontSize:16,flexShrink:0}}>📍</div>
+                                            <div style={{fontSize:15,flexShrink:0}}>📍</div>
                                             <div style={{minWidth:0}}>
                                               <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                                                <span style={{fontSize:12,fontWeight:800,color:"#0369a1",background:"#e0f2fe",padding:"1px 6px",borderRadius:4}}>UPT</span>
+                                                <span style={{fontSize:12,fontWeight:800,color:"#0369a1",background:"#e0f2fe",padding:"1px 6px",borderRadius: 10}}>UPT</span>
                                                 <span style={{fontWeight:700,fontSize:13}}>{upt.kode} — {upt.nama}</span>
                                               </div>
                                               <div style={{fontSize:12,color:C.muted,marginTop:2}}>{upt.alamat||"Alamat belum diisi"} • {ultgOfUpt.length} ULTG</div>
@@ -395,7 +395,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                         {ultgOfUpt.length>0 && (
                                           <div className="master-organization-ultg-list" style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8,paddingLeft:24}}>
                                             {ultgOfUpt.map(ultg=>(
-                                              <div className="master-organization-ultg" key={ultg.id} style={{display:"flex",alignItems:"center",gap:6,background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:20,padding:"4px 10px",fontSize:12}}>
+                                              <div className="master-organization-ultg" key={ultg.id} style={{display:"flex",alignItems:"center",gap:6,background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius: 14,padding:"4px 10px",fontSize:12}}>
                                                 <span>🏘️ <b>{ultg.kode}</b> {ultg.nama}</span>
                                                 {hasRole(currentUser, "TL") && (
                                                   <span style={{display:"flex",gap:2,marginLeft:2}}>
@@ -448,7 +448,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                               <button title="Hapus" style={sty.btn("danger","sm")} onClick={()=>deleteGudang(g.id)}>🗑️</button>
                             </div>
                           )}
-                          <span style={{fontSize:14,color:C.muted,transition:"transform 0.15s",transform:isExpanded?"rotate(90deg)":"rotate(0deg)",display:"inline-block"}}>▶</span>
+                          <span style={{fontSize:13,color:C.muted,transition:"transform 0.15s",transform:isExpanded?"rotate(90deg)":"rotate(0deg)",display:"inline-block"}}>▶</span>
                         </div>
                       </div>
 
@@ -492,7 +492,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                         {g.denahImageData && (
                           <div style={{marginBottom:12}}>
                             <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah (peta keseluruhan Gudang):</div>
-                            <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:200,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                            <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:200,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
                           </div>
                         )}
 
@@ -521,7 +521,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                               sty={sty} C={C} showToast={showToast}
                             />
                           ) : (
-                            <div style={{fontSize:12,color:"#0369a1",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"8px 12px"}}>
+                            <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#0369a1",background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius: 10,padding:"8px 12px"}}>
                               ℹ️ Gudang ini punya {subsOfGudang.length} Sub Gudang — atur koordinat Blok baru di peta masing-masing Sub Gudang di bawah, bukan di peta keseluruhan ini.
                             </div>
                           )
@@ -558,7 +558,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                             const isUnregistered = !grp.sg && subsOfGudang.length>0;
                             return (
                             <div key={grp.id||"umum"} style={{marginBottom:18}}>
-                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>🏢 Sub Gudang: {grp.nama}{subKodeMap[grp.sg.id] && <span title="Kode singkatan Sub Gudang (dipakai sebagai tag di depan kode blok)" style={{fontSize:12,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 7px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>}
+                              {grp.sg && <div style={{fontSize:13,fontWeight:800,marginBottom:8,display:"flex",alignItems:"center",gap:8}}>🏢 Sub Gudang: {grp.nama}{subKodeMap[grp.sg.id] && <span title="Kode singkatan Sub Gudang (dipakai sebagai tag di depan kode blok)" style={{fontSize:12,fontWeight:800,color: "#1d4ed8",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 7px",borderRadius: 10}}>{subKodeMap[grp.sg.id]}</span>}</div>}
 
                               {/* Denah + Konfigurasi Koordinat level Sub Gudang — collapsed by default,
                                   sama alasan seperti level Gudang di atas. Hanya untuk grup real (grp.sg),
@@ -587,7 +587,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                       {grp.sg?.denahImageData && (
                                         <div style={{marginBottom:10}}>
                                           <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah Sub Gudang:</div>
-                                          <img src={grp.sg.denahImageData} alt="Denah Sub Gudang" style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius:6,border:`1px solid ${C.border}`}}/>
+                                          <img src={grp.sg.denahImageData} alt="Denah Sub Gudang" style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
                                         </div>
                                       )}
                                       {hasRole(currentUser, "TL") && grp.sg.denahImageData && (
@@ -620,7 +620,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                               )}
 
                               {isUnregistered && grp.blok.length>0 && (
-                                <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:10}}>
+                                <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius: 10,padding:"8px 12px",marginBottom:10}}>
                                   ⚠️ {grp.blok.length} blok belum dikelompokkan ke Sub Gudang manapun. Klik ✏️ di baris blok untuk assign ke Sub Gudang yang benar, baru atur koordinatnya di sana.
                                 </div>
                               )}
@@ -636,11 +636,11 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                       const n = stocks.filter(s=>s.lokasiId===l.id).length;
                                       const hasCoord = grp.sg ? l.subMapX!=null : l.mapX!=null;
                                       return (
-                                        <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:6,fontSize:12}}>
+                                        <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
                                           <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
-                                            {grp.sg && subKodeMap[grp.sg.id] && <span title={`Sub Gudang: ${grp.sg.nama}`} style={{fontSize:12,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6,flexShrink:0}}>{subKodeMap[grp.sg.id]}</span>}
+                                            {grp.sg && subKodeMap[grp.sg.id] && <span title={`Sub Gudang: ${grp.sg.nama}`} style={{fontSize:12,fontWeight:800,color: "#1d4ed8",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius: 10,flexShrink:0}}>{subKodeMap[grp.sg.id]}</span>}
                                             <span style={{fontWeight:700}}>{l.kode}</span>
-                                            {l.nama && <span style={{color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.nama}</span>}
+                                            {l.nama && <span style={{color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{l.nama}</span>}
                                             {l.status==="PENDING" && <span style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>MENUNGGU APPROVAL TL</span>}
                                             {!hasCoord && <span style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:10}}>BELUM ADA KOORDINAT</span>}
                                           </div>
@@ -674,8 +674,8 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                   return (
                                     <div key={key}>
                                       <div onClick={()=>setSelectedSubGudangId(isSelected?null:key)}
-                                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:isSelected?"#eff6ff":"#f9fafb",border:`1px solid ${isSelected?"#93c5fd":C.border}`,borderRadius:8,cursor:"pointer"}}>
-                                        <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>{grp.sg?"🏢":"📦"} {grp.nama}{grp.sg && subKodeMap[grp.sg.id] && <span style={{fontSize:12,fontWeight:800,color:"#1e3a8a",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius:6}}>{subKodeMap[grp.sg.id]}</span>}</div>
+                                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:isSelected?"#eff6ff":"#f9fafb",border:`1px solid ${isSelected?"#93c5fd":C.border}`,borderRadius: 10,cursor:"pointer"}}>
+                                        <div style={{fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:8}}>{grp.sg?"🏢":"📦"} {grp.nama}{grp.sg && subKodeMap[grp.sg.id] && <span style={{fontSize:12,fontWeight:800,color: "#1d4ed8",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius: 10}}>{subKodeMap[grp.sg.id]}</span>}</div>
                                         <div style={{display:"flex",alignItems:"center",gap:8}}>
                                           <span style={{fontSize:12,color:C.muted}}>{grp.blok.length} blok</span>
                                           <span style={{fontSize:12,color:C.muted,transition:"transform 0.15s",transform:isSelected?"rotate(90deg)":"rotate(0deg)",display:"inline-block"}}>▶</span>
@@ -701,9 +701,9 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             {stockSubTab==="akun" && can(currentUser, "aksi.kelolaAkun", rolePerms) && (() => {
               const TIER_BADGE = {
                 PUSAT: { label: "Pusat", color: "#6d28d9", bg: "#ede9fe", border: "#ddd6fe" },
-                UIT: { label: "UIT", color: "#1e3a8a", bg: "#dbeafe", border: "#bfdbfe" },
+                UIT: { label: "UIT", color: "#1d4ed8", bg: "#dbeafe", border: "#bfdbfe" },
                 UPT: { label: "UPT", color: "#166534", bg: "#dcfce7", border: "#bbf7d0" },
-                GLOBAL: { label: "Global", color: "#374151", bg: "#f3f4f6", border: "#e5e7eb" },
+                GLOBAL: { label: "Global", color: "#64748b", bg: "#f3f4f6", border: "#e5e7eb" },
               };
               const TIER_ORDER = { PUSAT: 0, GLOBAL: 1, UIT: 2, UPT: 3 };
               const unitLabel = (u, tier) => {
@@ -746,7 +746,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                   {filtered.length===0 ? (
                     <div style={{textAlign:"center",color:C.muted,padding:30}}>Tidak ada akun yang cocok dengan filter.</div>
                   ) : (
-                  <div style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
+                  <div className="mobile-card-table" style={{overflowX:"auto",WebkitOverflowScrolling:"touch"}}>
                   <table style={{width:"100%",minWidth:720,borderCollapse:"collapse",fontSize:12}}>
                     <thead>
                       <tr style={{borderBottom:`2px solid ${C.border}`,textAlign:"left"}}>
@@ -763,14 +763,14 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                       {filtered.map(({u,tier,unit})=>{
                         const badge = TIER_BADGE[tier];
                         return (
-                        <tr key={u.id} style={{borderBottom:`1px solid ${C.border}`}}>
-                          <td style={{padding:"8px 6px",fontWeight:700}}>{u.name}</td>
-                          <td style={{padding:"8px 6px",color:C.muted}}>{u.username}</td>
-                          <td style={{padding:"8px 6px"}}>{ROLES[u.role]||u.role}</td>
-                          <td style={{padding:"8px 6px"}}><span style={{fontSize:11,fontWeight:700,color:badge.color,background:badge.bg,border:`1px solid ${badge.border}`,padding:"1px 6px",borderRadius:6}}>{badge.label}</span></td>
-                          <td style={{padding:"8px 6px",color:C.muted}}>{u.jabatan||"-"}</td>
-                          <td style={{padding:"8px 6px",color:C.muted}}>{unit}</td>
-                          <td style={{padding:"8px 6px"}}><button style={sty.btn("ghost","sm")} onClick={()=>openEditAkun(u)}>✏️ Edit</button></td>
+                        <tr tabIndex={0} className="mobile-card-table__row" key={u.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                          <td data-label="Nama" className="mobile-card-table__title" style={{padding:"8px 6px",fontWeight:700}}>{u.name}</td>
+                          <td data-label="Username" style={{padding:"8px 6px",color:C.muted}}>{u.username}</td>
+                          <td data-label="Role" style={{padding:"8px 6px"}}>{ROLES[u.role]||u.role}</td>
+                          <td data-label="Jenjang" style={{padding:"8px 6px"}}><span style={{fontSize:12,fontWeight:700,color:badge.color,background:badge.bg,border:`1px solid ${badge.border}`,padding:"1px 6px",borderRadius: 10}}>{badge.label}</span></td>
+                          <td data-label="Jabatan" style={{padding:"8px 6px",color:C.muted}}>{u.jabatan||"-"}</td>
+                          <td data-label="Unit" style={{padding:"8px 6px",color:C.muted}}>{unit}</td>
+                          <td data-label="Aksi" style={{padding:"8px 6px"}}><button style={sty.btn("ghost","sm")} onClick={()=>openEditAkun(u)}>✏️ Edit</button></td>
                         </tr>
                         );
                       })}

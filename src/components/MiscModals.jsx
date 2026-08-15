@@ -8,11 +8,11 @@ export function OcrSuggestGudangModal({ ocrSuggestGudangId, ocrSuggestSubGudangI
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100}}>
       <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"85dvh",overflowY:"auto"}}>
-        <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>📋 Usulan Blok dari Denah {ocrSuggestSubGudangId?"(Sub Gudang)":"(Gudang)"} ({ocrSuggestions.length})</h3>
+        <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>📋 Usulan Blok dari Denah {ocrSuggestSubGudangId?"(Sub Gudang)":"(Gudang)"} ({ocrSuggestions.length})</h3>
         <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Lengkapi data tiap usulan, lalu konfirmasi untuk mengirim ke approval TL.</p>
         <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:16}}>
           {ocrSuggestions.map(s=>(
-            <div key={s.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,background:s.checked?"#fefce8":"#f9fafb"}}>
+            <div key={s.id} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:12,background:s.checked?"#fefce8":"#f9fafb"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                 <input type="checkbox" checked={s.checked} onChange={e=>updateOcrSuggestion(s.id,{checked:e.target.checked})}/>
                 <span style={{fontSize:12,color:C.muted}}>Posisi: {s.xPct}%, {s.yPct}%</span>
@@ -56,14 +56,14 @@ export function LokasiDeleteConfirmModal({ lokasiDeleteConfirm, setLokasiDeleteC
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:16}} onClick={()=>setLokasiDeleteConfirm(null)}>
       <div style={{...sty.card,width:380,maxWidth:"100%",textAlign:"center",boxShadow:"0 20px 50px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{width:56,height:56,borderRadius:"50%",background:"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:26}}>🗑️</div>
-        <h3 style={{fontSize:16,fontWeight:800,marginBottom:6}}>Hapus Blok Gudang?</h3>
+        <div style={{width:56,height:56,borderRadius:"50%",background:"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:24}}>🗑️</div>
+        <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>Hapus Blok Gudang?</h3>
         <div style={{fontSize:13,color:C.muted,marginBottom:14,lineHeight:1.5}}>
           Apakah Anda yakin ingin menghapus blok gudang <b style={{color:C.text}}>{lokasiDeleteConfirm.kode}</b>
           {lokasiDeleteConfirm.keterangan ? <> ({lokasiDeleteConfirm.keterangan})</> : null}
           {" "}pada Gudang <b style={{color:C.text}}>{gudangList.find(g=>g.id===lokasiDeleteConfirm.gudangId)?.nama||"-"}</b>?
         </div>
-        <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:20}}>
+        <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius: 10,padding:"8px 12px",marginBottom:20}}>
           ⚠️ Tindakan ini tidak bisa dibatalkan dan ada {stocks.filter(s=>s.lokasiId===lokasiDeleteConfirm.id).length} material terdaftar di blok ini.
         </div>
         <div style={{display:"flex",gap:10}}>
@@ -81,11 +81,11 @@ export function ConfirmDialogModal({ confirmDialog, setConfirmDialog, sty, C }) 
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:16}} onClick={()=>setConfirmDialog(null)}>
       <div style={{...sty.card,width:380,maxWidth:"100%",textAlign:"center",boxShadow:"0 20px 50px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
-        <div style={{width:56,height:56,borderRadius:"50%",background:isWarning?"#fef3c7":"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:26}}>{isWarning?"⚠️":"🗑️"}</div>
-        <h3 style={{fontSize:16,fontWeight:800,marginBottom:6}}>{confirmDialog.title}</h3>
+        <div style={{width:56,height:56,borderRadius:"50%",background:isWarning?"#fef3c7":"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:24}}>{isWarning?"⚠️":"🗑️"}</div>
+        <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>{confirmDialog.title}</h3>
         <div style={{fontSize:13,color:C.muted,marginBottom:14,lineHeight:1.5}}>{confirmDialog.message}</div>
         {confirmDialog.warning && (
-          <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:8,padding:"8px 12px",marginBottom:20}}>
+          <div style={{fontSize:12,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius: 10,padding:"8px 12px",marginBottom:20}}>
             ⚠️ {confirmDialog.warning}
           </div>
         )}
@@ -107,18 +107,18 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}} onClick={()=>!photoSearchLoading&&setPhotoSearchOpen(false)}>
       <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{display:"flex",alignItems:"center",gap:7,fontWeight:800,fontSize:16,marginBottom:6}}><Camera size={20} weight="bold" aria-hidden="true" /> Cari Barang dengan Foto</div>
+        <div style={{display:"flex",alignItems:"center",gap:7,fontWeight:800,fontSize:15,marginBottom:6}}><Camera size={20} weight="bold" aria-hidden="true" /> Cari Barang dengan Foto</div>
         {/* Pilih cara mencari: kemiripan bentuk visual (Cohere) atau baca teks nameplate (OCR.space) */}
         <div style={{display:"flex",gap:8,marginBottom:10}}>
           {searchModes.map(({ m, Icon, label })=>(
             <button key={m} type="button" disabled={photoSearchLoading}
               onClick={()=>setPhotoSearchMode(m)}
-              style={{display:"inline-flex",minHeight:44,alignItems:"center",justifyContent:"center",gap:5,flex:1,padding:"8px 6px",borderRadius:8,border:`2px solid ${photoSearchMode===m?C.accent:C.border}`,background:photoSearchMode===m?"#eff6ff":"white",color:photoSearchMode===m?C.accent:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}}>
+              style={{display:"inline-flex",minHeight:44,alignItems:"center",justifyContent:"center",gap:5,flex:1,padding:"8px 6px",borderRadius: 10,border:`2px solid ${photoSearchMode===m?C.accent:C.border}`,background:photoSearchMode===m?"#eff6ff":"white",color:photoSearchMode===m?C.accent:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}}>
               <Icon size={17} weight="bold" aria-hidden="true" /> {label}
             </button>
           ))}
         </div>
-        <p style={{fontSize:12,color:C.muted,marginBottom:12}}>
+        <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>
           {photoSearchMode==="nameplate"
             ? "Foto papan nama/label barang — sistem membaca teksnya (nomor katalog, type, merk) lalu mencocokkan ke Master Katalog & ke foto nameplate yang sudah di-upload di Data Stok."
             : "Ambil/unggah foto barang — sistem mencari material paling mirip bentuknya di Data Stok (kemiripan ≥75%, maks 10 hasil)."}
@@ -128,7 +128,7 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
           {photoSearchImg ? "Ganti Foto" : "Ambil / Pilih Foto"}
           <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setPhotoSearchImg(img))} style={{display:"none"}}/>
         </label>
-        {photoSearchImg && <img src={photoSearchImg} alt="query" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius:8,marginBottom:12,border:`1px solid ${C.border}`,background:"#f8fafc"}}/>}
+        {photoSearchImg && <img src={photoSearchImg} alt="query" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius: 10,marginBottom:12,border:`1px solid ${C.border}`,background:"#f8fafc"}}/>}
         <div style={{display:"flex",gap:8}}>
           <button style={{...sty.btn("ghost"),flex:1}} disabled={photoSearchLoading} onClick={()=>setPhotoSearchOpen(false)}>Batal</button>
           <button style={{...sty.btn("primary"),flex:2}} disabled={!photoSearchImg||photoSearchLoading} onClick={runPhotoSearch}>{photoSearchLoading?(photoSearchMode==="nameplate"?"Membaca teks...":"Menganalisa..."):(photoSearchMode==="nameplate"?"Baca & Cocokkan Nameplate":"Cari Barang Mirip")}</button>
@@ -142,8 +142,8 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
 export function LightboxModal({ lightboxImg, setLightboxImg }) {
   return (
     <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20,cursor:"zoom-out"}}>
-      <img src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90dvh",objectFit:"contain",borderRadius:8}}/>
-      <button style={{position:"fixed",top:20,right:20,background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"8px 16px",cursor:"pointer",fontSize:14}} onClick={()=>setLightboxImg(null)}>✕ Tutup</button>
+      <img src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90dvh",objectFit:"contain",borderRadius: 10}}/>
+      <button style={{...sty.btn("danger","sm"),position:"fixed",top:20,right:20}} onClick={()=>setLightboxImg(null)}>✕ Tutup</button>
     </div>
   );
 }
@@ -155,13 +155,13 @@ export function PetaMiniDetailModal({ petaMiniDetail, setPetaMiniDetail, lokasiL
       <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <div>
-            <h3 style={{fontSize:16,fontWeight:800}}>📍 Lokasi di Peta Gudang</h3>
+            <h3 style={{fontSize:15,fontWeight:800}}>📍 Lokasi di Peta Gudang</h3>
             <p style={{fontSize:12,color:C.muted}}>{petaMiniDetail.petaInfo?.subGudang ? `${petaMiniDetail.gudang.nama} — ${petaMiniDetail.petaInfo.subGudang.nama}` : petaMiniDetail.gudang.nama} — Blok: {petaMiniDetail.lokasi.kode} {petaMiniDetail.lokasi.nama}</p>
           </div>
-          <button style={{background:"#dc2626",color:"white",border:"none",borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12}} onClick={()=>setPetaMiniDetail(null)}>✕</button>
+          <button style={sty.btn("danger","sm")} onClick={()=>setPetaMiniDetail(null)}>✕</button>
         </div>
         <div style={{position:"relative",width:"100%"}}>
-          <img src={petaMiniDetail.petaInfo.denahImageData} alt="Denah" style={{width:"100%",borderRadius:8,display:"block",filter:"brightness(0.7)"}}/>
+          <img src={petaMiniDetail.petaInfo.denahImageData} alt="Denah" style={{width:"100%",borderRadius: 10,display:"block",filter:"brightness(0.7)"}}/>
           {/* Semua blok lain di scope denah yang sama — abu */}
           {(petaMiniDetail.petaInfo.subGudang
             ? lokasiList.filter(l=>l.subGudangId===petaMiniDetail.petaInfo.subGudang.id&&l.subMapX!=null&&l.id!==petaMiniDetail.lokasi.id)
@@ -174,7 +174,7 @@ export function PetaMiniDetailModal({ petaMiniDetail, setPetaMiniDetail, lokasiL
           {/* Titik merah — lokasi barang ini */}
           <div style={{position:"absolute",left:`${petaMiniDetail.petaInfo.x}%`,top:`${petaMiniDetail.petaInfo.y}%`,transform:"translate(-50%,-50%)"}}>
             <div style={{width:18,height:18,borderRadius:"50%",background:"#dc2626",border:"3px solid white",boxShadow:"0 0 0 3px rgba(220,38,38,0.4)",animation:"pulse 1.5s infinite"}}/>
-            <div style={{position:"absolute",top:-24,left:"50%",transform:"translateX(-50%)",background:"#dc2626",color:"white",fontSize:12,fontWeight:700,padding:"2px 6px",borderRadius:4,whiteSpace:"nowrap"}}>{petaMiniDetail.lokasi.kode}</div>
+            <div style={{position:"absolute",top:-24,left:"50%",transform:"translateX(-50%)",background:"#dc2626",color:"white",fontSize:12,fontWeight:700,padding:"2px 6px",borderRadius: 10,whiteSpace:"nowrap"}}>{petaMiniDetail.lokasi.kode}</div>
           </div>
         </div>
         <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 3px rgba(220,38,38,0.4)}50%{box-shadow:0 0 0 8px rgba(220,38,38,0)}}`}</style>
@@ -188,8 +188,8 @@ export function CapacityReviewModal({ capacityReviewCandidates, capacityReviewDe
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
       <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-        <h3 style={{fontSize:18,fontWeight:800,marginBottom:6}}>🔎 Konfirmasi Gudang Baru</h3>
-        <p style={{fontSize:12,color:C.muted,marginBottom:16}}>
+        <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>🔎 Konfirmasi Gudang Baru</h3>
+        <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:16}}>
           {capacityReviewCandidates.length} nama Gudang di file ini tidak cocok dengan Gudang yang sudah ada.
           Untuk tiap baris, pastikan ini memang Gudang baru — atau pilih Gudang existing kalau ini cuma beda penulisan nama (mencegah duplikat).
         </p>
@@ -198,7 +198,7 @@ export function CapacityReviewModal({ capacityReviewCandidates, capacityReviewDe
             const decision = capacityReviewDecisions[c.key] || {action:"NEW"};
             const gudangDiUpt = gudangList.filter(g=>g.uptId===c.uptId);
             return (
-              <div key={c.key} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12}}>
+              <div key={c.key} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:12}}>
                 <div style={{fontWeight:700,fontSize:13}}>{c.gudang}</div>
                 <div style={{fontSize:12,color:C.muted,marginBottom:8}}>UPT: {c.upt}</div>
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>

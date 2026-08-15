@@ -18,7 +18,7 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
       <div style={{marginBottom:10}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}>
           <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</div>
+            <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{label}</div>
             {sub && <div style={{fontSize:12,color:C.muted}}>{sub}</div>}
           </div>
           <div style={{textAlign:"right",marginLeft:8,flexShrink:0}}>
@@ -26,8 +26,8 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
             {extra && <div style={{fontSize:12,color:C.muted}}>{extra}</div>}
           </div>
         </div>
-        <div style={{background:"#f1f5f9",borderRadius:4,height:6}}>
-          <div style={{width:`${pct}%`,height:6,borderRadius:4,background:color,transition:"width 0.3s"}}/>
+        <div style={{background:"#f1f5f9",borderRadius: 10,height:6}}>
+          <div style={{width:`${pct}%`,height:6,borderRadius: 10,background:color,transition:"width 0.3s"}}/>
         </div>
         {badge && <span style={{fontSize:12,padding:"1px 5px",borderRadius:10,background:color+"22",color,fontWeight:700,marginTop:2,display:"inline-block"}}>{badge}</span>}
       </div>
@@ -37,7 +37,7 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
   return (
     <div className="dashboard-analytics">
       <div className="dashboard-analytics__heading">
-        <h2 style={{fontSize:16,fontWeight:800}}><ChartBar weight="fill" size={18} style={{verticalAlign:"-0.15em",marginRight:5}}/>Analitik Material</h2>
+        <h2 style={{fontSize:15,fontWeight:800}}><ChartBar weight="fill" size={18} style={{verticalAlign:"-0.15em",marginRight:5}}/>Analitik Material</h2>
         <div className="dashboard-analytics__limit">
           <span style={{fontSize:12,color:C.muted}}>Tampilkan</span>
           <select style={{...sty.select,width:80,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,fontSize:12}} value={topN} onChange={e=>setTopN(Number(e.target.value))}>
@@ -55,7 +55,7 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
             <div style={{fontWeight:700,fontSize:13}}><Fire weight="fill" size={15} style={{verticalAlign:"-0.15em",marginRight:4}}/>Paling Sering Dipakai</div>
             <div className="dashboard-analytics-toggle">
               {["frekuensi","qty"].map(m=>(
-                <button key={m} style={{padding:"3px 8px",borderRadius:20,border:`1px solid ${pemakaianMode===m?C.accent:C.border}`,background:pemakaianMode===m?C.accent:"white",color:pemakaianMode===m?"white":C.muted,fontSize:12,cursor:"pointer",fontWeight:pemakaianMode===m?700:400}} onClick={()=>setPemakaianMode(m)}>
+                <button key={m} style={{padding:"3px 8px",borderRadius: 10,border:`1px solid ${pemakaianMode===m?C.accent:C.border}`,background:pemakaianMode===m?C.accent:"white",color:pemakaianMode===m?"white":C.muted,fontSize:12,cursor:"pointer",fontWeight:pemakaianMode===m?700:400}} onClick={()=>setPemakaianMode(m)}>
                   {m==="frekuensi"?"Frekuensi":"Qty Keluar"}
                 </button>
               ))}
@@ -107,10 +107,10 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
                 const badgeColor = item.isKritis?"#dc2626":item.estimasiHari<=30?"#d97706":"#ea580c";
                 const hariLabel = item.estimasiHari===Infinity?"Tidak ada data pakai":item.estimasiHari>365?">1 tahun":`~${item.estimasiHari} hari`;
                 return (
-                  <div key={item.katalogId} style={{marginBottom:10,padding:"8px 10px",borderRadius:8,border:`1px solid ${badgeColor}22`,background:`${badgeColor}0a`}}>
+                  <div key={item.katalogId} style={{marginBottom:10,padding:"8px 10px",borderRadius: 10,border:`1px solid ${badgeColor}22`,background:`${badgeColor}0a`}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.nama}</div>
+                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{item.nama}</div>
                         <div style={{fontSize:12,color:C.muted}}>{item.katalog}</div>
                       </div>
                       <span style={{fontSize:12,fontWeight:700,color:badgeColor,marginLeft:6,flexShrink:0}}>{item.badge}</span>

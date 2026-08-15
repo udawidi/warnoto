@@ -59,7 +59,7 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
           </label>
         )}
       </div>
-      <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius:8,padding:"10px 12px",fontSize:12,color:"#1d4ed8",marginBottom:16}}>
+      <div tabIndex={0} className="info-note" style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#1d4ed8",marginBottom:16}}>
         ℹ️ Stock Count ini cuma membaca & membandingkan — <b>tidak mengubah</b> Data Stok atau Master Katalog. Rekomendasi (tambah stok / buat TUG) cuma saran, tidak otomatis membuat apa pun. Kalau file punya lebih dari 1 sheet dengan header sama, semua ikut terbaca.
       </div>
 
@@ -82,7 +82,7 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
             <div style={{fontWeight:800,fontSize:15}}>📝 Review Draft Stock Count ({draftItems.length} item)</div>
             <button style={sty.btn("ghost","sm")} onClick={()=>setDraftItems(null)}>✕ Batal</button>
           </div>
-          <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Centang item yang mau disertakan. Item yang akurat tetap ditampilkan sebagai informasi, tidak akan masuk approval Asman.</div>
+          <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>Centang item yang mau disertakan. Item yang akurat tetap ditampilkan sebagai informasi, tidak akan masuk approval Asman.</div>
 
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8,marginBottom:12}}>
             {[
@@ -91,14 +91,14 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
               {label:"Selisih",val:selisihCount,color:"#dc2626"},
               {label:"Belum Terdaftar",val:belumTerdaftarCount,color:"#7c3aed"},
             ].map(s=>(
-              <div key={s.label} style={{textAlign:"center",padding:"8px 6px",borderRadius:8,background:"#f9fafb",border:`1px solid ${C.border}`}}>
-                <div style={{fontSize:18,fontWeight:800,color:s.color}}>{s.val}</div>
+              <div key={s.label} style={{textAlign:"center",padding:"8px 6px",borderRadius: 10,background:"#f9fafb",border:`1px solid ${C.border}`}}>
+                <div style={{fontSize:17,fontWeight:800,color:s.color}}>{s.val}</div>
                 <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
               </div>
             ))}
           </div>
 
-          <div style={{overflowX:"auto",maxHeight:420,overflowY:"auto",marginBottom:14,border:`1px solid ${C.border}`,borderRadius:8}}>
+          <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:420,overflowY:"auto",marginBottom:14,border:`1px solid ${C.border}`,borderRadius: 10}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
                 <tr style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
@@ -117,28 +117,28 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                   const belumTerdaftar = !item.katalogId;
                   const rowBg = belumTerdaftar ? "#f3e8ff" : item.status==="AKURAT" ? "white" : "#fff5f5";
                   return (
-                    <tr key={item.id} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,opacity:item.included?1:0.4}}>
-                      <td style={{padding:"6px 8px",textAlign:"center"}}>
+                    <tr tabIndex={0} className="mobile-card-table__row" key={item.id} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,opacity:item.included?1:0.4}}>
+                      <td data-label="" style={{padding:"6px 8px",textAlign:"center"}}>
                         <input type="checkbox" checked={item.included} onChange={()=>toggleDraftItem(item.id)}/>
                       </td>
-                      <td style={{padding:"6px 8px",fontWeight:600,maxWidth:220}}>
+                      <td data-label="Nama Barang" className="mobile-card-table__title" style={{padding:"6px 8px",fontWeight:600,maxWidth:220}}>
                         {item.nama}
                         {belumTerdaftar && <div style={{fontSize:12,fontWeight:800,color:"#7c3aed"}}>🆕 Belum terdaftar di Master Katalog</div>}
                       </td>
-                      <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.katalogKode}</td>
-                      <td style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>{fmtNum(item.qtySap)} {item.satuan}</td>
-                      <td style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>
+                      <td data-label="No Katalog" style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.katalogKode}</td>
+                      <td data-label="Qty SAP" style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>{fmtNum(item.qtySap)} {item.satuan}</td>
+                      <td data-label="Qty Aplikasi" style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>
                         {belumTerdaftar ? <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span> : `${fmtNum(item.qtyApp)} ${item.satuan}`}
                       </td>
-                      <td style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
+                      <td data-label="Selisih" style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
                         {item.status==="AKURAT" ? "—" : `${item.selisih>0?"+":""}${fmtNum(item.selisih)} (${item.selisihPct}%)`}
                       </td>
-                      <td style={{padding:"6px 8px",textAlign:"center"}}>
+                      <td data-label="Status" style={{padding:"6px 8px",textAlign:"center"}}>
                         {item.status==="AKURAT"
                           ? <span style={{fontSize:12,fontWeight:700,color:C.green}}>✓ Akurat</span>
                           : <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.status==="APP_KURANG"?"App Kurang":"App Lebih"}</span>}
                       </td>
-                      <td style={{padding:"6px 8px",fontSize:12,color:"#1d4ed8"}}>{item.rekomendasi ? REKOMENDASI_LABEL[item.rekomendasi] : "-"}</td>
+                      <td data-label="Rekomendasi" style={{padding:"6px 8px",fontSize:12,color:"#1d4ed8"}}>{item.rekomendasi ? REKOMENDASI_LABEL[item.rekomendasi] : "-"}</td>
                     </tr>
                   );
                 })}
@@ -162,12 +162,12 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
           <div key={session.id} style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",cursor:"pointer",background:"#f9fafb"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
               <div>
-                <div style={{fontWeight:800,fontSize:14}}>{fmtDate(session.uploadedAt)} — {session.summary.totalItem} item dibandingkan</div>
+                <div style={{fontWeight:800,fontSize:13}}>{fmtDate(session.uploadedAt)} — {session.summary.totalItem} item dibandingkan</div>
                 <div style={{fontSize:12,color:C.muted}}>{session.summary.akuratCount} akurat • {mismatch.length} temuan • {mismatch.filter(i=>i.approval==="PENDING").length} pending</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <span style={{fontSize:22,fontWeight:900,color:session.summary.akuratPct>=90?C.green:session.summary.akuratPct>=70?C.yellow:C.red}}>{session.summary.akuratPct}%</span>
-                <span style={{fontSize:14,color:C.muted}}>{isOpen?"▲":"▼"}</span>
+                <span style={{fontSize:20,fontWeight:900,color:session.summary.akuratPct>=90?C.green:session.summary.akuratPct>=70?C.yellow:C.red}}>{session.summary.akuratPct}%</span>
+                <span style={{fontSize:13,color:C.muted}}>{isOpen?"▲":"▼"}</span>
               </div>
             </div>
             {isOpen && (
@@ -177,20 +177,20 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                     ["Akurat",session.summary.akuratCount,C.green],
                     ["Temuan",mismatch.length,"#dc2626"],
                     ["Pending",mismatch.filter(i=>i.approval==="PENDING").length,C.yellow],
-                  ].map(([label,value,color])=><div key={label} style={{padding:"7px 8px",border:`1px solid ${C.border}`,borderRadius:8,textAlign:"center"}}><div style={{fontSize:17,fontWeight:800,color}}>{value}</div><div style={{fontSize:11,color:C.muted}}>{label}</div></div>)}
+                  ].map(([label,value,color])=><div key={label} style={{padding:"7px 8px",border:`1px solid ${C.border}`,borderRadius: 10,textAlign:"center"}}><div style={{fontSize:17,fontWeight:800,color}}>{value}</div><div style={{fontSize:12,color:C.muted}}>{label}</div></div>)}
                 </div>
                 {hasRole(currentUser, "ADMIN") && (
                   <div style={{textAlign:"right",marginBottom:8}}>
                     <button style={sty.btn("danger","sm")} onClick={()=>deleteStockCountSession(session.id)}>🗑️ Hapus Sesi</button>
                   </div>
                 )}
-                <details open={mismatch.some(i=>i.approval==="PENDING")} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 10px"}}>
+                <details open={mismatch.some(i=>i.approval==="PENDING")} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:"6px 10px"}}>
                   <summary style={{cursor:"pointer",fontWeight:800,fontSize:13}}>Temuan selisih ({mismatch.length}) — buka untuk cek &amp; approval per item</summary>
                   <div style={{paddingTop:8}}>
                   {mismatch.length===0 ? (
                     <div style={{fontSize:12,color:C.green,fontWeight:700}}>✅ Semua item akurat, tidak ada selisih &gt;5%.</div>
                   ) : mismatch.map(item => (
-                  <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius:8,padding:12,marginBottom:8,background:item.approval==="PENDING"?"#fffbeb":item.approval==="APPROVED"?"#f0fdf4":"#fef2f2"}}>
+                  <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:12,marginBottom:8,background:item.approval==="PENDING"?"#fffbeb":item.approval==="APPROVED"?"#f0fdf4":"#fef2f2"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
                       <div>
                         <div style={{fontWeight:700,fontSize:13}}>{item.nama}</div>

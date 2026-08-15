@@ -39,7 +39,7 @@ export function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty
     <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${ditahan?"#f59e0b":C.accent}`,cursor:"pointer"}} onClick={()=>setTab("attb")}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
         <div>
-          <div style={{fontSize:14,fontWeight:900}}><FolderOpen weight="fill" size={14} style={{verticalAlign:"-0.15em",marginRight:5}}/>Ringkasan ATTB — Penghapusan Aset</div>
+          <div style={{fontSize:13,fontWeight:900}}><FolderOpen weight="fill" size={14} style={{verticalAlign:"-0.15em",marginRight:5}}/>Ringkasan ATTB — Penghapusan Aset</div>
           <div style={{fontSize:12,color:C.muted}}>Scope: <b>{scopeLabel}</b> — nilai aset, progres pipeline &amp; item tertahan.</div>
         </div>
         <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("attb");}}>Buka Menu</button>
@@ -48,7 +48,7 @@ export function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty
       {/* KPI utama */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginBottom:12}}>
         {kpis.map(k=>(
-          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:10}}>
+          <div key={k.label} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10,padding:10}}>
             <div style={{fontSize:12,color:C.muted,fontWeight:800,textTransform:"uppercase"}}>{k.label}</div>
             <div style={{fontSize:k.val&&String(k.val).startsWith("Rp")?15:20,fontWeight:900,color:k.color}}>{k.val}</div>
             <div style={{fontSize:12,color:C.muted}}>{k.sub}</div>
@@ -58,19 +58,19 @@ export function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty
 
       {/* Pipeline funnel — sebaran item per tahap + inflow bongkaran TUG-10 */}
       <div style={{display:"flex",alignItems:"stretch",gap:6,flexWrap:"wrap"}}>
-        <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"8px 10px",borderRadius:8,border:`1px dashed #cbd5e1`,background:"#f8fafc",minWidth:96}}>
+        <div style={{flex:"0 0 auto",display:"flex",flexDirection:"column",justifyContent:"center",padding:"8px 10px",borderRadius: 10,border:`1px dashed #cbd5e1`,background:"#f8fafc",minWidth:96}}>
           <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase"}}><Toolbox weight="fill" size={12} style={{verticalAlign:"-0.15em",marginRight:4}}/>Bongkaran</div>
-          <div style={{fontSize:18,fontWeight:900,color:"#6b7280"}}>{bongkaranBelum}</div>
+          <div style={{fontSize:17,fontWeight:900,color: "#64748b"}}>{bongkaranBelum}</div>
           <div style={{fontSize:12,color:C.muted}}>belum diusulkan</div>
         </div>
         {stageCounts.map((s,i)=>(
-          <div key={s.code} style={{flex:1,minWidth:90,display:"flex",flexDirection:"column",gap:4,padding:"8px 8px",borderRadius:8,border:`1px solid ${C.border}`,background:"white"}}>
+          <div key={s.code} style={{flex:1,minWidth:90,display:"flex",flexDirection:"column",gap:4,padding:"8px 8px",borderRadius: 10,border:`1px solid ${C.border}`,background:"white"}}>
             <div style={{display:"flex",alignItems:"center",gap:5}}>
               <span style={{width:16,height:16,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,background:stageColor(s.code)+"22",color:stageColor(s.code)}}>{i+1}</span>
-              <span style={{fontSize:16,fontWeight:900,color:stageColor(s.code)}}>{s.count}</span>
+              <span style={{fontSize:15,fontWeight:900,color:stageColor(s.code)}}>{s.count}</span>
             </div>
             <div style={{fontSize:12,color:C.muted,lineHeight:1.2,minHeight:22}}>{s.label}</div>
-            <div style={{height:4,borderRadius:3,background:"#eef2f7",overflow:"hidden"}}><div style={{height:"100%",width:`${(s.count/maxStage)*100}%`,background:stageColor(s.code)}}/></div>
+            <div style={{height:4,borderRadius: 10,background:"#eef2f7",overflow:"hidden"}}><div style={{height:"100%",width:`${(s.count/maxStage)*100}%`,background:stageColor(s.code)}}/></div>
           </div>
         ))}
       </div>

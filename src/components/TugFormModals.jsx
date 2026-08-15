@@ -14,7 +14,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>{txnForm.sourceType==="ULTG" ? "Formulir Slip Reservasi" : "Formulir TUG-5 — Daftar Permintaan Barang"}</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>
                   No: {txnForm.sourceType==="ULTG" ? generateReservasiDocNo(docSeq, Date.now(), uptKode) : `${docSeq}.TUG-5/...`}
                 </span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
@@ -22,7 +22,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
             </div>
             {txnForm.sourceType==="ULTG" ? (
               <>
-                <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#1e40af",marginBottom:16}}>ℹ️ Alur: Admin Ajukan Reservasi → Manager ULTG approve</div>
+                <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Alur: Admin Ajukan Reservasi → Manager ULTG approve</div>
                 <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>HEADER DOKUMEN</div>
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
                   <div>
@@ -41,7 +41,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
               </>
             ) : (
             <>
-            <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#1e40af",marginBottom:16}}>ℹ️ Alur: Asman approve → Manager UPT approve → INTRACOMPANY: auto draft TUG-7 di UIT | INTERCOMPANY: auto draft TUG-5 UIT (cetak manual).</div>
+            <div tabIndex={0} className="info-note" style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Alur: Asman approve → Manager UPT approve → INTRACOMPANY: auto draft TUG-7 di UIT | INTERCOMPANY: auto draft TUG-5 UIT (cetak manual).</div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>HEADER DOKUMEN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
@@ -56,7 +56,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                 <label style={sty.label}>Jenis Transfer</label>
                 <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8}}>
                   {["INTRACOMPANY","INTERCOMPANY"].map(jt=>(
-                    <button key={jt} type="button" style={{flex:1,padding:"8px",borderRadius:8,border:`2px solid ${txnForm.jenisTransfer===jt?C.accent:C.border}`,background:txnForm.jenisTransfer===jt?"#eff6ff":"white",color:txnForm.jenisTransfer===jt?C.accent:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>setTxnForm(tf=>({...tf,jenisTransfer:jt}))}>
+                    <button key={jt} type="button" style={{flex:1,padding:"8px",borderRadius: 10,border:`2px solid ${txnForm.jenisTransfer===jt?C.accent:C.border}`,background:txnForm.jenisTransfer===jt?"#eff6ff":"white",color:txnForm.jenisTransfer===jt?C.accent:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>setTxnForm(tf=>({...tf,jenisTransfer:jt}))}>
                       {jt==="INTRACOMPANY"?"🔄 Intracompany (sesama UIT-JBM)":"🌐 Intercompany (lintas UIT)"}
                     </button>
                   ))}
@@ -78,9 +78,9 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                 const isExpanded = idx===tug5ExpandedIdx;
                 if (!isExpanded) {
                   return (
-                    <div key={idx} style={{display:"flex",alignItems:isMobile?"stretch":"center",flexDirection:isMobile?"column":"row",gap:8,border:`1px solid ${C.border}`,borderRadius:8,padding:"8px 10px",marginBottom:8,background:C.surface,cursor:"pointer"}} onClick={()=>setTug5ExpandedIdx(idx)}>
+                    <div key={idx} style={{display:"flex",alignItems:isMobile?"stretch":"center",flexDirection:isMobile?"column":"row",gap:8,border:`1px solid ${C.border}`,borderRadius: 10,padding:"8px 10px",marginBottom:8,background:C.surface,cursor:"pointer"}} onClick={()=>setTug5ExpandedIdx(idx)}>
                       <span style={{fontSize:12,fontWeight:700,color:C.muted}}>#{idx+1}</span>
-                      <span style={{flex:1,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{kat ? `${kat.name} [${kat.katalog||"-"}]` : <span style={{color:C.muted,fontStyle:"italic"}}>Belum dipilih</span>}</span>
+                      <span style={{flex:1,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{kat ? `${kat.name} [${kat.katalog||"-"}]` : <span style={{color:C.muted,fontStyle:"italic"}}>Belum dipilih</span>}</span>
                       <div style={{display:"flex",alignItems:"center",justifyContent:isMobile?"space-between":"flex-start",gap:8,flexWrap:"wrap"}}>
                         <span style={{fontSize:12,color:C.accent,fontWeight:700}}>Qty: {si.permintaan||0}{kat?.satuan?` ${kat.satuan}`:""}</span>
                         <span style={{fontSize:12,color:C.muted}}>✏️ Edit</span>
@@ -90,7 +90,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                   );
                 }
                 return (
-                <div key={idx} style={{border:`2px solid ${C.accent}`,borderRadius:8,padding:10,marginBottom:8,background:"#f9fafb"}}>
+                <div key={idx} style={{border:`2px solid ${C.accent}`,borderRadius: 10,padding:10,marginBottom:8,background:"#f9fafb"}}>
                   <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8,alignItems:isMobile?"stretch":"flex-end",marginBottom:8}}>
                     <div style={{flex:isMobile?undefined:3}}>
                       <label style={sty.label}>Nama Barang {idx+1}</label>
@@ -163,11 +163,11 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir {txnForm.docType.replace("TUG","TUG-")} — {txnForm.docType==="TUG9"?"Bon Pemakaian":"Pemakaian Unit Lain"}</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>{isDerivedDraft ? "DRAFT — nomor resmi saat diajukan" : `No: ${docSeq}.${txnForm.docType.replace("TUG","TUG-")}/...`}</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>{isDerivedDraft ? "DRAFT — nomor resmi saat diajukan" : `No: ${docSeq}.${txnForm.docType.replace("TUG","TUG-")}/...`}</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
-            <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Transaksi akan PENDING sampai disetujui TL Logistik / Asman.</div>
+            <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius: 10,padding:"8px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Transaksi akan PENDING sampai disetujui TL Logistik / Asman.</div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DATA PEKERJAAN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
@@ -251,17 +251,17 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
               <div>
                 <label style={sty.label}>Foto Kendaraan</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoKendaraan:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoKendaraan && <img src={txnForm.fotoKendaraan} alt="kendaraan" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius:6,marginTop:6,border:`1px solid ${C.border}`}}/>}
+                {txnForm.fotoKendaraan && <img src={txnForm.fotoKendaraan} alt="kendaraan" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius: 10,marginTop:6,border:`1px solid ${C.border}`}}/>}
               </div>
               <div>
                 <label style={sty.label}>Foto SIM / KTP Pengemudi</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoSimKtp:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoSimKtp && <img src={txnForm.fotoSimKtp} alt="sim ktp" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius:6,marginTop:6,border:`1px solid ${C.border}`}}/>}
+                {txnForm.fotoSimKtp && <img src={txnForm.fotoSimKtp} alt="sim ktp" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius: 10,marginTop:6,border:`1px solid ${C.border}`}}/>}
               </div>
               <div>
                 <label style={sty.label}>Surat Permintaan/Pengembalian</label>
                 <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoSuratPengembalian:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoSuratPengembalian && <img src={txnForm.fotoSuratPengembalian} alt="surat" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius:6,marginTop:6,border:`1px solid ${C.border}`}}/>}
+                {txnForm.fotoSuratPengembalian && <img src={txnForm.fotoSuratPengembalian} alt="surat" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius: 10,marginTop:6,border:`1px solid ${C.border}`}}/>}
               </div>
             </div>
             <div style={{marginBottom:16}}>
@@ -271,10 +271,10 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                   const stock = enrichedStocks.find(s=>s.id===si.stockId);
                   const existingPhoto = txnForm.fotoMaterial.find(fm=>fm.stockId===si.stockId);
                   return (
-                    <div key={idx} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius:8,padding:8}}>
-                      <div style={{fontSize:12,fontWeight:600,marginBottom:4,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{stock?.name||"-"}</div>
+                    <div key={idx} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10,padding:8}}>
+                      <div style={{fontSize:12,fontWeight:600,marginBottom:4,whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{stock?.name||"-"}</div>
                       <input type="file" accept="image/*" capture="environment" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:12,color:C.muted,width:"100%"}}/>
-                      {existingPhoto && <img src={existingPhoto.img} alt={stock?.name} style={{width:"100%",height:60,objectFit:"cover",borderRadius:6,marginTop:6}}/>}
+                      {existingPhoto && <img src={existingPhoto.img} alt={stock?.name} style={{width:"100%",height:60,objectFit:"cover",borderRadius: 10,marginTop:6}}/>}
                     </div>
                   );
                 })}
@@ -292,7 +292,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
 }
 
 export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, docSeq, currentUser, rolePerms, tug10Highlight, tug10Refs, tug10Missing, tug10Collapsed, setTug10Collapsed, lokasiList, subGudangList, satpamList, gudangList, visibleGudangList, uptList, katalogList, CATEGORIES, STATUS_MATERIAL_RETUR, addItemRow, removeItemRow, updateItemRow, handleImg, savingTxn, saveTxn, isMobile, sty, C }) {
-  const hl = key => tug10Highlight===key ? { boxShadow:"0 0 0 2px #dc2626", borderRadius:8 } : {};
+  const hl = key => tug10Highlight===key ? { boxShadow:"0 0 0 2px #dc2626", borderRadius: 10 } : {};
   const setRef = key => el => { tug10Refs.current[key] = el; };
   const isLegacyGud = txnForm.gudangTujuanId==="__legacy__";
   const hasLegacyBlok = lokasiList.some(l=>!l.gudangId);
@@ -312,14 +312,14 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-10 — Bon Pengembalian</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-10/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-10/...</span>
                 <button onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
-            <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Transaksi akan PENDING sampai disetujui TL Logistik / Asman. Stok akan BERTAMBAH saat disetujui.</div>
+            <div style={{background:"#fef3c7",border:`1px solid #fcd34d`,borderRadius: 10,padding:"8px 12px",fontSize:12,color:"#92400e",marginBottom:16}}>⚠️ Transaksi akan PENDING sampai disetujui TL Logistik / Asman. Stok akan BERTAMBAH saat disetujui.</div>
 
             {!can(currentUser, "aksi.buatTransaksi", rolePerms) && (
-              <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#991b1b",marginBottom:16,fontWeight:600}}>🚫 Role kamu ({ROLES[currentUser?.role]||currentUser?.role||"-"}) tidak bisa mengajukan TUG-10 — hubungi Admin Gudang / TL Logistik.</div>
+              <div style={{background:"#fee2e2",border:"1px solid #fca5a5",borderRadius: 10,padding:"8px 12px",fontSize:12,color:"#991b1b",marginBottom:16,fontWeight:600}}>🚫 Role kamu ({ROLES[currentUser?.role]||currentUser?.role||"-"}) tidak bisa mengajukan TUG-10 — hubungi Admin Gudang / TL Logistik.</div>
             )}
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DATA PEKERJAAN</div>
@@ -368,9 +368,9 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                   <option value="">{(!txnForm.gudangTujuanId||isLegacyGud)?"Pilih gudang dulu":"-- Pilih Satpam --"}</option>
                   {(gudSatpams.length>0?gudSatpams:(txnForm.gudangTujuanId&&!isLegacyGud?satpamList:[])).map(sp=><option key={sp.id} value={sp.id}>{sp.name}{gudSatpams.length===0?" (gudang lain)":""}</option>)}
                 </select>
-                {txnForm.gudangTujuanId && !isLegacyGud && gudSatpams.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
+                {txnForm.gudangTujuanId && !isLegacyGud && gudSatpams.length===0 && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
               </div>
-              {breadcrumb && <div style={{gridColumn:isMobile?"auto":"1/-1",fontSize:12,color:C.accent,fontWeight:700,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius:8,padding:"6px 10px"}}>📍 {breadcrumb}</div>}
+              {breadcrumb && <div style={{gridColumn:isMobile?"auto":"1/-1",fontSize:12,color:C.accent,fontWeight:700,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius: 10,padding:"6px 10px"}}>📍 {breadcrumb}</div>}
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / MATERIAL RETUR</div>
@@ -394,7 +394,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               <div key={idx} ref={setRef(`item-${idx}`)} style={{border:`1px solid ${complete?"#bbf7d0":C.border}`,borderRadius:10,padding:12,marginBottom:10,background:complete?"#f6fefb":"#f9fafb",...hl(`item-${idx}`)}}>
                 <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:collapsed?0:8,flexWrap:"wrap"}}>
                   <span style={{fontSize:12,fontWeight:800,color:C.accent}}>Barang #{n}</span>
-                  <span style={{fontSize:12,fontWeight:700,padding:"1px 8px",borderRadius:20,background:bs.bg,color:bs.fg}}>{si.statusMaterial}</span>
+                  <span style={{fontSize:12,fontWeight:700,padding:"1px 8px",borderRadius: 14,background:bs.bg,color:bs.fg}}>{si.statusMaterial}</span>
                   {complete && <span style={{fontSize:12,color:"#16a34a",fontWeight:700}}>✓ Lengkap</span>}
                   <div style={{marginLeft:"auto",display:"flex",gap:6}}>
                     {complete && <button type="button" style={{...sty.btn("ghost","sm")}} onClick={()=>setTug10Collapsed(c=>({...c,[idx]:!c[idx]}))}>{collapsed?"▼ Buka":"▲ Ringkas"}</button>}
@@ -447,7 +447,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                       const smbs = statusMaterialBadgeStyle(sm);
                       const active = si.statusMaterial===sm;
                       return (
-                        <button key={sm} type="button" style={{flex:1,padding:"8px",borderRadius:8,border:`2px solid ${active?smbs.fg:C.border}`,background:active?smbs.bg:"white",color:active?smbs.fg:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>updateItemRow(idx,"statusMaterial",sm)}>{sm}</button>
+                        <button key={sm} type="button" style={{flex:1,padding:"8px",borderRadius: 10,border:`2px solid ${active?smbs.fg:C.border}`,background:active?smbs.bg:"white",color:active?smbs.fg:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>updateItemRow(idx,"statusMaterial",sm)}>{sm}</button>
                       );
                     })}
                   </div>
@@ -455,10 +455,10 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                   {isAttb && <div style={{fontSize:12,color:"#92400e",marginTop:4}}>ℹ️ Jenis Barang otomatis menjadi "ATTB". Wajib lengkapi data tambahan di bawah.</div>}
                 </div>
 
-                <div style={{background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius:8,padding:10,marginBottom:isAttb?8:0}}>
+                <div style={{background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius: 10,padding:10,marginBottom:isAttb?8:0}}>
                   <label style={sty.label}>Foto Barang * (wajib untuk semua status)</label>
                   <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
-                    {si.fotoBarangRetur && <img src={si.fotoBarangRetur} alt="barang" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius:6}}/>}
+                    {si.fotoBarangRetur && <img src={si.fotoBarangRetur} alt="barang" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius: 10}}/>}
                     <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {si.fotoBarangRetur?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoBarangRetur",img))}/></label>
                     {si.fotoBarangRetur && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>updateItemRow(idx,"fotoBarangRetur",null)}>Hapus</button>}
                   </div>
@@ -466,13 +466,13 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                 </div>
 
                 {isAttb && (
-                  <div style={{background:"#fffbeb",border:`1px solid #fde68a`,borderRadius:8,padding:10}}>
+                  <div style={{background:"#fffbeb",border:`1px solid #fde68a`,borderRadius: 10,padding:10}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>📋 Data Tambahan Wajib — Bongkaran ATTB (MTU)</div>
                     <div style={{marginBottom:8}}><label style={sty.label}>Nomor Seri Material *</label><input style={sty.input} value={si.noSeri} onChange={e=>updateItemRow(idx,"noSeri",e.target.value)} placeholder="cth: SN-2024-001"/>{!seriOk && hint("Wajib: isi nomor seri material.")}</div>
                     <div>
                       <label style={sty.label}>Foto Nameplate *</label>
                       <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
-                        {si.fotoNameplate && <img src={si.fotoNameplate} alt="nameplate" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius:6}}/>}
+                        {si.fotoNameplate && <img src={si.fotoNameplate} alt="nameplate" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius: 10}}/>}
                         <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {si.fotoNameplate?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoNameplate",img))}/></label>
                         {si.fotoNameplate && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>updateItemRow(idx,"fotoNameplate",null)}>Hapus</button>}
                       </div>
@@ -490,7 +490,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               <div ref={setRef("fotoBAPengembalian")} style={{marginBottom:16,...hl("fotoBAPengembalian")}}>
                 <label style={sty.label}>Upload Surat BA Pengembalian * (foto)</label>
                 <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
-                  {txnForm.fotoBAPengembalian && <img src={txnForm.fotoBAPengembalian} alt="BA Pengembalian" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius:6,border:`1px solid ${C.border}`}}/>}
+                  {txnForm.fotoBAPengembalian && <img src={txnForm.fotoBAPengembalian} alt="BA Pengembalian" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius: 10,border:`1px solid ${C.border}`}}/>}
                   <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {txnForm.fotoBAPengembalian?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoBAPengembalian:img})))}/></label>
                   {txnForm.fotoBAPengembalian && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>setTxnForm(tf=>({...tf,fotoBAPengembalian:null}))}>Hapus</button>}
                 </div>
@@ -498,7 +498,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               </div>
             )}
 
-            <div style={{border:`1px solid ${missingList.length?"#fecaca":"#bbf7d0"}`,background:missingList.length?"#fef2f2":"#f0fdf4",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12}}>
+            <div style={{border:`1px solid ${missingList.length?"#fecaca":"#bbf7d0"}`,background:missingList.length?"#fef2f2":"#f0fdf4",borderRadius: 10,padding:"8px 12px",marginBottom:12,fontSize:12}}>
               {missingList.length===0
                 ? <div style={{color:"#166534",fontWeight:800}}>✅ Siap diajukan</div>
                 : <div style={{color:"#be185d"}}><b>Kurang:</b> {missingList.map(m=>m.label).join(" · ")}</div>}
@@ -520,11 +520,11 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, katalo
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-3 Karantina — Bon Penerimaan</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-3/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-3/...</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
-            <div style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius:8,padding:"8px 12px",fontSize:12,color:"#1e40af",marginBottom:16}}>ℹ️ Setelah diajukan: TL Logistik approve → lanjut isi TUG-4 → Manager approve → lengkapi lampiran → Asman approve → stok masuk gudang.</div>
+            <div tabIndex={0} className="info-note" style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Setelah diajukan: TL Logistik approve → lanjut isi TUG-4 → Manager approve → lengkapi lampiran → Asman approve → stok masuk gudang.</div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DATA PENERIMAAN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>

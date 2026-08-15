@@ -109,7 +109,7 @@ export function ImportLokasiModal({ onClose, lokasiList, gudangList, subGudangLi
           <h3 style={{fontSize:17,fontWeight:800,margin:0}}>Import Master Lokasi (Excel)</h3>
           <button style={sty.btn("ghost","sm")} onClick={onClose}>✕ Tutup</button>
         </div>
-        <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Upload file Excel dengan kolom Gudang, Sub Gudang (opsional), Kode Blok, Keterangan. Baris bermasalah tidak bisa dicentang — perbaiki di file lalu upload ulang.</p>
+        <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:14}}>Upload file Excel dengan kolom Gudang, Sub Gudang (opsional), Kode Blok, Keterangan. Baris bermasalah tidak bisa dicentang — perbaiki di file lalu upload ulang.</p>
 
         {!rows ? (
           <label style={{...sty.btn("primary"),cursor:"pointer",display:"inline-flex"}}>
@@ -124,20 +124,20 @@ export function ImportLokasiModal({ onClose, lokasiList, gudangList, subGudangLi
               <span style={{color:C.red}}>Error: <b>{errCount}</b></span>
               <span>Dicentang: <b>{checked.size}</b></span>
             </div>
-            <div style={{overflowX:"auto",maxHeight:340,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius:8,marginBottom:14}}>
+            <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:340,overflowY:"auto",border:`1px solid ${C.border}`,borderRadius: 10,marginBottom:14}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
                 <thead style={{background:"#f9fafb",position:"sticky",top:0}}>
                   <tr>{["","Gudang","Sub Gudang","Kode Blok","Keterangan","Status"].map(h=><th key={h} style={{padding:"6px 8px",textAlign:"left"}}>{h}</th>)}</tr>
                 </thead>
                 <tbody>
                   {rows.map((r,i)=>(
-                    <tr key={i} style={{borderTop:`1px solid ${C.border}`,background:r.error?"#fef2f2":undefined}}>
-                      <td style={{padding:"4px 8px"}}><input type="checkbox" checked={checked.has(i)} disabled={!!r.error} onChange={()=>toggleRow(i)}/></td>
-                      <td style={{padding:"4px 8px"}}>{r.gudangNama||"-"}</td>
-                      <td style={{padding:"4px 8px"}}>{r.subGudangNama||"-"}</td>
-                      <td style={{padding:"4px 8px",fontWeight:700}}>{r.kode||"-"}</td>
-                      <td style={{padding:"4px 8px",color:C.muted}}>{r.keterangan||"-"}</td>
-                      <td style={{padding:"4px 8px",fontWeight:700,color:r.error?C.red:C.green}}>{r.error||"OK"}</td>
+                    <tr tabIndex={0} className="mobile-card-table__row" key={i} style={{borderTop:`1px solid ${C.border}`,background:r.error?"#fef2f2":undefined}}>
+                      <td data-label="" style={{padding:"4px 8px"}}><input type="checkbox" checked={checked.has(i)} disabled={!!r.error} onChange={()=>toggleRow(i)}/></td>
+                      <td data-label="Gudang" style={{padding:"4px 8px"}}>{r.gudangNama||"-"}</td>
+                      <td data-label="Sub Gudang" style={{padding:"4px 8px"}}>{r.subGudangNama||"-"}</td>
+                      <td data-label="Kode Blok" className="mobile-card-table__title" style={{padding:"4px 8px",fontWeight:700}}>{r.kode||"-"}</td>
+                      <td data-label="Keterangan" style={{padding:"4px 8px",color:C.muted}}>{r.keterangan||"-"}</td>
+                      <td data-label="Status" style={{padding:"4px 8px",fontWeight:700,color:r.error?C.red:C.green}}>{r.error||"OK"}</td>
                     </tr>
                   ))}
                 </tbody>

@@ -131,7 +131,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalStokPage-1)*approvalPageSize, approvalStokPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({list.length})</div>
             {paged.map(s=>{
               const pemohon = users.find(u=>u.id===s.moveRequestedBy);
               const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
@@ -159,7 +159,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalStokGudangPage-1)*approvalPageSize, approvalStokGudangPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({list.length})</div>
             {paged.map(s=>{
               const pemohon = users.find(u=>u.id===s.moveRequestedBy);
               const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
@@ -187,7 +187,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalEditStokPage-1)*approvalPageSize, approvalEditStokPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>✏️ Edit Data Stok ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>✏️ Edit Data Stok ({list.length})</div>
             {paged.map(s=>{
               const pemohon = users.find(u=>u.id===s.editRequestedBy);
               return (
@@ -217,7 +217,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalHapusStokPage-1)*approvalPageSize, approvalHapusStokPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.red}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🗑️ Hapus Data Stok ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>🗑️ Hapus Data Stok ({list.length})</div>
             {paged.map(s=>{
               const pemohon = users.find(u=>u.id===s.deleteRequestedBy);
               return (
@@ -244,7 +244,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalAlatBeratPage-1)*approvalPageSize, approvalAlatBeratPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>🚜 Peminjaman Alat Berat ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>🚜 Peminjaman Alat Berat ({list.length})</div>
             {paged.map(l=>{
               const alat = heavyEquipmentList.find(eq=>eq.id===l.equipmentId);
               const pemohon = users.find(u=>u.id===l.requestedBy);
@@ -281,7 +281,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalOpnamePage-1)*approvalPageSize, approvalOpnamePage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📋 Stock Opname ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📋 Stock Opname ({list.length})</div>
             {paged.map(opn=>{
               const selisihCount = opn.items?.filter(i=>i.selisih!==0).length||0;
               const pengaju = users.find(u=>u.id===opn.dibuatOleh);
@@ -315,7 +315,7 @@ export function ApprovalHubTab({
         const paged = list.slice((approvalStockCountPage-1)*approvalPageSize, approvalStockCountPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📊 Stock Count ({list.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📊 Stock Count ({list.length})</div>
             {paged.map(({session,item})=>(
               <div key={`${session.id}_${item.id}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
                 <div>
@@ -358,7 +358,7 @@ export function ApprovalHubTab({
         combined.forEach(h=>{ if(!knownTypes.has(h.type)){ knownTypes.add(h.type); groupsByType.push({type:h.type, items:combined.filter(x=>x.type===h.type)}); } });
         return (
           <div style={{...sty.card,marginTop:16}}>
-            <div style={{fontWeight:800,fontSize:14,marginBottom:10}}>📜 Riwayat Approval ({combinedAll.length})</div>
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📜 Riwayat Approval ({combinedAll.length})</div>
             {combinedAll.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
             {groupsByType.map(g=>(
               <div key={g.type} style={{marginBottom:14}}>
@@ -371,7 +371,7 @@ export function ApprovalHubTab({
                         <div style={{fontSize:12,fontWeight:700}}>{h.title}</div>
                         <div style={{fontSize:12,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
                       </div>
-                      <span style={{padding:"3px 10px",borderRadius:20,fontSize:12,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
+                      <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
                         {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
                       </span>
                     </div>

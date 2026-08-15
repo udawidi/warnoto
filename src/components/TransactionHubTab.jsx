@@ -143,11 +143,11 @@ export function TransactionHubTab({
                   <div key={t.id} style={{...sty.card}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                       <div>
-                        <div style={{fontWeight:800,fontSize:14}}>{t.namaPekerjaan}</div>
+                        <div style={{fontWeight:800,fontSize:13}}>{t.namaPekerjaan}</div>
                         <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers[dKey]}</div>
                       </div>
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                        {t.legacyImport && <span title="Diimpor dari histori lama" style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:"#ede9fe",color:"#6d28d9"}}>🕘 Legacy</span>}
+                        {t.legacyImport && <span title="Diimpor dari histori lama" style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#ede9fe",color:"#6d28d9"}}>🕘 Legacy</span>}
                         <span style={sty.statusBadge(t.status)}>{t.status}</span>
                       </div>
                     </div>
@@ -160,14 +160,14 @@ export function TransactionHubTab({
                       {t.docType==="TUG10" && <span>📍 Disimpan di: {lokTujuan?.kode||"-"}</span>}
                       {t.docType==="TUG10" && <span>📤 Menyerahkan: {t.menyerahkanNama}</span>}
                     </div>
-                    <div style={{background:"#f9fafb",borderRadius:8,padding:8,marginBottom:8}}>
+                    <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                       {t.docType!=="TUG10" ? t.stockItems.map((si,idx)=>{
                         const stock = enrichedStocks.find(s=>s.id===si.stockId);
                         return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span></div>;
                       }) : t.stockItems.map((si,idx)=>{
                         const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);
-                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius:20,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:12,color:C.muted}}> • SN: {si.noSeri}</span>}</div>;
+                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius: 14,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:12,color:C.muted}}> • SN: {si.noSeri}</span>}</div>;
                       })}
                     </div>
                     {t.status==="APPROVED" && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}

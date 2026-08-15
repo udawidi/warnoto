@@ -91,7 +91,7 @@ export function AuditLogPage({ sty, C }) {
         </div>
       </div>
 
-      <div className="audit-log-table">
+      <div className="mobile-card-table audit-log-table">
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
           <thead>
             <tr style={{borderBottom:`2px solid ${C.border}`,textAlign:"left"}}>
@@ -111,14 +111,14 @@ export function AuditLogPage({ sty, C }) {
             ) : rows.map(r=>{
               const badge = actionBadgeStyle(r.action);
               return (
-                <tr key={r.id} style={{borderBottom:`1px solid ${C.border}`}}>
+                <tr tabIndex={0} className="mobile-card-table__row" key={r.id} style={{borderBottom:`1px solid ${C.border}`}}>
                   <td data-label="Waktu" style={{padding:"8px 6px",whiteSpace:"nowrap",color:C.muted}}>{fmtDate(r.at)}</td>
                   <td data-label="User" style={{padding:"8px 6px"}}>
                     <div style={{fontWeight:700}}>{r.user_name||"-"}</div>
                     {r.role && <div style={{fontSize:12,color:C.muted}}>{r.role}</div>}
                   </td>
                   <td data-label="Aksi" style={{padding:"8px 6px"}}>
-                    <span style={{padding:"2px 8px",borderRadius:20,fontSize:12,fontWeight:700,background:badge.bg,color:badge.fg}}>{r.action}</span>
+                    <span style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:700,background:badge.bg,color:badge.fg}}>{r.action}</span>
                   </td>
                   <td data-label="Entitas" style={{padding:"8px 6px"}}>{r.entity||"-"}</td>
                   <td data-label="ID" style={{padding:"8px 6px",color:C.muted}}>{r.entity_id||"-"}</td>
@@ -127,7 +127,7 @@ export function AuditLogPage({ sty, C }) {
                     {r.detail && (
                       <details>
                         <summary style={{cursor:"pointer",color:C.muted,fontSize:12}}>JSON</summary>
-                        <pre style={{fontSize:12,whiteSpace:"pre-wrap",wordBreak:"break-word",background:"#f9fafb",padding:8,borderRadius:6,marginTop:4}}>{JSON.stringify(r.detail,null,2)}</pre>
+                        <pre style={{fontSize:12,whiteSpace:"pre-wrap",wordBreak:"break-word",background:"#f9fafb",padding:8,borderRadius: 10,marginTop:4}}>{JSON.stringify(r.detail,null,2)}</pre>
                       </details>
                     )}
                   </td>
