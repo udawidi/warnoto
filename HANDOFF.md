@@ -54,6 +54,17 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **MIGRASI DATA — izin matrix-driven + SAP import inline (2026-08-16, DI-PUSH).**
+  (1) **Izin:** migrasi dulu hardcoded & mismatch (nav `hasRole("ADMIN")` di `AppSidebar.jsx` vs
+  konten `hasRole("TL")` di `MasterDataTab.jsx`) → praktis cuma SUPERADMIN. Sekarang key baru
+  `aksi.migrasiData` di `perms.js` (`PERM_AKSI` + default TRUE untuk TL/ASMAN/MANAGER/ADMIN_UIT/
+  ASMAN_LOG_UIT/MGR_LOGISTIK_UIT/ADMIN_LOG_PUSAT), nav+konten pakai `can()` yang SAMA → TL bisa,
+  admin atur per-role via Matrix Izin. auditLog subtab TETAP `hasRole("ADMIN")` (di luar scope).
+  (2) **SAP import:** section "Cara lain/Legacy — SAP Langsung" dulu tersembunyi di `<details>` →
+  jadi card biasa selalu tampil "📦 Import Data Stok (Template SAP)" sejajar card Template WARNOTO,
+  note sumber = transaksi SAP `ZM_LAP_PERS_LOG` (sheet "UPT LAIN SAP"), apple-like (accent biru
+  `C.accent`). Logika `handleSapLangsungFile` utuh. Build hijau, audit 114.
+
 - **ATTB — modal edit material dirombak (2026-08-16, DI-PUSH).** Preview + edit LAMA (2 modal
   terpisah) dilebur jadi SATU `<section role="dialog">` 2-mode (`previewMode` view/edit) — tekan
   Edit ganti mode di modal yang sama (tak ada popup kedua); `editingId` dihapus. **2 slot foto

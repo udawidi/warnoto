@@ -866,18 +866,15 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
             )}
           </div>
 
-          <details className="migration-upload-card migration-upload-card--sap" style={{...sty.card,marginBottom:12}}>
-            <summary style={{fontWeight:700,cursor:"pointer"}}>Cara lain / Legacy — SAP Langsung (multi-UPT)</summary>
-            <div style={{padding:"14px 0 4px"}}>
-              <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Import SAP Langsung</div>
-              <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,margin:"0 0 12px",lineHeight:1.5}}>Lengkapi data stock material dari file export SAP resmi (sheet "UPT LAIN SAP"). Hanya material SAP-Persediaan &amp; SAP-Cadang yang diambil. {currentUser?.uptId ? "Baris di luar UPT Anda otomatis diabaikan." : "Semua UPT diproses, terpisah per UPT."}</p>
-              <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
-                <label style={{...sty.btn("primary"),cursor:"pointer"}}>
-                  {sapLangsungBusy?"⏳ Memproses...":"📂 Upload File Export SAP (.xlsx)"}
-                  <input type="file" accept=".xlsx" aria-label="Upload file export SAP Langsung (.xlsx)" style={{display:"none"}} onChange={handleSapLangsungFile} disabled={sapLangsungBusy}/>
-                </label>
-                {sapLangsungFile && <span style={{fontSize:12,color:C.text}}>{sapLangsungFile} · {sapLangsungRows?.length||0} baris terbaca</span>}
-              </div>
+          <div className="migration-upload-card migration-upload-card--sap" style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${C.accent}`}}>
+            <div style={{fontWeight:800,fontSize:15,marginBottom:4,color:C.accent}}>📦 Import Data Stok (Template SAP)</div>
+            <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,margin:"0 0 10px",lineHeight:1.5}}>Sumber: export SAP <code>ZM_LAP_PERS_LOG</code> (sheet "UPT LAIN SAP") — hanya material SAP-Persediaan &amp; SAP-Cadang. {currentUser?.uptId ? "Baris di luar UPT Anda otomatis diabaikan." : "Semua UPT diproses, terpisah per UPT."}</p>
+            <div style={{display:"flex",gap:12,alignItems:"center",flexWrap:"wrap"}}>
+              <label style={{...sty.btn("primary"),cursor:"pointer"}}>
+                {sapLangsungBusy?"⏳ Memproses...":"📂 Upload File Export SAP (.xlsx)"}
+                <input type="file" accept=".xlsx" aria-label="Upload file export SAP Langsung (.xlsx)" style={{display:"none"}} onChange={handleSapLangsungFile} disabled={sapLangsungBusy}/>
+              </label>
+              {sapLangsungFile && <span style={{fontSize:12,color:C.text}}>{sapLangsungFile} · {sapLangsungRows?.length||0} baris terbaca</span>}
             </div>
             {sapLangsungPreview && (
               <div style={{marginTop:4,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
@@ -957,7 +954,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
                 </div>
               </div>
             )}
-          </details>
+          </div>
 
           <div style={{...sty.card,marginBottom:12}}>
             <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Riwayat Import SAP Langsung</div>
