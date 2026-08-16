@@ -1733,6 +1733,10 @@
   .mobile-card-table__row > .mobile-card-table__title::before { display: none; }
   .mobile-card-table__row > .mobile-card-table__photo :is(img,div) { width: 48px !important; height: 48px !important; margin: 0 !important; }
   .mobile-card-table__row > .mobile-card-table__title { display: block; grid-column: 2; grid-row: 1/3; align-self: stretch; padding: 14px 12px !important; border-top: 0; font-size: 13px; line-height: 1.4; }
+  /* Kartu tanpa foto (Forecast, Material Cadang, Rekomendasi Pengadaan) tidak
+     butuh kolom 64px kosong — title & baris data jadi rata kiri sejajar. */
+  .mobile-card-table__row:not(:has(> .mobile-card-table__photo)) { grid-template-columns: 1fr; }
+  .mobile-card-table__row:not(:has(> .mobile-card-table__photo)) > .mobile-card-table__title { grid-column: 1; grid-row: auto; }
   .catalog-card-table .mobile-card-table__row > td[data-label="No Katalog"] { display: block; grid-column: 2; grid-row: 1; padding: 11px 12px 4px !important; border-top: 0; }
   .catalog-card-table .mobile-card-table__row > td[data-label="No Katalog"]::before { display: none; }
   .catalog-card-table .mobile-card-table__row > .mobile-card-table__title { grid-row: 2; padding: 3px 12px 12px !important; }
@@ -1827,6 +1831,7 @@
   .forecast-card-table .mobile-card-table__row > td[data-label="Validasi"],
   .forecast-card-table .mobile-card-table__row > td[data-label="Aksi"] { display: none !important; }
   .forecast-card-table .mobile-card-table__row { border-left-color: var(--risk-accent) !important; }
+  .forecast-card-table .mobile-card-table__row::after { padding-left: 12px; }
 
   .attb-card-table .mobile-card-table__row { border-left-color: var(--row-accent) !important; }
   .attb-card-table .mobile-card-table__row > td[colspan] { display: block; grid-column: 1/-1; }

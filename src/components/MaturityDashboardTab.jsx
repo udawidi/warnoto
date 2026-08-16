@@ -86,7 +86,27 @@ export function MaturityDashboardTab({
                   <div style={{ fontSize: 12, color: "#93c5fd", fontWeight: 700 }}>{MATURITY_LEVELS[currentLevel] || "Basic"}</div>
                 </div>
 
-                {canSwitchMaturityUpt && (
+                {canSwitchMaturityUpt && isMobile && (
+                  <select
+                    value={selectedMaturityUpt}
+                    onChange={e => setSelectedMaturityUpt(e.target.value)}
+                    style={{
+                      width: "100%",
+                      minHeight: 44,
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid rgba(255,255,255,0.25)",
+                      background: "#ffffff",
+                      color: "#1e293b",
+                      fontSize: 16,
+                      fontWeight: 700
+                    }}
+                  >
+                    {DEFAULT_UPT_LIST.map(u => <option key={u.id} value={u.nama}>{u.nama}</option>)}
+                  </select>
+                )}
+
+                {canSwitchMaturityUpt && !isMobile && (
                   // width:100% memaksa switcher ke barisnya sendiri (baris atas tetap [UPT | Level],
                   // space-between pin kotak Level ke kanan — posisi tak bergeser saat ganti UPT).
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
