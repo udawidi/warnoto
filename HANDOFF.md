@@ -97,7 +97,30 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   (panel maxWidth:100%+scroll, tabel riwayat dibungkus overflowX:auto, grid Foto/QR 2-kol muat 328px
   = fidelitas dokumen TUG.2 sengaja) + Cetak Barcode (chip flexWrap, semua baris muat). Tak ada fix
   overflow perlu ditulis; polish stack Foto/QR ditolak (ubah layout kertas cetak). Sisa: cek device.
+  DIKERJAKAN + COMMIT+PUSH sesi 2026-08-16 (lanjutan):
+  - Network Overview "Overview Gudang" (`95eeead`): card-table murni `.network-card-table`
+    (buang aturan fixed-table bespoke yg bikin angka "644" pecah vertikal + Status hilang),
+    badge "Belum aktif" 1 baris, buang tabIndex expand-acak. + polish apple-like DashboardManager
+    (bobot 900→700, tracking, shadow halus, breathing). + Peta Gudang select full-width HP +
+    Master Gudang wrap badge Daftar Blok.
+  - Stock Opname & Stock Count mobile (`81c96b7`): tabel editable Opname → card-table per-item;
+    tombol Upload Step-1 SAP fix (label inline padding menimpa judul → display:flex full-width);
+    declamp teks Format/help (tak terpotong). Stock Count draft card-table ringkas (checkbox
+    __photo, hide No Katalog/Rekomendasi HP), header stack + tombol upload full-width, banner
+    dipersingkat+declamp. User ACC: Opname "lumayan", Count rapi setelah 2 putaran.
   BELUM digarap: ATTB ringkasan per-UPT (GATED — keputusan user + koordinasi tim).
+
+  ### ⏳ PENDING lanjut (2026-08-16, untuk sesi rumah)
+  1. **Baseline visual e2e perlu di-refresh** (belum dikerjakan) — perubahan mobile sesi ini
+     mengubah render beberapa surface. `npx playwright test responsive.spec.js --update-snapshots`
+     lalu commit HANYA PNG yang sah berubah (waspada flaky: cek per-file, jangan blanket commit).
+     Gate asli tetap: `scripts/audit-mobile.mjs` (114) + build + review browser.
+  2. **Cek device (bukan e2e stub):** Peta Gudang (butuh denah terupload), Rekomendasi Pengadaan,
+     Maturity UPT dropdown, modal besar Kartu Gantung/Cetak Barcode (opsional).
+  3. **ATTB ringkasan per-UPT** — GATED (keputusan user + koordinasi tim paralel) sebelum edit
+     `AttbDashboardSummary.jsx`/`operations.css`.
+  4. Backlog lama tetap: `python ml/train_forecast.py` (env service_role/CI, non-blocking);
+     fitur baru MTU KHS & gudang MRWI (belum didesain); Non-SBY UPT isi `minQty`/histori (data gap).
 
   ### Pending jangka pendek rombak mobile (urut prioritas)
   1. ✅ Verifikasi device Rekomendasi Pengadaan + Maturity UPT dropdown — user ACC "lumayan ok" 2026-08-16.
