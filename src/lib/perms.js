@@ -30,6 +30,7 @@ export const PERM_AKSI = [
   { key: "aksi.kelolaMaster", label: "Kelola Master Data" },
   { key: "aksi.import", label: "Import Data (Excel)" },
   { key: "aksi.kelolaAkun", label: "Kelola Akun" },
+  { key: "aksi.migrasiData", label: "Migrasi Data SAP/Non-SAP" },
   { key: "aksi.buatInspeksiMaterial", label: "Buat Inspeksi Material Cadang" },
 ];
 
@@ -63,16 +64,16 @@ export const DEFAULT_PERMS = {
   // foto stok + pindah blok — TANPA menu master/approval/opname/rencana/maturity/
   // inspeksiMaterial/attb, TANPA aksi kelola apa pun. Edit/Hapus/kelola pindah ke TL.
   ADMIN: { ...menus("dashboard", "stock", "transaction", "forecastStok", "heavyEquipment", "kapasitasGudang", "ai"), "aksi.buatTransaksi": true },
-  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true },
-  ASMAN: { ...FULL_MENUS },
-  MANAGER: { ...FULL_MENUS },
-  ADMIN_UIT: { ...FULL_MENUS },
+  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true, "aksi.migrasiData": true },
+  ASMAN: { ...FULL_MENUS, "aksi.migrasiData": true },
+  MANAGER: { ...FULL_MENUS, "aksi.migrasiData": true },
+  ADMIN_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },
   // Peninjau UIT & Pusat: lihat semua menu, TANPA aksi.* (peninjau, bukan pembuat
   // data). Entri ini WAJIB ada — can() mengembalikan false untuk role yang tidak
   // terdaftar, jadi tanpa ini akunnya membuka aplikasi tanpa satu menu pun.
-  ASMAN_LOG_UIT: { ...FULL_MENUS },
-  MGR_LOGISTIK_UIT: { ...FULL_MENUS },
-  ADMIN_LOG_PUSAT: { ...FULL_MENUS },
+  ASMAN_LOG_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },
+  MGR_LOGISTIK_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },
+  ADMIN_LOG_PUSAT: { ...FULL_MENUS, "aksi.migrasiData": true },
   // VIEWER: cabang normal TANPA menu approval.
   VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "inspeksiMaterial", "ai"),
   PENGADAAN: menus("dashboard", "rencana"),

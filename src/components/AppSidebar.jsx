@@ -124,7 +124,8 @@ export function AppSidebar({
                         {id:"organisasi",icon:<SidebarIcon name="organization" size={16}/>,label:"Struktur Organisasi"},
                         {id:"gudang",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Master Gudang"},
                         ...(can(currentUser, "aksi.kelolaAkun", rolePerms) ? [{id:"akun",icon:<SidebarIcon name="user" size={16}/>,label:"Kelola Akun"}] : []),
-                        ...(hasRole(currentUser, "ADMIN") ? [{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"},{id:"auditLog",icon:<SidebarIcon name="shield" size={16}/>,label:"Audit Log"}] : []),
+                        ...(can(currentUser, "aksi.migrasiData", rolePerms) ? [{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"}] : []),
+                        ...(hasRole(currentUser, "ADMIN") ? [{id:"auditLog",icon:<SidebarIcon name="shield" size={16}/>,label:"Audit Log"}] : []),
                         ...(currentUser?.role === "SUPERADMIN" ? [{id:"perms",icon:<SidebarIcon name="shield" size={16}/>,label:"Matrix Izin"}] : []),
                       ].map(sub=>{
                         const subActive = isActive && stockSubTab===sub.id;

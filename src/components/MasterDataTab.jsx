@@ -785,7 +785,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             })()}
 
             {/* ── SUB-TAB: MIGRASI DATA (ADMIN only) ── */}
-            {stockSubTab==="migrasi" && hasRole(currentUser, "TL") && (
+            {stockSubTab==="migrasi" && can(currentUser, "aksi.migrasiData", rolePerms) && (
               <MigrasiDataTab
                 stocks={stocks}
                 katalogList={katalogList}
