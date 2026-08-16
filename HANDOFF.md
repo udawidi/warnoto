@@ -84,18 +84,30 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
     Admin/master/config + Alat Berat sudah diaudit = bersih, tak di-churn.
 
   ### Checklist uji tampilan mobile (per 2026-08-16)
-  LOLOS visual 360px: Data Stok (user: "lumayan baik"), Forecast Stok, Approval, Dashboard
-  Eksekutif/Overview, Analitik Material, Kapasitas Gudang, Master Organisasi/Migrasi,
-  Permission Matrix, Alat Berat, Pak War/Telegram config, baseline modal (Material detail).
-  BELUM diverifikasi mata (fix sudah masuk, perlu cek device / tak ada render e2e):
-  Rekomendasi Pengadaan (merk & susunan), Maturity (UPT dropdown + halaman penuh).
-  BELUM digarap: Peta Gudang (tak render e2e, kemungkinan overflow), modal besar (Kartu
-  Gantung Digital, Cetak Barcode — konten belum dilihat), ATTB ringkasan per-UPT (GATED).
+  LOLOS visual 360px (ACC user): Data Stok (user: "lumayan baik"), Forecast Stok, Approval,
+  Dashboard Eksekutif/Overview, Analitik Material, Kapasitas Gudang, Master Organisasi/Migrasi,
+  Permission Matrix, Alat Berat, Pak War/Telegram config, baseline modal (Material detail),
+  Rekomendasi Pengadaan (merk & susunan) + Maturity (UPT dropdown) [user ACC "lumayan ok"
+  2026-08-16], Master Gudang [user ACC 2026-08-16 — lolos kontrak responsif 360px + wrap badge
+  baris blok defensif untuk data padat].
+  LOLOS kontrak e2e 360px, BELUM ACC mata (fixture kosong / tak render populated):
+  Peta Gudang (grid collapse + tooltip clamp sudah ada; select toolbar difix full-width HP —
+  responsive.spec PASS; perlu cek device dgn denah terupload).
+  VERIFIED overflow-safe by inspection (2026-08-16, bukan bug): modal besar Kartu Gantung Digital
+  (panel maxWidth:100%+scroll, tabel riwayat dibungkus overflowX:auto, grid Foto/QR 2-kol muat 328px
+  = fidelitas dokumen TUG.2 sengaja) + Cetak Barcode (chip flexWrap, semua baris muat). Tak ada fix
+  overflow perlu ditulis; polish stack Foto/QR ditolak (ubah layout kertas cetak). Sisa: cek device.
+  BELUM digarap: ATTB ringkasan per-UPT (GATED — keputusan user + koordinasi tim).
 
   ### Pending jangka pendek rombak mobile (urut prioritas)
-  1. Verifikasi device: Rekomendasi Pengadaan (merk tak vertikal lagi?), Maturity UPT dropdown.
-  2. Peta Gudang mobile — audit + fix overflow (Gelombang 3).
-  3. Modal besar Kartu Gantung Digital & Cetak Barcode — cek konten di HP.
+  1. ✅ Verifikasi device Rekomendasi Pengadaan + Maturity UPT dropdown — user ACC "lumayan ok" 2026-08-16.
+  2. ✅ Peta Gudang mobile — audit selesai: overflow sudah aman (grid collapse + tooltip clamp);
+     select toolbar difix full-width HP (`.warehouse-map-toolbar__field select`). responsive.spec PASS.
+     Sisa: cek device dgn denah terupload (tak render di fixture e2e). ✅ Master Gudang juga difix
+     (wrap badge baris blok) + PASS.
+  3. ✅ Modal besar Kartu Gantung Digital & Cetak Barcode — audit selesai: overflow-safe by
+     inspection (tak ada fix perlu). Sisa: cek device (opsional).
+  3b. ATTB ringkasan per-UPT (GATED) = item berikutnya bila user buka gate. **← BERIKUTNYA (GATED)**
   4. **ATTB ringkasan per-UPT Penghapusan** — GATED: keputusan user + koordinasi tim paralel
      sebelum edit `AttbDashboardSummary.jsx`/`operations.css`.
   5. Alat Berat mini-grid di dashboard — polish warna (opsional, dipakai 3 dashboard).

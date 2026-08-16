@@ -1059,27 +1059,27 @@
 .dashboard-manager__hero { margin-bottom: 16px; overflow: hidden; border: 1px solid rgba(255,255,255,.14); border-radius: 14px; background: linear-gradient(120deg,#081f4d 0%,#123d83 58%,#1267b2 100%); color: #fff; box-shadow: 0 16px 34px -26px rgba(8,31,77,.9); }
 .dashboard-manager__hero-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(340px,.75fr); align-items: stretch; }
 .dashboard-manager__hero-copy { display: flex; min-width: 0; flex-direction: column; justify-content: center; padding: 24px 26px; }
-.dashboard-manager__hero-copy > span { color: #bfdbfe; font-size: 12px; font-weight: 850; letter-spacing: 1px; text-transform: uppercase; }
-.dashboard-manager__hero-copy h2 { margin: 6px 0 0; color: #fff; font-size: 24px; font-weight: 900; line-height: 1.15; letter-spacing: -.35px; }
+.dashboard-manager__hero-copy > span { color: #bfdbfe; font-size: 12px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+.dashboard-manager__hero-copy h2 { margin: 6px 0 0; color: #fff; font-size: 24px; font-weight: 700; line-height: 1.15; letter-spacing: -.4px; }
 .dashboard-manager__hero-copy p { margin: 7px 0 0; color: #dbeafe; font-size: 13px; line-height: 1.45; }
 .dashboard-manager__hero-copy small { margin-top: 14px; color: rgba(219,234,254,.78); font-size: 12px; font-weight: 650; }
 .dashboard-manager__inventory { display: flex; min-width: 0; flex-direction: column; justify-content: center; padding: 20px 22px; border-left: 1px solid rgba(219,234,254,.16); background: rgba(255,255,255,.055); }
-.dashboard-manager__inventory > span { color: #bfdbfe; font-size: 12px; font-weight: 750; text-transform: uppercase; letter-spacing: .45px; }
-.dashboard-manager__inventory > strong { margin-top: 5px; color: #fff; font-size: 24px; font-weight: 900; line-height: 1.15; letter-spacing: -.35px; }
-.dashboard-manager__kpis { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 9px; margin-bottom: 16px; }
+.dashboard-manager__inventory > span { color: #bfdbfe; font-size: 12px; font-weight: 650; text-transform: uppercase; letter-spacing: .4px; }
+.dashboard-manager__inventory > strong { margin-top: 5px; color: #fff; font-size: 24px; font-weight: 700; line-height: 1.15; letter-spacing: -.4px; }
+.dashboard-manager__kpis { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 10px; margin-bottom: 20px; }
 /* Gaya KPI card tunggal (Apple-like) — dipakai dashboard-manager__kpis DAN KPISaldoCards, biar tidak ada gaya kartu bersaing. */
-.kpi-card { position: relative; display: flex; min-width: 0; min-height: 82px; align-items: center; gap: 10px; overflow: hidden; padding: 13px; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; box-shadow: 0 8px 20px -20px rgba(15,23,42,.8); }
+.kpi-card { position: relative; display: flex; min-width: 0; min-height: 82px; align-items: center; gap: 10px; overflow: hidden; padding: 14px; border: 1px solid #e9edf3; border-radius: 14px; background: #fff; box-shadow: 0 4px 14px -20px rgba(15,23,42,.5); }
 .kpi-card__icon { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 10px; background: var(--kpi-tint,#f1f5f9); color: var(--kpi-color,#475569); font-size: 16px; }
 .kpi-card__copy { display: flex; min-width: 0; flex-direction: column; }
-.kpi-card__copy strong { overflow: hidden; color: var(--kpi-color,#0f172a); font-size: 20px; font-weight: 900; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
-.kpi-card__copy span { margin-top: 4px; overflow: hidden; color: #64748b; font-size: 12px; font-weight: 750; letter-spacing: .35px; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
+.kpi-card__copy strong { overflow: hidden; color: var(--kpi-color,#0f172a); font-size: 20px; font-weight: 700; line-height: 1.15; letter-spacing: -.3px; text-overflow: ellipsis; white-space: nowrap; }
+.kpi-card__copy span { margin-top: 4px; overflow: hidden; color: #64748b; font-size: 12px; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; text-overflow: ellipsis; white-space: nowrap; }
 .kpi-card__copy small { margin-top: 2px; color: #64748b; font-size: 12px; }
 .dashboard-manager__kpis .kpi-card:last-child { grid-column: 1/-1; }
 .dashboard-manager__upt-card { margin-bottom: 18px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 14px; background: #fff; }
 .dashboard-manager__section-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
 .dashboard-manager__section-heading > div { display: flex; min-width: 0; flex-direction: column; }
-.dashboard-manager__section-heading span { color: #1d4ed8; font-size: 12px; font-weight: 850; letter-spacing: .7px; text-transform: uppercase; }
-.dashboard-manager__section-heading h3 { margin: 3px 0 0; color: #1e293b; font-size: 15px; font-weight: 900; }
+.dashboard-manager__section-heading span { color: #1d4ed8; font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
+.dashboard-manager__section-heading h3 { margin: 3px 0 0; color: #1e293b; font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
 .dashboard-manager__section-heading small { color: #64748b; font-size: 12px; text-align: right; }
 .dashboard-manager__table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .dashboard-manager__table-scroll table { min-width: 680px; }
@@ -1475,16 +1475,8 @@
   .dashboard-manager__section-heading { padding: 11px 12px; }
   .dashboard-manager__section-heading h3,
   .dashboard-manager__section-heading small { max-width: 100%; overflow-wrap: anywhere; }
-  .dashboard-manager__table-scroll { width: 100%; max-width: 100%; overflow-x: hidden; }
-  .dashboard-manager__table-scroll table { width: 100%; min-width: 0; table-layout: fixed; }
-  .dashboard-manager__table-scroll :is(th,td):nth-child(3),
-  .dashboard-manager__table-scroll :is(th,td):nth-child(4),
-  .dashboard-manager__table-scroll :is(th,td):nth-child(5) { display: none; }
-  .dashboard-manager__table-scroll :is(th,td) { padding: 8px 6px !important; overflow-wrap: anywhere; }
-  .dashboard-manager__table-scroll :is(th,td):nth-child(1) { width: 42%; }
-  .dashboard-manager__table-scroll :is(th,td):nth-child(2) { width: 20%; }
-  .dashboard-manager__table-scroll :is(th,td):nth-child(6) { width: 38%; }
-  .dashboard-manager__table-scroll td:nth-child(6) span { display: inline-block; max-width: 100%; padding: 3px 5px !important; line-height: 1.25; white-space: normal; }
+  /* Network overview = card-table murni (lihat .network-card-table di bawah); aturan fixed-table
+     bespoke lama dibuang karena meremas sel di mode kartu (angka pecah vertikal + Status hilang). */
   .dashboard-manager__table-note { padding: 9px 12px; }
 
   .dashboard-analytics { margin-top: 15px; }
@@ -1639,7 +1631,8 @@
     flex-direction: column;
   }
   .warehouse-map-toolbar { gap: 12px; }
-  .warehouse-map-toolbar__select { width: 100% !important; min-height: 44px; }
+  .warehouse-map-toolbar__field { width: 100%; }
+  .warehouse-map-toolbar__field select { width: 100% !important; min-height: 44px; }
   .warehouse-map-toolbar__controls label { min-height: 44px; }
 
   .capacity-filterbar select,
@@ -1702,8 +1695,11 @@
   .dashboard-pending-widget__copy { overflow-wrap: anywhere; }
   .dashboard-arrival-widget__heading { align-items: flex-start; }
   .dashboard-arrival-widget__heading h3 { min-width: 0; line-height: 1.35; }
-  .dashboard-manager__table-scroll td:nth-child(6) { text-align: center; }
-  .dashboard-manager-status { width: 100%; max-width: 104px; min-height: 32px; padding-inline: 5px; }
+  /* Network overview card-table: sembunyikan kolom yang kosong di Fase 1 (semua UPT non-SBY),
+     sisakan UPT + Total Item + Status supaya kartu ringkas & angka tak pecah vertikal. */
+  .network-card-table .mobile-card-table__row > td[data-label="Nilai Stok"],
+  .network-card-table .mobile-card-table__row > td[data-label="Stok Kritis"],
+  .network-card-table .mobile-card-table__row > td[data-label="Aktivitas Bulan Ini"] { display: none !important; }
 
   .capacity-page { font-size: 12px; }
   .capacity-summary-banner__header strong { font-size: 17px; line-height: 1.2; }

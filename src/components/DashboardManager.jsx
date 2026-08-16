@@ -69,7 +69,7 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
       {/* Tabel per UPT */}
       <section className="dashboard-manager__upt-card">
         <div className="dashboard-manager__section-heading"><div><span>Network overview</span><h3>Ringkasan per UPT · UIT JBM</h3></div><small>Konsolidasi ketersediaan data unit</small></div>
-        <div className="mobile-card-table dashboard-manager__table-scroll">
+        <div className="mobile-card-table network-card-table dashboard-manager__table-scroll">
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead>
               <tr style={{background:C.sidebar,color:"white"}}>
@@ -86,16 +86,16 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
                 const uptKritis = getKritisAgg(uptStocks, monthlySeriesByKatalogId).length;
                 const uptTxn = isSurabaya ? txnBulanIni.length : 0;
                 return (
-                  <tr tabIndex={0} className="mobile-card-table__row" key={upt.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb"}}>
+                  <tr className="mobile-card-table__row" key={upt.id} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb"}}>
                     <td data-label="UPT" className="mobile-card-table__title" style={{padding:"10px 10px",fontWeight:700}}>{upt.nama}</td>
                     <td data-label="Total Item" style={{padding:"10px 10px"}}>{isSurabaya?stocks.length:"—"}</td>
                     <td data-label="Nilai Stok" style={{padding:"10px 10px"}}>{isSurabaya?fmtRp(uptNilai):"—"}</td>
                     <td data-label="Stok Kritis" style={{padding:"10px 10px",color:uptKritis>0?"#dc2626":C.muted}}>{isSurabaya?uptKritis:"—"}</td>
                     <td data-label="Aktivitas Bulan Ini" style={{padding:"10px 10px"}}>{isSurabaya?`${uptTxn} TUG`:"—"}</td>
-                    <td data-label="Status" style={{padding:"10px 10px"}}>
+                    <td data-label="Status" className="is-key" style={{padding:"10px 10px"}}>
                       {isSurabaya
                         ? <span className="dashboard-manager-status is-active" style={{background:"#dcfce7",color:"#166534"}}>● Aktif</span>
-                        : <span className="dashboard-manager-status" style={{background:"#f3f4f6",color: "#64748b"}}>○ Belum terhubung</span>}
+                        : <span className="dashboard-manager-status" style={{background:"#f3f4f6",color: "#64748b"}}>○ Belum aktif</span>}
                     </td>
                   </tr>
                 );

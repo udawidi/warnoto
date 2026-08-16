@@ -637,7 +637,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                       const hasCoord = grp.sg ? l.subMapX!=null : l.mapX!=null;
                                       return (
                                         <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
-                                          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0}}>
+                                          <div style={{display:"flex",alignItems:"center",gap:8,minWidth:0,flexWrap:"wrap"}}>
                                             {grp.sg && subKodeMap[grp.sg.id] && <span title={`Sub Gudang: ${grp.sg.nama}`} style={{fontSize:12,fontWeight:800,color: "#1d4ed8",background:"#dbeafe",border:"1px solid #bfdbfe",padding:"1px 6px",borderRadius: 10,flexShrink:0}}>{subKodeMap[grp.sg.id]}</span>}
                                             <span style={{fontWeight:700}}>{l.kode}</span>
                                             {l.nama && <span style={{color:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{l.nama}</span>}
