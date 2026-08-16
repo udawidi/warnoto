@@ -132,9 +132,9 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   BELUM digarap: ATTB ringkasan per-UPT (GATED — keputusan user + koordinasi tim).
 
   ### ⏳ PENDING lanjut (2026-08-16, untuk sesi rumah)
-  1. **Baseline visual e2e perlu di-refresh** (belum dikerjakan) — perubahan mobile sesi ini
-     mengubah render beberapa surface. `npx playwright test responsive.spec.js --update-snapshots`
-     lalu commit HANYA PNG yang sah berubah (waspada flaky: cek per-file, jangan blanket commit).
+  1. ✅ **Baseline visual e2e di-refresh (2026-08-16)** — `npm run test:responsive:update`, 9 PNG
+     re-baseline (Dashboard-detail, ATTB-pipeline, Stock, Stock-count, TUG-15 di phone 360/390/412
+     + tablet 768), cek per-file semua map ke surface mobile wave, committed+push.
      Gate asli tetap: `scripts/audit-mobile.mjs` (114) + build + review browser.
   2. **Cek device (bukan e2e stub):** Peta Gudang (butuh denah terupload), Rekomendasi Pengadaan,
      Maturity UPT dropdown, modal besar Kartu Gantung/Cetak Barcode (opsional).
