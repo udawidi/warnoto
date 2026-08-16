@@ -3,9 +3,10 @@
 // lengkap (Kategori/Harga/Status/Gudang/Blok/Lokasi UPT/Edit/Hapus) pindah ke
 // modal detail (App.jsx). Kolom Gudang/Blok pindah ke modal "Pindah Blok".
 import { useState, useRef, useEffect } from "react";
+import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
-import { sapBadgeStyleForLabel, stockSapLabel } from "../lib/sap.js";
+import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan } from "../lib/sap.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
 import { fmtNum } from "../lib/ragShared.mjs";
@@ -38,6 +39,35 @@ export function DataStokTab({
 }) {
   const [moveStock, setMoveStock] = useState(null); // {st, lok, gdg} — trigger modal Pindah Blok
   const searchInputRef = useRef(null);
+
+  // QR label = scanUrlFor(katalogId) → berisi katalogId, bukan no.katalog yang bisa dicari
+  // matchesStockSearch (sap.js, tidak cek katalogId). Resolve dulu; barcode 1D polos (bukan
+  // URL) langsung dipakai apa adanya. Dipakai hardware & kamera (root cause, satu tempat).
+  function handleStockScan(code) {
+    const kid = extractKatalogIdFromScan(code);
+    if (kid) {
+      const kat = katalogList.find(k => k.id === kid);
+      setSearch(kat?.katalog || kat?.name || kid);
+    } else {
+      setSearch(code);
+    }
+  }
+
+  // Scanner hardware (keyboard-wedge) — DataStokTab hanya render saat tabnya aktif,
+  // jadi cukup enabled=true (default) tanpa perlu prop tab tambahan.
+  useHardwareScanner(handleStockScan);
+
+  // Sanitasi jaring pengaman: scanner lambat bikin hook di atas gagal timing (tiap
+  // keydown dianggap ketikan manusia), jadi URL scan (?scan=katalogId) numpuk apa
+  // adanya di search lewat ketikan native ke input yang fokus. Resolve di sini,
+  // idempoten — setelah jadi no.katalog, extractKatalogIdFromScan balik null, effect
+  // tidak setSearch lagi (tak infinite loop).
+  useEffect(() => {
+    const kid = extractKatalogIdFromScan(search);
+    if (!kid) return;
+    const kat = katalogList.find(k => k.id === kid);
+    setSearch(kat?.katalog || kat?.name || kid);
+  }, [search]);
 
   // Shortcut "/" fokus ke pencarian — diabaikan kalau sedang mengetik di field lain.
   useEffect(() => {
@@ -103,7 +133,7 @@ export function DataStokTab({
                   )}
                 </div>
                 {typeof openScanner === "function" && (
-                  <button type="button" className="stock-scan-button" aria-label="Scan barcode" title="Scan barcode" onClick={()=>openScanner({onDetect:(code)=>setSearch(code)})}
+                  <button type="button" className="stock-scan-button" aria-label="Scan barcode" title="Scan barcode" onClick={()=>openScanner({onDetect:handleStockScan})}
                     style={{...sty.btn("ghost"),whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
                     <Barcode size={18} weight="bold" aria-hidden="true" />
                     {!isMobile && <span>Scan</span>}

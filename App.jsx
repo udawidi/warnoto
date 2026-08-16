@@ -59,6 +59,7 @@ import { MaturityDashboardTab } from "./src/components/MaturityDashboardTab.jsx"
 import { useMaturity } from "./src/hooks/useMaturity.jsx";
 import { useTugApprovals } from "./src/hooks/useTugApprovals.js";
 import { useTugTransactions } from "./src/hooks/useTugTransactions.js";
+import { useHardwareScanner } from "./src/hooks/useHardwareScanner.js";
 import { useStockOpname } from "./src/hooks/useStockOpname.js";
 import { useApprovalHub } from "./src/hooks/useApprovalHub.js";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "./src/data/auditAspects.js";
@@ -82,6 +83,7 @@ import { AkunModal, GantiPasswordModal } from "./src/components/AkunModals.jsx";
 import { StockEditFields, MaturityAssessmentModal, DocPreviewModal } from "./src/components/StockModals.jsx";
 import { OcrSuggestGudangModal, LokasiDeleteConfirmModal, ConfirmDialogModal, PhotoSearchModal, LightboxModal, PetaMiniDetailModal, CapacityReviewModal } from "./src/components/MiscModals.jsx";
 import { Tug5FormModal, Tug98FormModal, Tug10FormModal, Tug3FormModal } from "./src/components/TugFormModals.jsx";
+import { ScanPickerModal } from "./src/components/ScanPickerModal.jsx";
 import { BarcodeScanner } from "./src/components/BarcodeScanner.jsx";
 import { DashboardRingkasanBlock } from "./src/components/DashboardRingkasanBlock.jsx";
 import { DemoBannerAndToast } from "./src/components/DemoBannerAndToast.jsx";
@@ -586,6 +588,7 @@ export default function PLNWarehouse() {
   const [pendingFoto, setPendingFoto] = useState({}); // foto yang baru dipilih tapi belum diklik "Simpan Foto" — {fotoNameplate, fotoKeseluruhan}
   const [lightboxImg, setLightboxImg] = useState(null); // src foto yang sedang di-overview full-screen
   const [scannerTarget, setScannerTarget] = useState(null); // "stockForm" | {index}
+  const [scanPicker, setScanPicker] = useState(null); // {candidates, txnIndex} — modal pilih material saat scan TUG cocok >1
   const [toast, setToast] = useState(null);
 
   const [chatHistory, setChatHistory] = useState([{ role:"ai", text:`Halo, saya Pak War — asisten operasional gudang PLN.\n\nSaya siap membantu membaca kondisi stok, transaksi TUG, approval, forecast, dan prioritas pekerjaan. Pilih contoh pertanyaan di atas atau tulis pertanyaan Anda sendiri.` }]);
@@ -2482,6 +2485,42 @@ export default function PLNWarehouse() {
   // ── Barcode scan handling ──
   function openScanner(target) { setScannerTarget(target); setScannerOpen(true); }
 
+  // Cari barang cocok untuk kode hasil scan (QR Kartu Gantung TUG-2 berisi
+  // katalogId, atau kode katalog biasa) dan isi baris txnForm.stockItems[txnIndex].
+  // Dipakai handleScanResult (scan kamera) DAN hook useHardwareScanner (scan hardware).
+  function applyTxnScan(code, txnIndex) {
+    const scannedKatalogId = extractKatalogIdFromScan(code);
+    const matches = scannedKatalogId
+      ? enrichedStocks.filter(s => s.katalogId === scannedKatalogId)
+      : enrichedStocks.filter(s => s.katalog === code);
+    if (matches.length === 0) {
+      showToast(`Kode ${code} tidak ditemukan di database katalog`, "error");
+    } else if (matches.length === 1) {
+      setTxnForm(tf => {
+        const items = [...tf.stockItems];
+        items[txnIndex] = { ...items[txnIndex], stockId: matches[0].id };
+        return { ...tf, stockItems: items };
+      });
+      showToast(`📷 Barang ditemukan: ${matches[0].name} (${matches[0].lokasi})`);
+    } else {
+      // Kode tidak unik (no.katalog WARNOTO bisa dipakai >1 paket MARA) atau material
+      // yang sama ada di banyak lokasi — JANGAN auto-pilih di transaksi, biarkan user
+      // pilih lewat ScanPickerModal supaya tidak salah material/lokasi diam-diam.
+      setScanPicker({ candidates: matches, txnIndex });
+    }
+  }
+
+  // Dipanggil ScanPickerModal saat user ketuk salah satu kandidat.
+  function chooseScanPickerMatch(chosen) {
+    setTxnForm(tf => {
+      const items = [...tf.stockItems];
+      items[scanPicker.txnIndex] = { ...items[scanPicker.txnIndex], stockId: chosen.id };
+      return { ...tf, stockItems: items };
+    });
+    showToast(`📷 Barang dipilih: ${chosen.name} (${chosen.lokasi})`);
+    setScanPicker(null);
+  }
+
   function handleScanResult(code) {
     if (scannerTarget === "katalogForm") {
       setKatalogForm(kf => ({ ...kf, katalog: code }));
@@ -2491,29 +2530,19 @@ export default function PLNWarehouse() {
       // punya state lokal sendiri (activeOpname) yang tidak bisa disentuh langsung dari sini.
       scannerTarget.onDetect(code);
     } else if (scannerTarget?.txnIndex !== undefined) {
-      const scannedKatalogId = extractKatalogIdFromScan(code);
-      // Scan QR Kartu Gantung TUG-2 (berisi katalogId) → cari semua baris Data
-      // Stok untuk material itu; kalau scan kode katalog biasa (bukan QR
-      // TUG-2), fallback ke pencocokan lama by katalog code.
-      const matches = scannedKatalogId
-        ? enrichedStocks.filter(s => s.katalogId === scannedKatalogId)
-        : enrichedStocks.filter(s => s.katalog === code);
-      if (matches.length > 0) {
-        const match = matches.find(s=>s.qty>0) || matches[0];
-        setTxnForm(tf => {
-          const items = [...tf.stockItems];
-          items[scannerTarget.txnIndex] = { ...items[scannerTarget.txnIndex], stockId: match.id };
-          return { ...tf, stockItems: items };
-        });
-        showToast(matches.length>1
-          ? `📷 ${match.name} ditemukan di ${matches.length} lokasi — terpilih: ${match.lokasi}. Cek lokasinya sudah benar.`
-          : `📷 Barang ditemukan: ${match.name} (${match.lokasi})`);
-      } else {
-        showToast(`Kode ${code} tidak ditemukan di database katalog`, "error");
-      }
+      applyTxnScan(code, scannerTarget.txnIndex);
     }
     setScannerOpen(false);
   }
+
+  // Scanner hardware (keyboard-wedge, mis. Kassen KS-606) untuk form TUG-9/TUG-8 —
+  // isi baris pertama yang belum ada barangnya, kalau semua terisi pakai baris terakhir.
+  useHardwareScanner((code) => {
+    const items = txnForm?.stockItems || [];
+    if (!items.length) return;
+    const idx = items.findIndex(it => !it.stockId);
+    applyTxnScan(code, idx >= 0 ? idx : items.length - 1);
+  }, { enabled: !!txnModal && !!txnForm?.stockItems });
 
   // ── Transaction (TUG-9) ── diekstrak ke src/hooks/useTugTransactions.js
   // (openNewTxn, addItemRow, removeItemRow, updateItemRow, tug10Missing,
@@ -4314,6 +4343,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
       {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={docSeq} gudangList={gudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+
+      {/* SCAN PICKER MODAL — kode scan TUG cocok >1 stok, biarkan user pilih (jangan auto-pilih) */}
+      <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
 
       {/* TXN MODAL - TUG10 FORM (incoming material / return to warehouse) */}
       {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={docSeq} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}

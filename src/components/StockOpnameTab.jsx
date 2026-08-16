@@ -1,5 +1,6 @@
 // Komponen StockOpnameTab — dipindah dari App.jsx (refactor Fase 5c).
 import { useState, useRef } from "react";
+import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { supabase } from "../supabaseClient.js";
 import { fmtDate, parseSAPFile, parseUsulanPencocokanXLSX, scanUrlFor } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
@@ -126,22 +127,27 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Scan QR label material (Kartu Gantung TUG-2) untuk LOMPAT ke baris yang benar di tabel opname
   // ini — TIDAK mengisi qty otomatis, cuma navigasi. Angka hasil hitung fisik tetap wajib diketik
   // manual (aturan yang disepakati user 2026-07-07: scan bukan pengganti hitung fisik).
-  function handleScanQty() {
-    openScanner({ onDetect: (code) => {
-      const items = activeOpname?.items || [];
-      const scannedKatalogId = extractKatalogIdFromScan(code);
-      let idx = scannedKatalogId ? items.findIndex(it => it.katalogId === scannedKatalogId) : -1;
-      if (idx < 0) idx = items.findIndex(it => it.noKatalog && normalizeKatalog(it.noKatalog) === normalizeKatalog(code));
-      if (idx < 0) { showToast(`Kode ${code} tidak ditemukan di daftar item opname ini`, "error"); return; }
-      setPage(Math.floor(idx / pageSize));
-      setHighlightIdx(idx);
-      showToast(`📷 Ditemukan: ${items[idx].namaBarang} — ketik qty hasil hitung fisik.`);
-      setTimeout(() => {
-        const el = qtyInputRefs.current[idx];
-        if (el) { el.focus(); el.scrollIntoView({behavior:"smooth", block:"center"}); }
-      }, 50);
-    }});
+  function runOpnameScan(code) {
+    const items = activeOpname?.items || [];
+    const scannedKatalogId = extractKatalogIdFromScan(code);
+    let idx = scannedKatalogId ? items.findIndex(it => it.katalogId === scannedKatalogId) : -1;
+    if (idx < 0) idx = items.findIndex(it => it.noKatalog && normalizeKatalog(it.noKatalog) === normalizeKatalog(code));
+    if (idx < 0) { showToast(`Kode ${code} tidak ditemukan di daftar item opname ini`, "error"); return; }
+    setPage(Math.floor(idx / pageSize));
+    setHighlightIdx(idx);
+    showToast(`📷 Ditemukan: ${items[idx].namaBarang} — ketik qty hasil hitung fisik.`);
+    setTimeout(() => {
+      const el = qtyInputRefs.current[idx];
+      if (el) { el.focus(); el.scrollIntoView({behavior:"smooth", block:"center"}); }
+    }, 50);
   }
+
+  function handleScanQty() {
+    openScanner({ onDetect: runOpnameScan });
+  }
+
+  // Scanner hardware — hanya aktif saat form opname (SAP/Non-SAP) sedang dibuka.
+  useHardwareScanner(runOpnameScan, { enabled: ["form-sap","form-nonsap"].includes(activeTab) && !!activeOpname });
 
   // ── SAP CSV Parser ──────────────────────────────────────────────────────
   function buildItemsFromSAP(sapRows) {

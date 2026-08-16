@@ -54,6 +54,27 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **SCANNER HARDWARE Kassen KS-606 (keyboard-wedge/HID) TERINTEGRASI — DI-PUSH (2026-08-16).**
+  Alat mengetik hasil scan + Enter; TANPA driver/SDK. Nol UI baru (tombol 📷 kamera tetap).
+  - `src/hooks/useHardwareScanner.js` (baru): tangkap burst keydown (jeda antar-tombol < `gapMs`
+    **120**) diakhiri Enter (`preventDefault`), panggil `onScan(kode)`. `onScanRef` cegah re-attach.
+  - Reuse jalur scan yang ADA: TUG lewat `applyTxnScan(code,idx)` (di-refactor dari cabang
+    `txnIndex` `handleScanResult`), Opname lewat `runOpnameScan` (scan=navigasi, qty tetap manual),
+    Data Stok lewat `setSearch`. Di-arm per-menu (TUG saat `txnModal`, Opname saat form aktif,
+    Data Stok saat tab mount). QR = `scanUrlFor(katalogId)`; `extractKatalogIdFromScan` parse sama
+    persis dengan kamera. Lintas-platform (dongle USB desktop & Bluetooth HP) — sama, murni DOM keydown.
+  - **Data Stok gotcha (scanner PELAN):** jeda antar-char > gapMs bikin hook gagal timing → URL
+    numpuk mentah lewat ketikan native ke input fokus. Jaring pengaman: `useEffect` di `DataStokTab`
+    resolve `?scan=<katalogId>` → no.katalog (matchesStockSearch cek `stock.katalog`/`id`, BUKAN
+    katalogId), idempoten.
+  - **TUG anti-salah-pilih (safety):** no.katalog TIDAK unik (kunci paket 5-tuple MARA) + 1 material
+    bisa banyak lokasi → `applyTxnScan` >1 match TIDAK auto-pilih lagi, buka `ScanPickerModal.jsx`
+    (baru) untuk user pilih material+lokasi. 1 match=isi langsung, 0=toast error.
+  - **Keputusan arsitektur (jangan diulang):** registrasi/penolakan alat scan spesifik TIDAK bisa
+    di web keyboard-wedge (keydown nol identitas device); WebHID merusak alur BT-HP & cuma kenal
+    model bukan unit. Batas keamanan = auth user + scope UPT/RLS + approval, BUKAN alat. Isolasi
+    1-catalog-lintas-UPT sudah dijamin login-scope (`stocks` per RLS), bukan scanner.
+
 - **ROMBAK BESAR UI MOBILE — Gelombang 0 & 1 SELESAI + DI-COMMIT + PUSH (2026-08-16).**
   Arah: perbaiki keterpakaian + polish minimalism Apple-like di atas token yang ada
   (BUKAN bahasa desain baru). Kontrak ditulis di `docs/DESIGN_GUIDELINES.md` seksi 17
