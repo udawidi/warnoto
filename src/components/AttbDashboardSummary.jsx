@@ -35,6 +35,22 @@ export function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty
     {label:"Menunggu Lelang", val:menungguLelang, color:menungguLelang?"#16a34a":C.muted, sub:"tahap akhir"},
   ];
 
+  // Rincian per UPT — hanya untuk viewer nasional/UIT saat scope-nya memang lintas-UPT
+  const uptGroups = {};
+  if (isMSB) {
+    for (const a of scoped) {
+      const key = a.upt || "(tanpa UPT)";
+      if (!uptGroups[key]) uptGroups[key] = { upt: key, count: 0, nilaiBuku: 0, estimasiLelang: 0, tertahan: 0 };
+      const g = uptGroups[key];
+      g.count++;
+      g.nilaiBuku += num(a.nilaiBuku);
+      g.estimasiLelang += num(a.estimasiNilaiTaksiran || a.nilaiTaksiranKJPP);
+      if (a.lanjutBelumLanjut) g.tertahan++;
+    }
+  }
+  const perUpt = Object.values(uptGroups).sort((a,b)=>b.nilaiBuku-a.nilaiBuku);
+  const showPerUpt = isMSB && perUpt.length > 1;
+
   return (
     <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${ditahan?"#f59e0b":C.accent}`,cursor:"pointer"}} onClick={()=>setTab("attb")}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,marginBottom:12}}>
@@ -74,6 +90,24 @@ export function AttbDashboardSummary({ attbList = [], bongkaranPool = [], C, sty
           </div>
         ))}
       </div>
+
+      {/* Rincian per UPT — breakdown untuk viewer nasional/UIT saat scope mencakup >1 UPT */}
+      {showPerUpt && (
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Rincian per UPT</div>
+          {perUpt.map(u=>(
+            <div key={u.upt} style={{display:"flex",flexWrap:"wrap",alignItems:"center",gap:8,padding:"8px 0",borderTop:`1px solid ${C.border}`}}>
+              <div style={{fontSize:13,fontWeight:900,flex:"1 1 110px"}}>{u.upt}</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(88px,1fr))",gap:8,flex:"3 1 260px"}}>
+                <div><div style={{fontSize:12,color:C.muted}}>Item</div><div style={{fontSize:13,fontWeight:800}}>{u.count}</div></div>
+                <div><div style={{fontSize:12,color:C.muted}}>Nilai Buku</div><div style={{fontSize:13,fontWeight:800}}>{fmtRp(u.nilaiBuku)}</div></div>
+                <div><div style={{fontSize:12,color:C.muted}}>Est. Lelang</div><div style={{fontSize:13,fontWeight:800}}>{fmtRp(u.estimasiLelang)}</div></div>
+                <div><div style={{fontSize:12,color:C.muted}}>Tertahan</div><div style={{fontSize:13,fontWeight:800,color:u.tertahan?"#f59e0b":C.muted}}>{u.tertahan}</div></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

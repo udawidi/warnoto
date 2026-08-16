@@ -129,17 +129,19 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
     declamp teks Format/help (tak terpotong). Stock Count draft card-table ringkas (checkbox
     __photo, hide No Katalog/Rekomendasi HP), header stack + tombol upload full-width, banner
     dipersingkat+declamp. User ACC: Opname "lumayan", Count rapi setelah 2 putaran.
-  BELUM digarap: ATTB ringkasan per-UPT (GATED — keputusan user + koordinasi tim).
+  ✅ ATTB ringkasan per-UPT — SELESAI (2026-08-16, gate dibuka user): breakdown per-UPT aditif
+  di `AttbDashboardSummary.jsx` untuk viewer UIT/MSB saat >1 UPT (Item/Nilai Buku/Est. Lelang/Tertahan,
+  sort Nilai Buku desc); viewer 1-UPT tak berubah. Build hijau, audit 114.
 
   ### ⏳ PENDING lanjut (2026-08-16, untuk sesi rumah)
   1. ✅ **Baseline visual e2e di-refresh (2026-08-16)** — `npm run test:responsive:update`, 9 PNG
      re-baseline (Dashboard-detail, ATTB-pipeline, Stock, Stock-count, TUG-15 di phone 360/390/412
      + tablet 768), cek per-file semua map ke surface mobile wave, committed+push.
      Gate asli tetap: `scripts/audit-mobile.mjs` (114) + build + review browser.
-  2. **Cek device (bukan e2e stub):** Peta Gudang (butuh denah terupload), Rekomendasi Pengadaan,
-     Maturity UPT dropdown, modal besar Kartu Gantung/Cetak Barcode (opsional).
-  3. **ATTB ringkasan per-UPT** — GATED (keputusan user + koordinasi tim paralel) sebelum edit
-     `AttbDashboardSummary.jsx`/`operations.css`.
+  2. **Cek device (bukan e2e stub) — tugas USER, bukan kode:** Peta Gudang (butuh denah terupload;
+     overflow sudah aman by-inspection, keputusan user 2026-08-16 cukup device-test tanpa seed fixture),
+     Rekomendasi Pengadaan, Maturity UPT dropdown, modal besar Kartu Gantung/Cetak Barcode (opsional).
+  3. ✅ **ATTB ringkasan per-UPT — SELESAI (2026-08-16)** (lihat entri di atas).
   4. Backlog lama tetap: `python ml/train_forecast.py` (env service_role/CI, non-blocking);
      fitur baru MTU KHS & gudang MRWI (belum didesain); Non-SBY UPT isi `minQty`/histori (data gap).
 
@@ -151,9 +153,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
      (wrap badge baris blok) + PASS.
   3. ✅ Modal besar Kartu Gantung Digital & Cetak Barcode — audit selesai: overflow-safe by
      inspection (tak ada fix perlu). Sisa: cek device (opsional).
-  3b. ATTB ringkasan per-UPT (GATED) = item berikutnya bila user buka gate. **← BERIKUTNYA (GATED)**
-  4. **ATTB ringkasan per-UPT Penghapusan** — GATED: keputusan user + koordinasi tim paralel
-     sebelum edit `AttbDashboardSummary.jsx`/`operations.css`.
+  3b. ✅ ATTB ringkasan per-UPT — SELESAI 2026-08-16 (gate dibuka user, breakdown aditif).
   5. Alat Berat mini-grid di dashboard — polish warna (opsional, dipakai 3 dashboard).
   6. Kapasitas — konfirmasi user apakah mau hierarki ukuran metrik primer (m²/%) vs count.
   7. Uji crowding data nyata (nama panjang/banyak baris) yang tak muncul di e2e stub.
