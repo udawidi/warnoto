@@ -72,9 +72,36 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
     `stock.css`), presentation-only.
   - Verifikasi tiap gelombang: scanner `audit-mobile.mjs` **118** (lantai terjaga), `npm run build`
     hijau, `mobile-minimal` 3/3 + tap-modal test lulus, review-first (user OK visual) sebelum commit.
-  - **Langkah berikutnya rombak mobile:** Gelombang 2 (admin/master/config + modal), Gelombang 3
-    (Peta Gudang, Alat Berat, modal besar). Gelombang 4 ATTB = GATED (butuh koordinasi tim paralel).
-    Tunggu user tunjuk pain berikutnya (pola: tunjuk screen → audit PNG → fix → re-baseline → commit).
+  - **Gelombang 2+ (2026-08-16, commit lanjutan):** Dashboard Eksekutif "Overview Gudang"
+    di-declutter (redundansi nilai Rp dibuang, KPI card diseragamkan jadi `.kpi-card`, label
+    KPI wrap bukan ellipsis); Analitik Material 3 widget diseragamkan (baris hairline, badge
+    tenang, urgensi via warna teks); Kapasitas KPI banner grid dirapikan (item ke-7 full-width).
+    Rekomendasi Pengadaan (`forecastView==="procurement"`, tabel `ForecastStokPage.jsx:368-398`):
+    inline `maxWidth:120/180` pada td bocor ke kartu HP bikin kolom Merk jatuh vertikal —
+    fix global `.mobile-card-table__row > td { max-width:none !important }`. **Badge "Ketuk
+    untuk detail" generik DIHAPUS global** (`content:none`, index.css) atas permintaan user
+    (kartu tetap bisa diketuk; Data Stok tetap punya chevron "Detail ›" tersendiri).
+    Admin/master/config + Alat Berat sudah diaudit = bersih, tak di-churn.
+
+  ### Checklist uji tampilan mobile (per 2026-08-16)
+  LOLOS visual 360px: Data Stok (user: "lumayan baik"), Forecast Stok, Approval, Dashboard
+  Eksekutif/Overview, Analitik Material, Kapasitas Gudang, Master Organisasi/Migrasi,
+  Permission Matrix, Alat Berat, Pak War/Telegram config, baseline modal (Material detail).
+  BELUM diverifikasi mata (fix sudah masuk, perlu cek device / tak ada render e2e):
+  Rekomendasi Pengadaan (merk & susunan), Maturity (UPT dropdown + halaman penuh).
+  BELUM digarap: Peta Gudang (tak render e2e, kemungkinan overflow), modal besar (Kartu
+  Gantung Digital, Cetak Barcode — konten belum dilihat), ATTB ringkasan per-UPT (GATED).
+
+  ### Pending jangka pendek rombak mobile (urut prioritas)
+  1. Verifikasi device: Rekomendasi Pengadaan (merk tak vertikal lagi?), Maturity UPT dropdown.
+  2. Peta Gudang mobile — audit + fix overflow (Gelombang 3).
+  3. Modal besar Kartu Gantung Digital & Cetak Barcode — cek konten di HP.
+  4. **ATTB ringkasan per-UPT Penghapusan** — GATED: keputusan user + koordinasi tim paralel
+     sebelum edit `AttbDashboardSummary.jsx`/`operations.css`.
+  5. Alat Berat mini-grid di dashboard — polish warna (opsional, dipakai 3 dashboard).
+  6. Kapasitas — konfirmasi user apakah mau hierarki ukuran metrik primer (m²/%) vs count.
+  7. Uji crowding data nyata (nama panjang/banyak baris) yang tak muncul di e2e stub.
+  Pola kerja: user tunjuk screen → audit PNG → fix root-cause → re-baseline → commit+push.
 
 - **MODE RINGKAS HP SELESAI + TERVERIFIKASI DI BROWSER (2026-08-15) — belum di-commit.**
   Verifikasi lewat Playwright 360px (`npx playwright test tests/e2e/mobile-minimal.spec.js --project=phone-360`,
