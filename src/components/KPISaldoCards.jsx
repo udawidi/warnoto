@@ -9,23 +9,21 @@ export function KPISaldoCards({ stocks, C, sty }) {
   const nilaiPreMemory      = stocks.filter(s=>s.jenisBarang==="Pre Memory").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
 
   const cards = [
-    { label:"Saldo Material Cadang",          nilai:nilaiCadang,          count:stocks.filter(s=>s.jenisBarang==="Cadang").length,          color:"#dc2626", bg:"#fff5f5" },
-    { label:"Saldo Material Persediaan",       nilai:nilaiPersediaan,      count:stocks.filter(s=>s.jenisBarang==="Persediaan").length,       color:"#16a34a", bg:"#f0fdf4" },
-    { label:"Saldo Persediaan Bursa",          nilai:nilaiPersediaanBursa, count:stocks.filter(s=>s.jenisBarang==="Persediaan Bursa").length, color:"#ea580c", bg:"#fff7ed" },
-    { label:"Saldo Pre Memory",                nilai:nilaiPreMemory,       count:stocks.filter(s=>s.jenisBarang==="Pre Memory").length,       color:"#1d4ed8", bg:"#eff6ff" },
+    { label:"Saldo Material Cadang",          nilai:nilaiCadang,          count:stocks.filter(s=>s.jenisBarang==="Cadang").length,          color:"#dc2626" },
+    { label:"Saldo Material Persediaan",       nilai:nilaiPersediaan,      count:stocks.filter(s=>s.jenisBarang==="Persediaan").length,       color:"#16a34a" },
+    { label:"Saldo Persediaan Bursa",          nilai:nilaiPersediaanBursa, count:stocks.filter(s=>s.jenisBarang==="Persediaan Bursa").length, color:"#ea580c" },
+    { label:"Saldo Pre Memory",                nilai:nilaiPreMemory,       count:stocks.filter(s=>s.jenisBarang==="Pre Memory").length,       color:"#1d4ed8" },
   ];
 
   return (
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginBottom:20}}>
       {cards.map((c,i)=>(
-        <div key={i} style={{...sty.card,borderLeft:`4px solid ${c.color}`,background:c.bg,padding:12}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,color:C.muted,fontWeight:700,textTransform:"uppercase",marginBottom:3,lineHeight:1.3}}>{c.label}</div>
-              <div style={{fontSize:15,fontWeight:900,color:c.color}}>{fmtRp(c.nilai)}</div>
-              <div style={{fontSize:12,color:C.muted,marginTop:2}}>{c.count} item aktif</div>
-            </div>
-            <div style={{marginLeft:6,flexShrink:0,display:"flex",alignItems:"center"}}><Circle weight="fill" size={18} color={c.color}/></div>
+        <div key={i} className="kpi-card" style={{"--kpi-color":c.color}}>
+          <div className="kpi-card__icon" style={{"--kpi-tint":c.color+"1a"}}><Circle weight="fill" size={16}/></div>
+          <div className="kpi-card__copy">
+            <strong>{fmtRp(c.nilai)}</strong>
+            <span>{c.label}</span>
+            <small>{c.count} item aktif</small>
           </div>
         </div>
       ))}

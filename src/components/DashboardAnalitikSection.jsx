@@ -1,6 +1,6 @@
 // Komponen DashboardAnalitikSection — dipindah dari App.jsx (refactor Fase 4f).
 import { fmtNum } from "../lib/ragShared.mjs";
-import { katalogSapLabel, katalogSapStatus, sapBadgeStyleForLabel } from "../lib/sap.js";
+import { katalogSapLabel, katalogSapStatus } from "../lib/sap.js";
 import { getTopPemakaian, getTopStokTerbanyak, getMaterialAkanHabis } from "../lib/analytics.js";
 import { ChartBar, Fire, Package, Warning, CheckCircle } from "@phosphor-icons/react";
 
@@ -9,27 +9,21 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
   const topStok = getTopStokTerbanyak(stocks, katalogList, topN);
   const akanHabis = getMaterialAkanHabis(stocks, katalogList, txns, topN);
 
-  const maxPemakaian = topPemakaian[0]?.[pemakaianMode==="frekuensi"?"frekuensi":"totalQty"] || 1;
-  const maxStok = topStok[0]?.totalQty || 1;
-
-  function BarRow({ label, sub, value, maxVal, badge, extra, color="#3b82f6" }) {
-    const pct = Math.round((value/maxVal)*100);
+  // Baris seragam untuk ketiga widget: [rank] nama ...... nilai kanan, dipisah garis rambut (bukan box per baris).
+  function MaterialRow({ rank, label, sub, badge, value, valueColor, extra, isLast }) {
     return (
-      <div style={{marginBottom:10}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:3}}>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{label}</div>
-            {sub && <div style={{fontSize:12,color:C.muted}}>{sub}</div>}
-          </div>
-          <div style={{textAlign:"right",marginLeft:8,flexShrink:0}}>
-            <div style={{fontSize:12,fontWeight:700,color}}>{fmtNum(value)}</div>
-            {extra && <div style={{fontSize:12,color:C.muted}}>{extra}</div>}
-          </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,padding:"8px 0",borderBottom:isLast?"none":`1px solid ${C.border}`}}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{rank}. {label}</div>
+          {(sub || badge) && <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2,fontSize:12,color:C.muted,overflow:"hidden"}}>
+            {sub && <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{sub}</span>}
+            {badge}
+          </div>}
         </div>
-        <div style={{background:"#f1f5f9",borderRadius: 10,height:6}}>
-          <div style={{width:`${pct}%`,height:6,borderRadius: 10,background:color,transition:"width 0.3s"}}/>
+        <div style={{textAlign:"right",flexShrink:0}}>
+          <div style={{fontSize:15,fontWeight:700,color:valueColor||C.text}}>{value}</div>
+          {extra && <div style={{fontSize:12,color:C.muted,marginTop:1}}>{extra}</div>}
         </div>
-        {badge && <span style={{fontSize:12,padding:"1px 5px",borderRadius:10,background:color+"22",color,fontWeight:700,marginTop:2,display:"inline-block"}}>{badge}</span>}
       </div>
     );
   }
@@ -64,13 +58,13 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
           {topPemakaian.length===0
             ? <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}>Belum ada data pemakaian</div>
             : topPemakaian.map((item,i)=>(
-                <BarRow key={item.katalogId}
-                  label={`${i+1}. ${item.nama}`}
+                <MaterialRow key={item.katalogId}
+                  rank={i+1}
+                  label={item.nama}
                   sub={`${item.katalog} • ${katalogSapLabel(item)}`}
-                  value={pemakaianMode==="frekuensi"?item.frekuensi:item.totalQty}
-                  maxVal={maxPemakaian}
+                  value={fmtNum(pemakaianMode==="frekuensi"?item.frekuensi:item.totalQty)}
                   extra={pemakaianMode==="frekuensi"?`${item.frekuensi}x bon`:item.satuan}
-                  color="#f59e0b"
+                  isLast={i===topPemakaian.length-1}
                 />
               ))
           }
@@ -81,20 +75,17 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
           <div style={{fontWeight:700,fontSize:13,marginBottom:12}}><Package weight="fill" size={15} style={{verticalAlign:"-0.15em",marginRight:4}}/>Stok Terbanyak di Gudang</div>
           {topStok.length===0
             ? <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}>Belum ada data stok</div>
-            : topStok.map((item,i)=>{
-                const sapBs = sapBadgeStyleForLabel(katalogSapLabel(item));
-                return (
-                  <BarRow key={item.katalogId}
-                    label={`${i+1}. ${item.nama}`}
-                    sub={<span style={{padding:"1px 5px",borderRadius:10,fontSize:12,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{katalogSapStatus(item)}</span>}
-                    value={item.totalQty}
-                    maxVal={maxStok}
-                    extra={`${fmtNum(item.totalQty)} ${item.satuan}`}
-                    badge={item.jenisBarang}
-                    color={C.accent}
-                  />
-                );
-              })
+            : topStok.map((item,i)=>(
+                <MaterialRow key={item.katalogId}
+                  rank={i+1}
+                  label={item.nama}
+                  sub={katalogSapStatus(item)}
+                  badge={<span style={sty.jenisBadge(item.jenisBarang)}>{item.jenisBarang}</span>}
+                  value={fmtNum(item.totalQty)}
+                  extra={item.satuan}
+                  isLast={i===topStok.length-1}
+                />
+              ))
           }
         </div>
 
@@ -104,23 +95,19 @@ export function DashboardAnalitikSection({ txns, stocks, katalogList, topN, setT
           {akanHabis.length===0
             ? <div style={{textAlign:"center",color:C.muted,fontSize:12,padding:20}}><CheckCircle weight="fill" size={14} color={C.green} style={{verticalAlign:"-0.15em",marginRight:4}}/>Semua stok dalam kondisi aman</div>
             : akanHabis.map((item,i)=>{
-                const badgeColor = item.isKritis?"#dc2626":item.estimasiHari<=30?"#d97706":"#ea580c";
+                const statusColor = item.isKritis?"#dc2626":item.estimasiHari<=30?"#d97706":"#ea580c";
                 const hariLabel = item.estimasiHari===Infinity?"Tidak ada data pakai":item.estimasiHari>365?">1 tahun":`~${item.estimasiHari} hari`;
+                const sub = item.katalog + (item.avgPerBulan>0?` • ±${item.avgPerBulan.toFixed(1)}/bln`:"");
                 return (
-                  <div key={item.katalogId} style={{marginBottom:10,padding:"8px 10px",borderRadius: 10,border:`1px solid ${badgeColor}22`,background:`${badgeColor}0a`}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{item.nama}</div>
-                        <div style={{fontSize:12,color:C.muted}}>{item.katalog}</div>
-                      </div>
-                      <span style={{fontSize:12,fontWeight:700,color:badgeColor,marginLeft:6,flexShrink:0}}>{item.badge}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",marginTop:4,fontSize:12}}>
-                      <span style={{color:C.muted}}>Stok: <b style={{color:"#111"}}>{fmtNum(item.totalQty)}</b> {item.satuan}</span>
-                      <span style={{color:badgeColor,fontWeight:600}}>{hariLabel}</span>
-                    </div>
-                    {item.avgPerBulan>0 && <div style={{fontSize:12,color:C.muted}}>Rata-rata pakai: {item.avgPerBulan.toFixed(1)}/bulan</div>}
-                  </div>
+                  <MaterialRow key={item.katalogId}
+                    rank={i+1}
+                    label={item.nama}
+                    sub={sub}
+                    value={hariLabel}
+                    valueColor={statusColor}
+                    extra={`Stok ${fmtNum(item.totalQty)} ${item.satuan}`}
+                    isLast={i===akanHabis.length-1}
+                  />
                 );
               })
           }

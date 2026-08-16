@@ -13,10 +13,6 @@ import { Package, Warning, Hourglass, Tractor, ClipboardText, Siren, Buildings }
 
 export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKedatanganList, myPendingApprovals, topN, setTopN, pemakaianMode, setPemakaianMode, C, sty, setTab, heavyEquipmentList, heavyEquipmentLoans, currentUser, uptNama, attbList, attbBongkaranPool, isMobile }) {
   const nilaiTotal = stocks.reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-  const nilaiCadang = stocks.filter(s=>s.jenisBarang==="Cadang").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-  const nilaiPersediaan = stocks.filter(s=>s.jenisBarang==="Persediaan").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-  const nilaiPersediaanBursa = stocks.filter(s=>s.jenisBarang==="Persediaan Bursa").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
-  const nilaiPreMemory = stocks.filter(s=>s.jenisBarang==="Pre Memory").reduce((a,s)=>a+(s.qty||0)*(s.price||0),0);
   // Deret pemakaian bulanan per katalog — key-nya katalogId (bukan lokasi/UPT), jadi map yang
   // sama dipakai ulang untuk rekap per-UPT di tabel bawah.
   const monthlySeriesByKatalogId = buildMonthlySeriesByKatalog(txns, stocks);
@@ -38,19 +34,6 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
           <div className="dashboard-manager__inventory">
             <span>Total nilai inventori · {uptNama}</span>
             <strong>{fmtRp(nilaiTotal)}</strong>
-            <div className="dashboard-manager__inventory-grid">
-              {[
-                {label:"Cadang",val:nilaiCadang,color:"#fca5a5"},
-                {label:"Persediaan",val:nilaiPersediaan,color:"#86efac"},
-                {label:"Bursa",val:nilaiPersediaanBursa,color:"#fdba74"},
-                {label:"Pre Memory",val:nilaiPreMemory,color:"#93c5fd"},
-              ].map((b,i)=>(
-                <div key={i}>
-                  <span>{b.label}</span>
-                  <strong style={{color:b.color}}>{fmtRp(b.val)}</strong>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </section>
@@ -64,9 +47,9 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
           {label:"Rencana Terlambat",val:terlambat.length,icon:<Warning weight="fill" size={22}/>,color:terlambat.length>0?"#dc2626":"#16a34a"},
           {label:"Transaksi Bulan Ini",val:txnBulanIni.length,icon:<ClipboardText weight="fill" size={22}/>,color:"#7c3aed"},
         ].map((s,i)=>(
-          <div key={i} className="dashboard-manager-kpi" style={{"--manager-kpi-color":s.color}}>
-            <div className="dashboard-manager-kpi__icon">{s.icon}</div>
-            <div><strong>{s.val}</strong><span>{s.label}</span></div>
+          <div key={i} className="kpi-card" style={{"--kpi-color":s.color}}>
+            <div className="kpi-card__icon" style={{"--kpi-tint":s.color+"1a"}}>{s.icon}</div>
+            <div className="kpi-card__copy"><strong>{s.val}</strong><span>{s.label}</span></div>
           </div>
         ))}
       </div>
