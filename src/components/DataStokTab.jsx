@@ -9,7 +9,7 @@ import { sapBadgeStyleForLabel, stockSapLabel } from "../lib/sap.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
 import { fmtNum } from "../lib/ragShared.mjs";
-import { Camera, X, ImageSquare, Tag, MapPin, ArrowsLeftRight, CaretUp, CaretDown, Clock, Barcode } from "@phosphor-icons/react";
+import { Camera, X, ImageSquare, Tag, MapPin, ArrowsLeftRight, CaretUp, CaretDown, CaretRight, Clock, Barcode } from "@phosphor-icons/react";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import "../styles/stock.css";
@@ -103,7 +103,7 @@ export function DataStokTab({
                   )}
                 </div>
                 {typeof openScanner === "function" && (
-                  <button type="button" aria-label="Scan barcode" title="Scan barcode" onClick={()=>openScanner({onDetect:(code)=>setSearch(code)})}
+                  <button type="button" className="stock-scan-button" aria-label="Scan barcode" title="Scan barcode" onClick={()=>openScanner({onDetect:(code)=>setSearch(code)})}
                     style={{...sty.btn("ghost"),whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
                     <Barcode size={18} weight="bold" aria-hidden="true" />
                     {!isMobile && <span>Scan</span>}
@@ -265,6 +265,7 @@ export function DataStokTab({
                           <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{st.katalog||"-"}</span></div>
                           <div className="stock-mobile-summary__description">{st.keteranganBarang || "Keterangan barang belum diisi."}</div>
                           <div className="stock-mobile-summary__meta"><span><MapPin size={14} weight="bold" aria-hidden="true"/> {[gdg?.kode||gdg?.nama, lok?.kode||st.lokasi].filter(Boolean).join(" • ") || "Lokasi belum diisi"}</span><span className={isLow ? "is-critical" : "is-ok"}>{st.jenisBarang==="Non-Stock" ? "Project-Based" : `${fmtNum(st.qty)} ${st.unit}`}</span></div>
+                          <div className="stock-mobile-summary__detail" aria-hidden="true">{isAgg ? "Lihat sebaran" : "Detail"} <CaretRight size={11} weight="bold" aria-hidden="true"/></div>
                         </td>
                         <td className="mobile-card-table__title" data-label="Nama Barang" style={{padding:"8px 10px",minWidth:200}}>
                           <div title={st.name} style={{fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{highlightText(st.name)}</div>

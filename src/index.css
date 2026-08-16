@@ -2132,6 +2132,15 @@
     flex-wrap: wrap;
   }
 
+  /* Baris approval = konten kiri + tombol Setuju/Tolak kanan (flex
+     space-between). Di 360px konten terjepit jadi kolom sempit & teks patah.
+     Stack jadi kolom di HP: konten penuh di atas, tombol di bawah. Satu aturan
+     lewat pola :has (child langsung .approval-actions), nol edit JSX. */
+  .app-content [style*="justify-content: space-between"]:has(> .approval-actions) {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
   /* Baseline modal responsif global (Gelombang 0 rombak mobile).
      Semua modal WARNOTO memakai overlay inline seragam
      (position:fixed + display:flex + align/justify center) dengan panel
