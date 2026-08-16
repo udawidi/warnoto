@@ -48,8 +48,8 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
 
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-        <div>
+      <div className="stockcount-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:16}}>
+        <div style={{minWidth:0}}>
           <p style={{color:C.muted,fontSize:13}}>Banding qty SAP vs Aplikasi untuk material ber-status SAP — temuan selisih perlu approval Asman.</p>
         </div>
         {hasRole(currentUser, "ADMIN") && !draftItems && (
@@ -59,8 +59,8 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
           </label>
         )}
       </div>
-      <div tabIndex={0} className="info-note" style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#1d4ed8",marginBottom:16}}>
-        ℹ️ Stock Count ini cuma membaca & membandingkan — <b>tidak mengubah</b> Data Stok atau Master Katalog. Rekomendasi (tambah stok / buat TUG) cuma saran, tidak otomatis membuat apa pun. Kalau file punya lebih dari 1 sheet dengan header sama, semua ikut terbaca.
+      <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#1d4ed8",lineHeight:1.45,marginBottom:16}}>
+        ℹ️ Hanya membaca & membandingkan qty SAP vs Aplikasi — <b>tidak mengubah</b> data. Rekomendasi hanya saran.
       </div>
 
       {/* DRAFT REVIEW — hasil upload belum tersimpan, belum terlihat Asman.
@@ -79,7 +79,7 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
         return (
         <div style={{...sty.card,marginBottom:20,border:`2px solid #f59e0b`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontWeight:800,fontSize:15}}>📝 Review Draft Stock Count ({draftItems.length} item)</div>
+            <div style={{fontWeight:700,fontSize:15}}>📝 Review Draft Stock Count ({draftItems.length} item)</div>
             <button style={sty.btn("ghost","sm")} onClick={()=>setDraftItems(null)}>✕ Batal</button>
           </div>
           <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>Centang item yang mau disertakan. Item yang akurat tetap ditampilkan sebagai informasi, tidak akan masuk approval Asman.</div>
@@ -98,7 +98,7 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
             ))}
           </div>
 
-          <div className="mobile-card-table" style={{overflowX:"auto",maxHeight:420,overflowY:"auto",marginBottom:14,border:`1px solid ${C.border}`,borderRadius: 10}}>
+          <div className="mobile-card-table stockcount-card-table" style={{overflowX:"auto",maxHeight:420,overflowY:"auto",marginBottom:14,border:`1px solid ${C.border}`,borderRadius: 10}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
                 <tr style={{background:C.sidebar,color:"white",position:"sticky",top:0}}>
@@ -117,26 +117,27 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                   const belumTerdaftar = !item.katalogId;
                   const rowBg = belumTerdaftar ? "#f3e8ff" : item.status==="AKURAT" ? "white" : "#fff5f5";
                   return (
-                    <tr tabIndex={0} className="mobile-card-table__row" key={item.id} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,opacity:item.included?1:0.4}}>
-                      <td data-label="" style={{padding:"6px 8px",textAlign:"center"}}>
+                    <tr className="mobile-card-table__row" key={item.id} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,opacity:item.included?1:0.4}}>
+                      <td className="mobile-card-table__photo" style={{textAlign:"center"}}>
                         <input type="checkbox" checked={item.included} onChange={()=>toggleDraftItem(item.id)}/>
                       </td>
                       <td data-label="Nama Barang" className="mobile-card-table__title" style={{padding:"6px 8px",fontWeight:600,maxWidth:220}}>
                         {item.nama}
-                        {belumTerdaftar && <div style={{fontSize:12,fontWeight:800,color:"#7c3aed"}}>🆕 Belum terdaftar di Master Katalog</div>}
+                        {belumTerdaftar && <div style={{fontSize:12,fontWeight:700,color:"#7c3aed"}}>🆕 Belum terdaftar di Master Katalog</div>}
                       </td>
                       <td data-label="No Katalog" style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.katalogKode}</td>
+                      {/* No Katalog & Rekomendasi disembunyikan di kartu HP (.stockcount-card-table, index.css) — sekunder, tetap ada di desktop & saved-session detail */}
                       <td data-label="Qty SAP" style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>{fmtNum(item.qtySap)} {item.satuan}</td>
-                      <td data-label="Qty Aplikasi" style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>
+                      <td data-label="Qty Aplikasi" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:600,whiteSpace:"nowrap"}}>
                         {belumTerdaftar ? <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span> : `${fmtNum(item.qtyApp)} ${item.satuan}`}
                       </td>
-                      <td data-label="Selisih" style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
+                      <td data-label="Selisih" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
                         {item.status==="AKURAT" ? "—" : `${item.selisih>0?"+":""}${fmtNum(item.selisih)} (${item.selisihPct}%)`}
                       </td>
-                      <td data-label="Status" style={{padding:"6px 8px",textAlign:"center"}}>
+                      <td data-label="Status" className="is-key" style={{padding:"6px 8px",textAlign:"center"}}>
                         {item.status==="AKURAT"
                           ? <span style={{fontSize:12,fontWeight:700,color:C.green}}>✓ Akurat</span>
-                          : <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.status==="APP_KURANG"?"App Kurang":"App Lebih"}</span>}
+                          : <span style={{fontSize:12,fontWeight:700,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.status==="APP_KURANG"?"App Kurang":"App Lebih"}</span>}
                       </td>
                       <td data-label="Rekomendasi" style={{padding:"6px 8px",fontSize:12,color:"#1d4ed8"}}>{item.rekomendasi ? REKOMENDASI_LABEL[item.rekomendasi] : "-"}</td>
                     </tr>

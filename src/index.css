@@ -1815,6 +1815,26 @@
   .stock-card-table .mobile-card-table__row > td[data-label="Blok"],
   .stock-card-table .mobile-card-table__row > td[data-label="Harga"] { display: none !important; }
 
+  /* Stock Opname: tabel editable, semua kolom (is-key) wajib tampil di kartu —
+     angka tidak boleh pecah baris supaya kartu tetap ringkas dibaca. */
+  .opname-card-table .mobile-card-table__row > td[data-label="Qty Sistem"],
+  .opname-card-table .mobile-card-table__row > td[data-label="Qty SAP"],
+  .opname-card-table .mobile-card-table__row > td[data-label="Selisih"] { white-space: nowrap !important; }
+
+  /* Stock Count draft: kartu tanpa expand-per-focus (tabIndex dihapus) —
+     angka SAP/Aplikasi/Selisih tetap satu baris. No Katalog & Rekomendasi
+     sekunder, disembunyikan di kartu (tetap ada di desktop & saved-session
+     detail) supaya kartu ringkas: Nama + Qty SAP + Qty Aplikasi + Selisih + Status. */
+  .stockcount-card-table .mobile-card-table__row > td[data-label="Qty SAP"],
+  .stockcount-card-table .mobile-card-table__row > td[data-label="Qty Aplikasi"],
+  .stockcount-card-table .mobile-card-table__row > td[data-label="Selisih"] { white-space: nowrap !important; }
+  .stockcount-card-table .mobile-card-table__row > td[data-label="No Katalog"],
+  .stockcount-card-table .mobile-card-table__row > td[data-label="Rekomendasi"] { display: none !important; }
+  /* Header Stock Count: di HP stack kolom supaya deskripsi tak terjepit & tombol upload
+     tidak jadi blok besar 2 baris — tombol full-width, tinggi sentuh 44px. */
+  .stockcount-header { flex-direction: column; align-items: stretch !important; }
+  .stockcount-header > label { width: 100%; justify-content: center; min-height: 44px; }
+
   /* Forecast Stok: kartu mobile cuma nampilin summary (Material, Status, Stok, Estimasi);
      detail lengkap (Prediksi ML, Validasi, Aksi) dibuka lewat tap-untuk-detail. */
   .forecast-card-table .mobile-card-table__row > td[data-label="Prediksi ML"],

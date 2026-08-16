@@ -313,7 +313,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
                 </label>
               </div>
-              <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:8}}>
+              <div style={{fontSize:12,color:C.muted,lineHeight:1.45,marginTop:8}}>
                 "Tambah Material" untuk barang yang belum pernah tercatat di mana pun. "Upload Usulan Pencocokan" untuk file review yang sudah disiapkan sebelumnya (kode MARA sudah dicocokkan, tinggal diverifikasi fisik).
               </div>
             </div>
@@ -369,7 +369,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {/* Tombol berstyle, sama persis pola dengan Stock Count — dulu cuma <input type="file">
                 polos tanpa styling di sini, beda tampilan dari upload SAP di tempat lain (keluhan
                 user 2026-07-07: "samakan proses upload filenya agar user lebih familiar"). */}
-            <label style={{...sty.btn("primary"),cursor:csvLoading?"default":"pointer",opacity:csvLoading?0.6:1}}>
+            <label style={{...sty.btn("primary"),display:"flex",alignItems:"center",justifyContent:"center",width:"100%",textAlign:"center",cursor:csvLoading?"default":"pointer",opacity:csvLoading?0.6:1}}>
               {csvLoading ? "Memproses..." : "📂 Upload CSV/XLSX SAP"}
               <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleCSVUpload} disabled={csvLoading} style={{display:"none"}}/>
             </label>
@@ -378,7 +378,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 ✅ {activeOpname.totalRowsSAP} baris SAP dibaca • {items.length} item total • {fmtDate(activeOpname.sapUploadedAt)}
               </div>
             )}
-            <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginTop:6}}>
+            <div style={{fontSize:12,color:C.muted,lineHeight:1.45,marginTop:6}}>
               Format: CSV/XLSX export SAP MM (PEMAT_DDMMYYYY). Kolom yang dipakai: Material, Material Description, Base Unit of Measure, Unrestricted Use Stock, Valuation Type. Kalau file punya lebih dari 1 sheet dengan header sama, semua ikut terbaca.
             </div>
           </div>
@@ -422,7 +422,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             )}
 
             {/* Tabel item */}
-            <div style={{overflowX:"auto",marginBottom:12}}>
+            <div className="mobile-card-table opname-card-table" style={{overflowX:"auto",marginBottom:12}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                 {!isReadOnly ? (
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -473,9 +473,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       : {bg:"#fee2e2",fg:"#991b1b",label:"🔴 Selisih"};
                     const itemGudangId = lokasiList?.find(l=>l.id===item.lokasiId)?.gudangId || "";
                     return (
-                      <tr key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none"}}>
-                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
-                        <td style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
+                      <tr className="mobile-card-table__row" key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none"}}>
+                        {!isMobile && <td data-label="No" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
+                        <td data-label="Nama Barang" className="mobile-card-table__title" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
                           {item.namaBarang}
                           {item.statusItem==="TIDAK_ADA_DI_SISTEM" && (
                             <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
@@ -484,28 +484,28 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color: "#1d4ed8",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
                           )}
                         </td>
-                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.noKatalog}</td>}
-                        <td style={{padding:"6px 8px",textAlign:"center"}}>{item.satuan}</td>
-                        {!isMobile && <td style={{padding:"6px 8px",textAlign:"center",fontWeight:600}}>{fmtNum(item.qtySistem)}</td>}
-                        {isSAP && <td style={{padding:"6px 8px",textAlign:"center",color:item.qtySAP!=null?C.text:"#9ca3af"}}>{item.qtySAP!=null?fmtNum(item.qtySAP):"—"}</td>}
-                        <td style={{padding:"4px 6px",textAlign:"center"}}>
+                        {!isMobile && <td data-label="No Katalog" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.noKatalog}</td>}
+                        <td data-label="Sat" className="is-key" style={{padding:"6px 8px",textAlign:"center"}}>{item.satuan}</td>
+                        {!isMobile && <td data-label="Qty Sistem" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:600}}>{fmtNum(item.qtySistem)}</td>}
+                        {isSAP && <td data-label="Qty SAP" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:item.qtySAP!=null?C.text:"#9ca3af",whiteSpace:"nowrap"}}>{item.qtySAP!=null?fmtNum(item.qtySAP):"—"}</td>}
+                        <td data-label="Qty Fisik" className="is-key" style={{padding:"4px 6px",textAlign:"center"}}>
                           {!isReadOnly
                             ? <input type="number" inputMode="decimal" min="0" value={item.qtsFisik} ref={el=>{qtyInputRefs.current[realIdx]=el;}}
                                 onChange={e=>updateItem(realIdx,"qtsFisik",Number(e.target.value))}
                                 style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,textAlign:"center"}}/>
                             : <span style={{fontWeight:700}}>{fmtNum(item.qtsFisik)}</span>}
                         </td>
-                        <td style={{padding:"6px 8px",textAlign:"center",fontWeight:700,
+                        <td data-label="Selisih" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",
                           color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
                           {item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
                         </td>
-                        <td style={{padding:"6px 8px"}}>
+                        <td data-label="Status" className="is-key" style={{padding:"6px 8px"}}>
                           <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:statusBadge.bg,color:statusBadge.fg}}>
                             {statusBadge.label}
                           </span>
                         </td>
                         {!isSAP && (
-                          <td style={{padding:"4px 6px"}}>
+                          <td data-label="📍 Lokasi" className="is-key" style={{padding:"4px 6px"}}>
                             {!isReadOnly ? (
                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
                                 <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); }}
@@ -525,7 +525,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             )}
                           </td>
                         )}
-                        <td style={{padding:"4px 6px"}}>
+                        <td data-label="Keterangan" className="is-key" style={{padding:"4px 6px"}}>
                           {!isReadOnly
                             ? <input value={item.keterangan||""}
                                 onChange={e=>updateItem(realIdx,"keterangan",e.target.value)}
@@ -533,7 +533,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                                 style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:12}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
                         </td>
-                        <td style={{padding:"4px 6px"}}>
+                        <td data-label="📷 Foto" className="is-key" style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                             {[["fotoKeseluruhan","🖼️","Foto Keseluruhan"],["fotoNameplate","🏷️","Foto Nameplate"]].map(([field,icon,label])=>(
                               <label key={field} title={label}
