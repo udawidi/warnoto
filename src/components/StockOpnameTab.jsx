@@ -6,8 +6,8 @@ import { fmtDate, parseSAPFile, parseUsulanPencocokanXLSX, scanUrlFor } from "..
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
-import { buildBeritaAcaraHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan } from "../lib/sap.js";
+import { buildBeritaAcaraHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import * as XLSX from "xlsx";
 
@@ -28,6 +28,16 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const [pageSize, setPageSize] = useState(10);
   const [dragActive, setDragActive] = useState(false); // Fase 0: dropzone PID
   const dropInputRef = useRef(null);
+  // Fase 1d: blok (lokasiId | "_TANPA_LOKASI") yang disentuh perangkat INI, per sesi (keyed by
+  // opn.id) — dikirim ke saveOpname supaya merge-on-save cuma menimpa blok yang benar diedit di
+  // sini, blok lain (device lain) diambil dari server. Ref (bukan state) supaya persist per sesi
+  // tanpa perlu direset manual tiap ganti activeOpname.
+  const touchedRef = useRef({});
+  // Fase 1e: dialog pilih gudang setelah PID di-parse & ternyata memuat >1 gudang.
+  const [gudangSplitDialog, setGudangSplitDialog] = useState(null);
+  // Fase 1f: filter Gudang/Blok di toolbar tabel item.
+  const [filterGudangId, setFilterGudangId] = useState("");
+  const [filterLokasiId, setFilterLokasiId] = useState("");
 
   // "Tambah Material Ditemukan" (Opname Non-SAP) — form untuk barang fisik yang belum
   // tercatat sama sekali di sistem, ditemukan sambil opname jalan.
@@ -113,6 +123,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         katalogId: newKatalog.id, namaBarang: newKatalog.name, noKatalog: newKatalog.katalog,
         satuan: newKatalog.satuan, qtySistem: 0, qtsFisik: Number(f.qty), selisih: 0,
         statusItem: "MATERIAL_BARU_NONSAP", keterangan: "", lokasiId: f.lokasiId,
+        lokasiBreakdown: [], hitungPerLokasi: { [f.lokasiId]: { qty:Number(f.qty), at:Date.now(), by:currentUser?.id } },
         fotoKeseluruhan: newKatalog.fotoKeseluruhan || null, belumDicocokkanMara: !maraPicked && maraSkip,
       }],
     }));
@@ -153,34 +164,57 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   useHardwareScanner(runOpnameScan, { enabled: activeOpname?.status==="DRAFT" });
 
   // ── SAP CSV Parser ──────────────────────────────────────────────────────
+  // Fase 1b: pecah qty sistem per lokasi/gudang (dari baris stok yang SUDAH difilter untuk
+  // menghitung qtySistem — tanpa query baru, cuma map di loop yang sama).
+  function buildLokasiBreakdown(katRows) {
+    return katRows.map(s=>{
+      const lok = lokasiList?.find(l=>l.id===s.lokasiId);
+      const gud = gudangList?.find(g=>g.id===lok?.gudangId);
+      return { lokasiId: s.lokasiId||null, lokasiKode: lok?.kode||null, gudangId: lok?.gudangId||null, gudangKode: gud?.kode||gud?.nama||null, qty: s.qty||0 };
+    });
+  }
+  // Fase 1c: seed hitungPerLokasi dari qtySistem (default awal — belum benar-benar dihitung
+  // fisik). Blok tunggal → kunci lokasinya; kosong/multi-blok → "_TANPA_LOKASI" (breakdown penuh
+  // per-blok menyusul di mode lapangan Fase 2).
+  function seedHitungPerLokasi(qtySistem, lokasiBreakdown) {
+    if (!qtySistem) return {};
+    const key = lokasiBreakdown.length===1 ? (lokasiBreakdown[0].lokasiId||"_TANPA_LOKASI") : "_TANPA_LOKASI";
+    return { [key]: { qty: qtySistem, at: null, by: null } };
+  }
+
   function buildItemsFromSAP(sapRows) {
     const items = [];
+    // Fase 1a: key ternormalisasi (normalizeKatalog) dua arah — SAP kadang beda zero-padding
+    // dari Master Katalog, perbandingan mentah sebelumnya bikin item ke-cap "Tidak ada di SAP"
+    // padahal sebenarnya cocok.
     const katalogByNo = {};
-    katalogList.forEach(k=>{ if(k.katalog) katalogByNo[k.katalog]=k; });
+    katalogList.forEach(k=>{ if(k.katalog) katalogByNo[normalizeKatalog(k.katalog)]=k; });
 
     // Items from Data Stok — try match to SAP
     const allKids = [...new Set(stocks.map(s=>s.katalogId).filter(Boolean))];
     allKids.forEach(kid=>{
       const kat = katalogList.find(k=>k.id===kid); if(!kat) return;
-      const qtySistem = stocks.filter(s=>s.katalogId===kid).reduce((a,s)=>a+(s.qty||0),0);
-      const sapRow = sapRows.find(r=>r.katalog===kat.katalog);
+      const katRows = stocks.filter(s=>s.katalogId===kid);
+      const qtySistem = katRows.reduce((a,s)=>a+(s.qty||0),0);
+      const sapRow = sapRows.find(r=>normalizeKatalog(r.katalog)===normalizeKatalog(kat.katalog));
+      const lokasiBreakdown = buildLokasiBreakdown(katRows);
       items.push({
         katalogId: kid, namaBarang: kat.name, noKatalog: kat.katalog||"-", satuan: kat.satuan||"-",
         qtySistem, qtySAP: sapRow?.qty??null,
         qtsFisik: qtySistem, selisih: 0,
         statusItem: sapRow==null?"TIDAK_ADA_DI_SAP":"SESUAI",
-        keterangan: "",
+        keterangan: "", lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown),
       });
     });
 
     // Items in SAP but not in sistem
     sapRows.forEach(sr=>{
-      const kat = katalogByNo[sr.katalog];
+      const kat = katalogByNo[normalizeKatalog(sr.katalog)];
       if(!kat) {
         items.push({
           katalogId: null, namaBarang: sr.nama, noKatalog: sr.katalog, satuan: sr.satuan,
           qtySistem: 0, qtySAP: sr.qty, qtsFisik: 0, selisih: 0,
-          statusItem: "TIDAK_ADA_DI_SISTEM", keterangan: "",
+          statusItem: "TIDAK_ADA_DI_SISTEM", keterangan: "", lokasiBreakdown: [], hitungPerLokasi: {},
         });
       }
     });
@@ -193,10 +227,31 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       .filter(Boolean).map(kid=>{
         const kat = katalogList.find(k=>k.id===kid);
         if(!kat) return null;
-        const qtySistem = stocks.filter(s=>s.katalogId===kid).reduce((a,s)=>a+(s.qty||0),0);
+        const katRows = stocks.filter(s=>s.katalogId===kid);
+        const qtySistem = katRows.reduce((a,s)=>a+(s.qty||0),0);
+        const lokasiBreakdown = buildLokasiBreakdown(katRows);
         return { katalogId:kid, namaBarang:kat.name, noKatalog:kat.katalog||"-", satuan:kat.satuan||"-",
-          qtySistem, qtsFisik:qtySistem, selisih:0, statusItem:"SESUAI", keterangan:"" };
+          qtySistem, qtsFisik:qtySistem, selisih:0, statusItem:"SESUAI", keterangan:"",
+          lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown) };
       }).filter(Boolean);
+  }
+
+  // Fase 1e: kelompokkan item hasil parse PID per gudang (dari lokasi PERTAMA di
+  // lokasiBreakdown — item yang stoknya tersebar di >1 gudang ikut gudang lokasi pertama, kasus
+  // jarang & bisa dikoreksi manual belakangan). Item tanpa alamat → grup "Belum Beralamat".
+  function groupItemsByGudang(items) {
+    const map = new Map();
+    items.forEach(item=>{
+      const primary = item.lokasiBreakdown?.[0];
+      const gudangId = primary?.gudangId || null;
+      const gudangKode = gudangId ? primary?.gudangKode : null;
+      const key = gudangId || "_NONE";
+      if (!map.has(key)) map.set(key, { gudangId, gudangKode, items: [] });
+      map.get(key).items.push(item);
+    });
+    const groups = [...map.values()];
+    groups.sort((a,b)=>(a.gudangId?0:1)-(b.gudangId?0:1));
+    return groups;
   }
 
   // Kerangka sesi baru dipakai ulang oleh startOpname (Non-SAP, tanpa file) dan
@@ -227,12 +282,34 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     try {
       const sapRows = await parseSAPFile(file);
       const items = buildItemsFromSAP(sapRows);
-      setActiveOpname(buildNewOpnameShell("SAP", { items, sapUploadedAt:Date.now(), totalRowsSAP:sapRows.length }));
-      setPage(0); setValidationErrors([]);
+      const groups = groupItemsByGudang(items);
+      const meta = { sapUploadedAt:Date.now(), totalRowsSAP:sapRows.length };
+      if (groups.length <= 1) {
+        // Cuma 1 gudang (atau semuanya tanpa alamat) — tidak perlu tanya, langsung 1 sesi.
+        const only = groups[0] || { gudangId:null, gudangKode:null, items };
+        setActiveOpname(buildNewOpnameShell("SAP", { ...meta, items: only.items, gudangId: only.gudangId, gudangKode: only.gudangKode }));
+        setPage(0); setValidationErrors([]);
+      } else {
+        setGudangSplitDialog({ groups, meta, selected: new Set(groups.map(g=>g.gudangId||"_NONE")) });
+      }
     } catch(err) {
       showToast("Gagal membaca file: " + err.message, "error");
     }
     setCsvLoading(false);
+  }
+
+  // Fase 1e: konfirmasi dialog pilih gudang — bikin 1 sesi DRAFT per gudang yang dicentang,
+  // langsung tersimpan (opnameList), lalu buka sesi pertama untuk lanjut diisi.
+  async function confirmGudangSplit() {
+    const dlg = gudangSplitDialog;
+    if (!dlg) return;
+    const chosen = dlg.groups.filter(g=>dlg.selected.has(g.gudangId||"_NONE"));
+    setGudangSplitDialog(null);
+    if (!chosen.length) return;
+    const sessions = chosen.map(g=>buildNewOpnameShell("SAP", { ...dlg.meta, items: g.items, gudangId: g.gudangId, gudangKode: g.gudangKode }));
+    for (const s of sessions) { await saveOpname(s); }
+    setActiveOpname(sessions[0]); setPage(0); setValidationErrors([]);
+    showToast(`✅ ${sessions.length} sesi dibuat (1 per gudang).`);
   }
 
   function handleDropzoneFiles(fileList) {
@@ -286,17 +363,50 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     }, 50);
   }
 
+  // Blok (kunci hitungPerLokasi) yang mewakili item ini di UI desktop Fase 1 — blok tunggal kalau
+  // Non-SAP (lokasiId eksplisit) atau lokasiBreakdown persis 1 entri; sisanya "_TANPA_LOKASI"
+  // (breakdown qty PER blok yang sesungguhnya untuk item multi-lokasi menyusul di mode lapangan
+  // Fase 2 — di sini kita cuma catat total-nya dulu supaya data model sudah siap dipakai).
+  function itemLokasiKey(item) {
+    if (item.lokasiId) return item.lokasiId;
+    if (item.lokasiBreakdown?.length === 1) return item.lokasiBreakdown[0].lokasiId || "_TANPA_LOKASI";
+    return "_TANPA_LOKASI";
+  }
+
   function updateItem(realIdx, field, value) {
     setActiveOpname(prev=>{
       const items = [...prev.items];
-      items[realIdx] = {...items[realIdx], [field]:value};
+      const before = items[realIdx];
+      items[realIdx] = {...before, [field]:value};
       // Item "🆕 Material Baru" (dari SAP maupun temuan Non-SAP) tetap ditandai begitu walau
       // qty-nya diedit ulang — jangan sampai berubah jadi status SESUAI/SELISIH biasa cuma
       // karena user koreksi angka setelah simpan awal.
       const isMaterialBaru = ["TIDAK_ADA_DI_SISTEM","MATERIAL_BARU_NONSAP"].includes(items[realIdx].statusItem);
-      if(field==="qtsFisik" && !isMaterialBaru) {
-        items[realIdx].selisih = Number(value) - items[realIdx].qtySistem;
-        items[realIdx].statusItem = items[realIdx].selisih===0?"SESUAI":"SELISIH";
+      if(field==="qtsFisik") {
+        // Fase 1c: qtsFisik jadi TURUNAN — tulis ke blok item ini, lalu jumlahkan ulang.
+        const key = itemLokasiKey(items[realIdx]);
+        const hitung = { ...(items[realIdx].hitungPerLokasi||{}), [key]: { qty:Number(value)||0, at:Date.now(), by:currentUser?.id } };
+        items[realIdx].hitungPerLokasi = hitung;
+        items[realIdx].qtsFisik = sumHitungPerLokasi(hitung);
+        if (!isMaterialBaru) {
+          items[realIdx].selisih = items[realIdx].qtsFisik - items[realIdx].qtySistem;
+          items[realIdx].statusItem = items[realIdx].selisih===0?"SESUAI":"SELISIH";
+        }
+        if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
+        touchedRef.current[prev.id].add(key);
+      } else if (field==="lokasiId") {
+        // Non-SAP: kalau qty sudah sempat diisi sebelum lokasi dipilih/diganti, pindahkan entri
+        // hitungPerLokasi ke kunci lokasi yang baru supaya tidak nyangkut di "_TANPA_LOKASI".
+        const oldKey = itemLokasiKey(before);
+        const newKey = value || "_TANPA_LOKASI";
+        if (before.hitungPerLokasi?.[oldKey] && oldKey!==newKey) {
+          const hitung = {...before.hitungPerLokasi};
+          hitung[newKey] = hitung[oldKey];
+          delete hitung[oldKey];
+          items[realIdx].hitungPerLokasi = hitung;
+          if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
+          touchedRef.current[prev.id].add(newKey);
+        }
       }
       return {...prev, items};
     });
@@ -343,8 +453,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const isSAP = activeOpname.jenisAlur==="SAP";
     const isReadOnly = activeOpname.status!=="DRAFT";
     const items = activeOpname.items||[];
-    const totalPages = Math.ceil(items.length/pageSize);
-    const pageItems = items.slice(page*pageSize, (page+1)*pageSize);
+    // Fase 1f: filter Gudang/Blok — dikerjakan di atas indeks ASLI (bukan array baru) supaya
+    // updateItem(realIdx,...) tetap menunjuk baris yang benar di activeOpname.items.
+    const filteredIndexed = items.map((it,idx)=>({it,idx})).filter(({it})=>{
+      if (!filterGudangId) return true;
+      const bd = it.lokasiBreakdown||[];
+      if (filterGudangId==="__NONE__") return !bd.length;
+      if (filterLokasiId) return bd.some(b=>b.lokasiId===filterLokasiId);
+      return bd.some(b=>b.gudangId===filterGudangId);
+    });
+    const totalPages = Math.ceil(filteredIndexed.length/pageSize);
+    const pageEntries = filteredIndexed.slice(page*pageSize, (page+1)*pageSize);
     const prog = getProgress();
     const selisihCount = items.filter(i=>i.selisih!==0).length;
 
@@ -354,7 +473,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             tabel (dulu sempat dobel atas+bawah, membingungkan user — keluhan 2026-07-07). */}
         <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
           <div style={{minWidth:0,flex:"1 1 180px"}}>
-            <h1 style={{...sty.pageTitle,fontSize:17}}>Opname {activeOpname.jenisAlur==="SAP"?"SAP":"Non-SAP"} — {activeOpname.semester}</h1>
+            <h1 style={{...sty.pageTitle,fontSize:17}}>Opname {activeOpname.jenisAlur==="SAP"?"SAP":"Non-SAP"} — {activeOpname.semester}{activeOpname.gudangId!==undefined && (activeOpname.gudangKode?` • Gudang ${activeOpname.gudangKode}`:" • Belum Beralamat")}</h1>
             <p style={{color:C.muted,fontSize:13}}>{activeOpname.kategori}</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
@@ -366,6 +485,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             )}
             {isReadOnly && activeOpname.status==="SELESAI" && (
               <button style={sty.btn("ghost","sm")} onClick={()=>downloadBeritaAcara(activeOpname)}>📄 Download Berita Acara</button>
+            )}
+            {items.length>0 && (
+              <button style={sty.btn("ghost","sm")} onClick={()=>downloadLembarHitungHTML(activeOpname, {lokasiList, gudangList,
+                filterGudangId: filterGudangId==="__NONE__"?null:(filterGudangId||null), filterLokasiId: filterLokasiId||null})}>
+                🖨️ Lembar Hitung
+              </button>
             )}
             {isReadOnly && <button style={sty.btn("ghost","sm")} onClick={()=>setActiveOpname(null)}>← Kembali ke Daftar</button>}
             {!isReadOnly && <button style={sty.btn("ghost","sm")} onClick={handleBatal}>✕ Batal</button>}
@@ -486,6 +611,21 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     <span style={{fontSize:12,color:C.muted}}>Scan cuma membantu temukan & lompat ke barisnya — qty hasil hitung fisik tetap wajib diketik manual.</span>
                   </div>
                 ) : <div/>}
+                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                  <select style={{...sty.select,fontSize:12,padding:"4px 8px",width:"auto"}} value={filterGudangId}
+                    onChange={e=>{setFilterGudangId(e.target.value);setFilterLokasiId("");setPage(0);}}>
+                    <option value="">Semua Gudang</option>
+                    {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
+                    <option value="__NONE__">Tanpa Lokasi</option>
+                  </select>
+                  {filterGudangId && filterGudangId!=="__NONE__" && (
+                    <select style={{...sty.select,fontSize:12,padding:"4px 8px",width:"auto"}} value={filterLokasiId}
+                      onChange={e=>{setFilterLokasiId(e.target.value);setPage(0);}}>
+                      <option value="">Semua Blok</option>
+                      {(lokasiList||[]).filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                    </select>
+                  )}
+                </div>
                 <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}>
                   Tampilkan:
                   {[10,20,50].map(n=>(
@@ -514,8 +654,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </tr>
                 </thead>
                 <tbody>
-                  {pageItems.map((item,pageIdx)=>{
-                    const realIdx = page*pageSize + pageIdx;
+                  {pageEntries.map(({it:item, idx:realIdx})=>{
                     const isHighlighted = highlightIdx===realIdx;
                     const rowBg = isHighlighted ? "#dbeafe" : item.statusItem==="MATERIAL_BARU_NONSAP" ? "#eff6ff" : item.statusItem==="SESUAI"?"white":item.statusItem==="TIDAK_ADA_DI_SISTEM"?"#fefce8":item.statusItem==="TIDAK_ADA_DI_SAP"?"#f8fafc":"#fff5f5";
                     const statusBadge = item.statusItem==="SESUAI"
@@ -538,6 +677,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           )}
                           {item.statusItem==="MATERIAL_BARU_NONSAP" && (
                             <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color: "#1d4ed8",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
+                          )}
+                          {/* Fase 1f: chip blok — item bisa tersebar di beberapa lokasi dalam gudang ini */}
+                          {item.lokasiBreakdown && item.lokasiBreakdown.length>0 && (
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+                              {item.lokasiBreakdown.slice(0,3).map((b,bi)=>(
+                                <span key={bi} style={{fontSize:12,padding:"1px 6px",borderRadius:999,background:"#f1f5f9",color:C.muted,fontWeight:600}}>{b.lokasiKode||"?"} ({b.qty})</span>
+                              ))}
+                              {item.lokasiBreakdown.length>3 && <span style={{fontSize:12,color:C.muted}}>+{item.lokasiBreakdown.length-3} lagi</span>}
+                            </div>
                           )}
                         </td>
                         {!isMobile && <td data-label="No Katalog" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontFamily:"monospace",fontSize:12}}>{item.noKatalog}</td>}
@@ -643,7 +791,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {!isReadOnly && (
               <div className="approval-actions" style={{marginBottom:16}}>
                 <button className="approval-btn--cancel" onClick={handleBatal}>✕ Batal</button>
-                <button className="approval-btn--cancel" onClick={()=>saveOpname(activeOpname)}>💾 Simpan Draft</button>
+                <button className="approval-btn--cancel" onClick={()=>saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])])}>💾 Simpan Draft</button>
                 {prog.pct===100 ? (
                   <button className="approval-btn--primary"
                     onClick={async ()=>{
@@ -844,6 +992,33 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       )}
 
+      {/* Fase 1e: dialog pilih gudang — muncul kalau file PID memuat item dari >1 gudang */}
+      {gudangSplitDialog && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:12}}>
+          <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+            <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>📦 Pilih Gudang untuk Sesi Opname</h3>
+            <p style={{fontSize:12,color:C.muted,marginBottom:14}}>File PID memuat item dari beberapa gudang — satu sesi opname dibuat per gudang yang dipilih.</p>
+            {gudangSplitDialog.groups.map(g=>{
+              const key = g.gudangId||"_NONE";
+              const checked = gudangSplitDialog.selected.has(key);
+              return (
+                <label key={key} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 0",borderBottom:`1px solid ${C.border}`,cursor:"pointer"}}>
+                  <input type="checkbox" checked={checked} onChange={()=>setGudangSplitDialog(d=>{
+                    const sel = new Set(d.selected); checked?sel.delete(key):sel.add(key); return {...d,selected:sel};
+                  })}/>
+                  <span style={{flex:1,fontSize:13,fontWeight:600}}>{g.gudangKode || "Belum Beralamat"}</span>
+                  <span style={{fontSize:12,color:C.muted}}>{g.items.length} item</span>
+                </label>
+              );
+            })}
+            <div style={{display:"flex",gap:10,marginTop:16}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setGudangSplitDialog(null)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={confirmGudangSplit}>Buat Sesi ({gudangSplitDialog.selected.size})</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Panel analisa — muncul di halaman yang sama, di bawah dropzone (bukan pindah layar) */}
       {renderPanel()}
 
@@ -903,7 +1078,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <div key={opn.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
                 <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:6,marginBottom:6}}>
                   <div style={{minWidth:0,flex:"1 1 180px"}}>
-                    <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
+                    <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori}{opn.gudangId!==undefined?(opn.gudangKode?` • Gudang ${opn.gudangKode}`:" • Belum Beralamat"):""})</span></div>
                     <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
                   </div>
                   <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>

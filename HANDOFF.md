@@ -54,10 +54,23 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **STOCK OPNAME — Fase 0 rombak alur SELESAI + DI-PUSH (2026-08-16).** Rencana 4-fase di
+- **STOCK OPNAME — Fase 0 & 1 SELESAI + DI-PUSH (2026-08-16/17).** Rencana 4-fase di
   `.claude/plans/pelaksanaan-esisting-stock-opname-warm-walrus.md` (+ eksekusi/audit di
-  `.claude/plans/coba-buatkan-planningnya-dulu-snoopy-haven.md`). **Fase 1-3 BELUM** (model data
-  lokasi-per-blok + anti-timpa + sesi per gudang; mode lapangan/scanner/recount; freeze).
+  `.claude/plans/coba-buatkan-planningnya-dulu-snoopy-haven.md`).
+  **⏳ FASE 1 DI-PUSH TAPI BELUM TES BROWSER USER** (build+audit+review arsitek lulus; verifikasi
+  visual/fungsional ditunda — lihat Langkah berikutnya). **Fase 2-3 BELUM** (mode lapangan/scanner
+  iOS/recount; freeze).
+  - **Fase 1 (model data, `sap.js`+`docBuilders.js`+`useStockOpname.js`+`StockOpnameTab.jsx`):**
+    1a fix `normalizeKatalog` match PID (bug zero-padding); 1b `lokasiBreakdown` per item (dari
+    `stocks`); 1c `hitungPerLokasi` per blok + `qtsFisik` turunan (`sumHitungPerLokasi` di sap.js),
+    `approveOpname_Manager` tulis qty **per-lokasi nyata** (fallback `stockRows[0]` utk `_TANPA_LOKASI`,
+    sesi lama tetap proporsional); 1d `saveOpname(opn,touchedLokasiIds)` **merge anti-timpa** —
+    `mergeOpnameForSave` fetch versi server via `loadMasterTable("stock_opname")` (BUKAN CLOUD.get
+    lokal; null=gagal→simpan lokal+toast, undefined=draft baru→simpan apa adanya); 1e sesi per gudang
+    (`groupItemsByGudang`+dialog split, item tanpa lokasi→sesi "Belum Beralamat"); 1f filter Gudang/Blok
+    + chip `BLOK(qty)` + `buildLembarHitungHTML`/`downloadLembarHitungHTML` (A4 Gudang→Blok+Paraf).
+    Batasan diketahui (Fase 2): input qty desktop tunggal item multi-blok kolaps ke `_TANPA_LOKASI`;
+    item lintas >1 gudang masuk sesi gudang pertama. Build hijau, audit 112.
   - **Fase 0** = satu layar: dropzone PID (`.csv/.xlsx/.xls`, +tombol "📂 Pilih File") ganti
     "+ Opname SAP"; sesi DRAFT dibuat SETELAH parse (cegah draft kembar); `activeTab` early-return
     dihapus → `renderPanel()` inline; bar aksi bertahap A/B/C (Submit hanya saat semua qty terisi);
@@ -324,6 +337,21 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Halaman scan QR publik dirombak & PUSH (2026-08-11, `84b4f18`).** Lokasi kini terbit ke halaman publik lewat `lokasiPublik` di `katalog.data` (jsonb, TANPA DDL) yang ditulis `syncStockQtyToSupabase(stocks, katalogList, { lokasiList, subGudangList, gudangList })` — dibaca ulang lalu di-merge supaya `fotoKeseluruhanUrl` tak terhapus `resolution=merge-duplicates`. `TUG15Tab.jsx:76` sengaja memanggil tanpa master (tak ada `subGudangList` di scope) sehingga enrichment dilewati, bukan menulis lokasi kosong. `ScanPublicView.jsx`: kartu lokasi breadcrumb Gudang > Sub Gudang + blok besar (fallback perkiraan dari net keluar-masuk per `lokasi_kode` bila belum tersinkron), kartu asal barang dari mutasi MASUK terakhir, kalimat ringkasan bahasa awam, bar melayang sisa+blok, kartu "Apa arti halaman ini?". Terverifikasi di DB produksi: KAT-2230304 `lokasiPublik` = KETINTANG / GUDANG TERTUTUP KETINTANG / RAK-C qty 34. **Sisa: verifikasi user di `pln.warnoto.com` setelah deploy Vercel.**
 
 ## Langkah berikutnya (urut, mengikat)
+
+**STOCK OPNAME — lanjutan (sesi berikutnya):**
+1. **Verifikasi browser Fase 1** (belum dilakukan; di-push atas instruksi user 2026-08-17). Login TL/ADMIN,
+   `npm run dev` :3001 (GOTCHA: dev server sesi lalu berkali ke-kill watchdog lingkungan — user jalankan
+   `! npm run dev` sendiri): upload PID CSV/XLSX → dialog pilih gudang; item zero-padding beda terbaca cocok;
+   chip BLOK(qty) + filter blok; cetak Lembar Hitung A4; uji anti-timpa 2-tab (isi blok beda → tak ada hilang).
+2. **Fase 2** — mode lapangan (`OpnameLapanganView.jsx` baru) + scanner `blockInput` (`useHardwareScanner`) +
+   kamera continuous + fallback iOS **`@zxing/browser`** (dynamic import iOS-only — dependensi baru DISETUJUI user)
+   + QR label blok (`lokasiScanUrlFor`/`extractLokasiIdFromScan`, `?loc=`) + recount wajib. Lihat plan Fase 2.
+3. **Fase 3** — freeze peringatan (`useStockOpname` `setOpnameFreeze` + `useTugTransactions` `saveTxn` warn).
+
+**Keputusan arsitektur (mengikat, dari Fase 1):** qty opname disimpan **per blok** (`hitungPerLokasi`), sesi
+opname **dipecah per gudang**, simpan pakai **merge fetch-server** (`loadMasterTable("stock_opname")`, bukan cache
+lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusul Fase 2/3. Dependensi baru
+`@zxing/browser` (Fase 2, iOS-only) disetujui.
 
 **Varian gaya Taste Skill — DITUNDA (keputusan user 2026-08-15).** `minimalist-skill` SUDAH dipasang (2026-08-15) sebagai `minimalist-ui` scope user, dengan pagar presedensi di `docs/DESIGN_GUIDELINES.md` seksi 16 (guideline WARNOTO menang atas skill). `brutalist`/`soft`/`stitch` sengaja BELUM dipasang; nanti dipilih/disesuaikan dulu dengan `docs/DESIGN_GUIDELINES.md` supaya tidak ada dua sumber gaya yang bertabrakan. Dari repo itu yang sudah terpasang scope user: `taste-skill` (nama lokal `design-taste-frontend`), `redesign-skill` (`redesign-existing-projects`), `brandkit`, `image-to-code`.
 

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { UPT } from "../constants.js";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
-import { normalizeKatalog, totalQtyForKatalog } from "../lib/sap.js";
+import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi } from "../lib/sap.js";
+import { loadMasterTable } from "../lib/masterSync.js";
 
 function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
@@ -19,12 +20,61 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
   const [opnameExpanded, setOpnameExpanded] = useState(false); // sidebar accordion state for Stock Opname & Stock Count (digabung 1 menu)
   const [opnameSubTab, setOpnameSubTab] = useState("opname"); // "opname" | "stockCount"
 
-  async function saveOpname(opn) {
-    const exists = opnameList.find(o=>o.id===opn.id);
-    const nl = exists ? opnameList.map(o=>o.id===opn.id?opn:o) : [...opnameList, opn];
+  // Fase 1d: sesi bisa diedit dari >1 perangkat/tab sekaligus (per blok/lokasi berbeda) — dulu
+  // saveOpname menimpa SELURUH sesi (last-write-wins), blok yang barusan disimpan perangkat lain
+  // bisa hilang. Kalau caller kasih touchedLokasiIds (blok yang BENAR disentuh perangkat ini),
+  // ambil versi sesi terbaru dari server dulu, lalu tulis balik cuma blok itu — sisanya dari
+  // server. Gagal ambil (offline) → simpan LOKAL saja, jangan menimpa server dgn data parsial.
+  async function saveOpname(opn, touchedLokasiIds) {
+    let toSave = opn;
+    let syncPending = false;
+    if (Array.isArray(touchedLokasiIds) && touchedLokasiIds.length) {
+      try {
+        const serverList = await loadMasterTable("stock_opname"); // null = fetch gagal (lihat masterSync.js)
+        if (!Array.isArray(serverList)) { syncPending = true; }
+        else {
+          const serverOpn = serverList.find(o=>o.id===opn.id);
+          // serverOpn undefined = sesi memang belum pernah tersimpan di server (draft baru pertama
+          // kali) — bukan kegagalan, lanjut simpan opn apa adanya seperti biasa.
+          if (serverOpn) toSave = mergeOpnameForSave(opn, serverOpn, touchedLokasiIds);
+        }
+      } catch {
+        syncPending = true;
+      }
+    }
+    const exists = opnameList.find(o=>o.id===toSave.id);
+    const nl = exists ? opnameList.map(o=>o.id===toSave.id?toSave:o) : [...opnameList, toSave];
     setOpnameList(nl);
+    if (syncPending) {
+      showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
+      return;
+    }
     await stateRef.current.saveToCloud({opnameList: nl});
     showToast("✅ Data opname disimpan!");
+  }
+
+  // Merge per-item: blok (hitungPerLokasi) yang TIDAK disentuh perangkat ini diambil dari versi
+  // server (punya perangkat lain), blok yang disentuh diambil dari versi lokal. Item lokal yang
+  // tidak ada di server (mis. temuan Non-Stock baru) tetap dipakai. Item yang ada di server tapi
+  // hilang di lokal (device ini belum sempat load versi terbaru) TIDAK dibuang — ikut ditambahkan.
+  function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds) {
+    const touched = new Set(touchedLokasiIds);
+    const serverByKey = new Map((serverOpn.items||[]).map(it=>[it.katalogId || it.noKatalog, it]));
+    const items = (localOpn.items||[]).map(item => {
+      const key = item.katalogId || item.noKatalog;
+      const serverItem = serverByKey.get(key);
+      if (!serverItem) return item;
+      const mergedHitung = { ...(serverItem.hitungPerLokasi||{}) };
+      touched.forEach(lokKey => {
+        const localEntry = (item.hitungPerLokasi||{})[lokKey];
+        if (localEntry) mergedHitung[lokKey] = localEntry; else delete mergedHitung[lokKey];
+      });
+      const qtsFisik = sumHitungPerLokasi(mergedHitung);
+      return { ...serverItem, ...item, hitungPerLokasi: mergedHitung, qtsFisik, selisih: qtsFisik - (serverItem.qtySistem ?? item.qtySistem ?? 0) };
+    });
+    const localKeys = new Set(items.map(it=>it.katalogId || it.noKatalog));
+    const onlyOnServer = (serverOpn.items||[]).filter(it=>!localKeys.has(it.katalogId||it.noKatalog));
+    return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };
   }
   async function submitOpname(opn) {
     const updated = {...opn, status:"PENDING_ASMAN", submittedAt:Date.now()};
@@ -89,6 +139,20 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     (opn.items||[]).filter(item=>item.selisih!==0 && item.katalogId).forEach(item => {
       const stockRows = newStocks.filter(s=>s.katalogId===item.katalogId);
       if (!stockRows.length) return;
+      // Fase 1c: sesi baru bawa hitungPerLokasi → tulis qty PER lokasi sesuai angka nyata yang
+      // dihitung (bukan porsi proporsional). Lokasi yang tidak dihitung dibiarkan (tidak diubah).
+      if (item.hitungPerLokasi && Object.keys(item.hitungPerLokasi).length) {
+        Object.entries(item.hitungPerLokasi).forEach(([lokKey, entry]) => {
+          // Input desktop tunggal utk item multi-blok kolaps ke "_TANPA_LOKASI" (lihat itemLokasiKey
+          // di StockOpnameTab.jsx) walau semua baris stoknya sebenarnya beralamat — tak ada baris
+          // "_TANPA_LOKASI" yang cocok. Jangan buang qty-nya: tulis ke baris pertama sbg fallback
+          // (ponytail: kasar tapi aman, per-blok asli menyusul di Fase 2 field mode).
+          const row = stockRows.find(s => (s.lokasiId || "_TANPA_LOKASI") === lokKey) || stockRows[0];
+          if (row) newStocks = newStocks.map(s=>s.id===row.id?{...s,qty:Number(entry.qty)||0}:s);
+        });
+        return;
+      }
+      // Fallback (sesi lama tanpa hitungPerLokasi) — distribusi proporsional seperti sebelumnya.
       const totalSistem = stockRows.reduce((a,s)=>a+(s.qty||0),0);
       if (totalSistem===0) {
         newStocks = newStocks.map(s=>s.id===stockRows[0].id?{...s,qty:item.qtsFisik}:s);

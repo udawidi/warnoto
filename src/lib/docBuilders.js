@@ -1014,6 +1014,7 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
 <table class="meta">
   <tr><td class="label">Semester</td><td class="colon">:</td><td>${fmt(opn.semester)}</td></tr>
   <tr><td class="label">Jenis Opname</td><td class="colon">:</td><td>${fmt(opn.jenisAlur)} (${fmt(opn.kategori)})</td></tr>
+  ${opn.gudangId !== undefined ? `<tr><td class="label">Gudang</td><td class="colon">:</td><td>${fmt(opn.gudangKode || (opn.gudangId===null ? "Belum Beralamat" : "-"))}</td></tr>` : ""}
   <tr><td class="label">Tanggal Pelaksanaan</td><td class="colon">:</td><td>${fmtDate(opn.dibuatAt)}</td></tr>
   <tr><td class="label">Tanggal Submit</td><td class="colon">:</td><td>${fmtDate(opn.submittedAt)}</td></tr>
   <tr><td class="label">Approval Asman</td><td class="colon">:</td><td>${fmtDate(opn.approvedAtAsman)}${opn.catatanAsman?` • ${opn.catatanAsman}`:""}</td></tr>
@@ -1050,6 +1051,65 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   </div>
 </div>
 </div></body></html>`;
+}
+
+// ─── LEMBAR HITUNG (Fase 1f) — cadangan kertas untuk regu tanpa HP; meniru pola
+// buildBeritaAcaraHTML di atas (@page A4, print-bar+window.print, thead sticky, no page-break
+// di tengah baris). Dikelompokkan Gudang → Blok (grup "TANPA LOKASI" selalu di akhir), qty fisik
+// & paraf dikosongkan untuk diisi tangan. Satu item bisa muncul di lebih dari 1 baris kalau
+// stok-nya tersebar di beberapa blok (lokasiBreakdown, Fase 1b) — filterGudangId/filterLokasiId
+// opsional mengikuti filter aktif di tabel (Fase 1f).
+export function buildLembarHitungHTML(opn, { lokasiList, gudangList, filterGudangId, filterLokasiId } = {}) {
+  const rows = [];
+  (opn.items || []).forEach(it => {
+    const bd = (it.lokasiBreakdown && it.lokasiBreakdown.length) ? it.lokasiBreakdown : [{ gudangId: null, gudangKode: null, lokasiId: null, lokasiKode: null, qty: it.qtySistem }];
+    bd.forEach(b => {
+      if (filterLokasiId && filterLokasiId !== "_TANPA_LOKASI" && b.lokasiId !== filterLokasiId) return;
+      if (filterLokasiId === "_TANPA_LOKASI" && b.lokasiId) return;
+      if (filterGudangId && b.gudangId !== filterGudangId) return;
+      rows.push({ it, gudangKode: b.gudangKode || "TANPA LOKASI", lokasiKode: b.lokasiKode || "-", qty: b.qty });
+    });
+  });
+
+  const groups = new Map();
+  rows.forEach(r => {
+    if (!groups.has(r.gudangKode)) groups.set(r.gudangKode, new Map());
+    const lokMap = groups.get(r.gudangKode);
+    if (!lokMap.has(r.lokasiKode)) lokMap.set(r.lokasiKode, []);
+    lokMap.get(r.lokasiKode).push(r);
+  });
+  const gudangKeys = [...groups.keys()].sort((a, b) => (a === "TANPA LOKASI" ? 1 : 0) - (b === "TANPA LOKASI" ? 1 : 0));
+
+  let no = 0;
+  const sectionsHtml = gudangKeys.map(gk => {
+    const lokMap = groups.get(gk);
+    const blokHtml = [...lokMap.entries()].map(([lk, rs]) => {
+      const rowsHtml = rs.map(r => { no++; return `
+      <tr><td style="text-align:center">${no}</td><td style="text-align:center">${r.it.noKatalog || "-"}</td>
+      <td>${r.it.namaBarang || "-"}</td><td style="text-align:center">${r.it.satuan || "-"}</td>
+      <td style="text-align:center">${r.qty ?? 0}</td><td></td><td></td></tr>`; }).join("");
+      return `<tr><td colspan="7" style="background:#f1f5f9;font-weight:700;padding:4px 6px">Blok: ${lk} (${rs.length} item)</td></tr>${rowsHtml}`;
+    }).join("");
+    return `<tr><td colspan="7" style="background:#003087;color:white;font-weight:800;padding:5px 6px">GUDANG: ${gk}</td></tr>${blokHtml}`;
+  }).join("");
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lembar Hitung ${opn.id}</title>
+<style>@page{size:A4;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 5px}thead{display:table-header-group}tr{page-break-inside:avoid}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}}</style></head><body>
+<div class="print-bar">📄 Lembar Hitung Fisik — A4 &nbsp; <button onclick="window.print()">🖨️ Print</button></div>
+<h2 style="margin:10px 0">Lembar Hitung Fisik — Opname ${opn.semester} (${opn.jenisAlur})${opn.gudangKode ? ` — Gudang ${opn.gudangKode}` : ""}</h2>
+<table><thead><tr><th>No</th><th>No. Katalog</th><th>Nama Barang</th><th>Satuan</th><th>Qty Sistem</th><th>Qty Fisik</th><th>Paraf</th></tr></thead>
+<tbody>${sectionsHtml}</tbody></table>
+</body></html>`;
+}
+
+export function downloadLembarHitungHTML(opn, opts) {
+  const html = buildLembarHitungHTML(opn, opts);
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `LembarHitung_${opn.semester}_${opn.jenisAlur}_${opn.id}.html`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 export function downloadTUG7HTML(txn, katalogList, uitList, uptList, users, showToast) {

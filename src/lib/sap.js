@@ -365,6 +365,13 @@ export function resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList,
 // Normalisasi nomor katalog (buang zero-padding) untuk pencocokan — dipindah dari App.jsx Fase 5c.
 export function normalizeKatalog(k) { return String(k||"").trim().replace(/^0+/, "") || ""; }
 
+// Fase 1c Stock Opname: qtsFisik jadi TURUNAN dari hitungPerLokasi ({ [lokasiId|"_TANPA_LOKASI"]:
+// {qty,at,by} }) — dipakai StockOpnameTab (edit qty) & useStockOpname (approve/merge) supaya
+// definisi "jumlah total" satu tempat saja, tidak dobel logic penjumlahan.
+export function sumHitungPerLokasi(hitungPerLokasi) {
+  return Object.values(hitungPerLokasi || {}).reduce((a, e) => a + (Number(e?.qty) || 0), 0);
+}
+
 // QR di label Kartu Gantung TUG-2 (lihat KartuGantungModal "Label QR Print") berisi URL lengkap
 // "?scan=<katalogId>", bukan sekadar nomor katalog. Ekstrak katalogId-nya supaya scan QR fisik di
 // rak langsung match ke material yang benar, baik via URL utuh maupun fallback regex kalau kamera
