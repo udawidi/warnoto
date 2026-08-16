@@ -54,6 +54,28 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **ROMBAK BESAR UI MOBILE — Gelombang 0 & 1 SELESAI + DI-COMMIT + PUSH (2026-08-16).**
+  Arah: perbaiki keterpakaian + polish minimalism Apple-like di atas token yang ada
+  (BUKAN bahasa desain baru). Kontrak ditulis di `docs/DESIGN_GUIDELINES.md` seksi 17
+  (CSS-first satu sumber layout; baseline modal responsif global; arah polish Apple-like).
+  - **Gelombang 0** (`7bd2462`): baseline modal responsif global di `index.css`
+    (@media ≤768 — overlay center jadi top-align + `overflow-y:auto` + safe-area, panel
+    `margin:auto`; fix modal kepotong tanpa scroll, nol edit JSX). Re-baseline SELURUH
+    screenshot Playwright HP/tablet — baseline lama basi karena Fase 1-5 tak pernah di-commit
+    (ini menuntaskan "Fase 6 verifikasi browser" yang dulu pending). Utility grid KPI global
+    dibatalkan (YAGNI: mayoritas sudah `repeat(auto-fit,minmax)` auto-wrap).
+  - **Gelombang 1** (`f371991`): (a) Approval — baris `:has(> .approval-actions)` di-stack
+    kolom di HP (konten penuh + tombol di bawah), fix teks terjepit. (b) Data Stok redesign
+    kartu HP per keluhan user: tombol scan 44×44 simetris (`.stock-scan-button`), foto
+    44→60px, padding 12→14px, chevron "Detail ›" eksplisit (tap buka StockDetailModal, terbukti
+    test), badge generik disembunyikan khusus `.stock-card-table`. 2 file (`DataStokTab.jsx`,
+    `stock.css`), presentation-only.
+  - Verifikasi tiap gelombang: scanner `audit-mobile.mjs` **118** (lantai terjaga), `npm run build`
+    hijau, `mobile-minimal` 3/3 + tap-modal test lulus, review-first (user OK visual) sebelum commit.
+  - **Langkah berikutnya rombak mobile:** Gelombang 2 (admin/master/config + modal), Gelombang 3
+    (Peta Gudang, Alat Berat, modal besar). Gelombang 4 ATTB = GATED (butuh koordinasi tim paralel).
+    Tunggu user tunjuk pain berikutnya (pola: tunjuk screen → audit PNG → fix → re-baseline → commit).
+
 - **MODE RINGKAS HP SELESAI + TERVERIFIKASI DI BROWSER (2026-08-15) — belum di-commit.**
   Verifikasi lewat Playwright 360px (`npx playwright test tests/e2e/mobile-minimal.spec.js --project=phone-360`,
   3 test lulus) plus pemeriksaan screenshot mentah. Empat cacat ditemukan dan diperbaiki saat verifikasi:
