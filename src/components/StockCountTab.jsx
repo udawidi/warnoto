@@ -3,11 +3,15 @@ import { useState } from "react";
 import { fmtDate, parseSAPFile } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { hasRole } from "../lib/roles.js";
+import { can } from "../lib/perms.js";
+import { OperationsHero } from "./OperationsHero.jsx";
 import * as XLSX from "xlsx";
 
-export function StockCountTab({ stockCountList, currentUser, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, rejectStockCountItem, deleteStockCountSession }) {
+export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, rejectStockCountItem, deleteStockCountSession }) {
   const [uploading, setUploading] = useState(false);
   const orderedStockCountList = [...stockCountList].sort((a, b) => Number(b.uploadedAt || 0) - Number(a.uploadedAt || 0));
+  const pendingFindingsCount = orderedStockCountList.reduce((n,s)=>n+s.items.filter(i=>i.approval==="PENDING").length,0);
+  const latestAkuratPct = orderedStockCountList[0]?.summary?.akuratPct ?? null;
   const [expandedId, setExpandedId] = useState(orderedStockCountList[0]?.id || null);
   const [catatanDraft, setCatatanDraft] = useState({}); // itemId -> teks catatan sedang diketik
   const [draftItems, setDraftItems] = useState(null); // hasil baca file, BELUM disimpan — masih bisa direview/dicoret per item
@@ -48,17 +52,25 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
 
   return (
     <div>
-      <div className="stockcount-header" style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,marginBottom:16}}>
-        <div style={{minWidth:0}}>
-          <p style={{color:C.muted,fontSize:13}}>Banding qty SAP vs Aplikasi untuk material ber-status SAP — temuan selisih perlu approval Asman.</p>
-        </div>
-        {hasRole(currentUser, "ADMIN") && !draftItems && (
+      <OperationsHero
+        eyebrow="Stock Count"
+        title="Stock Count"
+        description="Banding qty SAP vs Aplikasi untuk material ber-status SAP — temuan selisih perlu approval Asman."
+        scope={`${orderedStockCountList.length} sesi`}
+        metrics={[
+          {label:"Total sesi",value:orderedStockCountList.length},
+          {label:"Temuan pending",value:pendingFindingsCount,alert:pendingFindingsCount>0},
+          {label:"Akurasi terakhir",value:latestAkuratPct!=null?`${latestAkuratPct}%`:"—"},
+        ]}
+      />
+      {can(currentUser, "aksi.import", rolePerms) && !draftItems && (
+        <div style={{marginBottom:16}}>
           <label style={{...sty.btn("primary"),cursor:uploading?"default":"pointer",opacity:uploading?0.6:1}}>
             {uploading ? "Memproses..." : "📂 Upload CSV/XLSX SAP"}
             <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
           </label>
-        )}
-      </div>
+        </div>
+      )}
       <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#1d4ed8",lineHeight:1.45,marginBottom:16}}>
         ℹ️ Hanya membaca & membandingkan qty SAP vs Aplikasi — <b>tidak mengubah</b> data. Rekomendasi hanya saran.
       </div>
@@ -155,25 +167,25 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
       })()}
 
       {orderedStockCountList.length===0 ? (
-        !draftItems && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada sesi Stock Count. {hasRole(currentUser, "ADMIN") && "Klik \"Upload CSV/XLSX SAP\" untuk mulai."}</div>
+        !draftItems && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada sesi Stock Count. {can(currentUser, "aksi.import", rolePerms) && "Klik \"Upload CSV/XLSX SAP\" untuk mulai."}</div>
       ) : orderedStockCountList.map(session => {
         const isOpen = expandedId===session.id;
         const mismatch = session.items.filter(i=>i.status!=="AKURAT").sort((a,b)=>b.selisihPct-a.selisihPct);
         return (
-          <div key={session.id} style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",cursor:"pointer",background:"#f9fafb"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
-              <div>
+          <div key={session.id} style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden",boxShadow:"none"}}>
+            <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:8,padding:"14px 16px",cursor:"pointer",borderBottom:isOpen?`1px solid ${C.border}`:"none"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
+              <div style={{minWidth:0,flex:"1 1 180px"}}>
                 <div style={{fontWeight:800,fontSize:13}}>{fmtDate(session.uploadedAt)} — {session.summary.totalItem} item dibandingkan</div>
                 <div style={{fontSize:12,color:C.muted}}>{session.summary.akuratCount} akurat • {mismatch.length} temuan • {mismatch.filter(i=>i.approval==="PENDING").length} pending</div>
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
                 <span style={{fontSize:20,fontWeight:900,color:session.summary.akuratPct>=90?C.green:session.summary.akuratPct>=70?C.yellow:C.red}}>{session.summary.akuratPct}%</span>
                 <span style={{fontSize:13,color:C.muted}}>{isOpen?"▲":"▼"}</span>
               </div>
             </div>
             {isOpen && (
               <div style={{padding:"0 16px 16px"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,marginBottom:10}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(96px,1fr))",gap:8,marginBottom:10}}>
                   {[
                     ["Akurat",session.summary.akuratCount,C.green],
                     ["Temuan",mismatch.length,"#dc2626"],
@@ -192,12 +204,12 @@ export function StockCountTab({ stockCountList, currentUser, sty, C, previewStoc
                     <div style={{fontSize:12,color:C.green,fontWeight:700}}>✅ Semua item akurat, tidak ada selisih &gt;5%.</div>
                   ) : mismatch.map(item => (
                   <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:12,marginBottom:8,background:item.approval==="PENDING"?"#fffbeb":item.approval==="APPROVED"?"#f0fdf4":"#fef2f2"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
-                      <div>
+                    <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
+                      <div style={{minWidth:0,flex:"1 1 140px"}}>
                         <div style={{fontWeight:700,fontSize:13}}>{item.nama}</div>
                         <div style={{fontSize:12,color:C.muted}}>No. Katalog: {item.katalogKode}{!item.katalogId && " — tidak ada di Master Katalog"}</div>
                       </div>
-                      <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626",whiteSpace:"nowrap"}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>
+                      <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626",whiteSpace:"nowrap",flexShrink:0}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>
                     </div>
                     <div style={{fontSize:12,color:C.muted,marginBottom:6}}>SAP: {fmtNum(item.qtySap)} {item.satuan} • Aplikasi: {item.katalogId ? `${fmtNum(item.qtyApp)} ${item.satuan}` : <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span>}</div>
                     <div style={{fontSize:12,fontWeight:600,color:"#1d4ed8",marginBottom:8}}>{REKOMENDASI_LABEL[item.rekomendasi]}</div>

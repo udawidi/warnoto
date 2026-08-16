@@ -3732,11 +3732,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 lokasiList={lokasiList}
                 addNonStockFoundItem={addNonStockFoundItem}
                 isMobile={isMobile}
+                rolePerms={rolePerms}
               />
             ) : (
               <StockCountTab
                 stockCountList={scopedStockCountList}
                 currentUser={currentUser}
+                rolePerms={rolePerms}
                 sty={sty} C={C}
                 previewStockCount={previewStockCount}
                 saveStockCountSession={saveStockCountSession}

@@ -54,6 +54,23 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **STOCK OPNAME — Fase 0 rombak alur SELESAI + DI-PUSH (2026-08-16).** Rencana 4-fase di
+  `.claude/plans/pelaksanaan-esisting-stock-opname-warm-walrus.md` (+ eksekusi/audit di
+  `.claude/plans/coba-buatkan-planningnya-dulu-snoopy-haven.md`). **Fase 1-3 BELUM** (model data
+  lokasi-per-blok + anti-timpa + sesi per gudang; mode lapangan/scanner/recount; freeze).
+  - **Fase 0** = satu layar: dropzone PID (`.csv/.xlsx/.xls`, +tombol "📂 Pilih File") ganti
+    "+ Opname SAP"; sesi DRAFT dibuat SETELAH parse (cegah draft kembar); `activeTab` early-return
+    dihapus → `renderPanel()` inline; bar aksi bertahap A/B/C (Submit hanya saat semua qty terisi);
+    tombol "✕ Batal" eksplisit; ringkasan analisa 1 baris; sekat "Riwayat Opname" (hairline) pisah
+    proses↔riwayat; chip filter compact pill.
+  - **Konsistensi 2 menu:** StockCount kini pakai `OperationsHero` (banner sama Opname) + list
+    flat/hairline seirama; gate upload StockCount & Opname → `can(...,"aksi.import")` (fix `hasRole
+    ("ADMIN")` usang — TL dll kini bisa; `rolePerms` diteruskan ke kedua komponen dari App.jsx).
+  - Mobile 360px dirapikan (flex-wrap header/riwayat, KPI auto-fit). Build hijau, audit **112**.
+    Dead CSS `stockcount-header` (index.css) dibiarkan (harmless).
+  - **Catatan (bukan bug kita):** 403 RLS `heavy_equipment_loans` saat loadCloud = cache loan basi
+    sesi role lain di-push ulang (RLS benar menolak lintas-UPT); remedy = clear site data + login fresh.
+
 - **MIGRASI DATA — izin matrix-driven + SAP import inline (2026-08-16, DI-PUSH).**
   (1) **Izin:** migrasi dulu hardcoded & mismatch (nav `hasRole("ADMIN")` di `AppSidebar.jsx` vs
   konten `hasRole("TL")` di `MasterDataTab.jsx`) → praktis cuma SUPERADMIN. Sekarang key baru

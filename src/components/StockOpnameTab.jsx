@@ -5,15 +5,16 @@ import { supabase } from "../supabaseClient.js";
 import { fmtDate, parseSAPFile, parseUsulanPencocokanXLSX, scanUrlFor } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
+import { can } from "../lib/perms.js";
 import { buildBeritaAcaraHTML } from "../lib/docBuilders.js";
 import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan } from "../lib/sap.js";
+import { OperationsHero } from "./OperationsHero.jsx";
 import * as XLSX from "xlsx";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname,
-  openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList }) {
+  openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms }) {
 
-  const [activeTab, setActiveTab] = useState("list"); // "list"|"form-sap"|"form-nonsap"|"detail"
   const [activeOpname, setActiveOpname] = useState(null);
   const [page, setPage] = useState(0);
   const [filterStatus, setFilterStatus] = useState("semua");
@@ -25,6 +26,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const [highlightIdx, setHighlightIdx] = useState(null); // baris hasil scan QR — cuma bantu temukan & fokus, bukan pengganti hitung fisik
   const qtyInputRefs = useRef({});
   const [pageSize, setPageSize] = useState(10);
+  const [dragActive, setDragActive] = useState(false); // Fase 0: dropzone PID
+  const dropInputRef = useRef(null);
 
   // "Tambah Material Ditemukan" (Opname Non-SAP) — form untuk barang fisik yang belum
   // tercatat sama sekali di sistem, ditemukan sambil opname jalan.
@@ -147,7 +150,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   }
 
   // Scanner hardware — hanya aktif saat form opname (SAP/Non-SAP) sedang dibuka.
-  useHardwareScanner(runOpnameScan, { enabled: ["form-sap","form-nonsap"].includes(activeTab) && !!activeOpname });
+  useHardwareScanner(runOpnameScan, { enabled: activeOpname?.status==="DRAFT" });
 
   // ── SAP CSV Parser ──────────────────────────────────────────────────────
   function buildItemsFromSAP(sapRows) {
@@ -196,20 +199,47 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       }).filter(Boolean);
   }
 
-  function startOpname(jenisAlur) {
+  // Kerangka sesi baru dipakai ulang oleh startOpname (Non-SAP, tanpa file) dan
+  // startOpnameFromFile (SAP, sesi dibuat SETELAH file berhasil di-parse — Fase 0).
+  function buildNewOpnameShell(jenisAlur, extra) {
     const semester = (()=>{ const d=new Date(); return `${d.getFullYear()}-S${d.getMonth()<6?1:2}`; })();
-    const id = "OPN-"+Date.now();
-    const newOpn = {
-      id, semester, jenisAlur, kategori: jenisAlur==="SAP"?"Material SAP":"Material Non-SAP",
+    return {
+      id: "OPN-"+Date.now(), semester, jenisAlur, kategori: jenisAlur==="SAP"?"Material SAP":"Material Non-SAP",
       status:"DRAFT", items:jenisAlur==="NON_SAP"?buildItemsNonSAP():[],
       dibuatOleh:currentUser.id, dibuatAt:Date.now(),
       sapUploadedAt:null, totalRowsSAP:0,
       approvedByAsman:null, approvedAtAsman:null, catatanAsman:"",
       approvedByManager:null, approvedAtManager:null, catatanManager:"",
       submittedAt:null, rejectReason:"",
+      ...extra,
     };
-    setActiveOpname(newOpn); setPage(0); setValidationErrors([]);
-    setActiveTab(jenisAlur==="SAP"?"form-sap":"form-nonsap");
+  }
+
+  function startOpname(jenisAlur) {
+    setActiveOpname(buildNewOpnameShell(jenisAlur));
+    setPage(0); setValidationErrors([]);
+  }
+
+  // Dropzone PID (Opname SAP): sesi DRAFT baru cuma dibuat kalau file berhasil di-parse —
+  // gagal parse TIDAK meninggalkan draft kosong di daftar.
+  async function startOpnameFromFile(file) {
+    setCsvLoading(true);
+    try {
+      const sapRows = await parseSAPFile(file);
+      const items = buildItemsFromSAP(sapRows);
+      setActiveOpname(buildNewOpnameShell("SAP", { items, sapUploadedAt:Date.now(), totalRowsSAP:sapRows.length }));
+      setPage(0); setValidationErrors([]);
+    } catch(err) {
+      showToast("Gagal membaca file: " + err.message, "error");
+    }
+    setCsvLoading(false);
+  }
+
+  function handleDropzoneFiles(fileList) {
+    const f = fileList?.[0]; if (!f || csvLoading) return;
+    const panelUnsaved = activeOpname && activeOpname.status==="DRAFT" && !opnameList.some(o=>o.id===activeOpname.id);
+    if (panelUnsaved && !window.confirm("Ada sesi opname yang belum tersimpan. Ganti dengan file baru? Sesi lama akan hilang.")) return;
+    startOpnameFromFile(f);
   }
 
   async function handleCSVUpload(e) {
@@ -223,6 +253,37 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       alert("Gagal membaca file: " + err.message);
     }
     setCsvLoading(false);
+  }
+
+  // Ganti File PID (header panel, sesi SAP DRAFT) — reuse handleCSVUpload, cuma tambah
+  // konfirmasi kalau sudah ada qty yang diisi (biar tidak hilang diam-diam).
+  async function handleReplaceCSV(e) {
+    const hasProgress = (activeOpname.items||[]).some(i=>i.qtsFisik!==i.qtySistem);
+    if (hasProgress && !window.confirm("Ganti file PID menyusun ulang daftar item. Qty yang sudah diisi bisa hilang. Lanjutkan?")) {
+      e.target.value=""; return;
+    }
+    await handleCSVUpload(e);
+  }
+
+  // Kontrak tombol Batal (Fase 0): sesi belum tersimpan (belum pernah saveOpname/submitOpname)
+  // → konfirmasi buang. Sesi sudah tersimpan → tutup panel saja, tetap DRAFT di daftar.
+  function handleBatal() {
+    const persisted = opnameList.some(o=>o.id===activeOpname.id);
+    if (!persisted && !window.confirm("Buang sesi opname ini? Data yang sudah diisi belum tersimpan dan akan hilang.")) return;
+    setActiveOpname(null); setValidationErrors([]); setHighlightIdx(null);
+  }
+
+  // "Mulai Hitung" / "Lanjut Hitung" (Fase 0, sebelum scanner Fase 1 ada): scroll+fokus ke
+  // baris qty kosong pertama.
+  function scrollToFirstEmptyQty() {
+    const items = activeOpname?.items || [];
+    const idx = items.findIndex(i=>i.qtsFisik==null||i.qtsFisik==="");
+    if (idx < 0) return;
+    setPage(Math.floor(idx / pageSize));
+    setTimeout(() => {
+      const el = qtyInputRefs.current[idx];
+      if (el) { el.focus(); el.scrollIntoView({behavior:"smooth", block:"center"}); }
+    }, 50);
   }
 
   function updateItem(realIdx, field, value) {
@@ -276,8 +337,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const statusColor = {DRAFT:"#6b7280",PENDING_ASMAN:"#f59e0b",PENDING_MANAGER:"#3b82f6",SELESAI:"#16a34a",DITOLAK:"#dc2626"};
   const statusLabel = {DRAFT:"Draft",PENDING_ASMAN:"Menunggu Asman",PENDING_MANAGER:"Menunggu Manager",SELESAI:"✅ Selesai",DITOLAK:"❌ Ditolak"};
 
-  // ── FORM VIEW (SAP & Non-SAP) ──────────────────────────────────────────
-  if(["form-sap","form-nonsap","detail"].includes(activeTab) && activeOpname) {
+  // ── PANEL ANALISA (Fase 0: sama layar dengan daftar, bukan pindah tab) ────
+  function renderPanel() {
+    if (!activeOpname) return null;
     const isSAP = activeOpname.jenisAlur==="SAP";
     const isReadOnly = activeOpname.status!=="DRAFT";
     const items = activeOpname.items||[];
@@ -287,18 +349,27 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const selisihCount = items.filter(i=>i.selisih!==0).length;
 
     return (
-      <div>
-        {/* Header — cuma navigasi & judul. Tombol Simpan/Submit sengaja HANYA di bawah tabel
-            (dulu sempat dobel atas+bawah, membingungkan user — keluhan 2026-07-07). */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-          <div>
-            <button style={{...sty.btn("ghost","sm"),marginBottom:6}} onClick={()=>{setActiveTab("list");setActiveOpname(null);}}>← Kembali ke Daftar</button>
-            <h1 style={sty.pageTitle}>Stock Opname — {activeOpname.jenisAlur}</h1>
-            <p style={{color:C.muted,fontSize:12}}>Semester {activeOpname.semester} • {activeOpname.kategori}</p>
+      <div className="opname-panel" style={{...sty.card,marginBottom:20}}>
+        {/* Header panel — judul + aksi navigasi. Tombol Simpan/Submit sengaja HANYA di bawah
+            tabel (dulu sempat dobel atas+bawah, membingungkan user — keluhan 2026-07-07). */}
+        <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,gap:12}}>
+          <div style={{minWidth:0,flex:"1 1 180px"}}>
+            <h1 style={{...sty.pageTitle,fontSize:17}}>Opname {activeOpname.jenisAlur==="SAP"?"SAP":"Non-SAP"} — {activeOpname.semester}</h1>
+            <p style={{color:C.muted,fontSize:13}}>{activeOpname.kategori}</p>
           </div>
-          {isReadOnly && activeOpname.status==="SELESAI" && (
-            <button style={sty.btn("ghost")} onClick={()=>downloadBeritaAcara(activeOpname)}>📄 Download Berita Acara</button>
-          )}
+          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+            {isSAP && !isReadOnly && (
+              <label style={{fontSize:12,fontWeight:600,color:C.accent,cursor:csvLoading?"default":"pointer"}}>
+                {csvLoading?"Memproses...":"Ganti File PID"}
+                <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleReplaceCSV} disabled={csvLoading} style={{display:"none"}}/>
+              </label>
+            )}
+            {isReadOnly && activeOpname.status==="SELESAI" && (
+              <button style={sty.btn("ghost","sm")} onClick={()=>downloadBeritaAcara(activeOpname)}>📄 Download Berita Acara</button>
+            )}
+            {isReadOnly && <button style={sty.btn("ghost","sm")} onClick={()=>setActiveOpname(null)}>← Kembali ke Daftar</button>}
+            {!isReadOnly && <button style={sty.btn("ghost","sm")} onClick={handleBatal}>✕ Batal</button>}
+          </div>
         </div>
 
         {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP.
@@ -310,17 +381,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
                 📋 Material Non-Stock yang Ditemukan
               </div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                <button style={{...sty.btn("primary"),width:"100%"}} onClick={()=>openTambahModal()}>
-                  ➕ Tambah Material Ditemukan
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                <button style={{...sty.btn("primary"),minHeight:44}} onClick={()=>openTambahModal()}>
+                  ➕ Tambah Material
                 </button>
-                <label style={{...sty.btn("ghost"),width:"100%",textAlign:"center",cursor:queueUploadBusy?"default":"pointer",opacity:queueUploadBusy?0.6:1}}>
-                  {queueUploadBusy?"Memuat...":"📂 Upload Usulan Pencocokan"}
+                <label style={{...sty.btn("ghost"),minHeight:44,display:"inline-flex",alignItems:"center",cursor:queueUploadBusy?"default":"pointer",opacity:queueUploadBusy?0.6:1}}>
+                  {queueUploadBusy?"Memuat...":"📂 Upload Usulan"}
                   <input type="file" accept=".xlsx,.XLSX,.xls" style={{display:"none"}} onChange={handleUploadUsulan} disabled={queueUploadBusy}/>
                 </label>
               </div>
               <div style={{fontSize:12,color:C.muted,lineHeight:1.45,marginTop:8}}>
-                "Tambah Material" untuk barang yang belum pernah tercatat di mana pun. "Upload Usulan Pencocokan" untuk file review yang sudah disiapkan sebelumnya (kode MARA sudah dicocokkan, tinggal diverifikasi fisik).
+                "Tambah Material" untuk barang yang belum pernah tercatat di mana pun. "Upload Usulan" untuk file review yang sudah disiapkan sebelumnya (kode MARA sudah dicocokkan, tinggal diverifikasi fisik).
               </div>
             </div>
 
@@ -366,27 +437,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           </>
         )}
 
-        {/* Upload CSV SAP */}
-        {isSAP && !isReadOnly && (
-          <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
-            <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
-              📂 Step 1: Upload File SAP
-            </div>
-            {/* Tombol berstyle, sama persis pola dengan Stock Count — dulu cuma <input type="file">
-                polos tanpa styling di sini, beda tampilan dari upload SAP di tempat lain (keluhan
-                user 2026-07-07: "samakan proses upload filenya agar user lebih familiar"). */}
-            <label style={{...sty.btn("primary"),display:"flex",alignItems:"center",justifyContent:"center",width:"100%",textAlign:"center",cursor:csvLoading?"default":"pointer",opacity:csvLoading?0.6:1}}>
-              {csvLoading ? "Memproses..." : "📂 Upload CSV/XLSX SAP"}
-              <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleCSVUpload} disabled={csvLoading} style={{display:"none"}}/>
-            </label>
-            {activeOpname.sapUploadedAt && (
-              <div style={{fontSize:12,color:C.green,marginTop:6}}>
-                ✅ {activeOpname.totalRowsSAP} baris SAP dibaca • {items.length} item total • {fmtDate(activeOpname.sapUploadedAt)}
-              </div>
-            )}
-            <div style={{fontSize:12,color:C.muted,lineHeight:1.45,marginTop:6}}>
-              Format: CSV/XLSX export SAP MM (PEMAT_DDMMYYYY). Kolom yang dipakai: Material, Material Description, Base Unit of Measure, Unrestricted Use Stock, Valuation Type. Kalau file punya lebih dari 1 sheet dengan header sama, semua ikut terbaca.
-            </div>
+        {/* Ringkasan file PID sudah terbaca — upload awal sekarang lewat dropzone di daftar
+            (Fase 0), sesi SAP baru selalu sudah bawa item saat panel ini dibuka. Ganti file
+            pakai link "Ganti File PID" di header panel. */}
+        {isSAP && !isReadOnly && activeOpname.sapUploadedAt && (
+          <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.green,marginBottom:14}}>
+            ✅ {activeOpname.totalRowsSAP} baris SAP dibaca • {items.length} item total • {fmtDate(activeOpname.sapUploadedAt)}
           </div>
         )}
 
@@ -400,21 +456,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   {selisihCount>0?`⚠️ ${selisihCount} item selisih`:"✅ Belum ada selisih"}
                 </div>
               </div>
-              <div style={{background:"#f1f5f9",borderRadius: 10,height:8}}>
+              <div style={{background:"#f1f5f9",borderRadius: 10,height:8,marginBottom:10}}>
                 <div style={{width:`${prog.pct}%`,height:8,borderRadius: 10,background:prog.pct===100?C.green:C.accent,transition:"width 0.3s"}}/>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(80px,1fr))",gap:8,marginTop:10}}>
-                {[
-                  {label:"Total Item",val:items.length,color:C.accent},
-                  {label:"Sesuai",val:items.filter(i=>i.statusItem==="SESUAI").length,color:C.green},
-                  {label:"Selisih",val:selisihCount,color:C.red},
-                  {label:"Tidak di SAP/Sistem",val:items.filter(i=>["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length,color:"#f59e0b"},
-                ].map((s,i)=>(
-                  <div key={i} style={{textAlign:"center",padding:"6px",borderRadius: 10,background:"#f9fafb",border:`1px solid ${C.border}`}}>
-                    <div style={{fontSize:15,fontWeight:800,color:s.color}}>{s.val}</div>
-                    <div style={{fontSize:12,color:C.muted}}>{s.label}</div>
-                  </div>
-                ))}
+              {/* Ringkasan satu baris angka tenang — bukan 4 boks warna (gaya Apple-like, 0c) */}
+              <div style={{fontSize:13,color:C.muted}}>
+                <span style={{fontWeight:700,color:C.text}}>{items.length}</span> total
+                {" • "}<span style={{fontWeight:700,color:C.green}}>{items.filter(i=>i.statusItem==="SESUAI").length}</span> sesuai
+                {" • "}<span style={{fontWeight:700,color:C.red}}>{selisihCount}</span> selisih
+                {" • "}<span style={{fontWeight:700,color:"#b45309"}}>{items.filter(i=>["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length}</span> belum terdaftar
               </div>
             </div>
 
@@ -587,30 +637,38 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               </div>
             )}
 
-            {/* Aksi Simpan/Submit — sengaja HANYA di sini (bawah tabel), bukan di header juga,
-                supaya tidak dobel/membingungkan (keluhan user 2026-07-07). */}
+            {/* Bar aksi bertahap (Fase 0, 0b): Batal · Simpan Draft selalu ada; tombol ketiga
+                berubah sesuai progress — Submit HANYA muncul kalau semua qty sudah terisi.
+                Sengaja HANYA di sini (bawah tabel), bukan di header juga (keluhan 2026-07-07). */}
             {!isReadOnly && (
               <div className="approval-actions" style={{marginBottom:16}}>
+                <button className="approval-btn--cancel" onClick={handleBatal}>✕ Batal</button>
                 <button className="approval-btn--cancel" onClick={()=>saveOpname(activeOpname)}>💾 Simpan Draft</button>
-                <button className="approval-btn--primary" style={{opacity:prog.pct<100?0.5:1}}
-                  onClick={async ()=>{
-                    // BUG KRITIS (ditemukan 2026-07-07): dulu saveOpname(activeOpname) dan
-                    // submitOpname(activeOpname) dipanggil beruntun TANPA menunggu satu sama lain.
-                    // submitOpname sudah menulis SELURUH data opn (spread {...opn}) + status
-                    // PENDING_ASMAN — saveOpname menulis objek yang SAMA tapi masih status DRAFT.
-                    // Karena keduanya sync ke Supabase secara paralel (network, bukan lagi
-                    // localStorage yang instan), race condition: kalau upsert dari saveOpname
-                    // (DRAFT) selesai BELAKANGAN dari upsert submitOpname (PENDING_ASMAN), hasil
-                    // akhir di database balik jadi DRAFT lagi — submit "hilang" diam-diam padahal
-                    // toast sukses tetap muncul. Ini akar masalah sesi opname tidak pernah sampai
-                    // ke approval Asman walau semua qty sudah lengkap. Fix: submitOpname saja
-                    // (sudah mencakup semua yang dilakukan saveOpname), di-await, baru pindah tab.
-                    if(!validate()) return;
-                    await submitOpname(activeOpname);
-                    setActiveTab("list"); setActiveOpname(null);
-                  }}>
-                  📋 Submit ke Asman
-                </button>
+                {prog.pct===100 ? (
+                  <button className="approval-btn--primary"
+                    onClick={async ()=>{
+                      // BUG KRITIS (ditemukan 2026-07-07): dulu saveOpname(activeOpname) dan
+                      // submitOpname(activeOpname) dipanggil beruntun TANPA menunggu satu sama lain.
+                      // submitOpname sudah menulis SELURUH data opn (spread {...opn}) + status
+                      // PENDING_ASMAN — saveOpname menulis objek yang SAMA tapi masih status DRAFT.
+                      // Karena keduanya sync ke Supabase secara paralel (network, bukan lagi
+                      // localStorage yang instan), race condition: kalau upsert dari saveOpname
+                      // (DRAFT) selesai BELAKANGAN dari upsert submitOpname (PENDING_ASMAN), hasil
+                      // akhir di database balik jadi DRAFT lagi — submit "hilang" diam-diam padahal
+                      // toast sukses tetap muncul. Ini akar masalah sesi opname tidak pernah sampai
+                      // ke approval Asman walau semua qty sudah lengkap. Fix: submitOpname saja
+                      // (sudah mencakup semua yang dilakukan saveOpname), di-await, baru pindah tab.
+                      if(!validate()) return;
+                      await submitOpname(activeOpname);
+                      setActiveOpname(null);
+                    }}>
+                    📋 Submit ke Asman
+                  </button>
+                ) : (
+                  <button className="approval-btn--primary" onClick={scrollToFirstEmptyQty}>
+                    {prog.filled===0 ? "Mulai Hitung" : `Lanjut Hitung — ${prog.filled}/${prog.total}`}
+                  </button>
+                )}
               </div>
             )}
           </>
@@ -736,25 +794,58 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     );
   }
 
-  // ── LIST VIEW ────────────────────────────────────────────────────────────
+  // ── LIST VIEW (Fase 0: satu layar — dropzone, panel analisa, riwayat) ─────
   const pendingForMe = opnameList.filter(o=>
     (o.status==="PENDING_ASMAN"&&hasRole(currentUser, "ASMAN"))||
     (o.status==="PENDING_MANAGER"&&hasRole(currentUser, "MANAGER"))
   );
+  const draftSessions = opnameList.filter(o=>o.status==="DRAFT" && o.id!==activeOpname?.id);
+  const canCreate = can(currentUser, "aksi.import", rolePerms);
 
   return (
     <div>
-      <div style={{display:"flex",flexDirection:isMobile?"column":"row",justifyContent:"space-between",alignItems:isMobile?"stretch":"center",gap:isMobile?12:0,marginBottom:16}}>
-        <div>
-          <p style={{color:C.muted,fontSize:13}}>Dilakukan 1× per semester — bandingkan data sistem vs lapangan & SAP</p>
-        </div>
-        {hasRole(currentUser, "ADMIN","TL") && (
-          <div className="approval-actions">
-            <button className="approval-btn--primary" onClick={()=>startOpname("SAP")}>+ Opname SAP</button>
-            <button className="approval-btn--cancel" onClick={()=>startOpname("NON_SAP")}>+ Opname Non-SAP</button>
+      <OperationsHero
+        eyebrow="Stock Opname"
+        title="Stock Opname"
+        description="Dilakukan 1× per semester — bandingkan data sistem vs lapangan & SAP"
+        scope={`${opnameList.length} sesi`}
+        metrics={[
+          {label:"Menunggu approval",value:pendingForMe.length,alert:pendingForMe.length>0},
+          {label:"Draft berjalan",value:draftSessions.length},
+          {label:"Selesai",value:opnameList.filter(o=>o.status==="SELESAI").length},
+        ]}
+      />
+
+      {/* Zona upload PID — dropzone gantikan tombol "+ Opname SAP" (Fase 0, 0a). Sesi DRAFT
+          baru cuma dibuat SETELAH file berhasil di-parse (startOpnameFromFile). */}
+      {canCreate && (
+        <div style={{marginBottom:20}}>
+          {draftSessions.length>0 && draftSessions.slice(0,3).map(opn=>(
+            <button key={opn.id} style={{...sty.btn("ghost","sm"),width:"100%",justifyContent:"flex-start",marginBottom:6}}
+              onClick={()=>{setActiveOpname(opn);setPage(0);}}>
+              📝 Lanjutkan draft {opn.semester} — {opn.jenisAlur} ({(opn.items||[]).length} item)
+            </button>
+          ))}
+          <div
+            onDragOver={e=>{e.preventDefault(); setDragActive(true);}}
+            onDragLeave={()=>setDragActive(false)}
+            onDrop={e=>{e.preventDefault(); setDragActive(false); handleDropzoneFiles(e.dataTransfer.files);}}
+            onClick={()=>!csvLoading && dropInputRef.current?.click()}
+            style={{border:`1px dashed ${dragActive?C.accent:C.border}`,borderRadius:14,padding:"28px 20px",textAlign:"center",cursor:csvLoading?"default":"pointer",background:dragActive?"#eff6ff":"transparent",transition:"border-color .15s,background .15s"}}>
+            <div style={{fontSize:17,fontWeight:600,marginBottom:4}}>{csvLoading?"Memproses file...":"Tarik & lepas file PID di sini"}</div>
+            <div style={{fontSize:13,color:C.muted,marginBottom:12}}>Format CSV/XLSX export SAP MM (PEMAT_DDMMYYYY)</div>
+            <button type="button" style={sty.btn("primary")} disabled={csvLoading} onClick={e=>{ e.stopPropagation(); dropInputRef.current?.click(); }}>
+              {csvLoading?"Memproses...":"📂 Pilih File"}
+            </button>
+            <input ref={dropInputRef} type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" style={{display:"none"}} disabled={csvLoading}
+              onChange={e=>{ handleDropzoneFiles(e.target.files); e.target.value=""; }}/>
           </div>
-        )}
-      </div>
+          <button style={{...sty.btn("ghost","sm"),marginTop:10}} onClick={()=>startOpname("NON_SAP")}>Opname Non-SAP →</button>
+        </div>
+      )}
+
+      {/* Panel analisa — muncul di halaman yang sama, di bawah dropzone (bukan pindah layar) */}
+      {renderPanel()}
 
       {/* Pending approval cards */}
       {pendingForMe.map(opn=>(
@@ -776,7 +867,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 </div>
               </div>
             : <div style={{display:"flex",gap:8}}>
-                <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);setActiveTab("detail");}}>🔍 Review Detail</button>
+                <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>🔍 Review Detail</button>
                 <div className="approval-actions">
                   <button className="approval-btn--approve" onClick={()=>{opn.status==="PENDING_ASMAN"?approveOpname_Asman(opn,catatanApproval):approveOpname_Manager(opn,catatanApproval);setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button>
                   <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
@@ -785,51 +876,59 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       ))}
 
-      {/* Filter status */}
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+      {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
+      <div style={{borderTop:`1px solid ${C.border}`,marginTop:24,paddingTop:16,marginBottom:10}}>
+        <div style={{fontSize:13,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".4px"}}>Riwayat Opname</div>
+      </div>
+
+      {/* Filter status — chip compact (Apple-like) */}
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
         {["semua","DRAFT","PENDING_ASMAN","PENDING_MANAGER","SELESAI","DITOLAK"].map(s=>(
-          <button key={s} style={{padding:"5px 14px",borderRadius: 10,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"white",color:filterStatus===s?"white":C.muted,fontSize:12,cursor:"pointer"}}
+          <button key={s} style={{padding:"4px 10px",borderRadius:999,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"transparent",color:filterStatus===s?"white":C.muted,fontSize:12,fontWeight:filterStatus===s?600:400,cursor:"pointer"}}
             onClick={()=>setFilterStatus(s)}>
             {s==="semua"?"Semua":statusLabel[s]||s}
           </button>
         ))}
       </div>
 
-      {/* Opname list */}
-      {(filterStatus==="semua"?opnameList:opnameList.filter(o=>o.status===filterStatus))
-        .slice().sort((a,b)=>b.dibuatAt-a.dibuatAt)
-        .map(opn=>{
-          const creator = users.find(u=>u.id===opn.dibuatOleh)||{};
-          const selisihCount = (opn.items||[]).filter(i=>i.selisih!==0).length;
-          return (
-            <div key={opn.id} style={{...sty.card,marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-                <div>
-                  <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
-                  <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
+      {/* Riwayat sesi — garis rambut (bukan kartu berbayang, 0c); mengecil & bisa discroll
+          sendiri saat panel analisa terbuka supaya tidak berebut layar. */}
+      <div style={activeOpname ? {maxHeight:320,overflowY:"auto",paddingRight:4} : undefined}>
+        {(filterStatus==="semua"?opnameList:opnameList.filter(o=>o.status===filterStatus))
+          .slice().sort((a,b)=>b.dibuatAt-a.dibuatAt)
+          .map(opn=>{
+            const creator = users.find(u=>u.id===opn.dibuatOleh)||{};
+            const selisihCount = (opn.items||[]).filter(i=>i.selisih!==0).length;
+            return (
+              <div key={opn.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+                <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:6,marginBottom:6}}>
+                  <div style={{minWidth:0,flex:"1 1 180px"}}>
+                    <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori})</span></div>
+                    <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
+                  </div>
+                  <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
+                    {statusLabel[opn.status]||opn.status}
+                  </span>
                 </div>
-                <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
-                  {statusLabel[opn.status]||opn.status}
-                </span>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>
+                    🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
+                  </button>
+                  {opn.status==="SELESAI" && <button style={sty.btn("ghost","sm")} onClick={()=>downloadBeritaAcara(opn)}>📄 Berita Acara</button>}
+                  {opn.status==="DRAFT" && hasRole(currentUser, "ADMIN","TL") && <button title="Hapus sesi opname" style={sty.btn("danger","sm")} onClick={()=>deleteOpname(opn.id)}>🗑️</button>}
+                </div>
               </div>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);setActiveTab(opn.status==="DRAFT"?(opn.jenisAlur==="SAP"?"form-sap":"form-nonsap"):"detail");}}>
-                  🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
-                </button>
-                {opn.status==="SELESAI" && <button style={sty.btn("ghost","sm")} onClick={()=>downloadBeritaAcara(opn)}>📄 Berita Acara</button>}
-                {opn.status==="DRAFT" && hasRole(currentUser, "ADMIN","TL") && <button title="Hapus sesi opname" style={sty.btn("danger","sm")} onClick={()=>deleteOpname(opn.id)}>🗑️</button>}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
 
-      {opnameList.length===0 && (
-        <div style={{...sty.card,textAlign:"center",padding:50,color:C.muted}}>
-          <div style={{fontSize:32,marginBottom:12}}>📋</div>
-          <div style={{fontSize:13,fontWeight:700}}>Belum ada sesi Stock Opname</div>
-          <div style={{fontSize:12,marginTop:4}}>Klik "+ Opname SAP" atau "+ Opname Non-SAP" untuk memulai</div>
-        </div>
-      )}
+        {opnameList.length===0 && (
+          <div style={{...sty.card,textAlign:"center",padding:50,color:C.muted}}>
+            <div style={{fontSize:32,marginBottom:12}}>📋</div>
+            <div style={{fontSize:13,fontWeight:700}}>Belum ada sesi Stock Opname</div>
+            <div style={{fontSize:12,marginTop:4}}>Tarik file PID ke zona upload di atas untuk memulai</div>
+          </div>
+        )}
+      </div>
     </div>
   );
 
