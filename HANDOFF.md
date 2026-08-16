@@ -159,7 +159,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   7. Uji crowding data nyata (nama panjang/banyak baris) yang tak muncul di e2e stub.
   Pola kerja: user tunjuk screen → audit PNG → fix root-cause → re-baseline → commit+push.
 
-- **MODE RINGKAS HP SELESAI + TERVERIFIKASI DI BROWSER (2026-08-15) — belum di-commit.**
+- **MODE RINGKAS HP SELESAI + TERVERIFIKASI DI BROWSER — DI-COMMIT (`93abdf0`, mobile wave 2026-08-16).**
   Verifikasi lewat Playwright 360px (`npx playwright test tests/e2e/mobile-minimal.spec.js --project=phone-360`,
   3 test lulus) plus pemeriksaan screenshot mentah. Empat cacat ditemukan dan diperbaiki saat verifikasi:
   (1) selector penanda "Ketuk untuk detail" invalid karena `:has()` bersarang di `:has()` — seluruh aturan
@@ -173,14 +173,14 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   - **Varian tombol** — pemetaan ke lima varian `sty.btn` selesai, tapi **cakupannya jauh lebih kecil dari dugaan awal**: dari 579 tombol, 300 sudah `sty.btn`, 187 memakai class yang sudah seragam, 36 `transparent` (ikon), ~30 toggle segmented, 19 polos. Yang benar-benar menulis warna varian sendiri hanya **6** — semuanya sudah dipindah (5 close-button ke `sty.btn("danger","sm")`, 1 hijau `#10b981` ke `C.green`). Angka "261 tombol di luar token" di laporan sebelumnya **keliru** — itu menghitung tombol berbasis class yang sudah konsisten.
   - Penjaga regresi baru: `node scripts/check-card-collapse.mjs` (aturan `:focus` pembuka kartu harus lebih spesifik daripada aturan penyembunyi — sempat salah sekali).
   - Build hijau, skor scanner responsif tetap **118**.
-- **KONSISTENSI DESAIN SELESAI (2026-08-15) — belum di-commit, BELUM verifikasi browser.** Lanjutan dari keluhan user: bentuk tombol, warna teks, ukuran font tidak seragam, dan banner berisi paragraf terlihat aneh di HP. Aturannya jadi `docs/DESIGN_GUIDELINES.md` bagian **11 (skala tipografi), 12 (bentuk tombol & sudut), 13 (banner .info-note), 14 (palet warna teks)**.
+- **KONSISTENSI DESAIN SELESAI — DI-COMMIT (`93abdf0`, 2026-08-16); verifikasi browser tercakup mobile wave.** Lanjutan dari keluhan user: bentuk tombol, warna teks, ukuran font tidak seragam, dan banner berisi paragraf terlihat aneh di HP. Aturannya jadi `docs/DESIGN_GUIDELINES.md` bagian **11 (skala tipografi), 12 (bentuk tombol & sudut), 13 (banner .info-note), 14 (palet warna teks)**.
   - Tipografi — 21 ukuran inline jadi **7** (12/13/15/17/20/24/32); 161 nilai inline + 35 nilai CSS dibulatkan; `sty.label` 11→12 (lantai 12 px), `pageTitleStyle` 22→20. 16 px tetap di input (cegah zoom iOS). Codemod `scripts/typescale.mjs`.
   - Tombol — `sty.btn` `fontWeight` 600→700; `.table-action-button` sudut 7→10 & bobot 750→700; `.approval-actions button` bobot 800→700; 22 tombol ber-inline-style disamakan. Ketiga sumber bentuk tombol kini identik.
   - Sudut — skala tiga nilai **10 / 14 / pill**; 304 nilai inline + 88 nilai CSS dibulatkan. Codemod `scripts/radiusscale.mjs`.
   - Warna teks — 45 warna unik jadi **32**; keluarga abu & biru dipetakan ke `C.muted`/`C.accent` (46 penggantian). Teks di atas latar bertint sengaja dibiarkan.
   - Banner — **49 banner berparagraf** ditandai `.info-note` + `tabIndex={0}`. Di HP hanya 2 baris pertama tampil, sisanya terbuka saat disentuh (CSS `-webkit-line-clamp` + `:focus`, tanpa JavaScript). Desktop utuh, lebar baca 72ch.
   - Build hijau, skor scanner responsif tetap **118** (tidak ada regresi).
-- **RESPONSIF MOBILE FASE 1-5 SELESAI (2026-08-15) — belum di-commit, BELUM verifikasi browser.**
+- **RESPONSIF MOBILE FASE 1-5 SELESAI — DI-COMMIT (mobile wave 2026-08-16); verifikasi browser tuntas via re-baseline e2e 9 PNG.**
   - Rencana: `docs/MOBILE_AUDIT_2026-08-15.md`. Aturan hasilnya: `docs/DESIGN_GUIDELINES.md` bagian **8 (pola tabel), 9 (breakpoint), 10 (lantai skor)**.
   - Fase 1 — 19 tabel dikonversi ke `.mobile-card-table` (CSS generik lama, **tidak ada CSS baru**), lewat codemod `scripts/cardify.mjs`. 9 tabel sisa = daftar kecuali resmi.
   - Fase 2 — `minWidth:0` disisipkan di 25 elemen ber-ellipsis; dua aturan CSS baru: anak sel kartu ikut membungkus, dan baris ber-tombol-banyak (`:has(> button + button)`) di-`flex-wrap` supaya floor 44px tidak memaksa lebar melebihi layar.
@@ -188,7 +188,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   - Fase 4 — 25 `fontSize` <12 px dinaikkan ke 12; layout cetak sengaja dilewati.
   - Fase 5 — breakpoint 7 tier jadi **520 / 768 / 1024** (+ `min-width:769`). **Menyimpang dari rencana 640**: 768 dipakai supaya CSS sejajar dengan `isMobile` (`innerWidth<=768`); 768/1024 = `md:`/`lg:` Tailwind.
   - Skor scanner (detektor diperbaiki, baseline dihitung ulang dari HEAD): **261 → 118**. Sisanya lantai permanen, lihat guidelines bagian 10.
-  - **Langkah berikutnya: Fase 6 = verifikasi browser** di 360 px (dev server sudah jalan di :3001). Yang paling perlu dilihat: tabel yang jadi kartu (ATTB, Material Cadang, TUG-15, Master Data, Migrasi), lalu rentang 901-1024 px karena aturan lama 900/980 sekarang berlaku sampai 1024. Commit hanya setelah user OK.
+  - **Fase 6 (verifikasi browser 360px) SELESAI** — dituntaskan Gelombang 0 mobile wave (lihat entri teratas) + re-baseline e2e 9 PNG (2026-08-16).
 - **PENDING ITEM (per akhir sesi 2026-08-14 — semua kode ter-commit & push, tree bersih).**
   - **Jangka pendek:**
     1. **`war-uimobile` rename tertunda** — `.claude/skills/uimobile` → `war-uimobile` gagal (folder ke-lock file handle Windows, ada proses cwd di folder itu, bukan shell agent). 4 skill custom lain SUDAH di-prefix `war-` (`c968c61`). Fix: tutup editor/explorer/terminal yang buka folder itu (atau restart), lalu `git mv .claude/skills/uimobile .claude/skills/war-uimobile` + sed frontmatter `name: war-uimobile` + `/uimobile`→`/war-uimobile` + rename juga `.agents/skills/uimobile`.
