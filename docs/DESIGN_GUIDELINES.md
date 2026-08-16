@@ -260,3 +260,45 @@ bertabrakan dengan dokumen ini, dokumen ini yang menang. Yang tetap tidak boleh 
 Yang boleh diambil: macro-whitespace, bento grid, ketenangan warna aksen, dan pengurangan
 bayangan/border ganda — selama lolos `node scripts/audit-mobile.mjs` (lantai skor 118) dan
 codemod penjaga lain di seksi 11–14.
+
+## 17. Kontrak layout mobile (CSS-first) + arah polish Apple-like
+
+Ditetapkan saat rombak besar mobile (Gelombang 0) supaya semua layar seragam dan tidak
+tumpang-tindih. Dua paradigma responsif pernah bercampur di codebase ini — CSS-driven
+(`.mobile-card-table`, floor `.app-content`) dan JS-driven (prop `isMobile` di-drill ke
+banyak komponen). Campuran itu sumber ketidakkonsistenan. Aturan sekarang:
+
+**CSS-first adalah satu-satunya sumber kebenaran untuk LAYOUT responsif.**
+- `isMobile` (state `App.jsx`) hanya untuk percabangan **konten/perilaku** — render komponen
+  yang berbeda, ganti teks, aktifkan interaksi khusus HP. **Bukan** untuk hal yang bisa
+  dilakukan CSS (jumlah kolom grid, ukuran font/tombol, sembunyi-tampil, wrap).
+- Layout responsif diletakkan di `src/index.css`, memakai pola **attribute-selector pada
+  inline style** yang sudah jadi konvensi codebase (mis. `.app-content [style*="minmax(260px"]`,
+  `[style*="display: flex"]:has(> button + button)`). Ini membuat aturan berlaku global tanpa
+  menyentuh tiap file JSX. Jangan menambah cabang `isMobile ? styleA : styleB` baru untuk
+  layout — pindahkan ke CSS.
+- Tidak membuat hook `useIsMobile` baru: `isMobile` di `App.jsx:449` + CSS-first sudah cukup.
+
+**Baseline modal responsif (global, `src/index.css` di dalam `@media (max-width:768px)`).**
+Semua modal memakai overlay inline seragam (`position:fixed` + `display:flex` +
+`align-items:center` + `justify-content:center`) dengan panel `sty.card`. `sty.card` sengaja
+tidak punya `maxHeight`/`overflow`, jadi di HP modal tinggi kepotong dan tak bisa di-scroll.
+Baseline mengubah overlay yang cocok signature itu jadi `align-items:flex-start` +
+`overflow-y:auto` + padding safe-area, dan memberi panel `margin:auto` vertikal (tetap
+tampak center saat muat, bisa scroll ke atas saat tinggi). **Konsekuensi:** modal baru cukup
+mengikuti pola overlay inline yang sama — otomatis dapat perilaku ini, tak perlu CSS modal
+per-file. Jangan menaruh `maxHeight` tetap di panel modal (biar baseline yang atur).
+
+**Arah polish estetika: minimalism Apple-like** (lapis di atas token seksi 11–14, bukan
+palet/komponen baru). Dipakai saat merapikan "estetika kuno":
+- Whitespace lega & berirama (kelipatan 4/8); kepadatan turun, hierarki naik.
+- Hierarki lewat ukuran + `fontWeight` (600/700) dalam skala 12/13/15/17/20/24/32, bukan warna ramai.
+- Restraint warna: dominan netral/monokrom + satu aksen (token brand). Warna hanya untuk
+  status/aksi penting. Hormati light + dark token.
+- Kedalaman halus: shadow tipis + border 1px samar (bukan bayangan tebal); sudut 10/14/pill.
+- Declutter: pisahkan konten dengan spasi & garis rambut, bukan boks bertumpuk; selaras mode
+  ringkas HP (seksi 15).
+- Gerak halus ~150–200ms ease pada transisi/`:active`.
+
+Semua tetap tunduk penjaga: `node scripts/audit-mobile.mjs` (lantai 118),
+`scripts/check-card-collapse.mjs`, dan `npm run build` hijau.

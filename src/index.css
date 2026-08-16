@@ -2131,6 +2131,27 @@
   ) {
     flex-wrap: wrap;
   }
+
+  /* Baseline modal responsif global (Gelombang 0 rombak mobile).
+     Semua modal WARNOTO memakai overlay inline seragam
+     (position:fixed + display:flex + align/justify center) dengan panel
+     `sty.card` yang TIDAK punya maxHeight/overflow — di HP modal tinggi
+     kepotong atas-bawah & tak bisa di-scroll. Tanpa edit JSX apa pun:
+     overlay diubah top-align + boleh scroll internal (pola attribute-selector
+     yang sudah dipakai codebase untuk grid minmax & flex-wrap di atas), dan
+     panel di dalamnya dibatasi tinggi maksimum + safe-area supaya isinya
+     yang scroll, bukan halaman. */
+  [style*="position: fixed"][style*="justify-content: center"][style*="align-items: center"] {
+    align-items: flex-start !important;
+    overflow-y: auto !important;
+    padding: max(16px, env(safe-area-inset-top)) 16px
+             max(16px, env(safe-area-inset-bottom)) !important;
+  }
+  [style*="position: fixed"][style*="justify-content: center"][style*="align-items: center"] > * {
+    max-height: none;
+    margin-top: auto;
+    margin-bottom: auto;
+  }
 }
 
 /* ── Banner penjelasan (.info-note) ────────────────────────────────────────
