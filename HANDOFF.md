@@ -54,6 +54,17 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **ATTB — modal edit material dirombak (2026-08-16, DI-PUSH).** Preview + edit LAMA (2 modal
+  terpisah) dilebur jadi SATU `<section role="dialog">` 2-mode (`previewMode` view/edit) — tekan
+  Edit ganti mode di modal yang sama (tak ada popup kedua); `editingId` dihapus. **2 slot foto
+  wajib** (`fotoKeseluruhan`+`fotoNameplate`, validasi inline blokir simpan bila kosong, legacy
+  `foto` disinkron `keseluruhan||foto||nameplate`). Mobile bottom-sheet (`operations.css` ≤700px,
+  safe-area) + Web Interface Guidelines (Esc/focus-trap/focus-return/aria-modal/44px/overscroll-
+  contain/unsaved-guard banner inline). Field edit ikut `previewFieldGroups` (tak ada field
+  preview tanpa editor). Gotcha: validasi 2-foto memblokir edit record legacy tanpa nameplate
+  (sesuai permintaan "wajib 2"). ATTB export = DITOLAK user (YAGNI); yang ada cuma Import (format
+  sudah cocok akuntansi file2/file4, `docs/ATTB_SPEC.md` 7a/7b).
+
 - **SCANNER HARDWARE Kassen KS-606 (keyboard-wedge/HID) TERINTEGRASI — DI-PUSH (2026-08-16).**
   Alat mengetik hasil scan + Enter; TANPA driver/SDK. Nol UI baru (tombol 📷 kamera tetap).
   - `src/hooks/useHardwareScanner.js` (baru): tangkap burst keydown (jeda antar-tombol < `gapMs`

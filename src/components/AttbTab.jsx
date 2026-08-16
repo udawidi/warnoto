@@ -1,5 +1,5 @@
 // Komponen AttbTab — dipindah dari App.jsx (refactor Fase 5b).
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect, useRef, Fragment } from "react";
 import { UIT } from "../constants.js";
 import { hasRole, getUserUptScope, roleTier, getScopeUptIds } from "../lib/roles.js";
 import { getLokasiPetaInfo, subGudangKodeMap } from "../lib/masterSync.js";
@@ -85,9 +85,13 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
   const [showAddForm, setShowAddForm] = useState(false);
   const emptyAddForm = { jenisAset:"MATERIAL", description:"", nomorAT:"", nomorATTB:"", assetClass:"", assetType:"", nilaiPerolehan:"", nilaiBuku:"", alasanPenghapusbukuan:"", keterangan:"" };
   const [addForm, setAddForm] = useState(emptyAddForm);
-  const [editingId, setEditingId] = useState(null);
+  // Modal terpadu preview+edit (satu overlay, dua mode) — hilangkan popup ganda lama.
   const [editForm, setEditForm] = useState({});
   const [previewId, setPreviewId] = useState(null);
+  const [previewMode, setPreviewMode] = useState("view"); // "view" | "edit"
+  const [editSnapshot, setEditSnapshot] = useState(""); // JSON string editForm saat masuk edit, utk deteksi dirty
+  const [photoErrors, setPhotoErrors] = useState({});
+  const [discardIntent, setDiscardIntent] = useState(null); // null | "close" | "view"
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
   const [belumLanjutId, setBelumLanjutId] = useState(null);
@@ -233,6 +237,116 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
       </div>
     );
   }
+
+  // Buka modal di mode lihat / edit — satu-satunya cara membuka overlay (max 1 overlay aktif).
+  function openPreview(id) { setPreviewId(id); setPreviewMode("view"); setDiscardIntent(null); }
+  function openEdit(id) {
+    const item = attbList.find(a=>a.id===id);
+    if (!item) return;
+    setPreviewId(id);
+    setEditForm({...item});
+    setEditSnapshot(JSON.stringify({...item}));
+    setPhotoErrors({});
+    setDiscardIntent(null);
+    setPreviewMode("edit");
+  }
+  function enterEditFromView(item) {
+    setEditForm({...item});
+    setEditSnapshot(JSON.stringify({...item}));
+    setPhotoErrors({});
+    setPreviewMode("edit");
+  }
+  function isEditDirty() { return previewMode==="edit" && JSON.stringify(editForm)!==editSnapshot; }
+  function requestCloseAll() {
+    if (isEditDirty()) { setDiscardIntent("close"); return; }
+    setPreviewId(null);
+  }
+  function requestBackToView() {
+    if (isEditDirty()) { setDiscardIntent("view"); return; }
+    setPreviewMode("view");
+  }
+  function confirmDiscardYes() {
+    const intent = discardIntent;
+    setDiscardIntent(null);
+    if (intent==="close") setPreviewId(null); else setPreviewMode("view");
+  }
+  async function handleSaveEdit() {
+    const errs = { fotoKeseluruhan: !editForm.fotoKeseluruhan, fotoNameplate: !editForm.fotoNameplate };
+    if (errs.fotoKeseluruhan || errs.fotoNameplate) {
+      setPhotoErrors(errs);
+      (errs.fotoKeseluruhan ? fotoKeseluruhanBtnRef : fotoNameplateBtnRef).current?.focus();
+      return;
+    }
+    const foto = editForm.fotoKeseluruhan || editForm.foto || editForm.fotoNameplate;
+    await saveEdit(editForm.id, { ...editForm, foto });
+    setEditSnapshot(JSON.stringify({...editForm, foto}));
+    setPreviewMode("view");
+  }
+
+  const attbDialogRef = useRef(null);
+  const fotoKeseluruhanBtnRef = useRef(null);
+  const fotoNameplateBtnRef = useRef(null);
+
+  function renderPhotoSlot(fieldKey, label, ref) {
+    const val = editForm[fieldKey];
+    const err = photoErrors[fieldKey];
+    return (
+      <div style={{marginBottom:8}} key={fieldKey}>
+        <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>{label} <span style={{color:C.red}}>*</span></div>
+        <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${err?C.red:C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:6}}>
+          {val ? <img src={val} alt={label} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <Package size={32} weight="duotone" color="#9ca3af" aria-hidden="true" />}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <label ref={ref} tabIndex={0} style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer",minHeight:44,touchAction:"manipulation"}}
+            onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); e.currentTarget.querySelector("input[type=file]")?.click(); } }}>
+            <Camera size={16} weight="bold" aria-hidden="true" /> {val?"Ganti":"Upload"} {label}
+            <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
+              onChange={e=>{ handleImg && handleImg(e, img=>setEditForm(f=>({...f,[fieldKey]:img}))); setPhotoErrors(pe=>({...pe,[fieldKey]:false})); }}/>
+          </label>
+          {val && <button type="button" style={{...sty.btn("danger","sm"),minHeight:44,touchAction:"manipulation"}} aria-label={`Hapus ${label}`}
+            onClick={()=>setEditForm(f=>({...f,[fieldKey]:null}))}><Trash size={15} weight="bold" aria-hidden="true" /></button>}
+        </div>
+        {err && <div role="alert" style={{fontSize:12,color:C.red,marginTop:4}}>{label} wajib diisi.</div>}
+      </div>
+    );
+  }
+
+  // Ref supaya handler keydown (di bawah) selalu baca mode/intent terbaru tanpa perlu
+  // re-attach listener tiap mode berubah (yang bikin fokus balik ke trigger prematur).
+  const attbModeRef = useRef({ previewMode, discardIntent });
+  attbModeRef.current = { previewMode, discardIntent };
+
+  // Focus trap + Esc + kembalikan fokus ke trigger saat modal terpadu tutup (max 1 overlay aktif).
+  useEffect(() => {
+    if (!previewId) return;
+    const prevActive = document.activeElement;
+    function getFocusable() {
+      return Array.from(attbDialogRef.current?.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])') || []).filter(el=>!el.disabled);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        const { previewMode: mode, discardIntent: intent } = attbModeRef.current;
+        if (intent) { setDiscardIntent(null); return; }
+        if (mode === "edit") requestBackToView(); else requestCloseAll();
+        return;
+      }
+      if (e.key === "Tab") {
+        const els = getFocusable();
+        if (!els.length) return;
+        const first = els[0], last = els[els.length-1];
+        if (e.shiftKey && document.activeElement===first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement===last) { e.preventDefault(); first.focus(); }
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    const first = getFocusable()[0];
+    first?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      prevActive?.focus?.();
+    };
+  }, [previewId]);
 
   const previewItem = previewId ? attbList.find(a=>a.id===previewId) : null;
   // Older promoted records only persisted `foto`.  Rehydrate missing photo
@@ -463,7 +577,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
               const locationBlok = loc?.lok && `Blok: ${loc.lok.kode || loc.lok.nama}`;
               return (
                 <Fragment key={item.id}>
-                  <tr tabIndex={0} className="mobile-card-table__row attb-preview-trigger" onClick={()=>setPreviewId(item.id)} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
+                  <tr tabIndex={0} className="mobile-card-table__row attb-preview-trigger" onClick={()=>openPreview(item.id)} style={{borderBottom:`1px solid ${C.border}`,borderLeft:`3px solid ${borderColor}`,verticalAlign:"middle"}}>
                     {/* Foto */}
                     <td data-label="Foto" className="mobile-card-table__photo" style={{padding:"8px 12px",width:52}}>
                       <div style={{width:40,height:40,borderRadius: 10,overflow:"hidden",border:`1px solid ${C.border}`,background:"#f3f4f6",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -541,7 +655,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                       <div className="table-actions">
                         {canManage && (
                           <button className="table-action-button" title="Edit data ATTB"
-                            onClick={()=>{setEditingId(item.id);setEditForm({...item});}}>Edit</button>
+                            onClick={()=>openEdit(item.id)}>Edit</button>
                         )}
                         {canDelete && (
                           <button className="table-action-button is-danger" title="Hapus data ATTB"
@@ -616,7 +730,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
           ].filter(Boolean).join(" • ") || "Lokasi belum diisi";
           return (
             <Fragment key={item.id}>
-            <div className="attb-mobile-card attb-preview-trigger" role="button" tabIndex={0} onClick={()=>setPreviewId(item.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setPreviewId(item.id);}}} style={{borderLeft:`4px solid ${borderColor}`}}>
+            <div className="attb-mobile-card attb-preview-trigger" role="button" tabIndex={0} onClick={()=>openPreview(item.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openPreview(item.id);}}} style={{borderLeft:`4px solid ${borderColor}`}}>
               {/* Header: foto + nomor + badge tahap */}
               <div className="attb-mobile-card__header">
                 {item.foto
@@ -650,7 +764,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
               </div>
               {/* Actions */}
               <div className="attb-mobile-card__actions" onClick={e=>e.stopPropagation()}>
-                {canManage && <button title="Edit" aria-label="Edit" style={{...sty.btn("ghost","sm"),padding:"8px 12px",minHeight:44,display:"inline-flex",alignItems:"center",gap:5}} onClick={()=>{setEditingId(item.id);setEditForm({...item});}}><PencilSimple size={16} weight="bold" aria-hidden="true" /><span>Edit</span></button>}
+                {canManage && <button title="Edit" aria-label="Edit" style={{...sty.btn("ghost","sm"),padding:"8px 12px",minHeight:44,display:"inline-flex",alignItems:"center",gap:5}} onClick={()=>openEdit(item.id)}><PencilSimple size={16} weight="bold" aria-hidden="true" /><span>Edit</span></button>}
                 {canApproveThis && (
                   <span className="approval-actions approval-actions--compact">
                     <button className="approval-btn--approve" onClick={()=>approveToKI(item.id)}><Check className="approval-btn__ic" size={15} weight="bold" aria-hidden="true" />Approve</button>
@@ -849,143 +963,142 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
         </div>
       )}
 
-      {/* MODAL EDIT — field tahap berikutnya baru muncul setelah item mencapai tahap itu */}
-      {editingId && (()=>{
-        const item = attbList.find(a=>a.id===editingId);
-        if (!item) return null;
-        const stageIdx = attbStageIndex(item.stage);
+      {/* MODAL TERPADU — satu overlay, dua mode (view/edit). Bottom-sheet di HP, center di desktop. */}
+      {previewItem && (()=>{
+        const stageIdx = attbStageIndex(previewItem.stage);
+        const isEdit = previewMode==="edit";
         return (
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-            <div style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90vh",overflowY:"auto"}}>
-              <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}><PencilSimple className="attb-inline-icon" size={18} weight="bold" aria-hidden="true" /> Edit ATTB</h3>
-              <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{item.nomorATTB||item.id} — {ATTB_JENIS_ASET_LABEL[item.jenisAset]||item.jenisAset}</div>
+        <div className="attb-preview-backdrop" role="presentation" onClick={requestCloseAll}>
+          <section ref={attbDialogRef} className="attb-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="attb-preview-title" onClick={e=>e.stopPropagation()}
+            style={{overscrollBehavior:"contain"}}>
+            <header className="attb-preview-header">
+              <div><h3 id="attb-preview-title">{isEdit? <><PencilSimple className="attb-inline-icon" size={17} weight="bold" aria-hidden="true" /> Edit — </> : null}{previewItem.nomorATTB||previewItem.nomorAT||previewItem.id}</h3><p>{previewItem.description||"Tanpa deskripsi"}</p></div>
+              {!isEdit && <div className="attb-preview-badges"><span>{ATTB_JENIS_ASET_LABEL[previewItem.jenisAset]||previewItem.jenisAset||"-"}</span><span>{attbStageLabel(previewItem.stage)}</span><span>{previewItem.approvalStatus||"DRAFT"}</span></div>}
+            </header>
 
-              {/* Foto barang — bisa ditambah/diperbarui di semua tahap. Untuk material
-                  eks Bongkaran TUG-10, foto awal sudah ter-isi dari input TUG-10. */}
-              <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Foto Barang</div>
-              <div style={{height:170,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",marginBottom:8}}>
-                {editForm.foto ? <img src={editForm.foto} alt="Foto barang ATTB" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div style={{fontSize:32,color: "#64748b"}}><Package size={36} weight="duotone" aria-label="Tidak ada foto" /></div>}
-              </div>
-              <div style={{display:"flex",gap:8,marginBottom:16}}>
-                <label style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer"}}>
-                  <Camera size={16} weight="bold" aria-hidden="true" /> {editForm.foto?"Ganti Foto":"Upload Foto"}
-                  <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg && handleImg(e, img=>setEditForm(f=>({...f,foto:img})))}/>
-                </label>
-                {editForm.foto && <button style={sty.btn("danger","sm")} onClick={()=>setEditForm(f=>({...f,foto:null}))}><Trash size={15} weight="bold" aria-hidden="true" /> Hapus Foto</button>}
-              </div>
+            <div className="attb-preview-body" style={{overscrollBehavior:"contain", ...(isEdit?{display:"block"}:{})}}>
+              {!isEdit && <>
+                <div className="attb-preview-photos">
+                  {[{label:"Foto Keseluruhan", src:previewPhotos.keseluruhan, alt:"Foto Keseluruhan"}, {label:"Foto Nameplate", src:previewPhotos.nameplate, alt:"Foto Nameplate"}].map(photo=>(
+                    <div className="attb-preview-photo-card" key={photo.label}>
+                      <div className="attb-preview-photo-label">{photo.label}</div>
+                      <div className="attb-preview-photo">{photo.src ? <img src={photo.src} alt={photo.label==="Foto Keseluruhan" ? `Foto ${previewItem.description||"material"}` : `${photo.alt} ${previewItem.description||"material"}`} /> : <div aria-label={`${photo.label} tidak tersedia`}><Package size={36} weight="duotone" aria-hidden="true" /><small>Foto tidak tersedia</small></div>}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="attb-preview-details">
+                  {previewFieldGroups(previewItem).map(group=><div className="attb-preview-group" key={group.title}><h4>{group.title}</h4><dl>{group.fields.map(f=><Fragment key={f.key}><dt>{f.label}</dt><dd>{formatPreviewValue(f,previewItem[f.key])}</dd></Fragment>)}</dl></div>)}
+                  <div className="attb-preview-group"><h4>Lokasi Penyimpanan</h4><dl><dt>Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.gdg?.nama||"-"}</dd><dt>Sub Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.sg?.nama||"-"}</dd><dt>Blok</dt><dd>{resolveLokasiMaster(previewItem)?.lok?.kode||resolveLokasiMaster(previewItem)?.lok?.nama||"-"}</dd></dl></div>
+                  {previewItem.stageHistory?.length>0 && <div className="attb-preview-group"><h4>Riwayat Tahap</h4><ul className="attb-preview-history">{[...previewItem.stageHistory].reverse().map((h,i)=><li key={i}><b>{attbStageLabel(h.stage)}</b> — {h.tanggal?new Date(h.tanggal).toLocaleDateString("id-ID"):"-"}{h.catatan?` · ${h.catatan}`:""}</li>)}</ul></div>}
+                </div>
+              </>}
 
-              <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Data Inti</div>
-              {ATTB_CORE_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
-              {(ATTB_FIELDS_BY_JENIS[item.jenisAset]||[]).map(f=>renderField(f, editForm, setEditForm))}
+              {isEdit && <>
+                {renderPhotoSlot("fotoKeseluruhan", "Foto Keseluruhan", fotoKeseluruhanBtnRef)}
+                {renderPhotoSlot("fotoNameplate", "Foto Nameplate", fotoNameplateBtnRef)}
 
-              {/* Lokasi Penyimpanan — dipindah ke sini dari kolom tabel supaya tabel lebih ringkas */}
-              <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Lokasi Penyimpanan</div>
-              <div style={{marginBottom:6}}>
-                <label style={sty.label}>Gudang</label>
-                <select style={sty.select} value={editForm.gudangId||""} onChange={e=>{ const v=e.target.value; setEditForm(f=>({...f,gudangId:v||null,subGudangId:null,lokasiId:null})); }}>
-                  <option value="">-- Pilih Gudang --</option>
-                  {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
-                </select>
-              </div>
-              {editForm.gudangId && subGudangList.filter(sg=>sg.gudangId===editForm.gudangId).length>0 && (
+                <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Data Inti</div>
+                {ATTB_CORE_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+                {(ATTB_FIELDS_BY_JENIS[previewItem.jenisAset]||[]).map(f=>renderField(f, editForm, setEditForm))}
+
+                <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Lokasi Penyimpanan</div>
                 <div style={{marginBottom:6}}>
-                  <label style={sty.label}>Sub Gudang</label>
-                  <select style={sty.select} value={editForm.subGudangId||""} onChange={e=>{ const v=e.target.value; setEditForm(f=>({...f,subGudangId:v||null,lokasiId:null})); }}>
-                    <option value="">-- Pilih Sub Gudang --</option>
-                    {subGudangList.filter(sg=>sg.gudangId===editForm.gudangId).map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
+                  <label style={sty.label}>Gudang</label>
+                  <select style={sty.select} value={editForm.gudangId||""} onChange={e=>{ const v=e.target.value; setEditForm(f=>({...f,gudangId:v||null,subGudangId:null,lokasiId:null})); }}>
+                    <option value="">-- Pilih Gudang --</option>
+                    {gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
                   </select>
                 </div>
-              )}
-              {editForm.gudangId && (()=>{
-                const subs = subGudangList.filter(sg=>sg.gudangId===editForm.gudangId);
-                const blokOpts = lokasiList.filter(l=>l.gudangId===editForm.gudangId && (subs.length===0||(l.subGudangId||"")===(editForm.subGudangId||"")));
-                if (blokOpts.length===0) return <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginBottom:6}}><Warning className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Belum ada Blok terdaftar — pilihan Gudang/Sub Gudang tetap tersimpan.</div>;
-                return (
+                {editForm.gudangId && subGudangList.filter(sg=>sg.gudangId===editForm.gudangId).length>0 && (
                   <div style={{marginBottom:6}}>
-                    <label style={sty.label}>Blok</label>
-                    <select style={sty.select} value={editForm.lokasiId||""} onChange={e=>setEditForm(f=>({...f,lokasiId:e.target.value||null}))}>
-                      <option value="">-- Pilih Blok --</option>
-                      {blokOpts.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
-                    </select>
-                  </div>
-                );
-              })()}
-
-              {stageIdx>=1 && <>
-                <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 2 — AE.1 s.d. AE.4</div>
-                {ATTB_STAGE2_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
-                {item.jenisAset==="MATERIAL" && (
-                  <div style={{marginBottom:8}}>
-                    <label style={sty.label}>Kategori Material</label>
-                    <select style={sty.select} value={editForm.kategoriMaterial||""} onChange={e=>setEditForm(f=>({...f,kategoriMaterial:e.target.value}))}>
-                      <option value="">-- Pilih --</option>
-                      <option value="Trafo">Trafo</option>
-                      <option value="Non Trafo">Non Trafo</option>
+                    <label style={sty.label}>Sub Gudang</label>
+                    <select style={sty.select} value={editForm.subGudangId||""} onChange={e=>{ const v=e.target.value; setEditForm(f=>({...f,subGudangId:v||null,lokasiId:null})); }}>
+                      <option value="">-- Pilih Sub Gudang --</option>
+                      {subGudangList.filter(sg=>sg.gudangId===editForm.gudangId).map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
                     </select>
                   </div>
                 )}
-              </>}
-              {stageIdx>=2 && <>
-                <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 3 — Siap Cek Dekom</div>
-                {ATTB_STAGE3_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
-              </>}
-              {stageIdx>=3 && <>
-                <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 4 — Cek KJPP</div>
-                {ATTB_STAGE4_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
-              </>}
-              {stageIdx>=4 && <>
-                <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 5 — Menunggu Lelang</div>
-                {ATTB_STAGE5_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
-              </>}
+                {editForm.gudangId && (()=>{
+                  const subs = subGudangList.filter(sg=>sg.gudangId===editForm.gudangId);
+                  const blokOpts = lokasiList.filter(l=>l.gudangId===editForm.gudangId && (subs.length===0||(l.subGudangId||"")===(editForm.subGudangId||"")));
+                  if (blokOpts.length===0) return <div style={{fontSize:12,color:"#b45309",fontStyle:"italic",marginBottom:6}}><Warning className="attb-inline-icon" size={15} weight="fill" aria-hidden="true" /> Belum ada Blok terdaftar — pilihan Gudang/Sub Gudang tetap tersimpan.</div>;
+                  return (
+                    <div style={{marginBottom:6}}>
+                      <label style={sty.label}>Blok</label>
+                      <select style={sty.select} value={editForm.lokasiId||""} onChange={e=>setEditForm(f=>({...f,lokasiId:e.target.value||null}))}>
+                        <option value="">-- Pilih Blok --</option>
+                        {blokOpts.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
+                      </select>
+                    </div>
+                  );
+                })()}
 
-              {item.stageHistory?.length>0 && (
-                <div style={{marginTop:12}}>
-                  <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Riwayat Tahap</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:120,overflowY:"auto"}}>
-                    {[...item.stageHistory].reverse().map((h,i)=>(
-                      <div key={i} style={{fontSize:12,color:C.muted,borderLeft:`2px solid ${C.border}`,paddingLeft:8}}>
-                        <b style={{color:C.text}}>{attbStageLabel(h.stage)}</b> — {users.find(u=>u.id===h.oleh)?.name||h.oleh} • {h.tanggal?new Date(h.tanggal).toLocaleString("id-ID"):"-"}
-                        {h.catatan && <div>{h.catatan}</div>}
-                      </div>
-                    ))}
+                {stageIdx>=1 && <>
+                  <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 2 — AE.1 s.d. AE.4</div>
+                  {ATTB_STAGE2_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+                  {previewItem.jenisAset==="MATERIAL" && (
+                    <div style={{marginBottom:8}}>
+                      <label style={sty.label}>Kategori Material</label>
+                      <select style={sty.select} value={editForm.kategoriMaterial||""} onChange={e=>setEditForm(f=>({...f,kategoriMaterial:e.target.value}))}>
+                        <option value="">-- Pilih --</option>
+                        <option value="Trafo">Trafo</option>
+                        <option value="Non Trafo">Non Trafo</option>
+                      </select>
+                    </div>
+                  )}
+                </>}
+                {stageIdx>=2 && <>
+                  <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 3 — Siap Cek Dekom</div>
+                  {ATTB_STAGE3_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+                </>}
+                {stageIdx>=3 && <>
+                  <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 4 — Cek KJPP</div>
+                  {ATTB_STAGE4_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+                </>}
+                {stageIdx>=4 && <>
+                  <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",margin:"12px 0 6px"}}>Tahap 5 — Menunggu Lelang</div>
+                  {ATTB_STAGE5_FIELDS.map(f=>renderField(f, editForm, setEditForm))}
+                </>}
+
+                {previewItem.stageHistory?.length>0 && (
+                  <div style={{marginTop:12}}>
+                    <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",marginBottom:6}}>Riwayat Tahap</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:120,overflowY:"auto"}}>
+                      {[...previewItem.stageHistory].reverse().map((h,i)=>(
+                        <div key={i} style={{fontSize:12,color:C.muted,borderLeft:`2px solid ${C.border}`,paddingLeft:8}}>
+                          <b style={{color:C.text}}>{attbStageLabel(h.stage)}</b> — {users.find(u=>u.id===h.oleh)?.name||h.oleh} • {h.tanggal?new Date(h.tanggal).toLocaleString("id-ID"):"-"}
+                          {h.catatan && <div>{h.catatan}</div>}
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                )}
+              </>}
+            </div>
+
+            {discardIntent && (
+              <div role="alertdialog" aria-live="polite" style={{padding:"10px 18px",background:"#fef2f2",borderTop:"1px solid #fecaca",display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap"}}>
+                <span style={{fontSize:12,color:"#991b1b"}}>Ada perubahan belum disimpan. Buang perubahan?</span>
+                <div style={{display:"flex",gap:8}}>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>setDiscardIntent(null)}>Lanjut Edit</button>
+                  <button style={sty.btn("danger","sm")} onClick={confirmDiscardYes}>Buang Perubahan</button>
                 </div>
-              )}
+              </div>
+            )}
 
-              <div style={{display:"flex",gap:10,marginTop:16}}>
-                <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditingId(null)}>Batal</button>
-                <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{await saveEdit(item.id, editForm);setEditingId(null);}}><FloppyDisk size={16} weight="bold" aria-hidden="true" /> Simpan</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-      {previewItem && (
-        <div className="attb-preview-backdrop" role="presentation" onClick={()=>setPreviewId(null)}>
-          <section className="attb-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="attb-preview-title" onClick={e=>e.stopPropagation()}>
-            <header className="attb-preview-header">
-              <div><h3 id="attb-preview-title">{previewItem.nomorATTB||previewItem.nomorAT||previewItem.id}</h3><p>{previewItem.description||"Tanpa deskripsi"}</p></div>
-              <div className="attb-preview-badges"><span>{ATTB_JENIS_ASET_LABEL[previewItem.jenisAset]||previewItem.jenisAset||"-"}</span><span>{attbStageLabel(previewItem.stage)}</span><span>{previewItem.approvalStatus||"DRAFT"}</span></div>
-            </header>
-            <div className="attb-preview-body">
-              <div className="attb-preview-photos">
-                {[{label:"Foto Keseluruhan", src:previewPhotos.keseluruhan, alt:"Foto Keseluruhan"}, {label:"Foto Nameplate", src:previewPhotos.nameplate, alt:"Foto Nameplate"}].map(photo=>(
-                  <div className="attb-preview-photo-card" key={photo.label}>
-                    <div className="attb-preview-photo-label">{photo.label}</div>
-                    <div className="attb-preview-photo">{photo.src ? <img src={photo.src} alt={photo.label==="Foto Keseluruhan" ? `Foto ${previewItem.description||"material"}` : `${photo.alt} ${previewItem.description||"material"}`} /> : <div aria-label={`${photo.label} tidak tersedia`}><Package size={36} weight="duotone" aria-hidden="true" /><small>Foto tidak tersedia</small></div>}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="attb-preview-details">
-                {previewFieldGroups(previewItem).map(group=><div className="attb-preview-group" key={group.title}><h4>{group.title}</h4><dl>{group.fields.map(f=><Fragment key={f.key}><dt>{f.label}</dt><dd>{formatPreviewValue(f,previewItem[f.key])}</dd></Fragment>)}</dl></div>)}
-                <div className="attb-preview-group"><h4>Lokasi Penyimpanan</h4><dl><dt>Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.gdg?.nama||"-"}</dd><dt>Sub Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.sg?.nama||"-"}</dd><dt>Blok</dt><dd>{resolveLokasiMaster(previewItem)?.lok?.kode||resolveLokasiMaster(previewItem)?.lok?.nama||"-"}</dd></dl></div>
-                {previewItem.stageHistory?.length>0 && <div className="attb-preview-group"><h4>Riwayat Tahap</h4><ul className="attb-preview-history">{[...previewItem.stageHistory].reverse().map((h,i)=><li key={i}><b>{attbStageLabel(h.stage)}</b> — {h.tanggal?new Date(h.tanggal).toLocaleDateString("id-ID"):"-"}{h.catatan?` · ${h.catatan}`:""}</li>)}</ul></div>}
-              </div>
-            </div>
-            <footer className="attb-preview-footer"><button style={sty.btn("ghost")} onClick={()=>setPreviewId(null)}>Tutup</button>{canManage&&<button style={sty.btn("primary")} onClick={()=>{setPreviewId(null);setEditingId(previewItem.id);setEditForm({...previewItem});}}>Edit Data</button>}</footer>
+            <footer className="attb-preview-footer">
+              {isEdit ? <>
+                <button style={sty.btn("ghost")} onClick={requestBackToView}>Batal</button>
+                <button style={sty.btn("primary")} onClick={handleSaveEdit}><FloppyDisk size={16} weight="bold" aria-hidden="true" /> Simpan</button>
+              </> : <>
+                <button style={sty.btn("ghost")} onClick={requestCloseAll}>Tutup</button>
+                {canManage&&<button style={sty.btn("primary")} onClick={()=>enterEditFromView(previewItem)}>Edit Data</button>}
+              </>}
+            </footer>
           </section>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
