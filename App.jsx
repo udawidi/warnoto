@@ -65,6 +65,7 @@ import { useApprovalHub } from "./src/hooks/useApprovalHub.js";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "./src/data/auditAspects.js";
 import { StockOpnameTab } from "./src/components/StockOpnameTab.jsx";
 import { MigrasiDataTab } from "./src/components/MigrasiDataTab.jsx";
+import { IntegrasiApiTab } from "./src/components/IntegrasiApiTab.jsx";
 import { KapasitasGudangImportTab } from "./src/components/KapasitasGudangImportTab.jsx";
 import { KartuGantungModal } from "./src/components/KartuGantungModal.jsx";
 import { MaterialCadangTab } from "./src/components/MaterialCadangTab.jsx";
@@ -3630,6 +3631,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"inspeksiMaterial",icon:<SidebarIcon name="inspection"/>,label:"Inspeksi Material"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
+    {id:"integrasiApi",icon:<SidebarIcon name="master"/>,label:"Integrasi API"},
   ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
@@ -3649,6 +3651,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
     inspeksiMaterial: {eyebrow:"Material Assurance",title:"Inspeksi Material Cadang"},
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
+    integrasiApi: {eyebrow:"Third-Party Access",title:"Integrasi API"},
   }[tab] || {eyebrow:"WARNOTO",title:"Dashboard"};
   const tug5UptKode = txnForm?.docType === "TUG5" && txnForm?.sourceType === "ULTG"
     ? uptList.find(u => u.id === (ultgList.find(x => x.id === txnForm.ultgId)?.parentUptId || currentUser?.uptId))?.kode || "UPT-SBY"
@@ -4004,6 +4007,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             uptList={uptList}
             C={C} sty={sty} uptNama={currentUptNama}
           />
+        )}
+
+        {/* INTEGRASI API — Fase 1: Admin kelola API-key ter-scope untuk SAP/pihak ketiga */}
+        {tab==="integrasiApi" && (
+          <IntegrasiApiTab C={C} sty={sty} showToast={showToast} />
         )}
 
         {/* FORECAST STOK — halaman sendiri, gabungkan heuristik lokal + AI Groq + ML Prophet berdampingan */}

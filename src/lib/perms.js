@@ -23,6 +23,7 @@ export const PERM_MENUS = [
   { key: "menu.forecastStok", label: "Forecast Stok" },
   { key: "menu.inspeksiMaterial", label: "Inspeksi Material Cadang" },
   { key: "menu.ai", label: "Pak War (AI)" },
+  { key: "menu.integrasiApi", label: "Integrasi API" },
 ];
 
 export const PERM_AKSI = [
@@ -32,6 +33,7 @@ export const PERM_AKSI = [
   { key: "aksi.kelolaAkun", label: "Kelola Akun" },
   { key: "aksi.migrasiData", label: "Migrasi Data SAP/Non-SAP" },
   { key: "aksi.buatInspeksiMaterial", label: "Buat Inspeksi Material Cadang" },
+  { key: "aksi.kelolaApiIntegrasi", label: "Kelola API Integrasi" },
 ];
 
 // Urutan role sebagai kolom di halaman Matrix Izin. SUPERADMIN read-only (selalu true).
@@ -64,7 +66,7 @@ export const DEFAULT_PERMS = {
   // foto stok + pindah blok — TANPA menu master/approval/opname/rencana/maturity/
   // inspeksiMaterial/attb, TANPA aksi kelola apa pun. Edit/Hapus/kelola pindah ke TL.
   ADMIN: { ...menus("dashboard", "stock", "transaction", "forecastStok", "heavyEquipment", "kapasitasGudang", "ai"), "aksi.buatTransaksi": true },
-  TL: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true, "aksi.migrasiData": true },
+  TL: { ...FULL_MENUS, "menu.integrasiApi": true, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true, "aksi.migrasiData": true, "aksi.kelolaApiIntegrasi": true },
   ASMAN: { ...FULL_MENUS, "aksi.migrasiData": true },
   MANAGER: { ...FULL_MENUS, "aksi.migrasiData": true },
   ADMIN_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },

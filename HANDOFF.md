@@ -54,6 +54,18 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **API INTEGRASI (SAP S/4HANA + app pihak ketiga) — FASE 1 SEDANG DIBANGUN (2026-08-17).**
+  Plan disetujui di `C:\Users\PLN\.claude\plans\task-notification-task-id-boyybm8kh-tas-crispy-tarjan.md`.
+  Tujuan: WARNOTO punya API-key sendiri (ter-scope, bisa dicabut, ter-audit) untuk di-share.
+  Arsitektur: **Edge Function gateway `integration-api`** (reuse pola `admin-create-user`) + tabel
+  `integration_api_keys` (key di-hash sha256) + `integration_request_log`, UI tab admin "Integrasi API",
+  perm baru `aksi.kelolaApiIntegrasi`, docs `docs/INTEGRATION_API.md`. Fase 1 = fondasi key + endpoint
+  READ (`/stock` `/catalog` `/tug`). **BELUM di-apply/deploy/commit** — migration & edge function file
+  saja, nunggu review arsitek + konfirmasi user (skema DB self-host = proposal dulu). **Prasyarat IT:**
+  akses live SAP butuh `warnoto.com` diekspos ke jaringan SAP (public/VPN/whitelist) — sekarang file/batch
+  only. Fase 2 (ingest SAP→WARNOTO master, review-first) & Fase 3 (WARNOTO→SAP TUG + fallback file) NUNGGU
+  kontrak+kredensial tim SAP dan akses IT.
+
 - **STOCK OPNAME — Fase 0 & 1 SELESAI + DI-PUSH (2026-08-16/17).** Rencana 4-fase di
   `.claude/plans/pelaksanaan-esisting-stock-opname-warm-walrus.md` (+ eksekusi/audit di
   `.claude/plans/coba-buatkan-planningnya-dulu-snoopy-haven.md`).
