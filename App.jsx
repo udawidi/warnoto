@@ -3631,7 +3631,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"inspeksiMaterial",icon:<SidebarIcon name="inspection"/>,label:"Inspeksi Material"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
-    {id:"integrasiApi",icon:<SidebarIcon name="master"/>,label:"Integrasi API"},
+    // Integrasi API butuh izin aksi.kelolaApiIntegrasi (bukan cuma menu.*) — mencabut
+    // aksi ini di Matrix Izin langsung menyembunyikan menu, sesuai ekspektasi Admin.
+    ...(can(currentUser, "aksi.kelolaApiIntegrasi", rolePerms) ? [{id:"integrasiApi",icon:<SidebarIcon name="master"/>,label:"Integrasi API"}] : []),
   ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
@@ -4010,7 +4012,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         )}
 
         {/* INTEGRASI API — Fase 1: Admin kelola API-key ter-scope untuk SAP/pihak ketiga */}
-        {tab==="integrasiApi" && (
+        {tab==="integrasiApi" && can(currentUser, "aksi.kelolaApiIntegrasi", rolePerms) && (
           <IntegrasiApiTab C={C} sty={sty} showToast={showToast} />
         )}
 

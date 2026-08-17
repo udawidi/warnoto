@@ -70,6 +70,15 @@ async function requireAdmin(req: Request) {
   if (!callerProfile || (callerProfile.role !== "TL" && callerProfile.role !== "SUPERADMIN")) {
     return { error: json({ ok: false, error: "Hanya TL yang bisa mengelola API Integrasi." }, 403) };
   }
+  // Hormati pencabutan lewat Matrix Izin (role_permissions): kalau override role ini
+  // menyetel aksi.kelolaApiIntegrasi=false, tolak walau role TL — server sejalan dengan
+  // UI, tidak hanya mengandalkan role hardcoded. SUPERADMIN selalu boleh.
+  if (callerProfile.role !== "SUPERADMIN") {
+    const { data: rp } = await admin.from("role_permissions").select("perms").eq("role", callerProfile.role).single();
+    if (rp?.perms && rp.perms["aksi.kelolaApiIntegrasi"] === false) {
+      return { error: json({ ok: false, error: "Akses Kelola API Integrasi dicabut untuk role ini." }, 403) };
+    }
+  }
   return { userId: callerAuth.user.id };
 }
 
