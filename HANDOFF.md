@@ -373,6 +373,18 @@ opname **dipecah per gudang**, simpan pakai **merge fetch-server** (`loadMasterT
 lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusul Fase 2/3. Dependensi baru
 `@zxing/browser` (Fase 2, iOS-only) disetujui.
 
+**API INTEGRASI Fase 2 & 3 — PENDING JANGKA PANJANG (keputusan user 2026-08-18).** Fase 1 + 1.5 sudah live+tested
+(lihat Status). Fase 2 & 3 SENGAJA ditunda tak berbatas waktu — TIDAK dibangun spekulatif, tunggu prasyarat eksternal.
+- **Fase 2 — Ingest SAP→WARNOTO (master material sync):** endpoint `POST /master` (scope `write:master`), review-first
+  (masuk staging/pending, tak langsung timpa master). BLOCKER: kontrak field-mapping dari tim SAP (nomor katalog,
+  plant→UPT pakai `SAP_PLANT_TO_UPT` di `src/data/masterUpt.js`). Plan Fase 2 di
+  `.claude/plans/task-notification-task-id-boyybm8kh-tas-crispy-tarjan.md`.
+- **Fase 3 — WARNOTO→SAP (goods movement/TUG) + fallback file/batch:** `GET /tug?status=pending` (SAP poll dok TUG
+  utk dibukukan) + export snapshot CSV/JSON. Push langsung ke SAP OData DITUNDA — butuh endpoint+kredensial OData SAP.
+  BLOCKER: tim SAP sediakan target contract/creds + IT ekspos `warnoto.com` ke jaringan SAP.
+- **Aktifkan lagi HANYA kalau:** tim SAP kasih kontrak/kredensial ATAU user minta eksplisit. Jangan mulai dari
+  notifikasi/kuota; ini keputusan user.
+
 **Varian gaya Taste Skill — DITUNDA (keputusan user 2026-08-15).** `minimalist-skill` SUDAH dipasang (2026-08-15) sebagai `minimalist-ui` scope user, dengan pagar presedensi di `docs/DESIGN_GUIDELINES.md` seksi 16 (guideline WARNOTO menang atas skill). `brutalist`/`soft`/`stitch` sengaja BELUM dipasang; nanti dipilih/disesuaikan dulu dengan `docs/DESIGN_GUIDELINES.md` supaya tidak ada dua sumber gaya yang bertabrakan. Dari repo itu yang sudah terpasang scope user: `taste-skill` (nama lokal `design-taste-frontend`), `redesign-skill` (`redesign-existing-projects`), `brandkit`, `image-to-code`.
 
 **Verifikasi browser di rumah (sesi 2026-08-10, semua kode SUDAH di-push & deploy Vercel jalan):**
