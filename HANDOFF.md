@@ -64,7 +64,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   `docs/INTEGRATION_API.md`. **Fase 1.5 HARDENING SELESAI + LIVE + TESTED (2026-08-17):** entropy key 256-bit,
   `expires_at`, `allowed_ips` (IP allowlist), `last_used_ip`, log SEMUA hasil auth (200/401/403/429). E2E test
   dari dalam box (bypass Cloudflare, `curl localhost:8000/functions/v1/integration-api/...`) LULUS 5/5: valid+scope
-  200, wrong-scope 403, expired 401, IP-block 403, no-key 401; audit+last_used_ip terekam; key uji dihapus bersih. **VERIFIKASI BROWSER LULUS (2026-08-18):** login TL → tab Integrasi API render, buat key jalan, key tampil status aktif.
+  200, wrong-scope 403, expired 401, IP-block 403, no-key 401; audit+last_used_ip terekam; key uji dihapus bersih. **VERIFIKASI BROWSER LULUS (2026-08-18):** login TL → tab Integrasi API render, buat key jalan, key tampil status aktif. **FIX GATING IZIN (2026-08-18, `098d572`):** dulu cabut `aksi.kelolaApiIntegrasi` di Matrix Izin tak sembunyikan menu (nav cuma cek `menu.integrasiApi`). Sekarang menu+tab (App.jsx) + server (`requireAdmin` edge fn hormati override `role_permissions`) semua cek `aksi.kelolaApiIntegrasi`; SUPERADMIN selalu boleh. Diverifikasi user: TL yang dicabut kehilangan menu. **Cloudflare Access sudah dipasang user & terbukti jalan** (reads `/stock` 403 tanpa service token; `/keys`+`/revoke` bypass, tetap dijaga JWT).
   **GOTCHA ROOT-CAUSE (fixed):** tabel self-host baru TIDAK otomatis dapat GRANT service_role → Edge Function kena
   "permission denied" senyap → semua request balas "API key tidak dikenal". Fix di `20260817c_integration_api_grants.sql`
   (grant service_role; anon/authenticated tetap terkunci). Migration kolom hardening di-apply via inline `-c`
