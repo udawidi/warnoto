@@ -64,12 +64,12 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   `docs/INTEGRATION_API.md`. **Fase 1.5 HARDENING SELESAI + LIVE + TESTED (2026-08-17):** entropy key 256-bit,
   `expires_at`, `allowed_ips` (IP allowlist), `last_used_ip`, log SEMUA hasil auth (200/401/403/429). E2E test
   dari dalam box (bypass Cloudflare, `curl localhost:8000/functions/v1/integration-api/...`) LULUS 5/5: valid+scope
-  200, wrong-scope 403, expired 401, IP-block 403, no-key 401; audit+last_used_ip terekam; key uji dihapus bersih.
+  200, wrong-scope 403, expired 401, IP-block 403, no-key 401; audit+last_used_ip terekam; key uji dihapus bersih. **VERIFIKASI BROWSER LULUS (2026-08-18):** login TL → tab Integrasi API render, buat key jalan, key tampil status aktif.
   **GOTCHA ROOT-CAUSE (fixed):** tabel self-host baru TIDAK otomatis dapat GRANT service_role → Edge Function kena
   "permission denied" senyap → semua request balas "API key tidak dikenal". Fix di `20260817c_integration_api_grants.sql`
   (grant service_role; anon/authenticated tetap terkunci). Migration kolom hardening di-apply via inline `-c`
-  (baris `alter column drop not null` diskip — redundant, key_id sudah nullable). **SISA:** (a) verifikasi browser
-  buat/pakai/cabut key sbg TL; (b) **Cloudflare Access** service-token di depan `/stock`/`/catalog`/`/tug` +
+  (baris `alter column drop not null` diskip — redundant, key_id sudah nullable). **SISA:** (a) ~~verifikasi browser~~
+  ✓ SELESAI 2026-08-18 (TL buat key, status aktif); (b) **Cloudflare Access** service-token di depan `/stock`/`/catalog`/`/tug` +
   BYPASS di `/keys`+`/revoke` — user lapor "selesai C" (perlu konfirmasi scope benar biar panel admin tak mati);
   (c) **Prasyarat IT:** akses live SAP butuh `warnoto.com` diekspos ke jaringan SAP + IP egress SAP untuk allowlist.
   Fase 2 (ingest SAP→WARNOTO master, review-first) & Fase 3 (WARNOTO→SAP TUG) NUNGGU kontrak+kredensial tim SAP.
