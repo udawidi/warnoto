@@ -117,6 +117,49 @@ curl -H "Authorization: Bearer wrn_live_xxxx" \
 | 429 | Rate limit terlampaui |
 | 500 | Kesalahan server |
 
+## Keamanan & Rotasi
+
+### Kedaluwarsa & IP allowlist
+
+Saat membuat key di menu **Integrasi API**, dua field opsional:
+
+- **Kedaluwarsa** — tanggal setelah itu key otomatis ditolak (401), meski
+  belum dicabut manual. Kosongkan untuk key yang tidak pernah kedaluwarsa.
+- **IP Diizinkan** — daftar IP (pisah koma) yang boleh pakai key ini; request
+  dari IP lain ditolak (403). Kosongkan untuk mengizinkan semua IP. Kalau SAP
+  ada di belakang proxy/NAT tetap (mis. IP keluar minipc-gudang), isi field
+  ini dengan IP keluar itu untuk mempersempit blast radius kalau key bocor.
+
+Setiap percobaan autentikasi (sukses maupun gagal — 401/403/429) dicatat ke
+`integration_request_log` termasuk IP pengirim, jadi anomali (mis. banyak 401
+dari IP tak dikenal) bisa dipantau lewat query ke tabel itu.
+
+### Rotasi key tanpa downtime
+
+1. Buat key baru dengan scope yang sama (dan expiry/IP allowlist kalau
+   dipakai) lewat menu Integrasi API — plaintext tampil sekali, salin segera.
+2. Update konfigurasi SAP (SM59 / credential store) untuk memakai key baru.
+   Verifikasi request SAP sukses dengan key baru (cek `last_used_at` di
+   daftar key naik).
+3. Baru setelah SAP terbukti pakai key baru, cabut key lama dari menu yang
+   sama. Selama langkah 1-3, kedua key aktif berdampingan sehingga tidak ada
+   jeda gagal autentikasi di sisi SAP.
+
+### Penyimpanan key di sisi SAP
+
+Plaintext key hanya tampil sekali saat dibuat. Simpan di credential store SAP
+(mis. SM59 destination dengan secure storage, atau credential store
+S/4HANA) — jangan taruh di file konfigurasi plaintext atau kode ABAP yang
+ikut ter-commit ke transport.
+
+### Lapisan tambahan (di luar scope kode ini)
+
+Untuk pertahanan berlapis, disarankan IT memasang **Cloudflare Access atau
+mTLS** di depan endpoint Edge Function (`warnoto.com/functions/v1/integration-api`)
+supaya hanya IP/klien yang dikenal Cloudflare yang bisa mencapai fungsi ini
+sama sekali, sebelum request sampai ke pengecekan API-key. Ini konfigurasi
+Cloudflare dashboard, bukan perubahan kode.
+
 ## Catatan integrasi SAP
 
 Endpoint sengaja publik tanpa sesi Supabase Auth (SAP tidak punya akun WARNOTO)

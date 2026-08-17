@@ -16,6 +16,8 @@ export function IntegrasiApiTab({ sty, C, showToast }) {
   const [loading, setLoading] = useState(true);
   const [label, setLabel] = useState("");
   const [selectedScopes, setSelectedScopes] = useState(new Set());
+  const [expiresAt, setExpiresAt] = useState(""); // yyyy-mm-dd dari <input type="date">, kosong = tak kedaluwarsa
+  const [allowedIpsText, setAllowedIpsText] = useState(""); // pisah koma, kosong = semua IP
   const [busy, setBusy] = useState(false);
   const [freshKey, setFreshKey] = useState(null); // { plaintext, key_prefix } — ditampilkan sekali
 
@@ -45,9 +47,16 @@ export function IntegrasiApiTab({ sty, C, showToast }) {
     if (selectedScopes.size === 0) return showToast?.("Pilih minimal satu scope.", "error");
     setBusy(true);
     try {
+      const ips = allowedIpsText.split(",").map(s => s.trim()).filter(Boolean);
       const { data, error } = await supabase.functions.invoke("integration-api/keys", {
         method: "POST",
-        body: { label: label.trim(), scopes: [...selectedScopes] },
+        body: {
+          label: label.trim(),
+          scopes: [...selectedScopes],
+          // Akhir hari (23:59:59 lokal) supaya key tetap berlaku sepanjang tanggal yang dipilih.
+          expires_at: expiresAt ? new Date(`${expiresAt}T23:59:59`).toISOString() : null,
+          allowed_ips: ips.length ? ips : null,
+        },
       });
       if (error || data?.ok === false) {
         showToast?.("Gagal membuat key: " + (data?.error || error?.message || String(error)), "error");
@@ -56,6 +65,8 @@ export function IntegrasiApiTab({ sty, C, showToast }) {
       setFreshKey(data.key);
       setLabel("");
       setSelectedScopes(new Set());
+      setExpiresAt("");
+      setAllowedIpsText("");
       await loadKeys();
     } finally {
       setBusy(false);
@@ -111,6 +122,14 @@ export function IntegrasiApiTab({ sty, C, showToast }) {
               ))}
             </div>
           </div>
+          <div>
+            <label style={sty.label}>Kedaluwarsa (opsional)</label>
+            <input type="date" style={sty.input} value={expiresAt} onChange={e => setExpiresAt(e.target.value)} />
+          </div>
+          <div>
+            <label style={sty.label}>IP Diizinkan (opsional, pisah koma)</label>
+            <input style={sty.input} value={allowedIpsText} onChange={e => setAllowedIpsText(e.target.value)} placeholder="mis. 10.91.21.5, 203.0.113.10 — kosong = semua IP" />
+          </div>
           <button className="approval-btn--primary" disabled={busy} onClick={createKey} style={{ alignSelf: "flex-start" }}>
             <Plus size={14} /> Buat Key
           </button>
@@ -131,20 +150,26 @@ export function IntegrasiApiTab({ sty, C, showToast }) {
                   <th style={{ padding: "8px 6px" }}>Label</th>
                   <th style={{ padding: "8px 6px" }}>Prefix</th>
                   <th style={{ padding: "8px 6px" }}>Scope</th>
+                  <th style={{ padding: "8px 6px" }}>Kedaluwarsa</th>
+                  <th style={{ padding: "8px 6px" }}>IP Diizinkan</th>
                   <th style={{ padding: "8px 6px" }}>Terakhir Dipakai</th>
                   <th style={{ padding: "8px 6px" }}>Status</th>
                   <th style={{ padding: "8px 6px" }}></th>
                 </tr>
               </thead>
               <tbody>
-                {keys.map(k => (
+                {keys.map(k => {
+                  const isExpired = k.expires_at && new Date(k.expires_at) < new Date();
+                  return (
                   <tr key={k.id} className="mobile-card-table__row" style={{ borderTop: `1px solid ${C.border}`, fontSize: 13 }}>
                     <td data-label="Label" className="mobile-card-table__title" style={{ padding: "8px 6px", color: C.text, fontWeight: 700 }}>{k.label}</td>
                     <td data-label="Prefix" style={{ padding: "8px 6px" }}><code>{k.key_prefix}…</code></td>
                     <td data-label="Scope" style={{ padding: "8px 6px", color: C.muted }}>{(k.scopes || []).join(", ")}</td>
-                    <td data-label="Terakhir Dipakai" style={{ padding: "8px 6px", color: C.muted }}>{k.last_used_at ? new Date(k.last_used_at).toLocaleString("id-ID") : "Belum pernah"}</td>
+                    <td data-label="Kedaluwarsa" style={{ padding: "8px 6px", color: C.muted }}>{k.expires_at ? new Date(k.expires_at).toLocaleDateString("id-ID") : "—"}</td>
+                    <td data-label="IP Diizinkan" style={{ padding: "8px 6px", color: C.muted }}>{(k.allowed_ips || []).length ? k.allowed_ips.join(", ") : "Semua"}</td>
+                    <td data-label="Terakhir Dipakai" style={{ padding: "8px 6px", color: C.muted }}>{k.last_used_at ? `${new Date(k.last_used_at).toLocaleString("id-ID")}${k.last_used_ip ? " ("+k.last_used_ip+")" : ""}` : "Belum pernah"}</td>
                     <td data-label="Status" style={{ padding: "8px 6px" }}>
-                      <span style={sty.statusBadge(k.revoked_at ? "REJECTED" : "APPROVED")}>{k.revoked_at ? "Dicabut" : "Aktif"}</span>
+                      <span style={sty.statusBadge(k.revoked_at ? "REJECTED" : isExpired ? "REJECTED" : "APPROVED")}>{k.revoked_at ? "Dicabut" : isExpired ? "Kedaluwarsa" : "Aktif"}</span>
                     </td>
                     <td data-label="" style={{ padding: "8px 6px" }}>
                       {!k.revoked_at && (
@@ -152,7 +177,8 @@ export function IntegrasiApiTab({ sty, C, showToast }) {
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -54,17 +54,25 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **API INTEGRASI (SAP S/4HANA + app pihak ketiga) — FASE 1 SEDANG DIBANGUN (2026-08-17).**
-  Plan disetujui di `C:\Users\PLN\.claude\plans\task-notification-task-id-boyybm8kh-tas-crispy-tarjan.md`.
-  Tujuan: WARNOTO punya API-key sendiri (ter-scope, bisa dicabut, ter-audit) untuk di-share.
-  Arsitektur: **Edge Function gateway `integration-api`** (reuse pola `admin-create-user`) + tabel
-  `integration_api_keys` (key di-hash sha256) + `integration_request_log`, UI tab admin "Integrasi API",
-  perm baru `aksi.kelolaApiIntegrasi`, docs `docs/INTEGRATION_API.md`. Fase 1 = fondasi key + endpoint
-  READ (`/stock` `/catalog` `/tug`). **BELUM di-apply/deploy/commit** — migration & edge function file
-  saja, nunggu review arsitek + konfirmasi user (skema DB self-host = proposal dulu). **Prasyarat IT:**
-  akses live SAP butuh `warnoto.com` diekspos ke jaringan SAP (public/VPN/whitelist) — sekarang file/batch
-  only. Fase 2 (ingest SAP→WARNOTO master, review-first) & Fase 3 (WARNOTO→SAP TUG + fallback file) NUNGGU
-  kontrak+kredensial tim SAP dan akses IT.
+- **API INTEGRASI (SAP S/4HANA + app pihak ketiga) — FASE 1 SELESAI + LIVE + PUSHED (2026-08-17, `63e9803`).**
+  Plan di `C:\Users\PLN\.claude\plans\task-notification-task-id-boyybm8kh-tas-crispy-tarjan.md`.
+  **Edge Function gateway `integration-api`** LIVE di self-host (`https://warnoto.com/functions/v1/integration-api/<endpoint>`,
+  deploy manual: copy ke `/home/admin_warnoto/vps-dr-stack/volumes/functions/integration-api/index.ts`, edge-runtime
+  load per-request TANPA restart). Tabel `integration_api_keys` (hash sha256) + `integration_request_log`
+  APPLIED di DB. Endpoint READ `/stock` `/catalog` `/tug` (API-key + scope + rate-limit), admin `/keys` `/revoke`
+  (JWT **TL/SUPERADMIN** — ADMIN diturunkan). UI tab "Integrasi API", perm `aksi.kelolaApiIntegrasi`, docs
+  `docs/INTEGRATION_API.md`. **Fase 1.5 HARDENING SELESAI + LIVE + TESTED (2026-08-17):** entropy key 256-bit,
+  `expires_at`, `allowed_ips` (IP allowlist), `last_used_ip`, log SEMUA hasil auth (200/401/403/429). E2E test
+  dari dalam box (bypass Cloudflare, `curl localhost:8000/functions/v1/integration-api/...`) LULUS 5/5: valid+scope
+  200, wrong-scope 403, expired 401, IP-block 403, no-key 401; audit+last_used_ip terekam; key uji dihapus bersih.
+  **GOTCHA ROOT-CAUSE (fixed):** tabel self-host baru TIDAK otomatis dapat GRANT service_role → Edge Function kena
+  "permission denied" senyap → semua request balas "API key tidak dikenal". Fix di `20260817c_integration_api_grants.sql`
+  (grant service_role; anon/authenticated tetap terkunci). Migration kolom hardening di-apply via inline `-c`
+  (baris `alter column drop not null` diskip — redundant, key_id sudah nullable). **SISA:** (a) verifikasi browser
+  buat/pakai/cabut key sbg TL; (b) **Cloudflare Access** service-token di depan `/stock`/`/catalog`/`/tug` +
+  BYPASS di `/keys`+`/revoke` — user lapor "selesai C" (perlu konfirmasi scope benar biar panel admin tak mati);
+  (c) **Prasyarat IT:** akses live SAP butuh `warnoto.com` diekspos ke jaringan SAP + IP egress SAP untuk allowlist.
+  Fase 2 (ingest SAP→WARNOTO master, review-first) & Fase 3 (WARNOTO→SAP TUG) NUNGGU kontrak+kredensial tim SAP.
 
 - **STOCK OPNAME — Fase 0 & 1 SELESAI + DI-PUSH (2026-08-16/17).** Rencana 4-fase di
   `.claude/plans/pelaksanaan-esisting-stock-opname-warm-walrus.md` (+ eksekusi/audit di

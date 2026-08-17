@@ -42,10 +42,19 @@ async function sha256Hex(text: string) {
 }
 
 function randomKey() {
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const bytes = crypto.getRandomValues(new Uint8Array(32)); // 256-bit
   const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
   return `wrn_live_${hex}`;
 }
+
+// Hop pertama x-forwarded-for = IP asli client (di belakang proxy/Cloudflare/nginx).
+function clientIp(req: Request) {
+  return (req.headers.get("x-forwarded-for") || "").split(",")[0].trim();
+}
+
+// Validasi IPv4/IPv6 longgar — cukup untuk cegah salah ketik di form admin,
+// bukan validator RFC lengkap.
+const IP_RE = /^[0-9a-fA-F:.]+$/;
 
 const SCOPE_BY_ENDPOINT = { stock: "read:stock", catalog: "read:catalog", tug: "read:tug" };
 const VALID_SCOPES = Object.values(SCOPE_BY_ENDPOINT);
@@ -64,39 +73,66 @@ async function requireAdmin(req: Request) {
   return { userId: callerAuth.user.id };
 }
 
-// ── API-key auth (endpoint READ) — hash + lookup + scope + rate limit ──
+// Catat SETIAP hasil auth API-key (sukses maupun gagal) — keyId null kalau
+// key belum diketahui (key tak dikenal/tidak dikirim), supaya percobaan
+// brute-force juga kelihatan di log meski tidak terkait key manapun.
+async function logAttempt(keyId: string | null, endpoint: string, method: string, status: number, ip: string) {
+  await admin.from("integration_request_log").insert({ key_id: keyId, endpoint, method, status, ip });
+}
+
+// ── API-key auth (endpoint READ) — hash + lookup + expiry + IP allowlist + scope + rate limit ──
 async function requireApiKey(req: Request, endpoint: string) {
+  const ip = clientIp(req);
   const authHeader = req.headers.get("Authorization") || "";
   const rawKey = authHeader.replace(/^Bearer\s+/i, "") || req.headers.get("x-api-key") || "";
-  if (!rawKey) return { error: json({ ok: false, error: "API key wajib dikirim (Authorization: Bearer <key> atau header x-api-key)." }, 401) };
+  if (!rawKey) {
+    await logAttempt(null, endpoint, req.method, 401, ip);
+    return { error: json({ ok: false, error: "API key wajib dikirim (Authorization: Bearer <key> atau header x-api-key)." }, 401) };
+  }
 
   const hash = await sha256Hex(rawKey);
   const { data: keyRow, error: keyErr } = await admin
     .from("integration_api_keys").select("*").eq("key_hash", hash).is("revoked_at", null).single();
-  if (keyErr || !keyRow) return { error: json({ ok: false, error: "API key tidak dikenal atau sudah dicabut." }, 401) };
+  if (keyErr || !keyRow) {
+    await logAttempt(null, endpoint, req.method, 401, ip);
+    return { error: json({ ok: false, error: "API key tidak dikenal atau sudah dicabut." }, 401) };
+  }
+
+  if (keyRow.expires_at && new Date(keyRow.expires_at) < new Date()) {
+    await logAttempt(keyRow.id, endpoint, req.method, 401, ip);
+    return { error: json({ ok: false, error: "API key sudah kedaluwarsa." }, 401) };
+  }
+
+  if (Array.isArray(keyRow.allowed_ips) && keyRow.allowed_ips.length > 0 && !keyRow.allowed_ips.includes(ip)) {
+    await logAttempt(keyRow.id, endpoint, req.method, 403, ip);
+    return { error: json({ ok: false, error: "IP tidak diizinkan untuk key ini." }, 403) };
+  }
 
   const requiredScope = SCOPE_BY_ENDPOINT[endpoint];
   if (requiredScope && !(keyRow.scopes || []).includes(requiredScope)) {
+    await logAttempt(keyRow.id, endpoint, req.method, 403, ip);
     return { error: json({ ok: false, error: `API key tidak punya scope "${requiredScope}".` }, 403) };
   }
 
   // Rate limit sederhana: hitung request key ini 60 detik terakhir.
   // ponytail: full-table scan per-request di integration_request_log, upgrade
-  // ke counter/Redis kalau volume SAP jadi tinggi.
+  // ke counter/Redis kalau volume SAP jadi tinggi. Sengaja cuma dihitung per
+  // key_id (bukan termasuk percobaan keyId=null) supaya index tidak bengkak.
   const sinceIso = new Date(Date.now() - 60_000).toISOString();
   const { count } = await admin
     .from("integration_request_log").select("id", { count: "exact", head: true })
     .eq("key_id", keyRow.id).gte("at", sinceIso);
   if ((count || 0) >= (keyRow.rate_limit_per_min || 120)) {
+    await logAttempt(keyRow.id, endpoint, req.method, 429, ip);
     return { error: json({ ok: false, error: "Rate limit terlampaui, coba lagi sebentar lagi." }, 429) };
   }
 
-  return { keyRow };
+  return { keyRow, ip };
 }
 
-async function logRequest(keyId: string, endpoint: string, method: string, status: number, ip: string) {
-  await admin.from("integration_api_keys").update({ last_used_at: new Date().toISOString() }).eq("id", keyId);
-  await admin.from("integration_request_log").insert({ key_id: keyId, endpoint, method, status, ip });
+async function logSuccess(keyId: string, endpoint: string, method: string, ip: string) {
+  await admin.from("integration_api_keys").update({ last_used_at: new Date().toISOString(), last_used_ip: ip }).eq("id", keyId);
+  await logAttempt(keyId, endpoint, method, 200, ip);
 }
 
 function shapeKatalog(row: { id: string; data: Record<string, unknown> }) {
@@ -111,7 +147,7 @@ Deno.serve(async (req) => {
   // Segmen terakhir setelah nama function, cth ".../integration-api/stock" -> "stock".
   const segments = url.pathname.split("/").filter(Boolean);
   const endpoint = segments[segments.length - 1] || "";
-  const ip = req.headers.get("x-forwarded-for") || "";
+  const ip = clientIp(req);
 
   try {
     // ── Admin: kelola key ──
@@ -119,7 +155,7 @@ Deno.serve(async (req) => {
       const auth = await requireAdmin(req);
       if (auth.error) return auth.error;
       const { data, error } = await admin.from("integration_api_keys")
-        .select("id,label,key_prefix,scopes,created_at,last_used_at,revoked_at,rate_limit_per_min")
+        .select("id,label,key_prefix,scopes,created_at,last_used_at,revoked_at,rate_limit_per_min,expires_at,allowed_ips,last_used_ip")
         .order("created_at", { ascending: false });
       if (error) return json({ ok: false, error: error.message }, 500);
       return json({ ok: true, keys: data });
@@ -134,12 +170,29 @@ Deno.serve(async (req) => {
       if (!label) return json({ ok: false, error: "Label wajib diisi." });
       if (!scopes.length) return json({ ok: false, error: `Pilih minimal satu scope: ${VALID_SCOPES.join(", ")}` });
 
+      // Expiry opsional — string ISO, wajib tanggal valid kalau diisi.
+      let expiresAt: string | null = null;
+      if (body.expires_at) {
+        const d = new Date(body.expires_at);
+        if (Number.isNaN(d.getTime())) return json({ ok: false, error: "expires_at bukan tanggal yang valid." }, 400);
+        expiresAt = d.toISOString();
+      }
+
+      // IP allowlist opsional — tiap entri divalidasi format IPv4/IPv6 longgar.
+      let allowedIps: string[] | null = null;
+      if (body.allowed_ips !== undefined && body.allowed_ips !== null) {
+        if (!Array.isArray(body.allowed_ips)) return json({ ok: false, error: "allowed_ips harus array string IP." }, 400);
+        const ips = body.allowed_ips.map((x: unknown) => String(x).trim()).filter(Boolean);
+        if (ips.some((ip: string) => !IP_RE.test(ip))) return json({ ok: false, error: "allowed_ips berisi entri yang bukan format IP." }, 400);
+        allowedIps = ips.length ? ips : null;
+      }
+
       const plainKey = randomKey();
       const keyHash = await sha256Hex(plainKey);
       const keyPrefix = plainKey.slice(0, 13); // "wrn_live_" + 4 hex char pertama, cukup buat identifikasi di UI
       const { data, error } = await admin.from("integration_api_keys")
-        .insert({ label, key_prefix: keyPrefix, key_hash: keyHash, scopes, created_by: auth.userId })
-        .select("id,label,key_prefix,scopes,created_at").single();
+        .insert({ label, key_prefix: keyPrefix, key_hash: keyHash, scopes, created_by: auth.userId, expires_at: expiresAt, allowed_ips: allowedIps })
+        .select("id,label,key_prefix,scopes,created_at,expires_at,allowed_ips").single();
       if (error) return json({ ok: false, error: error.message }, 500);
       // Plaintext HANYA dikembalikan di respons ini, sekali, tidak pernah disimpan.
       return json({ ok: true, key: { ...data, plaintext: plainKey } });
@@ -194,7 +247,7 @@ Deno.serve(async (req) => {
         result = { tug: (data || []).map(r => ({ id: r.id, katalogId: r.katalog_id, tanggal: r.tanggal, jenisTransaksi: r.jenis_transaksi, qty: r.qty, lokasiKode: r.lokasi_kode, docType: r.doc_type, noBon: r.no_bon, catatan: r.catatan })) };
       }
 
-      await logRequest(auth.keyRow.id, endpoint, req.method, 200, ip);
+      await logSuccess(auth.keyRow.id, endpoint, req.method, auth.ip);
       return json({ ok: true, ...result });
     }
 

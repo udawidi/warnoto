@@ -17,6 +17,14 @@ function hasScope(scopes, endpoint) {
   return !required || (scopes || []).includes(required);
 }
 
+// Replika cek expiry + IP allowlist dari requireApiKey (Fase 1.5 hardening).
+function isExpired(expiresAt) {
+  return !!expiresAt && new Date(expiresAt) < new Date();
+}
+function isIpAllowed(allowedIps, ip) {
+  return !(Array.isArray(allowedIps) && allowedIps.length > 0 && !allowedIps.includes(ip));
+}
+
 test("sha256Hex deterministik & sensitif terhadap perubahan key", async () => {
   const h1 = await sha256Hex("wrn_live_abc123");
   const h2 = await sha256Hex("wrn_live_abc123");
@@ -31,4 +39,17 @@ test("hasScope menolak key tanpa scope endpoint, terima kalau ada", () => {
   assert.equal(hasScope(["read:stock"], "stock"), true);
   assert.equal(hasScope(["read:stock", "read:catalog"], "catalog"), true);
   assert.equal(hasScope([], "tug"), false);
+});
+
+test("isExpired menolak key lewat tanggal, terima yang belum/tanpa expiry", () => {
+  assert.equal(isExpired("2020-01-01T00:00:00Z"), true);
+  assert.equal(isExpired(new Date(Date.now() + 3600_000).toISOString()), false);
+  assert.equal(isExpired(null), false);
+});
+
+test("isIpAllowed menolak IP di luar allowlist, terima IP dalam & allowlist kosong", () => {
+  assert.equal(isIpAllowed(["10.91.21.5"], "203.0.113.10"), false);
+  assert.equal(isIpAllowed(["10.91.21.5"], "10.91.21.5"), true);
+  assert.equal(isIpAllowed([], "203.0.113.10"), true);
+  assert.equal(isIpAllowed(null, "203.0.113.10"), true);
 });
