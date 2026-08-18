@@ -104,6 +104,15 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
     **Autosave localStorage** recovery (`warnoto_opname_draft_<id>`): restore saat sesi DRAFT dibuka, hapus
     HANYA saat `saveOpname` ter-sync server (`return true/false`) → offline-pending draft dipertahankan.
     audit-mobile 113 (<plafon 118).
+  - **TEST E2E Fase 2 (`ac4601a`):** `tests/e2e/opname-lapangan.spec.js` (6 test @phone-360, HIJAU) —
+    buka mode lapangan, recount blind wajib, recount blokir submit, burst scanner tak kotori qty
+    (`keyboard.press` trusted), autosave pulih reload, + jalan keluar deadlock HP 100%. **FIX bug ditemukan
+    test:** tombol "📱 Mode Lapangan" dulu desktop-only → HP di 100% dgn recount pending mentok (Submit
+    terblokir tanpa jalan balik ke overlay); sekarang tampil juga saat `prog.pct===100`. **Fix test infra:**
+    `fixtures.js` seed cache key v2→v3 (ikut rollout 2FA) — tanpa ini SEMUA spec E2E jatuh ke login.
+    **Manual (perlu HP/scanner fisik, belum):** kamera continuous Android, fallback zxing iOS, HID KS-606,
+    cetak Label QR blok. **PENDING pre-existing (di luar Fase 2):** `responsive.spec.js` 13 screenshot
+    mismatch ~60px — baseline stale (kemungkinan sejak sebelum bump cache-key), perlu regenerate/investigasi.
   - **Fase 1 (model data, `sap.js`+`docBuilders.js`+`useStockOpname.js`+`StockOpnameTab.jsx`):**
     1a fix `normalizeKatalog` match PID (bug zero-padding); 1b `lokasiBreakdown` per item (dari
     `stocks`); 1c `hitungPerLokasi` per blok + `qtsFisik` turunan (`sumHitungPerLokasi` di sap.js),
