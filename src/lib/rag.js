@@ -36,10 +36,13 @@ export async function cohereEmbed(texts, inputType) {
 export async function cohereEmbedImage(dataUri) {
   const key = import.meta.env.VITE_COHERE_API_KEY;
   if (!key) throw new Error("VITE_COHERE_API_KEY belum diisi di .env");
+  // Foto kamera full-res (base64 3-7 MB) bikin upload embed lambat. Kompres sedang
+  // dulu — 1280px cukup untuk kemiripan bentuk, tidak berlebihan menurunkan kualitas.
+  const compact = await compressImage(dataUri, { maxDim: 1280, maxBytes: 700_000 });
   const resp = await fetch("https://api.cohere.com/v1/embed", {
     method: "POST",
     headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-    body: JSON.stringify({ model: "embed-multilingual-v3.0", input_type: "image", images: [dataUri] }),
+    body: JSON.stringify({ model: "embed-multilingual-v3.0", input_type: "image", images: [compact] }),
   });
   if (!resp.ok) throw new Error(`Cohere image embed gagal (${resp.status}): ${await resp.text()}`);
   const data = await resp.json();
