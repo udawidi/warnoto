@@ -54,6 +54,21 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **2FA TOTP WAJIB SEMUA USER saat login — SELESAI + PUSHED + DEPLOYED (2026-08-18, `ed4df3a`).**
+  Plan `C:\Users\PLN\.claude\plans\saat-login-saya-mau-vivid-bear.md`. Metode TOTP authenticator app
+  (Google Authenticator/Authy), BUKAN email (login pakai email sintetis, tak ada SMTP). Factor disimpan
+  GoTrue `auth.mfa_factors`, TANPA perubahan skema `public.*`, tanpa dependency npm baru. GoTrue self-host
+  v2.189.0 MFA default ON (tak perlu ubah env container). **Gate di `handleAuthSession` (App.jsx)** sebelum
+  `setCurrentUser`: `await mfa.getAuthenticatorAssuranceLevel()` → aal2=lanjut, aal1+nextAal2=challenge,
+  else=enroll (auto fetch QR). Enroll pakai `issuer:"WARNOTO"` + `friendlyName=username` (tiap akun kebedaan
+  di app authenticator; unenroll dulu factor unverified nyangkut). **Rollout:** `PROFILE_CACHE_KEY` v2→v3 +
+  `setCurrentUser(null)` di cabang non-aal2 supaya cache-first tak bocorin UI AAL1. Audit LOGIN untuk
+  `SIGNED_IN`|`MFA_CHALLENGE_VERIFIED`. UI langkah kedua reuse `loginSty`, input OTP numeric one-time-code,
+  responsif `isMobile`. **Recovery admin:** Edge Function `admin-reset-mfa` (service_role, guard ADMIN/SUPERADMIN)
+  DEPLOYED self-host (`/home/admin_warnoto/vps-dr-stack/volumes/functions/admin-reset-mfa/index.ts`, verified
+  401-guard via kong localhost) + tombol "Reset 2FA" di Kelola Akun (gated `hasRole ADMIN`). **SISA:** verifikasi
+  browser alur enroll→challenge→reset (review-first). **Edge minor non-blocking:** kalau `getAAL()` gagal
+  transient (null) user aal2 jatuh ke enroll — risiko rendah (baca JWT lokal).
 - **API INTEGRASI (SAP S/4HANA + app pihak ketiga) — FASE 1 SELESAI + LIVE + PUSHED (2026-08-17, `63e9803`).**
   Plan di `C:\Users\PLN\.claude\plans\task-notification-task-id-boyybm8kh-tas-crispy-tarjan.md`.
   **Edge Function gateway `integration-api`** LIVE di self-host (`https://warnoto.com/functions/v1/integration-api/<endpoint>`,
@@ -437,5 +452,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
+- 2026-08-18 Claude (shift-9): **2FA TOTP wajib semua user + reset MFA admin** (`ed4df3a`). Gate AAL di
+  handleAuthSession, enroll issuer WARNOTO/friendlyName=username, cache-key bump v3, Edge Function
+  admin-reset-mfa deployed+verified. SISA verifikasi browser. Detail di Status sekarang atas.
 - 2026-08-14 Claude (shift-8): **Housekeeping pending item.** `sap_foto_report.json` di-gitignore. Bot Telegram: fase-2 scoping `p_upts` terverifikasi SUDAH deploy self-host sejak Aug 9 (HANDOFF lama keliru "belum deploy"). GAP kebocoran ditutup di `telegram-webhook/index.ts` (fix `callerUptId ? Promise.resolve("") : buildWarnotoStateContext()`) — SUDAH DEPLOY & live di box. GRANT anon dipertegas (migration `20260814`, cabut SELECT vestigial 3 tabel, katalog scan-QR utuh). **Satuan 21 non-stock: fill DB DITIMPA app full-sync — butuh fix layer app (derive dari MARA), belum kelar.** SISA commit repo: index.ts, .gitignore, migration, HANDOFF.
-- 2026-08-11 Claude (shift-7): **Input 21 material non-stock Surabaya + fitur Status Material SAP di Data Stok.** 21 material (kode+nama katalog MARA via `match_nonstock_mara.py`, review/override manual di `Non Stock.xlsx`) masuk self-host: `stocks` `STK-PREMEM-*` + 16 `katalog` baru, `jenisBarang="Pre Memory"`, lokasi Ketintang→GUDANG TERTUTUP KETINTANG Rak A–D, foto kosong (tim lapangan). Kode DI-PUSH: `getSAPLabel` 3-nilai + badge 3-warna + `stockSapLabel` (hanya `STK-PREMEM-*`=Non-SAP, lain ikut format kode) + kolom Lokasi UPT derive dari gudang + filter Status Material (`STATUS_SAP`). File `sap.js`/`constants.js`/`DataStokTab.jsx`/`App.jsx`. **SISA:** tim lapangan upload foto 21 material + verifikasi browser (Status hanya 21 Non-SAP, Lokasi UPT terisi, filter jalan).
