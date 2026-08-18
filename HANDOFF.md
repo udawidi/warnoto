@@ -54,6 +54,16 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **HARDENING KEAMANAN (asesmen whitebox) — 5 fix kode SELESAI + PUSHED (2026-08-18).** Plan
+  `C:\Users\PLN\.claude\plans\saat-login-saya-mau-vivid-bear.md`.
+  - **P2 XSS (`14e52c7`):** escape SEMUA field data di 13 print-builder `docBuilders.js` (+img src) pakai `esc()`. Live via Vercel. test `docBuildersXss`.
+  - **P5 ADMIN kunci UPT (`14e52c7`):** `admin-create-user`/`admin-update-user` — ADMIN hanya kelola akun UPT sendiri (cek UPT lama DB+baru body), SUPERADMIN lintas-UPT. helper `bolehKelolaAkun`. test `adminScopeUpt`. **Perlu deploy EF.**
+  - **P4 telegram secret (`14e52c7`):** `telegram-webhook` verifikasi `X-Telegram-Bot-Api-Secret-Token` vs env `TELEGRAM_WEBHOOK_SECRET` (fail-open+warn kalau env kosong). test `telegramWebhookSecret`. **Perlu deploy EF + set env + `setWebhook` secret_token.**
+  - **P1 warnoto_state opsi A (`5278270`):** tulis pindah ke EF baru `sync-warnoto-state` (service_role, gate tolak VIEWER); klien `syncWarnotoState()` invoke EF. Migration DRAFT `20260818_warnoto_state_service_write.sql` (revoke write authenticated+anon, grant service_role, SELECT dipertahankan) **BELUM APPLY**. **URUTAN: deploy EF DULU, baru apply migration** (else window sync gagal). test `warnotoStateSync`.
+  - **P3 header+SRI (`e9c15cd`):** `vercel.json` header enforcing (XFO DENY, nosniff, Referrer-Policy, HSTS 180d, Permissions-Policy `camera=(self)`) + **CSP Report-Only** (belum enforcing — amati violation dulu); SRI Leaflet unpkg@1.9.4 (hash terverifikasi). Live saat redeploy Vercel.
+  - **Keputusan authz mengikat:** ADMIN TIDAK lintas-UPT (hanya SUPERADMIN); tulis `katalog`/`warnoto_state` idealnya lewat jalur terkontrol (P1 warnoto_state sudah; **katalog belum** — masih `authenticated write`, keputusan lanjutan opsi A untuk katalog PENDING).
+  - **OPS TERSISA (butuh eksekusi, belum):** (1) deploy 4 EF ke self-host (`admin-create-user`,`admin-update-user`,`telegram-webhook`,`sync-warnoto-state`); (2) apply migration P1 SETELAH EF; (3) env `TELEGRAM_WEBHOOK_SECRET`+`setWebhook`; (4) Cloudflare SSL Full(strict) + flip CSP enforcing setelah observasi; (5) LOW: proksikan `VITE_COHERE/GROQ/OCRSPACE` dari bundle, batas ukuran+sanitasi XLSX import, regen `schema.sql` drift, verifikasi Cloud lama `tadxodrzoquugnsyejld` nonaktif.
+
 - **2FA TOTP WAJIB SEMUA USER saat login — SELESAI + PUSHED + DEPLOYED (2026-08-18, `ed4df3a`).**
   Plan `C:\Users\PLN\.claude\plans\saat-login-saya-mau-vivid-bear.md`. Metode TOTP authenticator app
   (Google Authenticator/Authy), BUKAN email (login pakai email sintetis, tak ada SMTP). Factor disimpan
