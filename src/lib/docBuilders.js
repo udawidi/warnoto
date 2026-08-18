@@ -23,6 +23,7 @@ function resolveUptNama(uptId, uptList, fallback) {
 // (rendered in an iframe inside a modal) and for downloading as a
 // .html file the user can open in any browser and Print > Save as PDF.
 export function buildTUG9HTML(txn, stocks, users, satpamList, uptList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
   const isTUG8 = txn.docType === "TUG8";
@@ -60,25 +61,25 @@ export function buildTUG9HTML(txn, stocks, users, satpamList, uptList) {
 
   const materialRowsTable = itemRows.map(({stock,qty}) => `
     <tr>
-      <td>${stock.name || "-"}</td>
-      <td style="text-align:center">${stock.lokasi || "GUDANG"}</td>
+      <td>${esc(stock.name || "-")}</td>
+      <td style="text-align:center">${esc(stock.lokasi || "GUDANG")}</td>
       <td style="text-align:center">${fmtNum(qty)}</td>
-      <td style="text-align:center">${stock.unit || "-"}</td>
-      <td>${stock.jenisBarang ? `(${stock.jenisBarang}) ` : ""}${txn.keteranganBarang || ""}</td>
+      <td style="text-align:center">${esc(stock.unit || "-")}</td>
+      <td>${stock.jenisBarang ? `(${esc(stock.jenisBarang)}) ` : ""}${esc(txn.keteranganBarang || "")}</td>
     </tr>`).join("");
 
   const materialPhotoRowsTable = itemRows.map(({stock}) => {
     const photo = (txn.fotoMaterial||[]).find(fm => fm.stockId === stock.id);
     return `
       <tr>
-        <td style="padding:10px;vertical-align:top;font-weight:bold;width:35%">${stock.name || "-"}</td>
+        <td style="padding:10px;vertical-align:top;font-weight:bold;width:35%">${esc(stock.name || "-")}</td>
         <td style="padding:10px;text-align:center">
-          ${photo?.img ? `<img src="${photo.img}" style="max-height:220px;max-width:100%;object-fit:contain;border:1px solid #ccc;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#9ca3af;font-style:italic;padding:20px">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
+          ${photo?.img ? `<img src="${esc(photo.img)}" style="max-height:220px;max-width:100%;object-fit:contain;border:1px solid #ccc;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#9ca3af;font-style:italic;padding:20px">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
         </td>
       </tr>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${isTUG8?"TUG-8":"TUG-9"} ${txn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${isTUG8?"TUG-8":"TUG-9"} ${esc(txn.id)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
@@ -148,26 +149,26 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
   <!-- BOX 1: SURAT JALAN PENGAMBILAN MATERIAL -->
   <div class="section-box">
     <div class="doctitle">SURAT JALAN PENGAMBILAN MATERIAL</div>
-    <div class="docno">${docNoSJ}</div>
+    <div class="docno">${esc(docNoSJ)}</div>
 
     <table class="meta-tbl">
       <tr>
-        <td class="lbl">Dibawa Ke</td><td style="width:10px">:</td><td>${txn.lokasiPekerjaan || "-"}</td>
-        <td class="lbl" style="width:140px">Kendaraan / Nopol</td><td style="width:10px">:</td><td>${txn.nopol || "-"}</td>
+        <td class="lbl">Dibawa Ke</td><td style="width:10px">:</td><td>${esc(txn.lokasiPekerjaan || "-")}</td>
+        <td class="lbl" style="width:140px">Kendaraan / Nopol</td><td style="width:10px">:</td><td>${esc(txn.nopol || "-")}</td>
       </tr>
       <tr>
         <td class="lbl">Tanggal Pengambilan</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
-        <td class="lbl">No SIM / KTP Pengemudi</td><td>:</td><td>${txn.simKtp || "-"}</td>
+        <td class="lbl">No SIM / KTP Pengemudi</td><td>:</td><td>${esc(txn.simKtp || "-")}</td>
       </tr>
       <tr>
-        <td class="lbl">PIC Gudang ${uptNama}</td><td>:</td><td colspan="4">${creator.name || "-"}${creator.officialPhone ? ` (${creator.officialPhone})` : ""}</td>
+        <td class="lbl">PIC Gudang ${esc(uptNama)}</td><td>:</td><td colspan="4">${esc(creator.name || "-")}${creator.officialPhone ? ` (${esc(creator.officialPhone)})` : ""}</td>
       </tr>
     </table>
 
@@ -191,19 +192,19 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
         <div><i>Transporter,</i></div>
         <div class="sig-role">PENGEMUDI</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${txn.namaPengemudi || "....................."}</div>
+        <div class="sig-name">${esc(txn.namaPengemudi || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Mengetahui,</i></div>
-        <div class="sig-role">SATPAM GUDANG ${(satpamUser.gudangNama || WAREHOUSE).toUpperCase()}</div>
+        <div class="sig-role">SATPAM GUDANG ${esc((satpamUser.gudangNama || WAREHOUSE).toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${satpamUser.name || "....................."}</div>
+        <div class="sig-name">${esc(satpamUser.name || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang menyerahkan,</i></div>
         <div class="sig-role">ADMINISTRASI GUDANG</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${creator.name || "....................."}</div>
+        <div class="sig-name">${esc(creator.name || ".....................")}</div>
       </div>
     </div>
   </div>
@@ -211,20 +212,20 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
   <!-- BOX 2: BERITA ACARA SERAH TERIMA BARANG (BAST-B) -->
   <div class="section-box">
     <div class="doctitle">BERITA ACARA SERAH TERIMA BARANG (BAST-B)</div>
-    <div class="docno">${docNoBA}</div>
+    <div class="docno">${esc(docNoBA)}</div>
 
     <div class="bast-intro">
       Pada hari ini <b>${dateInfo.hari}</b> tanggal <b>${dateInfo.tanggal}</b> bulan <b>${dateInfo.bulan}</b> tahun <b>${dateInfo.tahun}</b> (${dateInfo.tanggalLengkap}), Kami yang bertanda di bawah ini :
     </div>
 
     <table class="meta-tbl" style="margin-bottom:4px">
-      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${menyerahkanUser.name || creator.name || "-"}</td></tr>
-      <tr><td class="lbl">Jabatan</td><td>:</td><td>${menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`}</td></tr>
-      <tr><td class="lbl">Unit</td><td>:</td><td>${uptNama.toUpperCase()}</td></tr>
+      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${esc(menyerahkanUser.name || creator.name || "-")}</td></tr>
+      <tr><td class="lbl">Jabatan</td><td>:</td><td>${esc(menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`)}</td></tr>
+      <tr><td class="lbl">Unit</td><td>:</td><td>${esc(uptNama.toUpperCase())}</td></tr>
       <tr><td colspan="3" style="font-weight:bold;padding-top:2px;padding-bottom:4px">Untuk selanjutnya disebut <u>PIHAK YANG MENYERAHKAN</u></td></tr>
-      <tr><td class="lbl">Nama</td><td>:</td><td>${txn.penerimaNama || "-"}</td></tr>
-      <tr><td class="lbl">Jabatan</td><td>:</td><td>${txn.penerimaJabatan || "-"}</td></tr>
-      <tr><td class="lbl">Unit</td><td>:</td><td>${txn.penerimaUnit || "-"}</td></tr>
+      <tr><td class="lbl">Nama</td><td>:</td><td>${esc(txn.penerimaNama || "-")}</td></tr>
+      <tr><td class="lbl">Jabatan</td><td>:</td><td>${esc(txn.penerimaJabatan || "-")}</td></tr>
+      <tr><td class="lbl">Unit</td><td>:</td><td>${esc(txn.penerimaUnit || "-")}</td></tr>
       <tr><td colspan="3" style="font-weight:bold;padding-top:2px;padding-bottom:4px">Untuk selanjutnya disebut <u>PIHAK YANG MENERIMA</u></td></tr>
     </table>
 
@@ -244,9 +245,9 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     </table>
 
     <table class="meta-tbl" style="margin-top:6px;margin-bottom:6px">
-      <tr><td class="lbl" style="width:190px">Sesuai Nodin / Surat Permintaan No</td><td style="width:10px">:</td><td>${txn.noNodin || "-"}</td></tr>
-      <tr><td class="lbl">Sesuai Surat Persetujuan No</td><td>:</td><td>${txn.noPersetujuan || "-"}</td></tr>
-      <tr><td class="lbl">Untuk Pekerjaan</td><td>:</td><td>${txn.namaPekerjaan || txn.pekerjaan || "-"}</td></tr>
+      <tr><td class="lbl" style="width:190px">Sesuai Nodin / Surat Permintaan No</td><td style="width:10px">:</td><td>${esc(txn.noNodin || "-")}</td></tr>
+      <tr><td class="lbl">Sesuai Surat Persetujuan No</td><td>:</td><td>${esc(txn.noPersetujuan || "-")}</td></tr>
+      <tr><td class="lbl">Untuk Pekerjaan</td><td>:</td><td>${esc(txn.namaPekerjaan || txn.pekerjaan || "-")}</td></tr>
     </table>
 
     <div class="closing-note">Demikian Berita Acara ini kami buat agar dipergunakan sebagaimana mestinya</div>
@@ -254,15 +255,15 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="sig-row-2">
       <div class="sig-col">
         <div><i>Yang menerima,</i></div>
-        <div class="sig-role">${(txn.penerimaUnit || "PIHAK YANG MENERIMA").toUpperCase()}</div>
+        <div class="sig-role">${esc((txn.penerimaUnit || "PIHAK YANG MENERIMA").toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${txn.penerimaNama || "....................."}</div>
+        <div class="sig-name">${esc(txn.penerimaNama || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang menyerahkan,</i></div>
-        <div class="sig-role">${(menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`).toUpperCase()}</div>
+        <div class="sig-role">${esc((menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`).toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${menyerahkanUser.name || "....................."}</div>
+        <div class="sig-name">${esc(menyerahkanUser.name || ".....................")}</div>
       </div>
     </div>
   </div>
@@ -278,7 +279,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -288,13 +289,13 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="photo-col-cell">
       <div class="cell-title">Foto Kendaraan</div>
       <div class="cell-img-wrap">
-        ${txn.fotoKendaraan ? `<img src="${txn.fotoKendaraan}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
+        ${txn.fotoKendaraan ? `<img src="${esc(txn.fotoKendaraan)}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
       </div>
     </div>
     <div class="photo-col-cell">
       <div class="cell-title">SIM / KTP</div>
       <div class="cell-img-wrap">
-        ${txn.fotoSimKtp ? `<img src="${txn.fotoSimKtp}" alt="Foto SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM / KTP sopir]&gt;&gt;</div>`}
+        ${txn.fotoSimKtp ? `<img src="${esc(txn.fotoSimKtp)}" alt="Foto SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM / KTP sopir]&gt;&gt;</div>`}
       </div>
     </div>
   </div>
@@ -310,7 +311,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -319,7 +320,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
   <div class="photo-box-full">
     <div class="cell-title">Surat Pengembalian / Permintaan</div>
     <div class="cell-img-wrap-large">
-      ${txn.fotoSuratPengembalian ? `<img src="${txn.fotoSuratPengembalian}" alt="Foto Surat"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat permintaan]&gt;&gt;</div>`}
+      ${txn.fotoSuratPengembalian ? `<img src="${esc(txn.fotoSuratPengembalian)}" alt="Foto Surat"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat permintaan]&gt;&gt;</div>`}
     </div>
   </div>
 
@@ -334,7 +335,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -363,6 +364,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
 // Signature roles are reversed vs TUG-9: external party hands material
 // back, internal SPV/TL Log receives it, Asman still signs "Mengetahui".
 export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn?.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
   const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
@@ -378,7 +380,7 @@ export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, 
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
     const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
     const ketStatus = si.statusMaterial==="Bongkaran ATTB (MTU)" ? `EKS BONGKARAN ATTB/MTU${si.noSeri?` — SN: ${si.noSeri}`:""}` : si.statusMaterial==="Bongkaran" ? "EKS BONGKARAN" : "MATERIAL SISA BARU";
-    return `<tr><td>${namaBarang}</td><td style="text-align:center">${fmtNum(si.qty)}</td><td style="text-align:center">${satuan}</td><td style="text-align:center">${si.noAsset||"-"}</td><td>${ketStatus}</td></tr>`;
+    return `<tr><td>${esc(namaBarang)}</td><td style="text-align:center">${fmtNum(si.qty)}</td><td style="text-align:center">${esc(satuan)}</td><td style="text-align:center">${esc(si.noAsset||"-")}</td><td>${esc(ketStatus)}</td></tr>`;
   }).join("");
 
   const materialPhotoCells = items.map(si => {
@@ -386,14 +388,14 @@ export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, 
     const photo = si.fotoBarangRetur || si.fotoNameplate;
     return `
       <div class="photo-col-cell">
-        <div class="cell-title">${namaBarang} (${si.statusMaterial || "Retur"})</div>
+        <div class="cell-title">${esc(namaBarang)} (${esc(si.statusMaterial || "Retur")})</div>
         <div class="cell-img-wrap">
-          ${photo ? `<img src="${photo}" alt="Foto Barang"/>` : `<div class="photo-empty">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
+          ${photo ? `<img src="${esc(photo)}" alt="Foto Barang"/>` : `<div class="photo-empty">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
         </div>
       </div>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-10 ${txn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-10 ${esc(txn.id)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
@@ -460,20 +462,20 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
 
   <div class="section-box">
     <div class="doctitle">BON PENGEMBALIAN</div>
-    <div class="docno">&lt;&lt;${docNoTUG10}&gt;&gt;</div>
+    <div class="docno">&lt;&lt;${esc(docNoTUG10)}&gt;&gt;</div>
     <div class="company-subtitle">PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
 
     <table class="meta-tbl">
       <tr>
-        <td class="lbl">PEKERJAAN</td><td style="width:10px">:</td><td>${txn.pekerjaan || "-"}</td>
-        <td class="lbl" style="width:130px">UNIT / SEKTOR</td><td style="width:10px">:</td><td>${uptNama.toUpperCase()}</td>
+        <td class="lbl">PEKERJAAN</td><td style="width:10px">:</td><td>${esc(txn.pekerjaan || "-")}</td>
+        <td class="lbl" style="width:130px">UNIT / SEKTOR</td><td style="width:10px">:</td><td>${esc(uptNama.toUpperCase())}</td>
       </tr>
       <tr>
-        <td class="lbl">NAMA PEKERJAAN</td><td>:</td><td>${txn.namaPekerjaan || "-"}</td>
-        <td class="lbl">NO BA PENGGANTIAN</td><td>:</td><td>${txn.noBAPenggantian || "-"}</td>
+        <td class="lbl">NAMA PEKERJAAN</td><td>:</td><td>${esc(txn.namaPekerjaan || "-")}</td>
+        <td class="lbl">NO BA PENGGANTIAN</td><td>:</td><td>${esc(txn.noBAPenggantian || "-")}</td>
       </tr>
       <tr>
-        <td class="lbl">LOKASI PEKERJAAN</td><td>:</td><td>${txn.lokasiPekerjaan || "-"}</td>
+        <td class="lbl">LOKASI PEKERJAAN</td><td>:</td><td>${esc(txn.lokasiPekerjaan || "-")}</td>
         <td class="lbl">TANGGAL</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
       </tr>
     </table>
@@ -501,8 +503,8 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
       </thead>
       <tbody>
         <tr>
-          <td>${txn.perkiraanPembebanan || "-"}</td>
-          <td>${txn.kodePerkiraan || "-"}</td>
+          <td>${esc(txn.perkiraanPembebanan || "-")}</td>
+          <td>${esc(txn.kodePerkiraan || "-")}</td>
           <td style="text-align:center">${fmtDateOnly(txn.createdAt)}</td>
         </tr>
       </tbody>
@@ -511,21 +513,21 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
     <div class="sig-row-3">
       <div class="sig-col">
         <div><i>Mengetahui,</i></div>
-        <div class="sig-role">MAN II KONS ${uptNama.toUpperCase()}</div>
+        <div class="sig-role">MAN II KONS ${esc(uptNama.toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${asmanUser.name || "ASEP MOCH. YUSUP"}</div>
+        <div class="sig-name">${esc(asmanUser.name || "ASEP MOCH. YUSUP")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang Menerima,</i></div>
-        <div class="sig-role">SPV LOG ${uptNama.toUpperCase()}</div>
+        <div class="sig-role">SPV LOG ${esc(uptNama.toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${penerimaUser.name || "WIDI FERDIAN R"}</div>
+        <div class="sig-name">${esc(penerimaUser.name || "WIDI FERDIAN R")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang Menyerahkan,</i></div>
-        <div class="sig-role">${(txn.menyerahkanUnit || "UNIT PENGIRIM").toUpperCase()}</div>
+        <div class="sig-role">${esc((txn.menyerahkanUnit || "UNIT PENGIRIM").toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${txn.menyerahkanNama || "....................."}</div>
+        <div class="sig-name">${esc(txn.menyerahkanNama || ".....................")}</div>
       </div>
     </div>
   </div>
@@ -540,7 +542,7 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
     <div class="kop-right">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -550,19 +552,19 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
     <div class="photo-col-cell">
       <div class="cell-title">Surat Pengembalian</div>
       <div class="cell-img-wrap">
-        ${txn.fotoBAPengembalian ? `<img src="${txn.fotoBAPengembalian}" alt="Surat Pengembalian"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat pengembalian]&gt;&gt;</div>`}
+        ${txn.fotoBAPengembalian ? `<img src="${esc(txn.fotoBAPengembalian)}" alt="Surat Pengembalian"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat pengembalian]&gt;&gt;</div>`}
       </div>
     </div>
     <div class="photo-col-cell">
       <div class="cell-title">SIM / KTP</div>
       <div class="cell-img-wrap">
-        ${txn.fotoSimKtp ? `<img src="${txn.fotoSimKtp}" alt="SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM/ KTP sopir]&gt;&gt;</div>`}
+        ${txn.fotoSimKtp ? `<img src="${esc(txn.fotoSimKtp)}" alt="SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM/ KTP sopir]&gt;&gt;</div>`}
       </div>
     </div>
     <div class="photo-col-cell">
       <div class="cell-title">Foto Kendaraan</div>
       <div class="cell-img-wrap">
-        ${txn.fotoKendaraan ? `<img src="${txn.fotoKendaraan}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
+        ${txn.fotoKendaraan ? `<img src="${esc(txn.fotoKendaraan)}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
       </div>
     </div>
     <div class="photo-col-cell">
@@ -583,7 +585,7 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
     <div class="kop-right">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -617,6 +619,7 @@ export function downloadTUG10HTML(txn, katalogList, lokasiList, users, satpamLis
 // TUG-4 Berita Acara Pemeriksaan (page 2), and Lampiran Foto Final (page 3+).
 // ─── TUG-5 DOCUMENT BUILDER ─────────────────────────────────────────────
 export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn?.docNumbers || {};
   const isUltg = txn?.sourceType === "ULTG";
 
@@ -630,7 +633,7 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
   const dateInfo = (() => {
     const d = txn.createdAt ? new Date(txn.createdAt) : new Date();
     const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-    return `${uptNama}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+    return `${esc(uptNama)}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
   })();
 
   const docNoTUG5 = docs.tug5 || (txn.docSeq ? `${txn.docSeq}.TUG-5/LOG-${uptKode}/VII/2026` : `TUG5-${(txn.id||"").slice(-6)}`);
@@ -638,18 +641,18 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
   const itemRows = (txn.stockItems||[]).map((si)=>{
     const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
-      <td>${kat.name||"-"}</td>
-      <td style="text-align:center">${kat.katalog||"-"}</td>
-      <td style="text-align:center">${kat.satuan||"-"}</td>
+      <td>${esc(kat.name||"-")}</td>
+      <td style="text-align:center">${esc(kat.katalog||"-")}</td>
+      <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.pemakaianBulan||0)}</td>
       <td style="text-align:center">${fmtNum(si.sisaPersediaan||0)}</td>
       <td style="text-align:center">${fmtNum(si.permintaan||0)}</td>
       <td style="text-align:center"></td><td style="text-align:center"></td><td style="text-align:center"></td>
-      <td>${si.keterangan||""}</td>
+      <td>${esc(si.keterangan||"")}</td>
     </tr>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-5 ${txn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-5 ${esc(txn.id)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
@@ -708,19 +711,19 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
   </div>
 
   <div class="doctitle">DAFTAR PERMINTAAN BARANG - BARANG</div>
-  <div class="docno">&lt;&lt;${docNoTUG5}&gt;&gt;</div>
+  <div class="docno">&lt;&lt;${esc(docNoTUG5)}&gt;&gt;</div>
 
   <div class="meta-container">
     <div class="meta-left">
       <table>
-        <tr><td class="lbl">Kepada</td><td style="width:10px">:</td><td>${uit.nama || "PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI"}</td></tr>
-        <tr><td class="lbl">Harap dikirim ke</td><td>:</td><td>PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR &amp; BALI - ${uptNama.toUpperCase()}</td></tr>
+        <tr><td class="lbl">Kepada</td><td style="width:10px">:</td><td>${esc(uit.nama || "PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI")}</td></tr>
+        <tr><td class="lbl">Harap dikirim ke</td><td>:</td><td>PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR &amp; BALI - ${esc(uptNama.toUpperCase())}</td></tr>
         <tr><td class="lbl">Alamat</td><td>:</td><td>JL. KETINTANG BARU NO. 9 SURABAYA KODE POS 60231</td></tr>
       </table>
     </div>
     <table class="meta-right-box">
-      <tr><td style="width:50px">PLN</td><td>: ${uit.kode || "UIT-JBM"}</td></tr>
-      <tr><td>UPT</td><td>: ${uptNama.toUpperCase()}</td></tr>
+      <tr><td style="width:50px">PLN</td><td>: ${esc(uit.kode || "UIT-JBM")}</td></tr>
+      <tr><td>UPT</td><td>: ${esc(uptNama.toUpperCase())}</td></tr>
     </table>
   </div>
 
@@ -747,12 +750,12 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 
   <div class="bottom-meta-box">
     <div class="meta-row-single">
-      <b>Keterangan :</b> ${txn.namaPekerjaan || txn.keteranganUmum || "-"}
+      <b>Keterangan :</b> ${esc(txn.namaPekerjaan || txn.keteranganUmum || "-")}
     </div>
     <div class="meta-row-3col">
-      <div class="meta-col"><b>Perintah kerja :</b> ${txn.perintahKerja || "-"}</div>
-      <div class="meta-col"><b>Kode Perkiraan :</b> ${txn.kodePerkiraan || "-"}</div>
-      <div class="meta-col"><b>Fungsi :</b> ${txn.fungsi || "-"}</div>
+      <div class="meta-col"><b>Perintah kerja :</b> ${esc(txn.perintahKerja || "-")}</div>
+      <div class="meta-col"><b>Kode Perkiraan :</b> ${esc(txn.kodePerkiraan || "-")}</div>
+      <div class="meta-col"><b>Fungsi :</b> ${esc(txn.fungsi || "-")}</div>
     </div>
   </div>
 
@@ -760,14 +763,14 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 
   <div class="sig-row-2">
     <div class="sig-col">
-      <div class="sig-role">MANAGER ${uptNama.toUpperCase()}</div>
+      <div class="sig-role">MANAGER ${esc(uptNama.toUpperCase())}</div>
       <div class="sig-space"></div>
-      <div class="sig-name">${managerUser.name || "IVAN NUR PRATAMA"}</div>
+      <div class="sig-name">${esc(managerUser.name || "IVAN NUR PRATAMA")}</div>
     </div>
     <div class="sig-col">
       <div class="sig-role">ASMAN KONSTRUKSI</div>
       <div class="sig-space"></div>
-      <div class="sig-name">${asmanUser.name || "ASEP MOCH. YUSUP"}</div>
+      <div class="sig-name">${esc(asmanUser.name || "ASEP MOCH. YUSUP")}</div>
     </div>
   </div>
 
@@ -781,6 +784,7 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 // digital otomatis terisi nama+waktu approve (bukan gambar, konsisten dengan
 // seluruh dokumen TUG lain di app yang juga pakai nama teks, bukan gambar ttd).
 export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn.docNumbers;
   const ultg = (ultgList||[]).find(u=>u.id===txn.ultgId)||{};
   const mgrUltgUser = users.find(u=>u.id===txn.approvedByMgrUltg) || users.find(u=>u.role==="MGR_ULTG" && u.ultgId===txn.ultgId) || {};
@@ -790,29 +794,29 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
   const itemRows = (txn.stockItems||[]).map((si)=>{
     const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
-      <td>${kat.name||"-"}</td>
-      <td style="text-align:center">${kat.katalog||"-"}</td>
-      <td style="text-align:center">${kat.satuan||"-"}</td>
+      <td>${esc(kat.name||"-")}</td>
+      <td style="text-align:center">${esc(kat.katalog||"-")}</td>
+      <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.sisaPersediaan||0)}</td>
       <td style="text-align:center">${fmtNum(si.permintaan||0)}</td>
-      <td>${si.keterangan||""}</td>
+      <td>${esc(si.keterangan||"")}</td>
     </tr>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Slip Reservasi ULTG ${txn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Slip Reservasi ULTG ${esc(txn.id)}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}}</style></head><body>
 <div class="print-bar">📄 Slip Reservasi siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-  <div><b>PT PLN (PERSERO)</b><br/>${ultg.nama||"ULTG"}</div>
+  <div><b>PT PLN (PERSERO)</b><br/>${esc(ultg.nama||"ULTG")}</div>
   <div style="font-weight:800;font-size:14px">RESERVASI</div>
 </div>
-<div class="doctitle"><h2>SLIP RESERVASI BARANG (ULTG)</h2><div class="docno">${docs?.tug5||txn.id}</div></div>
+<div class="doctitle"><h2>SLIP RESERVASI BARANG (ULTG)</h2><div class="docno">${esc(docs?.tug5||txn.id)}</div></div>
 <table class="meta" style="border:1px solid #ccc;padding:6px;border-radius:4px;margin-bottom:10px">
-  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${ultg.nama||"-"} (${ultg.kode||"-"})</td></tr>
-  <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${txn.namaPekerjaan||"-"}</td></tr>
-  <tr><td class="label">Lokasi Pekerjaan</td><td class="colon">:</td><td>${txn.lokasiPekerjaan||"-"}</td></tr>
+  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${esc(ultg.nama||"-")} (${esc(ultg.kode||"-")})</td></tr>
+  <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${esc(txn.namaPekerjaan||"-")}</td></tr>
+  <tr><td class="label">Lokasi Pekerjaan</td><td class="colon">:</td><td>${esc(txn.lokasiPekerjaan||"-")}</td></tr>
 </table>
 <table class="items">
   <thead><tr>
@@ -828,9 +832,9 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
 <div style="text-align:right;font-size:10px;margin-bottom:14px">${tanggalApprove||fmtDate(txn.createdAt)}</div>
 <div class="sig-row">
   <div class="sig-col">
-    <b>MANAGER ULTG${ultg.nama?" — "+ultg.nama.toUpperCase().replace(/^ULTG\s+/,""):""}</b>
+    <b>MANAGER ULTG${ultg.nama?" — "+esc(ultg.nama.toUpperCase().replace(/^ULTG\s+/,"")):""}</b>
     <div class="sig-space">${isApproved?`<div class="digital-stamp">✓ DISETUJUI SECARA DIGITAL<br/>${tanggalApprove}</div>`:""}</div>
-    <div class="sig-name">${mgrUltgUser.name||"....................."}</div>
+    <div class="sig-name">${esc(mgrUltgUser.name||".....................")}</div>
   </div>
 </div>
 </div></body></html>`;
@@ -838,6 +842,7 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
 
 // ─── TUG-7 DOCUMENT BUILDER ─────────────────────────────────────────────
 export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn.docNumbers;
   const mgrLogistikUser = users.find(u=>u.role==="MGR_LOGISTIK_UIT")||{};
   const uit = (uitList||[]).find(u=>u.id===txn.uitId)||{};
@@ -848,35 +853,35 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
     const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
       <td style="text-align:center">${idx+1}</td>
-      <td>${kat.name||"-"}</td>
-      <td style="text-align:center">${kat.katalog||"-"}</td>
-      <td style="text-align:center">${kat.satuan||"-"}</td>
+      <td>${esc(kat.name||"-")}</td>
+      <td style="text-align:center">${esc(kat.katalog||"-")}</td>
+      <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.qty||si.permintaan||0)}</td>
       <td style="text-align:right"></td>
       <td style="text-align:right"></td>
-      <td>${si.keterangan||""}</td>
+      <td>${esc(si.keterangan||"")}</td>
     </tr>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-7 ${txn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-7 ${esc(txn.id)}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10.5px}table.meta td.label{width:100px}table.meta td.colon{width:10px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:10px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:flex-end;margin-top:20px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:55px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}}</style></head><body>
 <div class="print-bar">📄 TUG-7 siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div style="display:flex;justify-content:space-between;margin-bottom:14px">
-  <div><b>PT PLN (PERSERO)</b><br/>${uit.nama||UIT}</div>
+  <div><b>PT PLN (PERSERO)</b><br/>${esc(uit.nama)||UIT}</div>
   <div style="font-weight:800;font-size:14px">TUG 7</div>
 </div>
-<div style="text-align:right;margin-bottom:8px">${uptPengirim.alamat?uptPengirim.alamat+", ":""} ${tanggal}</div>
+<div style="text-align:right;margin-bottom:8px">${uptPengirim.alamat?esc(uptPengirim.alamat)+", ":""} ${tanggal}</div>
 <div style="text-align:center;margin-bottom:12px">
   <div style="font-weight:800;font-size:13px;text-decoration:underline">PERINTAH PENYERAHAN BARANG</div>
   <div style="font-size:11px;color:#555">DELIVERY ORDER</div>
-  <div style="font-size:10px;font-style:italic;color:#0098da;margin-top:2px">No. : ${docs?.tug7||txn.id}</div>
+  <div style="font-size:10px;font-style:italic;color:#0098da;margin-top:2px">No. : ${esc(docs?.tug7||txn.id)}</div>
 </div>
 <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:8px;margin-bottom:14px">
-  <tr><td class="label">Kepada</td><td class="colon">:</td><td>Gudang PLTD PT PLN (Persero) ${uptPengirim.nama||"-"}</td></tr>
-  <tr><td class="label">Untuk</td><td class="colon">:</td><td>PT PLN (Persero) ${uit.kode||"UIT-JBM"} UPT ${txn.unitPenerima||"Surabaya"}</td></tr>
-  <tr><td class="label">Berdasarkan</td><td class="colon">:</td><td>${txn.tug5DocNo||"-"}</td></tr>
-  <tr><td class="label">Atas beban rekening</td><td class="colon">:</td><td>${txn.atasBebanRekening||"-"}</td></tr>
+  <tr><td class="label">Kepada</td><td class="colon">:</td><td>Gudang PLTD PT PLN (Persero) ${esc(uptPengirim.nama||"-")}</td></tr>
+  <tr><td class="label">Untuk</td><td class="colon">:</td><td>PT PLN (Persero) ${esc(uit.kode||"UIT-JBM")} UPT ${esc(txn.unitPenerima||"Surabaya")}</td></tr>
+  <tr><td class="label">Berdasarkan</td><td class="colon">:</td><td>${esc(txn.tug5DocNo||"-")}</td></tr>
+  <tr><td class="label">Atas beban rekening</td><td class="colon">:</td><td>${esc(txn.atasBebanRekening||"-")}</td></tr>
 </table>
 <p style="font-size:10px;margin-bottom:10px">Dengan penyerahan lembar asli dari pada Perintah penyerahan ini harap menyerahkan/mengirimkan dari persediaan gudang ke alamat tersebut diatas, barang-barang/Spare parts sbb :</p>
 <table class="items">
@@ -885,13 +890,13 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
   <tbody>${itemRows}</tbody>
 </table>
 <table class="meta">
-  <tr><td class="label">Perintah Kerja</td><td class="colon">:</td><td>${txn.perintahKerja||""}</td><td style="width:60px">Kode Akun</td><td class="colon">:</td><td>${txn.kodeAkun||""}</td><td style="width:50px">Fungsi</td><td class="colon">:</td><td>${txn.fungsi||""}</td></tr>
+  <tr><td class="label">Perintah Kerja</td><td class="colon">:</td><td>${esc(txn.perintahKerja||"")}</td><td style="width:60px">Kode Akun</td><td class="colon">:</td><td>${esc(txn.kodeAkun||"")}</td><td style="width:50px">Fungsi</td><td class="colon">:</td><td>${esc(txn.fungsi||"")}</td></tr>
 </table>
 <div class="sig-row">
   <div class="sig-col">
     <b>MANAJER MANAJEMEN MATERIAL &amp; LOGISTIK</b>
     <div class="sig-space"></div>
-    <div class="sig-name">${mgrLogistikUser.name||"....................."}</div>
+    <div class="sig-name">${esc(mgrLogistikUser.name||".....................")}</div>
   </div>
 </div>
 </div></body></html>`;
@@ -911,6 +916,7 @@ export function downloadTUG5HTML(txn, katalogList, uitList, users, showToast, ul
 
 // ─── PEMINJAMAN ALAT BERAT DOCUMENT BUILDER ─────────────────────────────
 export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
   const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
   const pemohon = (users||[]).find(u=>u.id===loan.requestedBy) || {};
@@ -918,37 +924,37 @@ export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
   const isApproved = !!loan.approvedBy;
   const tanggalApprove = loan.approvedAt ? fmtDate(loan.approvedAt) : "";
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Peminjaman Alat Berat ${loan.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Peminjaman Alat Berat ${esc(loan.id)}</title>
 <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:14px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:14px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:4px 6px;font-size:10.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.sig-row{display:flex;justify-content:space-around;margin-top:30px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:50px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}}</style></head><body>
 <div class="print-bar">📄 Dokumen Peminjaman Alat Berat siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-  <div><b>PT PLN (PERSERO)</b><br/>UPT ${ownerUpt||"-"}</div>
+  <div><b>PT PLN (PERSERO)</b><br/>UPT ${esc(ownerUpt||"-")}</div>
   <div style="font-weight:800;font-size:13px">SURAT PEMINJAMAN<br/>ALAT BERAT</div>
 </div>
-<div class="doctitle"><h2>BERITA ACARA PEMINJAMAN ALAT BERAT / ANGKAT-ANGKUT</h2><div class="docno">${loan.id}</div></div>
+<div class="doctitle"><h2>BERITA ACARA PEMINJAMAN ALAT BERAT / ANGKAT-ANGKUT</h2><div class="docno">${esc(loan.id)}</div></div>
 <table class="meta">
-  <tr><td class="label">Nama Alat</td><td class="colon">:</td><td>${equipment?.nama||"-"} (${equipment?.merkType||"-"}, ${equipment?.kapasitas||"-"})</td></tr>
-  <tr><td class="label">Nomor Seri / Aset</td><td class="colon">:</td><td>${equipment?.nomorSeri||loan.equipmentId||"-"}</td></tr>
-  <tr><td class="label">UPT Pemilik Alat</td><td class="colon">:</td><td>UPT ${ownerUpt||"-"} — ${equipment?.lokasi||"-"}</td></tr>
-  <tr><td class="label">UPT Peminjam</td><td class="colon">:</td><td>UPT ${requesterUpt||"-"}</td></tr>
-  <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${loan.namaPekerjaan||"-"}</td></tr>
-  <tr><td class="label">Keperluan</td><td class="colon">:</td><td>${loan.keperluan||"-"}</td></tr>
-  <tr><td class="label">Tanggal Peminjaman</td><td class="colon">:</td><td>${loan.tanggalAmbil||"-"} s/d ${loan.tanggalKembali||"-"}</td></tr>
-  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${pemohon.name||"-"}${loan.catatan?` • Catatan: ${loan.catatan}`:""}</td></tr>
+  <tr><td class="label">Nama Alat</td><td class="colon">:</td><td>${esc(equipment?.nama||"-")} (${esc(equipment?.merkType||"-")}, ${esc(equipment?.kapasitas||"-")})</td></tr>
+  <tr><td class="label">Nomor Seri / Aset</td><td class="colon">:</td><td>${esc(equipment?.nomorSeri||loan.equipmentId||"-")}</td></tr>
+  <tr><td class="label">UPT Pemilik Alat</td><td class="colon">:</td><td>UPT ${esc(ownerUpt||"-")} — ${esc(equipment?.lokasi||"-")}</td></tr>
+  <tr><td class="label">UPT Peminjam</td><td class="colon">:</td><td>UPT ${esc(requesterUpt||"-")}</td></tr>
+  <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${esc(loan.namaPekerjaan||"-")}</td></tr>
+  <tr><td class="label">Keperluan</td><td class="colon">:</td><td>${esc(loan.keperluan||"-")}</td></tr>
+  <tr><td class="label">Tanggal Peminjaman</td><td class="colon">:</td><td>${esc(loan.tanggalAmbil||"-")} s/d ${esc(loan.tanggalKembali||"-")}</td></tr>
+  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${esc(pemohon.name||"-")}${loan.catatan?` • Catatan: ${esc(loan.catatan)}`:""}</td></tr>
 </table>
 <p style="font-size:10px;margin-bottom:20px">Dokumen ini menjadi bukti persetujuan peminjaman alat berat/angkat-angkut antar UPT sebagaimana rincian di atas. Alat wajib dikembalikan dalam kondisi baik selambat-lambatnya pada tanggal yang tercantum.</p>
 <div class="sig-row">
   <div class="sig-col">
-    <b>ASMAN KONSTRUKSI<br/>UPT ${ownerUpt||"-"} (Pemilik Alat)</b>
+    <b>ASMAN KONSTRUKSI<br/>UPT ${esc(ownerUpt||"-")} (Pemilik Alat)</b>
     <div class="sig-space">${isApproved?`<div class="digital-stamp">✓ DISETUJUI SECARA DIGITAL<br/>${tanggalApprove}</div>`:""}</div>
-    <div class="sig-name">${asmanUser.name||"....................."}</div>
+    <div class="sig-name">${esc(asmanUser.name||".....................")}</div>
   </div>
   <div class="sig-col">
-    <b>PEMOHON<br/>UPT ${requesterUpt||"-"}</b>
+    <b>PEMOHON<br/>UPT ${esc(requesterUpt||"-")}</b>
     <div class="sig-space"></div>
-    <div class="sig-name">${pemohon.name||"....................."}</div>
+    <div class="sig-name">${esc(pemohon.name||".....................")}</div>
   </div>
 </div>
 </div></body></html>`;
@@ -969,12 +975,14 @@ export function downloadHeavyEquipmentLoanHTML(loan, equipment, users, showToast
 // Dipanggil downloadBeritaAcara() di StockOpnameTab. Sebelumnya tombol "Download
 // Berita Acara" pasti crash karena fungsi ini belum pernah dibuat (bug lama).
 export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const items = opn.items || [];
   const creator = (users||[]).find(u=>u.id===opn.dibuatOleh) || {};
   const uptNama = resolveUptNama(creator.uptId, uptList, creator.upt);
   const asmanUser = (users||[]).find(u=>u.id===opn.approvedByAsman) || {};
   const mgrUser = (users||[]).find(u=>u.id===opn.approvedByManager) || {};
   const fmt = (v) => (v===null||v===undefined||v==="") ? "-" : v;
+  const fmtE = (v) => esc(fmt(v));
 
   const statusLabel = (s) => ({
     SESUAI: "Sesuai",
@@ -985,15 +993,15 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   const itemRows = items.map((it, idx) => `
     <tr>
       <td style="text-align:center">${idx+1}</td>
-      <td>${fmt(it.namaBarang)}</td>
-      <td style="text-align:center">${fmt(it.noKatalog)}</td>
-      <td style="text-align:center">${fmt(it.satuan)}</td>
+      <td>${fmtE(it.namaBarang)}</td>
+      <td style="text-align:center">${fmtE(it.noKatalog)}</td>
+      <td style="text-align:center">${fmtE(it.satuan)}</td>
       <td style="text-align:center">${fmt(it.qtySistem)}</td>
       <td style="text-align:center">${it.qtySAP===null||it.qtySAP===undefined?"-":it.qtySAP}</td>
       <td style="text-align:center">${fmt(it.qtsFisik)}</td>
       <td style="text-align:center">${fmt(it.selisih)}</td>
-      <td style="text-align:center">${statusLabel(it.statusItem)}</td>
-      <td>${fmt(it.keterangan)}</td>
+      <td style="text-align:center">${esc(statusLabel(it.statusItem))}</td>
+      <td>${fmtE(it.keterangan)}</td>
     </tr>`).join("");
 
   const total = items.length;
@@ -1001,24 +1009,24 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   const selisihCount = items.filter(i=>Number(i.selisih)!==0).length;
   const belumTerdaftar = items.filter(i=>i.statusItem==="TIDAK_ADA_DI_SISTEM").length;
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Opname ${opn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Opname ${esc(opn.id)}</title>
 <style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}.page{padding:20px;background:white;max-width:1120px;margin:0 auto 16px}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:12px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:12px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:3px 6px;font-size:9.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.kpi{display:flex;gap:8px;margin-bottom:10px}.kpi .box{flex:1;border:1px solid #ccc;border-radius:4px;padding:6px;text-align:center}.kpi .box .n{font-size:15px;font-weight:800;color:#00377a}.kpi .box .l{font-size:8.5px;color:#555;margin-top:2px}table.items{width:100%;border-collapse:collapse;margin-bottom:12px;table-layout:fixed}table.items th{background:#003087;color:white;padding:5px 4px;font-size:9px;text-align:center;border:1px solid #ccc}table.items td{padding:4px 4px;border:1px solid #ccc;font-size:9px;word-wrap:break-word}table.items col.c-no{width:32px}table.items col.c-nama{width:auto}table.items col.c-kat{width:90px}table.items col.c-stn{width:42px}table.items col.c-num{width:56px}table.items col.c-status{width:90px}.sig-row{display:flex;justify-content:space-around;margin-top:24px;text-align:center}.sig-col{width:200px;font-size:9.5px}.sig-space{height:50px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:0}table.items thead{display:table-header-group}table.items tr{page-break-inside:avoid}.sig-row{page-break-inside:avoid}}</style></head><body>
 <div class="print-bar">📄 Berita Acara Stock Opname — A4 Landscape &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-  <div><b>PT PLN (PERSERO)</b><br/>${uptNama}</div>
+  <div><b>PT PLN (PERSERO)</b><br/>${esc(uptNama)}</div>
   <div style="font-weight:800;font-size:13px">BERITA ACARA<br/>STOCK OPNAME</div>
 </div>
-<div class="doctitle"><h2>BERITA ACARA STOCK OPNAME (${opn.jenisAlur})</h2><div class="docno">No. : ${opn.id}</div></div>
+<div class="doctitle"><h2>BERITA ACARA STOCK OPNAME (${esc(opn.jenisAlur)})</h2><div class="docno">No. : ${esc(opn.id)}</div></div>
 <table class="meta">
-  <tr><td class="label">Semester</td><td class="colon">:</td><td>${fmt(opn.semester)}</td></tr>
-  <tr><td class="label">Jenis Opname</td><td class="colon">:</td><td>${fmt(opn.jenisAlur)} (${fmt(opn.kategori)})</td></tr>
-  ${opn.gudangId !== undefined ? `<tr><td class="label">Gudang</td><td class="colon">:</td><td>${fmt(opn.gudangKode || (opn.gudangId===null ? "Belum Beralamat" : "-"))}</td></tr>` : ""}
+  <tr><td class="label">Semester</td><td class="colon">:</td><td>${fmtE(opn.semester)}</td></tr>
+  <tr><td class="label">Jenis Opname</td><td class="colon">:</td><td>${fmtE(opn.jenisAlur)} (${fmtE(opn.kategori)})</td></tr>
+  ${opn.gudangId !== undefined ? `<tr><td class="label">Gudang</td><td class="colon">:</td><td>${fmtE(opn.gudangKode || (opn.gudangId===null ? "Belum Beralamat" : "-"))}</td></tr>` : ""}
   <tr><td class="label">Tanggal Pelaksanaan</td><td class="colon">:</td><td>${fmtDate(opn.dibuatAt)}</td></tr>
   <tr><td class="label">Tanggal Submit</td><td class="colon">:</td><td>${fmtDate(opn.submittedAt)}</td></tr>
-  <tr><td class="label">Approval Asman</td><td class="colon">:</td><td>${fmtDate(opn.approvedAtAsman)}${opn.catatanAsman?` • ${opn.catatanAsman}`:""}</td></tr>
-  <tr><td class="label">Approval Manager</td><td class="colon">:</td><td>${fmtDate(opn.approvedAtManager)}${opn.catatanManager?` • ${opn.catatanManager}`:""}</td></tr>
+  <tr><td class="label">Approval Asman</td><td class="colon">:</td><td>${fmtDate(opn.approvedAtAsman)}${opn.catatanAsman?` • ${esc(opn.catatanAsman)}`:""}</td></tr>
+  <tr><td class="label">Approval Manager</td><td class="colon">:</td><td>${fmtDate(opn.approvedAtManager)}${opn.catatanManager?` • ${esc(opn.catatanManager)}`:""}</td></tr>
 </table>
 <div class="kpi">
   <div class="box"><div class="n">${total}</div><div class="l">Total Item</div></div>
@@ -1026,7 +1034,7 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   <div class="box"><div class="n">${selisihCount}</div><div class="l">Selisih</div></div>
   <div class="box"><div class="n">${belumTerdaftar}</div><div class="l">Belum Terdaftar</div></div>
 </div>
-<p style="font-size:10px;margin-bottom:8px">Pada hari/tanggal tersebut di atas telah dilakukan pencatatan persediaan material ${opn.jenisAlur} secara fisik, dengan rincian sebagai berikut:</p>
+<p style="font-size:10px;margin-bottom:8px">Pada hari/tanggal tersebut di atas telah dilakukan pencatatan persediaan material ${esc(opn.jenisAlur)} secara fisik, dengan rincian sebagai berikut:</p>
 <table class="items">
   <colgroup><col class="c-no"><col class="c-nama"><col class="c-kat"><col class="c-stn"><col class="c-num"><col class="c-num"><col class="c-num"><col class="c-num"><col class="c-status"><col class="c-nama"></colgroup>
   <thead><tr><th>No.</th><th>Nama Barang</th><th>No. Katalog</th><th>Stn.</th><th>Qty Sistem</th><th>Qty SAP</th><th>Qty Fisik</th><th>Selisih</th><th>Status</th><th>Keterangan</th></tr></thead>
@@ -1037,17 +1045,17 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   <div class="sig-col">
     <b>PELAKSANA OPNAME</b>
     <div class="sig-space"></div>
-    <div class="sig-name">${creator.name||"....................."}</div>
+    <div class="sig-name">${esc(creator.name||".....................")}</div>
   </div>
   <div class="sig-col">
     <b>ASMAN KONSTRUKSI</b>
     <div class="sig-space"></div>
-    <div class="sig-name">${asmanUser.name||"....................."}</div>
+    <div class="sig-name">${esc(asmanUser.name||".....................")}</div>
   </div>
   <div class="sig-col">
     <b>MANAGER</b>
     <div class="sig-space"></div>
-    <div class="sig-name">${mgrUser.name||"....................."}</div>
+    <div class="sig-name">${esc(mgrUser.name||".....................")}</div>
   </div>
 </div>
 </div></body></html>`;
@@ -1060,6 +1068,7 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
 // stok-nya tersebar di beberapa blok (lokasiBreakdown, Fase 1b) — filterGudangId/filterLokasiId
 // opsional mengikuti filter aktif di tabel (Fase 1f).
 export function buildLembarHitungHTML(opn, { lokasiList, gudangList, filterGudangId, filterLokasiId } = {}) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const rows = [];
   (opn.items || []).forEach(it => {
     const bd = (it.lokasiBreakdown && it.lokasiBreakdown.length) ? it.lokasiBreakdown : [{ gudangId: null, gudangKode: null, lokasiId: null, lokasiKode: null, qty: it.qtySistem }];
@@ -1085,18 +1094,18 @@ export function buildLembarHitungHTML(opn, { lokasiList, gudangList, filterGudan
     const lokMap = groups.get(gk);
     const blokHtml = [...lokMap.entries()].map(([lk, rs]) => {
       const rowsHtml = rs.map(r => { no++; return `
-      <tr><td style="text-align:center">${no}</td><td style="text-align:center">${r.it.noKatalog || "-"}</td>
-      <td>${r.it.namaBarang || "-"}</td><td style="text-align:center">${r.it.satuan || "-"}</td>
+      <tr><td style="text-align:center">${no}</td><td style="text-align:center">${esc(r.it.noKatalog || "-")}</td>
+      <td>${esc(r.it.namaBarang || "-")}</td><td style="text-align:center">${esc(r.it.satuan || "-")}</td>
       <td style="text-align:center">${r.qty ?? 0}</td><td></td><td></td></tr>`; }).join("");
-      return `<tr><td colspan="7" style="background:#f1f5f9;font-weight:700;padding:4px 6px">Blok: ${lk} (${rs.length} item)</td></tr>${rowsHtml}`;
+      return `<tr><td colspan="7" style="background:#f1f5f9;font-weight:700;padding:4px 6px">Blok: ${esc(lk)} (${rs.length} item)</td></tr>${rowsHtml}`;
     }).join("");
-    return `<tr><td colspan="7" style="background:#003087;color:white;font-weight:800;padding:5px 6px">GUDANG: ${gk}</td></tr>${blokHtml}`;
+    return `<tr><td colspan="7" style="background:#003087;color:white;font-weight:800;padding:5px 6px">GUDANG: ${esc(gk)}</td></tr>${blokHtml}`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lembar Hitung ${opn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lembar Hitung ${esc(opn.id)}</title>
 <style>@page{size:A4;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px 5px}thead{display:table-header-group}tr{page-break-inside:avoid}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}}</style></head><body>
 <div class="print-bar">📄 Lembar Hitung Fisik — A4 &nbsp; <button onclick="window.print()">🖨️ Print</button></div>
-<h2 style="margin:10px 0">Lembar Hitung Fisik — Opname ${opn.semester} (${opn.jenisAlur})${opn.gudangKode ? ` — Gudang ${opn.gudangKode}` : ""}</h2>
+<h2 style="margin:10px 0">Lembar Hitung Fisik — Opname ${esc(opn.semester)} (${esc(opn.jenisAlur)})${opn.gudangKode ? ` — Gudang ${esc(opn.gudangKode)}` : ""}</h2>
 <table><thead><tr><th>No</th><th>No. Katalog</th><th>Nama Barang</th><th>Satuan</th><th>Qty Sistem</th><th>Qty Fisik</th><th>Paraf</th></tr></thead>
 <tbody>${sectionsHtml}</tbody></table>
 </body></html>`;
@@ -1124,6 +1133,7 @@ export function downloadTUG7HTML(txn, katalogList, uitList, uptList, users, show
 }
 
 export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, satpamList, uptList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn?.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
   const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
@@ -1156,11 +1166,11 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
     const lokasi = (lokasiList||[]).find(l=>l.id===si.lokasiId)?.kode || "GUDANG";
     return `
     <tr>
-      <td>${namaBarang}</td>
-      <td style="text-align:center">${lokasi}</td>
+      <td>${esc(namaBarang)}</td>
+      <td style="text-align:center">${esc(lokasi)}</td>
       <td style="text-align:center">${fmtNum(si.qty)}</td>
-      <td style="text-align:center">${satuan}</td>
-      <td>${txn.dariSupplier ? `(Pengadaan ${txn.dariSupplier}) ` : ""}${txn.keteranganTug3 || ""}</td>
+      <td style="text-align:center">${esc(satuan)}</td>
+      <td>${txn.dariSupplier ? `(Pengadaan ${esc(txn.dariSupplier)}) ` : ""}${esc(txn.keteranganTug3 || "")}</td>
     </tr>`;
   }).join("");
 
@@ -1169,14 +1179,14 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
     const photo = si.fotoBarangRetur || si.fotoNameplate || ((txn.fotoMaterial||[]).find(fm => fm.katalogId === si.katalogId || fm.stockId === si.stockId)?.img);
     return `
       <tr>
-        <td style="padding:10px;vertical-align:top;font-weight:bold;width:35%">${namaBarang}</td>
+        <td style="padding:10px;vertical-align:top;font-weight:bold;width:35%">${esc(namaBarang)}</td>
         <td style="padding:10px;text-align:center">
-          ${photo ? `<img src="${photo}" style="max-height:220px;max-width:100%;object-fit:contain;border:1px solid #ccc;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#9ca3af;font-style:italic;padding:20px">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
+          ${photo ? `<img src="${esc(photo)}" style="max-height:220px;max-width:100%;object-fit:contain;border:1px solid #ccc;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#9ca3af;font-style:italic;padding:20px">&lt;&lt;[Foto Barang]&gt;&gt;</div>`}
         </td>
       </tr>`;
   }).join("");
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-3/4 ${txn.id}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-3/4 ${esc(txn.id)}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
@@ -1246,26 +1256,26 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
   <!-- BOX 1: SURAT JALAN PENGAMBILAN MATERIAL -->
   <div class="section-box">
     <div class="doctitle">SURAT JALAN PENGAMBILAN MATERIAL</div>
-    <div class="docno">${docNoSJ}</div>
+    <div class="docno">${esc(docNoSJ)}</div>
 
     <table class="meta-tbl">
       <tr>
-        <td class="lbl">Dibawa Ke</td><td style="width:10px">:</td><td>${txn.lokasiPekerjaan || txn.lokasiPenyerahan || "-"}</td>
-        <td class="lbl" style="width:140px">Kendaraan / Nopol</td><td style="width:10px">:</td><td>${txn.nopol || "-"}</td>
+        <td class="lbl">Dibawa Ke</td><td style="width:10px">:</td><td>${esc(txn.lokasiPekerjaan || txn.lokasiPenyerahan || "-")}</td>
+        <td class="lbl" style="width:140px">Kendaraan / Nopol</td><td style="width:10px">:</td><td>${esc(txn.nopol || "-")}</td>
       </tr>
       <tr>
         <td class="lbl">Tanggal Pengambilan</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
-        <td class="lbl">No SIM / KTP Pengemudi</td><td>:</td><td>${txn.simKtp || "-"}</td>
+        <td class="lbl">No SIM / KTP Pengemudi</td><td>:</td><td>${esc(txn.simKtp || "-")}</td>
       </tr>
       <tr>
-        <td class="lbl">PIC Gudang ${uptNama}</td><td>:</td><td colspan="4">${creator.name || "-"}${creator.officialPhone ? ` (${creator.officialPhone})` : ""}</td>
+        <td class="lbl">PIC Gudang ${esc(uptNama)}</td><td>:</td><td colspan="4">${esc(creator.name || "-")}${creator.officialPhone ? ` (${esc(creator.officialPhone)})` : ""}</td>
       </tr>
     </table>
 
@@ -1289,19 +1299,19 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
         <div><i>Transporter,</i></div>
         <div class="sig-role">PENGEMUDI</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${txn.namaPengemudi || "....................."}</div>
+        <div class="sig-name">${esc(txn.namaPengemudi || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Mengetahui,</i></div>
-        <div class="sig-role">SATPAM GUDANG ${(satpamUser.gudangNama || WAREHOUSE).toUpperCase()}</div>
+        <div class="sig-role">SATPAM GUDANG ${esc((satpamUser.gudangNama || WAREHOUSE).toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${satpamUser.name || "....................."}</div>
+        <div class="sig-name">${esc(satpamUser.name || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang menyerahkan,</i></div>
         <div class="sig-role">ADMINISTRASI GUDANG</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${creator.name || "....................."}</div>
+        <div class="sig-name">${esc(creator.name || ".....................")}</div>
       </div>
     </div>
   </div>
@@ -1309,23 +1319,23 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
   <!-- BOX 2: BERITA ACARA SERAH TERIMA BARANG (BAST-B) -->
   <div class="section-box">
     <div class="doctitle">BERITA ACARA SERAH TERIMA BARANG (BAST-B)</div>
-    <div class="docno">${docNoBA}</div>
+    <div class="docno">${esc(docNoBA)}</div>
 
     <div class="bast-intro">
       Pada hari ini <b>${dateInfo.hari}</b> tanggal <b>${dateInfo.tanggal}</b> bulan <b>${dateInfo.bulan}</b> tahun <b>${dateInfo.tahun}</b> (${dateInfo.tanggalLengkap}), Kami yang bertanda di bawah ini :
     </div>
 
     <table class="meta-tbl" style="margin-bottom:4px">
-      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${menyerahkanUser.name || creator.name || "-"}</td></tr>
-      <tr><td class="lbl">Jabatan</td><td>:</td><td>${menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`}</td></tr>
-      <tr><td class="lbl">Unit</td><td>:</td><td>${uptNama.toUpperCase()}</td></tr>
+      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${esc(menyerahkanUser.name || creator.name || "-")}</td></tr>
+      <tr><td class="lbl">Jabatan</td><td>:</td><td>${esc(menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`)}</td></tr>
+      <tr><td class="lbl">Unit</td><td>:</td><td>${esc(uptNama.toUpperCase())}</td></tr>
     </table>
     <div style="font-size:9.5px;font-style:italic;margin-bottom:6px">Untuk selanjutnya disebut <b>PIHAK YANG MENYERAHKAN</b></div>
 
     <table class="meta-tbl" style="margin-bottom:4px">
-      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${txn.penerimaNama || "-"}</td></tr>
-      <tr><td class="lbl">Jabatan</td><td>:</td><td>${txn.penerimaJabatan || "-"}</td></tr>
-      <tr><td class="lbl">Unit</td><td>:</td><td>${txn.penerimaUnit || "-"}</td></tr>
+      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${esc(txn.penerimaNama || "-")}</td></tr>
+      <tr><td class="lbl">Jabatan</td><td>:</td><td>${esc(txn.penerimaJabatan || "-")}</td></tr>
+      <tr><td class="lbl">Unit</td><td>:</td><td>${esc(txn.penerimaUnit || "-")}</td></tr>
     </table>
     <div style="font-size:9.5px;font-style:italic;margin-bottom:6px">Untuk selanjutnya disebut <b>PIHAK YANG MENERIMA</b></div>
 
@@ -1345,9 +1355,9 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     </table>
 
     <table class="meta-tbl" style="margin-top:6px">
-      <tr><td class="lbl">Sesuai Nodin / Surat Permintaan No</td><td style="width:10px">:</td><td>${txn.noNodin || "-"}</td></tr>
-      <tr><td class="lbl">Sesuai Surat Persetujuan No</td><td>:</td><td>${txn.noPersetujuan || "-"}</td></tr>
-      <tr><td class="lbl">Untuk Pekerjaan</td><td>:</td><td>${txn.namaPekerjaan || txn.pekerjaan || "-"}</td></tr>
+      <tr><td class="lbl">Sesuai Nodin / Surat Permintaan No</td><td style="width:10px">:</td><td>${esc(txn.noNodin || "-")}</td></tr>
+      <tr><td class="lbl">Sesuai Surat Persetujuan No</td><td>:</td><td>${esc(txn.noPersetujuan || "-")}</td></tr>
+      <tr><td class="lbl">Untuk Pekerjaan</td><td>:</td><td>${esc(txn.namaPekerjaan || txn.pekerjaan || "-")}</td></tr>
     </table>
 
     <div class="closing-note">Demikian Berita Acara ini kami buat agar dipergunakan sebagaimana mestinya</div>
@@ -1355,15 +1365,15 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="sig-row-2">
       <div class="sig-col">
         <div><i>Yang menerima,</i></div>
-        <div class="sig-role">${(txn.penerimaUnit || "PIHAK MENERIMA").toUpperCase()}</div>
+        <div class="sig-role">${esc((txn.penerimaUnit || "PIHAK MENERIMA").toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${txn.penerimaNama || "....................."}</div>
+        <div class="sig-name">${esc(txn.penerimaNama || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang menyerahkan,</i></div>
-        <div class="sig-role">TL LOG ${uptNama.toUpperCase()}</div>
+        <div class="sig-role">TL LOG ${esc(uptNama.toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${menyerahkanUser.name || creator.name || "....................."}</div>
+        <div class="sig-name">${esc(menyerahkanUser.name || creator.name || ".....................")}</div>
       </div>
     </div>
   </div>
@@ -1378,7 +1388,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -1388,13 +1398,13 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="photo-col-cell">
       <div class="cell-title">Foto Kendaraan</div>
       <div class="cell-img-wrap">
-        ${txn.fotoKendaraan ? `<img src="${txn.fotoKendaraan}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
+        ${txn.fotoKendaraan ? `<img src="${esc(txn.fotoKendaraan)}" alt="Foto Kendaraan"/>` : `<div class="photo-empty">&lt;&lt;[Foto Kendaraan pengangkut]&gt;&gt;</div>`}
       </div>
     </div>
     <div class="photo-col-cell">
       <div class="cell-title">SIM / KTP</div>
       <div class="cell-img-wrap">
-        ${txn.fotoSimKtp ? `<img src="${txn.fotoSimKtp}" alt="SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM/ KTP sopir]&gt;&gt;</div>`}
+        ${txn.fotoSimKtp ? `<img src="${esc(txn.fotoSimKtp)}" alt="SIM/KTP"/>` : `<div class="photo-empty">&lt;&lt;[Foto SIM/ KTP sopir]&gt;&gt;</div>`}
       </div>
     </div>
   </div>
@@ -1409,7 +1419,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -1418,7 +1428,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
   <div class="photo-box-full">
     <div class="cell-title" style="margin-bottom:12px">Surat Permintaan / Pengadaan</div>
     <div class="cell-img-wrap-large">
-      ${txn.fotoSuratJalanImg || txn.fotoKontrak ? `<img src="${txn.fotoSuratJalanImg || txn.fotoKontrak}" alt="Surat Permintaan"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat jalan]&gt;&gt;</div>`}
+      ${txn.fotoSuratJalanImg || txn.fotoKontrak ? `<img src="${esc(txn.fotoSuratJalanImg || txn.fotoKontrak)}" alt="Surat Permintaan"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat jalan]&gt;&gt;</div>`}
     </div>
   </div>
   <div class="bottom-accent"></div>
@@ -1432,7 +1442,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${uptNama.toUpperCase()}</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
     </div>
   </div>
 
@@ -1583,7 +1593,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
       <td style="padding-left:10px">
         <div style="font-size:11px;font-weight:800;line-height:1.2">PT PLN (PERSERO)</div>
         <div style="font-size:10px;font-weight:700;line-height:1.2">TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${(uptNama || UPT).toUpperCase()}</div>
+        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${esc((uptNama || UPT).toUpperCase())}</div>
       </td>
       <td style="text-align:right">
         <div style="font-size:14px;font-weight:900;letter-spacing:1px">TUG. 2</div>
@@ -1618,7 +1628,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
   <div class="media-row">
     <div class="media-box">
       <div class="media-title">FOTO BARANG</div>
-      ${sampleFoto ? `<img src="${sampleFoto}" style="max-width:100%;max-height:180px;object-fit:contain;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#94a3b8;font-size:11px;font-style:italic;padding:40px 0">&lt;&lt; [Foto Barang] &gt;&gt;</div>`}
+      ${sampleFoto ? `<img src="${esc(sampleFoto)}" style="max-width:100%;max-height:180px;object-fit:contain;border-radius:4px" alt="Foto Barang"/>` : `<div style="color:#94a3b8;font-size:11px;font-style:italic;padding:40px 0">&lt;&lt; [Foto Barang] &gt;&gt;</div>`}
     </div>
     <div class="media-box">
       <div class="media-title">QR CODE</div>
@@ -1695,7 +1705,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
       <td style="padding-left:10px">
         <div style="font-size:11px;font-weight:800;line-height:1.2">PT PLN (PERSERO)</div>
         <div style="font-size:10px;font-weight:700;line-height:1.2">TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${(uptNama || UPT).toUpperCase()}</div>
+        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${esc((uptNama || UPT).toUpperCase())}</div>
       </td>
       <td style="text-align:right">
         <div style="font-size:14px;font-weight:900;letter-spacing:1px">TUG. 2</div>

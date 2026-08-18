@@ -56,6 +56,15 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Scope UPT: ADMIN hanya boleh kelola akun di UPT sendiri, SUPERADMIN lintas-UPT
+// bebas. targetUptLama/targetUptBaru dibandingkan terpisah supaya ADMIN tidak
+// bisa mengedit akun yang SEKARANG di UPT lain walau body-nya dikirim seolah
+// upt_id tujuan = UPT sendiri (lihat pemakaian di admin-update-user).
+function bolehKelolaAkun(callerRole: string, callerUptId: string | null, targetUptLama: string | null, targetUptBaru: string | null): boolean {
+  if (callerRole === "SUPERADMIN") return true;
+  return targetUptLama === callerUptId && targetUptBaru === callerUptId;
+}
+
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 Deno.serve(async (req) => {
@@ -71,7 +80,7 @@ Deno.serve(async (req) => {
     const { data: callerAuth, error: callerErr } = await admin.auth.getUser(jwt);
     if (callerErr || !callerAuth?.user) return json({ ok: false, error: "Sesi login tidak valid, silakan login ulang." }, 401);
 
-    const { data: callerProfile } = await admin.from("profiles").select("role").eq("id", callerAuth.user.id).single();
+    const { data: callerProfile } = await admin.from("profiles").select("role, upt_id").eq("id", callerAuth.user.id).single();
     if (!callerProfile || (callerProfile.role !== "ADMIN" && callerProfile.role !== "SUPERADMIN")) {
       return json({ ok: false, error: "Hanya Admin yang bisa mendaftarkan akun baru." }, 403);
     }
@@ -114,6 +123,13 @@ Deno.serve(async (req) => {
     }
     if ((role === "ADMIN_ULTG" || role === "MGR_ULTG") && !ultgId) {
       return json({ ok: false, error: `Role ${role} wajib memilih unit ULTG.` });
+    }
+
+    // ── 2a. Scope UPT — ADMIN (bukan SUPERADMIN) hanya boleh buat akun di UPT sendiri.
+    //        Role nasional/UIT-scoped tidak punya uptId (null) -> otomatis ditolak untuk
+    //        ADMIN biasa, karena null !== callerProfile.upt_id.
+    if (!bolehKelolaAkun(callerProfile.role, callerProfile.upt_id, uptId, uptId)) {
+      return json({ ok: false, error: "ADMIN hanya boleh mengelola akun di UPT sendiri." }, 403);
     }
 
     // Role level-UIT (ADMIN_UIT/ASMAN_LOG_UIT/MGR_LOGISTIK_UIT) dan PENGADAAN mode UIT pakai

@@ -43,6 +43,15 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Scope UPT: ADMIN hanya boleh kelola akun di UPT sendiri, SUPERADMIN lintas-UPT
+// bebas. targetUptLama = UPT profil target di DB SEBELUM diubah, targetUptBaru
+// = UPT tujuan dari body request (lihat pemakaian di admin-create-user, yang
+// mengirim targetUptLama=targetUptBaru karena belum ada akun lama).
+function bolehKelolaAkun(callerRole: string, callerUptId: string | null, targetUptLama: string | null, targetUptBaru: string | null): boolean {
+  if (callerRole === "SUPERADMIN") return true;
+  return targetUptLama === callerUptId && targetUptBaru === callerUptId;
+}
+
 const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 Deno.serve(async (req) => {
@@ -58,7 +67,7 @@ Deno.serve(async (req) => {
     const { data: callerAuth, error: callerErr } = await admin.auth.getUser(jwt);
     if (callerErr || !callerAuth?.user) return json({ ok: false, error: "Sesi login tidak valid, silakan login ulang." }, 401);
 
-    const { data: callerProfile } = await admin.from("profiles").select("role").eq("id", callerAuth.user.id).single();
+    const { data: callerProfile } = await admin.from("profiles").select("role, upt_id").eq("id", callerAuth.user.id).single();
     if (!callerProfile || (callerProfile.role !== "ADMIN" && callerProfile.role !== "SUPERADMIN")) {
       return json({ ok: false, error: "Hanya Admin yang bisa mengubah akun." }, 403);
     }
@@ -84,6 +93,16 @@ Deno.serve(async (req) => {
     const gudangIds = (Array.isArray(gudangIdsRaw) && gudangIdsRaw.length) ? gudangIdsRaw : null;
 
     if (!userId) return json({ ok: false, error: "userId wajib diisi." });
+
+    // ── 2a. Scope UPT — ADMIN (bukan SUPERADMIN) hanya boleh ubah akun yang SEKARANG
+    //        (UPT lama di DB) maupun SETELAH diubah (UPT baru di body) ada di UPT sendiri.
+    //        Cek dua-duanya supaya ADMIN tak bisa akali dengan mengirim uptId=UPT sendiri
+    //        padahal mengedit akun yang aslinya di UPT lain.
+    const { data: targetProfile, error: targetErr } = await admin.from("profiles").select("upt_id, role").eq("id", userId).single();
+    if (targetErr || !targetProfile) return json({ ok: false, error: "Akun target tidak ditemukan." }, 404);
+    if (!bolehKelolaAkun(callerProfile.role, callerProfile.upt_id, targetProfile.upt_id, uptId)) {
+      return json({ ok: false, error: "ADMIN hanya boleh mengelola akun di UPT sendiri." }, 403);
+    }
     if (!name) return json({ ok: false, error: "Nama lengkap wajib diisi." });
     if (!jabatan) return json({ ok: false, error: "Jabatan wajib diisi." });
     if (!VALID_ROLES.includes(role)) {

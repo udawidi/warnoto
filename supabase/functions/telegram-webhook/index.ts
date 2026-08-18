@@ -11,7 +11,10 @@
 //   3. npx supabase secrets set TELEGRAM_BOT_TOKEN=<dari BotFather> \
 //        GROQ_API_KEY=<...> COHERE_API_KEY=<...>
 //   4. npx supabase functions deploy telegram-webhook --no-verify-jwt
-//   5. curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://tadxodrzoquugnsyejld.supabase.co/functions/v1/telegram-webhook"
+//   5. curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://tadxodrzoquugnsyejld.supabase.co/functions/v1/telegram-webhook&secret_token=<TELEGRAM_WEBHOOK_SECRET>"
+//      (secret_token WAJIB sama persis dengan env TELEGRAM_WEBHOOK_SECRET di
+//      langkah 3 — tanpa ini siapa pun yang tahu URL webhook bisa POST update
+//      palsu ke endpoint ini, karena --no-verify-jwt tidak mengecek JWT platform.)
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -20,6 +23,18 @@ const GROQ_API_KEY           = Deno.env.get("GROQ_API_KEY") ?? "";
 const COHERE_API_KEY         = Deno.env.get("COHERE_API_KEY") ?? "";
 const SUPABASE_URL           = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const TELEGRAM_WEBHOOK_SECRET = Deno.env.get("TELEGRAM_WEBHOOK_SECRET") ?? "";
+
+// Header wajib Telegram (kalau secret_token di-set via setWebhook) — bandingkan
+// dengan TELEGRAM_WEBHOOK_SECRET supaya endpoint hanya menerima update ASLI dari
+// Telegram, bukan POST palsu dari siapa pun yang tahu URL webhook (yang bisa
+// spoof message.from.id ke user whitelisted). Fail-open + warn kalau secret
+// belum dikonfigurasi (env kosong), supaya bot yang sudah live tidak mati
+// mendadak sebelum secret dipasang di kedua sisi (env + setWebhook).
+function secretCocok(headerVal: string | null, envVal: string): boolean {
+  if (!envVal) return true;
+  return headerVal === envVal;
+}
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
@@ -97,6 +112,12 @@ const MSG_RATE_LIMITED = `⏳ Sabar dulu ya, pertanyaannya kebanyakan berturut-t
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("OK — telegram-webhook aktif. Set webhook via setWebhook API.", { status: 200 });
+  }
+
+  if (!TELEGRAM_WEBHOOK_SECRET) {
+    console.warn("TELEGRAM_WEBHOOK_SECRET belum dikonfigurasi — webhook menerima update tanpa verifikasi asal Telegram.");
+  } else if (!secretCocok(req.headers.get("X-Telegram-Bot-Api-Secret-Token"), TELEGRAM_WEBHOOK_SECRET)) {
+    return new Response("Unauthorized", { status: 401 });
   }
 
   const t0 = Date.now();
