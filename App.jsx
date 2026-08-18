@@ -4433,7 +4433,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
       {/* LIGHTBOX — overview foto full-screen, klik foto kecil mana saja di Data Stok */}
       {lightboxImg && (
-        <LightboxModal lightboxImg={lightboxImg} setLightboxImg={setLightboxImg} />
+        <LightboxModal lightboxImg={lightboxImg} setLightboxImg={setLightboxImg} sty={sty} />
       )}
 
       {/* PETA MINI MODAL — dari card Data Stok */}

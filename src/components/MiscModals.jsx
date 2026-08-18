@@ -139,7 +139,7 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
 }
 
 // LIGHTBOX — overview foto full-screen
-export function LightboxModal({ lightboxImg, setLightboxImg }) {
+export function LightboxModal({ lightboxImg, setLightboxImg, sty }) {
   return (
     <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20,cursor:"zoom-out"}}>
       <img src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90dvh",objectFit:"contain",borderRadius: 10}}/>
