@@ -89,12 +89,21 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   (c) **Prasyarat IT:** akses live SAP butuh `warnoto.com` diekspos ke jaringan SAP + IP egress SAP untuk allowlist.
   Fase 2 (ingest SAP→WARNOTO master, review-first) & Fase 3 (WARNOTO→SAP TUG) NUNGGU kontrak+kredensial tim SAP.
 
-- **STOCK OPNAME — Fase 0 & 1 SELESAI + DI-PUSH (2026-08-16/17).** Rencana 4-fase di
-  `.claude/plans/pelaksanaan-esisting-stock-opname-warm-walrus.md` (+ eksekusi/audit di
-  `.claude/plans/coba-buatkan-planningnya-dulu-snoopy-haven.md`).
-  **⏳ FASE 1 DI-PUSH TAPI BELUM TES BROWSER USER** (build+audit+review arsitek lulus; verifikasi
-  visual/fungsional ditunda — lihat Langkah berikutnya). **Fase 2-3 BELUM** (mode lapangan/scanner
-  iOS/recount; freeze).
+- **STOCK OPNAME — Fase 0, 1 & 2 SELESAI + DI-PUSH (2026-08-16..18).** Rencana 4-fase di
+  `C:\Users\PLN\.claude\plans\pelaksanaan-esisting-stock-opname-warm-walrus.md` (+ eksekusi/audit di
+  `...coba-buatkan-planningnya-dulu-snoopy-haven.md`).
+  **⏳ FASE 1 & 2 DI-PUSH TAPI BELUM TES BROWSER USER** (build+audit+review arsitek lulus; verifikasi
+  visual/fungsional ditunda — lihat Langkah berikutnya). **Fase 3 BELUM** (freeze peringatan).
+  - **Fase 2 (`92b66d2`, mode hitung lapangan HP/tablet):** `OpnameLapanganView.jsx` BARU (blok picker+scan
+    QR blok, item kartu per-blok, kartu hitung qty besar, dialog barang-tak-ada, tandai-nihil, antrian
+    hitung ulang blind). `useHardwareScanner` opsi `blockInput`+`onScanStart` (blur field → char pertama scan
+    tak bocor ke kolom qty). `BarcodeScanner` prop `continuous` + fallback iOS `@zxing/browser` (dynamic
+    import, lazy chunk). Util QR blok `lokasiScanUrlFor`/`extractLokasiIdFromScan`(`?loc=`)/`buildLabelBlokHTML`.
+    **Recount wajib** item selisih (blind, `applyQtyToItem` opsi `markRecount` — HANYA jalur lapangan;
+    desktop `updateItem` TAK kena, perilaku Fase 1 utuh); `validate()` blokir submit selama recount pending.
+    **Autosave localStorage** recovery (`warnoto_opname_draft_<id>`): restore saat sesi DRAFT dibuka, hapus
+    HANYA saat `saveOpname` ter-sync server (`return true/false`) → offline-pending draft dipertahankan.
+    audit-mobile 113 (<plafon 118).
   - **Fase 1 (model data, `sap.js`+`docBuilders.js`+`useStockOpname.js`+`StockOpnameTab.jsx`):**
     1a fix `normalizeKatalog` match PID (bug zero-padding); 1b `lokasiBreakdown` per item (dari
     `stocks`); 1c `hitungPerLokasi` per blok + `qtsFisik` turunan (`sumHitungPerLokasi` di sap.js),
@@ -374,14 +383,15 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 ## Langkah berikutnya (urut, mengikat)
 
 **STOCK OPNAME — lanjutan (sesi berikutnya):**
-1. **Verifikasi browser Fase 1** (belum dilakukan; di-push atas instruksi user 2026-08-17). Login TL/ADMIN,
-   `npm run dev` :3001 (GOTCHA: dev server sesi lalu berkali ke-kill watchdog lingkungan — user jalankan
-   `! npm run dev` sendiri): upload PID CSV/XLSX → dialog pilih gudang; item zero-padding beda terbaca cocok;
-   chip BLOK(qty) + filter blok; cetak Lembar Hitung A4; uji anti-timpa 2-tab (isi blok beda → tak ada hilang).
-2. **Fase 2** — mode lapangan (`OpnameLapanganView.jsx` baru) + scanner `blockInput` (`useHardwareScanner`) +
-   kamera continuous + fallback iOS **`@zxing/browser`** (dynamic import iOS-only — dependensi baru DISETUJUI user)
-   + QR label blok (`lokasiScanUrlFor`/`extractLokasiIdFromScan`, `?loc=`) + recount wajib. Lihat plan Fase 2.
-3. **Fase 3** — freeze peringatan (`useStockOpname` `setOpnameFreeze` + `useTugTransactions` `saveTxn` warn).
+1. **Verifikasi browser Fase 1 & 2** (belum dilakukan; di-push atas instruksi user). `npm run dev` :3001
+   (GOTCHA: dev server sesi lalu berkali ke-kill watchdog — user jalankan `! npm run dev` sendiri). **Fase 1:**
+   upload PID CSV/XLSX → dialog pilih gudang; zero-padding beda cocok; chip BLOK(qty)+filter; Lembar Hitung A4;
+   anti-timpa 2-tab. **Fase 2** (device 360px): "📱 Mode Lapangan" → pilih blok/scan QR blok; **uji kritis:
+   kursor di kolom qty lalu tembak scanner → angka TIDAK boleh kotor** (bukti `blockInput`+`onScanStart→blur`);
+   scan 3 barang beruntun (`continuous`); iPhone/Safari fallback zxing (paksa `BarcodeDetector=undefined` di
+   DevTools kalau tak ada perangkat iOS); reload → hitungan tetap (autosave); recount item selisih blokir submit.
+2. **Fase 3** — freeze peringatan (`useStockOpname` `setOpnameFreeze` + `useTugTransactions` `saveTxn` warn).
+   Detail di plan walrus Fase 3 (baris 157-171).
 
 **Keputusan arsitektur (mengikat, dari Fase 1):** qty opname disimpan **per blok** (`hitungPerLokasi`), sesi
 opname **dipecah per gudang**, simpan pakai **merge fetch-server** (`loadMasterTable("stock_opname")`, bukan cache
@@ -452,7 +462,10 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
+- 2026-08-18 Claude (shift-10): **Stock Opname Fase 2** (`92b66d2`) mode hitung lapangan + scanner
+  (blockInput/onScanStart, continuous, zxing iOS) + recount wajib (lapangan only) + autosave localStorage
+  recovery. 2 batch tukang-senior; arsitek tangkap+fix 3 hal: recount bocor ke desktop, hapus-draft saat
+  offline, char-pertama scan. SISA verifikasi browser + Fase 3. Detail di Status sekarang atas.
 - 2026-08-18 Claude (shift-9): **2FA TOTP wajib semua user + reset MFA admin** (`ed4df3a`). Gate AAL di
   handleAuthSession, enroll issuer WARNOTO/friendlyName=username, cache-key bump v3, Edge Function
   admin-reset-mfa deployed+verified. SISA verifikasi browser. Detail di Status sekarang atas.
-- 2026-08-14 Claude (shift-8): **Housekeeping pending item.** `sap_foto_report.json` di-gitignore. Bot Telegram: fase-2 scoping `p_upts` terverifikasi SUDAH deploy self-host sejak Aug 9 (HANDOFF lama keliru "belum deploy"). GAP kebocoran ditutup di `telegram-webhook/index.ts` (fix `callerUptId ? Promise.resolve("") : buildWarnotoStateContext()`) — SUDAH DEPLOY & live di box. GRANT anon dipertegas (migration `20260814`, cabut SELECT vestigial 3 tabel, katalog scan-QR utuh). **Satuan 21 non-stock: fill DB DITIMPA app full-sync — butuh fix layer app (derive dari MARA), belum kelar.** SISA commit repo: index.ts, .gitignore, migration, HANDOFF.
