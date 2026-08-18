@@ -433,3 +433,8 @@ export const PUBLIC_APP_ORIGIN = (() => {
 export function scanUrlFor(katalogId) {
   return `${PUBLIC_APP_ORIGIN}/?scan=${encodeURIComponent(katalogId)}`;
 }
+
+// URL halaman scan publik untuk satu blok lokasi (label QR blok gudang, Fase 2 Stock Opname).
+export function lokasiScanUrlFor(lokasiId) {
+  return `${PUBLIC_APP_ORIGIN}/?loc=${encodeURIComponent(lokasiId)}`;
+}

@@ -5,11 +5,13 @@ import { useEffect, useRef } from "react";
 // singkat antar-tombol; ketikan manusia jauh lebih lambat. Beda dibedakan lewat
 // jeda antar-keydown (gapMs), BUKAN panjang string — QR bisa berupa URL ~40-60
 // karakter (scanUrlFor), jadi tidak ada batas panjang atas.
-export function useHardwareScanner(onScan, { enabled = true, minLength = 4, gapMs = 120 } = {}) {
+export function useHardwareScanner(onScan, { enabled = true, minLength = 4, gapMs = 120, blockInput = false, onScanStart } = {}) {
   const bufferRef = useRef("");
   const lastTimeRef = useRef(0);
   const onScanRef = useRef(onScan);
   onScanRef.current = onScan; // hindari re-pasang listener tiap render kalau caller kirim arrow function baru
+  const onScanStartRef = useRef(onScanStart);
+  onScanStartRef.current = onScanStart;
 
   useEffect(() => {
     if (!enabled) return;
@@ -17,7 +19,13 @@ export function useHardwareScanner(onScan, { enabled = true, minLength = 4, gapM
       const now = Date.now();
       const gap = now - lastTimeRef.current;
       lastTimeRef.current = now;
-      if (gap > gapMs) bufferRef.current = ""; // jeda lama = ketikan manusia, reset buffer
+      const isBurst = gap <= gapMs; // ciri scanner: karakter datang cepat berurutan
+      if (!isBurst) bufferRef.current = ""; // jeda lama = ketikan manusia, reset buffer
+      // ponytail: char pertama burst tak bisa dibedakan dari ketikan manusia (belum ada gap
+      // pembanding) jadi ikut lolos ke input fokus; char ke-2 dst sudah pasti burst → diblok.
+      if (blockInput && isBurst && bufferRef.current.length > 0 && e.key.length === 1) {
+        e.preventDefault(); // scanner sedang burst-typing ke kolom fokus (mis. qty) — cegah karakter ikut terketik
+      }
 
       if (e.key === "Enter") {
         const code = bufferRef.current;
@@ -28,9 +36,12 @@ export function useHardwareScanner(onScan, { enabled = true, minLength = 4, gapM
         }
         return;
       }
-      if (e.key.length === 1) bufferRef.current += e.key; // char printable saja, abaikan modifier/Shift/Tab/dll
+      if (e.key.length === 1) {
+        if (blockInput && bufferRef.current === "") onScanStartRef.current?.();
+        bufferRef.current += e.key; // char printable saja, abaikan modifier/Shift/Tab/dll
+      }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [enabled, minLength, gapMs]);
+  }, [enabled, minLength, gapMs, blockInput]);
 }

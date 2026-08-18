@@ -47,10 +47,11 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     setOpnameList(nl);
     if (syncPending) {
       showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
-      return;
+      return false;
     }
     await stateRef.current.saveToCloud({opnameList: nl});
     showToast("✅ Data opname disimpan!");
+    return true;
   }
 
   // Merge per-item: blok (hitungPerLokasi) yang TIDAK disentuh perangkat ini diambil dari versi

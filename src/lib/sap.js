@@ -372,6 +372,29 @@ export function sumHitungPerLokasi(hitungPerLokasi) {
   return Object.values(hitungPerLokasi || {}).reduce((a, e) => a + (Number(e?.qty) || 0), 0);
 }
 
+// Tulis qty hasil hitung fisik ke SATU blok (lokasiKey) sebuah item opname, lalu turunkan ulang
+// qtsFisik/selisih/statusItem/recount — dipakai StockOpnameTab (edit tabel desktop, kunci dari
+// itemLokasiKey) DAN OpnameLapanganView (mode HP, kunci dari blok yang lagi aktif) supaya logic
+// "apa artinya selisih & kapan wajib hitung ulang" satu tempat saja, tidak dobel/berisiko drift.
+// Item "Material Baru" (belum ada di sistem) sengaja TIDAK dihitung selisih/recount (sama seperti
+// sebelumnya) — statusnya tetap MATERIAL_BARU_*.
+export function applyQtyToItem(item, lokasiKey, qty, userId, { markRecount = false } = {}) {
+  const isMaterialBaru = ["TIDAK_ADA_DI_SISTEM", "MATERIAL_BARU_NONSAP"].includes(item.statusItem);
+  const hitungPerLokasi = { ...(item.hitungPerLokasi || {}), [lokasiKey]: { qty: Number(qty) || 0, at: Date.now(), by: userId } };
+  const qtsFisik = sumHitungPerLokasi(hitungPerLokasi);
+  const next = { ...item, hitungPerLokasi, qtsFisik };
+  if (!isMaterialBaru) {
+    next.selisih = qtsFisik - (item.qtySistem || 0);
+    next.statusItem = next.selisih === 0 ? "SESUAI" : "SELISIH";
+    // Fase 2e: selisih -> wajib hitung ulang, TAPI cuma untuk jalur lapangan (markRecount=true,
+    // OpnameLapanganView) yang memang menyediakan layar konfirmasi kedua. Edit desktop biasa
+    // (markRecount default false) tak boleh menandai/menimpa recount — kalau tak markRecount,
+    // biarkan next.recount apa adanya (jangan disentuh sama sekali, termasuk tak dihapus jadi null).
+    if (markRecount) next.recount = next.selisih !== 0 ? { perluUlang: true, qtyUlang: null, at: null, by: null, key: lokasiKey } : null;
+  }
+  return next;
+}
+
 // QR di label Kartu Gantung TUG-2 (lihat KartuGantungModal "Label QR Print") berisi URL lengkap
 // "?scan=<katalogId>", bukan sekadar nomor katalog. Ekstrak katalogId-nya supaya scan QR fisik di
 // rak langsung match ke material yang benar, baik via URL utuh maupun fallback regex kalau kamera
@@ -380,5 +403,13 @@ export function sumHitungPerLokasi(hitungPerLokasi) {
 export function extractKatalogIdFromScan(code) {
   try { const u = new URL(code); const id = u.searchParams.get("scan"); if (id) return id; } catch {}
   const m = code.match(/[?&]scan=([^&\s]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+// QR di label blok gudang (lihat lokasiScanUrlFor, Fase 2 Stock Opname) berisi URL lengkap
+// "?loc=<lokasiId>" — sejajar extractKatalogIdFromScan di atas.
+export function extractLokasiIdFromScan(code) {
+  try { const u = new URL(code); const id = u.searchParams.get("loc"); if (id) return id; } catch {}
+  const m = code.match(/[?&]loc=([^&\s]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }

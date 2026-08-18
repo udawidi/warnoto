@@ -1,5 +1,5 @@
 // Komponen StockOpnameTab — dipindah dari App.jsx (refactor Fase 5c).
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { supabase } from "../supabaseClient.js";
 import { fmtDate, parseSAPFile, parseUsulanPencocokanXLSX, scanUrlFor } from "../lib/utils.js";
@@ -7,8 +7,9 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi } from "../lib/sap.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
+import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
@@ -35,6 +36,32 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const touchedRef = useRef({});
   // Fase 1e: dialog pilih gudang setelah PID di-parse & ternyata memuat >1 gudang.
   const [gudangSplitDialog, setGudangSplitDialog] = useState(null);
+  // Fase 2d: layar hitung lapangan satu-tangan (HP/tablet) — overlay di atas panel ini, z-index
+  // di BAWAH modal Tambah Material (1000) supaya modal itu tetap bisa dibuka dari lapangan tanpa
+  // duplikasi form (lihat renderPanel -> tambahModal).
+  const [lapanganMode, setLapanganMode] = useState(false);
+
+  // Fase 2 (autosave lapangan): jaring recovery kalau tab/HP ketutup sebelum "Simpan Draft"
+  // sempat ditekan. Sesi TIDAK punya field updatedAt yang di-bump tiap simpan (cuma dibuatAt
+  // sekali saat dibuat) — jadi restore cukup digerbang oleh status masih "DRAFT" (begitu
+  // submit/approve, status berubah dan draft lokal otomatis diabaikan, tak perlu bandingkan waktu).
+  const draftKey = id => `warnoto_opname_draft_${id}`;
+  useEffect(() => {
+    if (!activeOpname?.id || activeOpname.status !== "DRAFT") return;
+    try {
+      const draft = JSON.parse(localStorage.getItem(draftKey(activeOpname.id)) || "null");
+      if (draft?.items) {
+        setActiveOpname(prev => (prev && prev.id === activeOpname.id ? { ...prev, items: draft.items } : prev));
+        showToast("Hitungan lapangan lokal dipulihkan");
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOpname?.id]);
+  useEffect(() => {
+    if (!lapanganMode || !activeOpname?.id) return;
+    try { localStorage.setItem(draftKey(activeOpname.id), JSON.stringify({ items: activeOpname.items, at: Date.now() })); } catch {}
+  }, [activeOpname, lapanganMode]);
+
   // Fase 1f: filter Gudang/Blok di toolbar tabel item.
   const [filterGudangId, setFilterGudangId] = useState("");
   const [filterLokasiId, setFilterLokasiId] = useState("");
@@ -381,17 +408,13 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       // Item "🆕 Material Baru" (dari SAP maupun temuan Non-SAP) tetap ditandai begitu walau
       // qty-nya diedit ulang — jangan sampai berubah jadi status SESUAI/SELISIH biasa cuma
       // karena user koreksi angka setelah simpan awal.
-      const isMaterialBaru = ["TIDAK_ADA_DI_SISTEM","MATERIAL_BARU_NONSAP"].includes(items[realIdx].statusItem);
       if(field==="qtsFisik") {
         // Fase 1c: qtsFisik jadi TURUNAN — tulis ke blok item ini, lalu jumlahkan ulang.
+        // Fase 2e: applyQtyToItem juga menurunkan selisih/statusItem (dipakai sama oleh
+        // OpnameLapanganView) — satu tempat, tidak dobel logic. markRecount TIDAK diset di sini:
+        // recount-wajib itu fitur lapangan (verifikasi fisik kedua), desktop cukup keterangan wajib.
         const key = itemLokasiKey(items[realIdx]);
-        const hitung = { ...(items[realIdx].hitungPerLokasi||{}), [key]: { qty:Number(value)||0, at:Date.now(), by:currentUser?.id } };
-        items[realIdx].hitungPerLokasi = hitung;
-        items[realIdx].qtsFisik = sumHitungPerLokasi(hitung);
-        if (!isMaterialBaru) {
-          items[realIdx].selisih = items[realIdx].qtsFisik - items[realIdx].qtySistem;
-          items[realIdx].statusItem = items[realIdx].selisih===0?"SESUAI":"SELISIH";
-        }
+        items[realIdx] = applyQtyToItem(items[realIdx], key, value, currentUser?.id);
         if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
         touchedRef.current[prev.id].add(key);
       } else if (field==="lokasiId") {
@@ -412,6 +435,43 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     });
   }
 
+  // Fase 2d: field mode (OpnameLapanganView) butuh nulis qty ke BLOK YANG SESUNGGUHNYA
+  // (lokasiKey dari blok yang lagi aktif di HP) — beda dari updateItem desktop yang selalu pakai
+  // itemLokasiKey (kolaps ke "_TANPA_LOKASI" utk item multi-blok, breakdown per-blok yang
+  // sebenarnya memang menyusul di sini). extra dipakai utk flag tambahan (mis. usulPindahLokasi).
+  function setQtyForBlok(realIdx, lokasiKey, qty, extra) {
+    setActiveOpname(prev => {
+      const items = [...prev.items];
+      items[realIdx] = { ...applyQtyToItem(items[realIdx], lokasiKey, qty, currentUser?.id, { markRecount: true }), ...(extra||{}) };
+      if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
+      touchedRef.current[prev.id].add(lokasiKey);
+      return {...prev, items};
+    });
+  }
+
+  // Fase 2e: konfirmasi hitung ulang (blind — tanpa lihat angka pertama) untuk item selisih.
+  // Sama → dianggap benar, angka pertama tetap dipakai. Beda → angka kedua yang dipakai
+  // (applyQtyToItem, kunci dari item.recount.key yang disimpan saat selisih pertama terjadi),
+  // keterangan otomatis mencatat kedua angka.
+  function confirmRecount(realIdx, qtyKedua) {
+    setActiveOpname(prev => {
+      const items = [...prev.items];
+      const item = items[realIdx];
+      const key = item.recount?.key || itemLokasiKey(item);
+      const firstQty = item.qtsFisik;
+      if (Number(qtyKedua) === Number(firstQty)) {
+        items[realIdx] = { ...item, recount: { perluUlang:false, qtyUlang:Number(qtyKedua), at:Date.now(), by:currentUser?.id, cocok:true } };
+      } else {
+        const updated = applyQtyToItem(item, key, qtyKedua, currentUser?.id);
+        const ket = `${item.keterangan ? item.keterangan+" — " : ""}Hitung ulang: awal ${firstQty}, ulang ${qtyKedua} (dipakai).`;
+        items[realIdx] = { ...updated, keterangan: ket, recount: { perluUlang:false, qtyUlang:Number(qtyKedua), at:Date.now(), by:currentUser?.id, cocok:false } };
+        if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
+        touchedRef.current[prev.id].add(key);
+      }
+      return {...prev, items};
+    });
+  }
+
   function validate() {
     const errors = [];
     const isNonSapSession = activeOpname?.jenisAlur === "NON_SAP";
@@ -422,6 +482,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       // ini yang membuktikan opname fisik benar-benar dilakukan, bukan cuma isi qty dari kursi.
       if(isNonSapSession && !item.lokasiId) errors.push(`Baris ${i+1} (${item.namaBarang}): lokasi (Gudang/Blok) wajib diisi`);
     });
+    // Fase 2e: item selisih wajib hitung ulang (blind) sebelum submit — cegah "asal ketik ulang"
+    // tanpa verifikasi fisik kedua kali. Satu pesan ringkas (bukan per baris) supaya tidak
+    // membanjiri kotak error di atas kalau selisihnya banyak.
+    const recountPending = (activeOpname.items||[]).filter(i=>i.recount?.perluUlang).length;
+    if (recountPending>0) errors.push(`${recountPending} item selisih belum dikonfirmasi hitung ulang — buka "📱 Mode Lapangan" untuk hitung ulang.`);
     setValidationErrors(errors);
     // Tombol Submit sekarang cuma ada di bawah tabel (setelah paginasi) — kalau validasi gagal
     // dan cuma diam-diam set state tanpa toast, dengan item ratusan baris user tidak akan sadar
@@ -791,7 +856,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {!isReadOnly && (
               <div className="approval-actions" style={{marginBottom:16}}>
                 <button className="approval-btn--cancel" onClick={handleBatal}>✕ Batal</button>
-                <button className="approval-btn--cancel" onClick={()=>saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])])}>💾 Simpan Draft</button>
+                <button className="approval-btn--cancel" onClick={async ()=>{ const ok = await saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]); if (ok) { try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {} } }}>💾 Simpan Draft</button>
                 {prog.pct===100 ? (
                   <button className="approval-btn--primary"
                     onClick={async ()=>{
@@ -808,15 +873,18 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       // (sudah mencakup semua yang dilakukan saveOpname), di-await, baru pindah tab.
                       if(!validate()) return;
                       await submitOpname(activeOpname);
+                      try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {}
                       setActiveOpname(null);
                     }}>
                     📋 Submit ke Asman
                   </button>
                 ) : (
-                  <button className="approval-btn--primary" onClick={scrollToFirstEmptyQty}>
+                  <button className="approval-btn--primary" onClick={()=> isMobile ? setLapanganMode(true) : scrollToFirstEmptyQty()}>
                     {prog.filled===0 ? "Mulai Hitung" : `Lanjut Hitung — ${prog.filled}/${prog.total}`}
                   </button>
                 )}
+                {/* Fase 2d: desktop tetap bisa buka mode lapangan juga (mis. tablet lebar/laptop touch) */}
+                {!isMobile && <button className="approval-btn--cancel" onClick={()=>setLapanganMode(true)}>📱 Mode Lapangan</button>}
               </div>
             )}
           </>
@@ -834,6 +902,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
         {/* MODAL: Tambah Material Ditemukan (Opname Non-SAP) — 1 layar per barang,
             cari kode MARA dulu, lalu isi qty/lokasi/foto, simpan langsung dapat QR untuk ditempel. */}
+        {lapanganMode && (
+          <OpnameLapanganView
+            activeOpname={activeOpname} setQtyForBlok={setQtyForBlok} confirmRecount={confirmRecount}
+            lokasiList={lokasiList} gudangList={gudangList} currentUser={currentUser} sty={sty} C={C} showToast={showToast}
+            onClose={()=>setLapanganMode(false)} onOpenTambahMaterial={()=>openTambahModal()}
+            onSimpanDraft={async ()=>{ const ok = await saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]); if (ok) { try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {} } }}
+          />
+        )}
+
         {tambahModal && (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:12}}>
             <div style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>

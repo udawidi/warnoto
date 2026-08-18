@@ -5,7 +5,7 @@ import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
 import QRCode from "qrcode";
 import { fmtNum } from "./ragShared.mjs";
 import { katalogSapLabel } from "./sap.js";
-import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor } from "./utils.js";
+import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
 import { buildKartuGantungHistory, resolveLokasiLengkap } from "./sap.js";
@@ -1509,6 +1509,34 @@ export async function buildBarcodeSheetHTML(katalogItems, lokasiByKatalog) {
   @media print { .bar { display: none; } body { background: #fff; } .sheet { padding: 0; } }
 </style></head><body>
 <div class="bar">🏷️ ${labels.length} label barcode 5×5 cm — potong per kotak, tempel di kartu gantung <button onclick="window.print()">🖨️ Print / Save PDF</button></div>
+<div class="sheet">${labels.join("")}</div>
+</body></html>`;
+}
+
+// Lembar label QR blok lokasi (cetak massal, Fase 2 Stock Opname) — sejajar buildBarcodeSheetHTML
+// tapi encode lokasiScanUrlFor per-blok, bukan katalog per-item. QR di-generate LOKAL (offline).
+export async function buildLabelBlokHTML(lokasiList, gudang) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const labels = await Promise.all((lokasiList || []).map(async (l) => {
+    const scanUrl = lokasiScanUrlFor(l.id);
+    const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 220 });
+    return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(l.kode || l.nama || "-")}</div><div class="meta">${esc(gudang?.nama || gudang?.kode || "-")}</div></div>`;
+  }));
+  return `<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>Cetak Label QR Blok — ${labels.length} label</title>
+<style>
+  @page { size: A4; margin: 8mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #e5e7eb; }
+  .bar { position: sticky; top: 0; background: #0b2559; color: #fff; padding: 10px 16px; text-align: center; font-size: 13px; font-weight: 700; z-index: 10; }
+  .bar button { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; margin-left: 12px; }
+  .sheet { display: flex; flex-wrap: wrap; gap: 3mm; padding: 8mm; }
+  .label { width: 5cm; height: 5cm; border: 1px dashed #94a3b8; border-radius: 4px; padding: 2.5mm; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: #fff; page-break-inside: avoid; overflow: hidden; }
+  .label img { width: 30mm; height: 30mm; }
+  .label .nm { font-size: 9px; font-weight: 700; line-height: 1.15; margin-top: 1.5mm; max-height: 2.3em; overflow: hidden; }
+  .label .meta { font-size: 7px; color: #374151; margin-top: 0.5mm; }
+  @media print { .bar { display: none; } body { background: #fff; } .sheet { padding: 0; } }
+</style></head><body>
+<div class="bar">🏷️ ${labels.length} label QR blok lokasi 5×5 cm — potong per kotak, tempel di rak <button onclick="window.print()">🖨️ Print / Save PDF</button></div>
 <div class="sheet">${labels.join("")}</div>
 </body></html>`;
 }
