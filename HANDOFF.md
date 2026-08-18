@@ -486,10 +486,12 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
+- 2026-08-18 Claude (shift-11): **AI bot & Telegram pulih + authz API key** (`1131c1d`,`f58a8ed`). Groq
+  decommission `llama-3.3-70b-versatile`→`openai/gpt-oss-120b`; model reasoning WAJIB `reasoning_effort:"low"`
+  (else content kosong→fallback). 5 body Groq (App.jsx x3, materialCadang, telegram-webhook). Kelola API
+  Integrasi dibatasi **SUPERADMIN-only** (server requireAdmin + gating menu/tab App.jsx). 2 EF (telegram-webhook,
+  integration-api) redeployed+verified self-host. Bot in-app nunggu Vercel. Memory: groq-model-gpt-oss-reasoning.
 - 2026-08-18 Claude (shift-10): **Stock Opname Fase 2** (`92b66d2`) mode hitung lapangan + scanner
   (blockInput/onScanStart, continuous, zxing iOS) + recount wajib (lapangan only) + autosave localStorage
   recovery. 2 batch tukang-senior; arsitek tangkap+fix 3 hal: recount bocor ke desktop, hapus-draft saat
   offline, char-pertama scan. SISA verifikasi browser + Fase 3. Detail di Status sekarang atas.
-- 2026-08-18 Claude (shift-9): **2FA TOTP wajib semua user + reset MFA admin** (`ed4df3a`). Gate AAL di
-  handleAuthSession, enroll issuer WARNOTO/friendlyName=username, cache-key bump v3, Edge Function
-  admin-reset-mfa deployed+verified. SISA verifikasi browser. Detail di Status sekarang atas.
