@@ -2940,8 +2940,8 @@ export default function PLNWarehouse() {
     if (!supabase) return;
     try {
       const state_data = buildWarnotoStateSnapshot();
-      const { error } = await supabase.from("warnoto_state").insert({ state_data, version: "v1" });
-      if (error) throw error;
+      const { data, error } = await supabase.functions.invoke("sync-warnoto-state", { body: { state_data } });
+      if (error || !data?.ok) throw new Error(data?.error || error?.message || "Gagal sinkron State Gudang.");
     } catch (err) {
       if (!silent) showToast("Gagal sinkron State Gudang (untuk bot Telegram): " + err.message, "error");
       else console.error("Auto-sync warnoto_state gagal:", err.message);
