@@ -45,7 +45,7 @@ Digitalisasi gudang PLN: kelola stok material, transaksi keluar/masuk, forecast 
 
 ## Evidence on Hand
 
-- Sumber data operasional live di Supabase self-host (stok, transaksi, material_cadang_* tables, katalog, MARA reference). AI Insight via Groq (llama-3.3-70b-versatile) dengan fallback lokal deterministik saat key kosong.
+- Sumber data operasional live di Supabase self-host (stok, transaksi, material_cadang_* tables, katalog, MARA reference). AI Insight via Groq (openai/gpt-oss-120b) dengan fallback lokal deterministik saat key kosong.
 - Tidak ada testimoni/benchmark/pricing — jangan difabrikasi.
 
 ## Product Principles

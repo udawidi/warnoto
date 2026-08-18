@@ -198,7 +198,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
       createdAt: Date.now(),
       uptId: currentUser?.uptId || null,
       uitId: userUit,
-      modelAi: "llama-3.3-70b-versatile",
+      modelAi: "openai/gpt-oss-120b",
       params: newAnalysis.params,
     };
     const healthRows = results.map(r => ({ ...r, runId, resultId:`${runId}-${r.katalogId||r.noKat}-${String(r.cluster||"").replace(/\s+/g,"_")}` }));

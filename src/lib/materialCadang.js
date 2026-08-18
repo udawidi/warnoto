@@ -325,7 +325,7 @@ export async function generateMaterialCadangAiInsights(run, results, stocks, kat
     id: "MCAI-" + Date.now(),
     runId: run.id,
     status: import.meta.env.VITE_GROQ_API_KEY ? "UNAVAILABLE" : "NO_API_KEY",
-    model: "llama-3.3-70b-versatile",
+    model: "openai/gpt-oss-120b",
     createdAt: Date.now(),
     executiveSummary: (import.meta.env.VITE_GROQ_API_KEY ? "AI insight belum tersedia (Groq gagal/kosong). " : "AI insight belum tersedia karena VITE_GROQ_API_KEY belum diisi. ") + `Ringkasan lokal: total gap ${context.totalGapQty} unit senilai Rp${(context.totalGapValue||0).toLocaleString("id-ID")} pada ${context.totalItems} material. Cek tabel Health Index untuk detail.`,
     topRisks: context.topRisks.slice(0,5).map(r => `${r.nama} (${r.noKatalog}) - ${r.healthStatus}, HI ${r.healthIndex}`),
@@ -351,7 +351,7 @@ export async function generateMaterialCadangAiInsights(run, results, stocks, kat
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
       body:JSON.stringify({
-        model:"llama-3.3-70b-versatile",
+        model:"openai/gpt-oss-120b",
         temperature:0.2,
         max_tokens:1800,
         messages:[

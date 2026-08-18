@@ -2352,7 +2352,7 @@ export default function PLNWarehouse() {
   }
 
   // AI Extract dari PDF kontrak menggunakan Groq API
-  // Groq (llama-3.3-70b-versatile) adalah model text-only, jadi teks PDF
+  // Groq (openai/gpt-oss-120b) adalah model text-only, jadi teks PDF
   // diekstrak dulu di browser dengan pdf.js sebelum dikirim ke Groq.
   async function extractPdfText(pdfBase64) {
     const binary = atob(pdfBase64);
@@ -2377,7 +2377,7 @@ export default function PLNWarehouse() {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "openai/gpt-oss-120b",
           max_tokens: 1000,
           messages: [
             { role: "system", content: `Kamu adalah asisten ekstraksi data dari Surat Rencana Pengiriman Material (delivery plan / surat jalan) vendor PLN. Dokumen ini biasanya mencantumkan nomor kontrak sebagai referensi dan tanggal rencana kirim/tiba barang. Ekstrak informasi dan kembalikan HANYA JSON valid tanpa teks lain. Format: {"noKontrak":"...","tanggalKontrak":"YYYY-MM-DD","supplier":"...","tanggalSerahTerima":"YYYY-MM-DD","items":[{"namaBarang":"...","jumlah":0,"satuan":"..."}]}. noKontrak diambil dari nomor kontrak yang direferensikan di surat. tanggalSerahTerima diambil dari tanggal rencana kirim/tiba barang yang tercantum di surat. Jika field tidak ditemukan gunakan string kosong atau 0.` },
@@ -3224,7 +3224,7 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
         body:JSON.stringify({
-          model:"llama-3.3-70b-versatile",
+          model:"openai/gpt-oss-120b",
           max_tokens:1500,
           messages,
         })
@@ -3354,7 +3354,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
-        body:JSON.stringify({model:"llama-3.3-70b-versatile",max_tokens:1200,messages:[{role:"user",content:prompt}]})
+        body:JSON.stringify({model:"openai/gpt-oss-120b",max_tokens:1200,messages:[{role:"user",content:prompt}]})
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error?.message || `Layanan AI merespons HTTP ${resp.status}.`);
