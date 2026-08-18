@@ -67,17 +67,9 @@ async function requireAdmin(req: Request) {
   const { data: callerAuth, error: callerErr } = await admin.auth.getUser(jwt);
   if (callerErr || !callerAuth?.user) return { error: json({ ok: false, error: "Sesi login tidak valid, silakan login ulang." }, 401) };
   const { data: callerProfile } = await admin.from("profiles").select("role").eq("id", callerAuth.user.id).single();
-  if (!callerProfile || (callerProfile.role !== "TL" && callerProfile.role !== "SUPERADMIN")) {
-    return { error: json({ ok: false, error: "Hanya TL yang bisa mengelola API Integrasi." }, 403) };
-  }
-  // Hormati pencabutan lewat Matrix Izin (role_permissions): kalau override role ini
-  // menyetel aksi.kelolaApiIntegrasi=false, tolak walau role TL — server sejalan dengan
-  // UI, tidak hanya mengandalkan role hardcoded. SUPERADMIN selalu boleh.
-  if (callerProfile.role !== "SUPERADMIN") {
-    const { data: rp } = await admin.from("role_permissions").select("perms").eq("role", callerProfile.role).single();
-    if (rp?.perms && rp.perms["aksi.kelolaApiIntegrasi"] === false) {
-      return { error: json({ ok: false, error: "Akses Kelola API Integrasi dicabut untuk role ini." }, 403) };
-    }
+  // API key & auth integrasi = wewenang SUPERADMIN saja (keputusan 2026-08-18). TL/ADMIN ditolak.
+  if (!callerProfile || callerProfile.role !== "SUPERADMIN") {
+    return { error: json({ ok: false, error: "Hanya SUPERADMIN yang bisa mengelola API Integrasi." }, 403) };
   }
   return { userId: callerAuth.user.id };
 }

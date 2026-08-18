@@ -2377,7 +2377,7 @@ export default function PLNWarehouse() {
         method: "POST",
         headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
         body: JSON.stringify({
-          model: "openai/gpt-oss-120b",
+          model: "openai/gpt-oss-120b",reasoning_effort:"low",
           max_tokens: 1000,
           messages: [
             { role: "system", content: `Kamu adalah asisten ekstraksi data dari Surat Rencana Pengiriman Material (delivery plan / surat jalan) vendor PLN. Dokumen ini biasanya mencantumkan nomor kontrak sebagai referensi dan tanggal rencana kirim/tiba barang. Ekstrak informasi dan kembalikan HANYA JSON valid tanpa teks lain. Format: {"noKontrak":"...","tanggalKontrak":"YYYY-MM-DD","supplier":"...","tanggalSerahTerima":"YYYY-MM-DD","items":[{"namaBarang":"...","jumlah":0,"satuan":"..."}]}. noKontrak diambil dari nomor kontrak yang direferensikan di surat. tanggalSerahTerima diambil dari tanggal rencana kirim/tiba barang yang tercantum di surat. Jika field tidak ditemukan gunakan string kosong atau 0.` },
@@ -3224,7 +3224,7 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
         body:JSON.stringify({
-          model:"openai/gpt-oss-120b",
+          model:"openai/gpt-oss-120b",reasoning_effort:"low",
           max_tokens:1500,
           messages,
         })
@@ -3354,7 +3354,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       const resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
         method:"POST",
         headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
-        body:JSON.stringify({model:"openai/gpt-oss-120b",max_tokens:1200,messages:[{role:"user",content:prompt}]})
+        body:JSON.stringify({model:"openai/gpt-oss-120b",reasoning_effort:"low",max_tokens:1200,messages:[{role:"user",content:prompt}]})
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error?.message || `Layanan AI merespons HTTP ${resp.status}.`);
@@ -3747,7 +3747,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
     // Integrasi API butuh izin aksi.kelolaApiIntegrasi (bukan cuma menu.*) — mencabut
     // aksi ini di Matrix Izin langsung menyembunyikan menu, sesuai ekspektasi Admin.
-    ...(can(currentUser, "aksi.kelolaApiIntegrasi", rolePerms) ? [{id:"integrasiApi",icon:<SidebarIcon name="master"/>,label:"Integrasi API"}] : []),
+    ...(currentUser?.role === "SUPERADMIN" ? [{id:"integrasiApi",icon:<SidebarIcon name="master"/>,label:"Integrasi API"}] : []),
   ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
@@ -4126,7 +4126,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         )}
 
         {/* INTEGRASI API — Fase 1: Admin kelola API-key ter-scope untuk SAP/pihak ketiga */}
-        {tab==="integrasiApi" && can(currentUser, "aksi.kelolaApiIntegrasi", rolePerms) && (
+        {tab==="integrasiApi" && currentUser?.role === "SUPERADMIN" && (
           <IntegrasiApiTab C={C} sty={sty} showToast={showToast} />
         )}
 

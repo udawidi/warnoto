@@ -351,7 +351,7 @@ export async function generateMaterialCadangAiInsights(run, results, stocks, kat
       method:"POST",
       headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
       body:JSON.stringify({
-        model:"openai/gpt-oss-120b",
+        model:"openai/gpt-oss-120b",reasoning_effort:"low",
         temperature:0.2,
         max_tokens:1800,
         messages:[
