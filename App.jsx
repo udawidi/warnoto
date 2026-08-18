@@ -3220,15 +3220,24 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
       // Single-call ke Groq (bukan tool-loop): tool-use bikin 3-4 panggilan/pertanyaan
       // yang menjebol limit free tier 12k token/menit. Akurasi tetap dijaga lewat
       // snapshot data yang diperkaya di systemPrompt di atas (top qty, proyeksi, dst).
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
-        body:JSON.stringify({
-          model:"openai/gpt-oss-120b",reasoning_effort:"low",
-          max_tokens:1500,
-          messages,
-        })
+      const groqBody = JSON.stringify({
+        model:"openai/gpt-oss-120b",reasoning_effort:"low",
+        max_tokens:1500,
+        messages,
       });
+      // ponytail: free-tier TPM 8k → request bertumpuk balas 429. Retry sekali
+      // hormati header retry-after (cap 20s). Naikkan tier Groq utk hilangkan.
+      let resp;
+      for (let attempt=0;;attempt++) {
+        resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
+          method:"POST",
+          headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
+          body:groqBody,
+        });
+        if (resp.status!==429 || attempt>=1) break;
+        const wait = Math.min(Number(resp.headers.get("retry-after"))||8, 20);
+        await new Promise(r=>setTimeout(r, wait*1000));
+      }
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error?.message || `Layanan AI merespons HTTP ${resp.status}.`);
       const reply = data.choices?.[0]?.message?.content;
