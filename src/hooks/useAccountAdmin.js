@@ -126,10 +126,23 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
     showToast("✅ Password berhasil diubah!");
   }
 
+  // Reset 2FA (TOTP) akun lain — recovery admin saat user kehilangan HP
+  // authenticator (2FA wajib semua user, tanpa ini akun terkunci permanen).
+  // Lewat Edge Function service_role (pola sama admin-create-user), bukan
+  // langsung dari browser karena admin.mfa.deleteFactor butuh service_role key.
+  async function resetMfa(u) {
+    if (isDemoMode()) { showToast("Mode demo: reset 2FA dinonaktifkan.","error"); return; }
+    if (!window.confirm(`Reset verifikasi 2 langkah untuk ${u.name}? User akan diminta scan ulang QR saat login berikutnya.`)) return;
+    const { data, error } = await supabase.functions.invoke("admin-reset-mfa", { body: { userId: u.id } });
+    if (error || !data?.ok) { showToast(data?.error || error?.message || "Gagal mereset verifikasi 2 langkah.","error"); return; }
+    logAudit(currentUser, "UPDATE", "akun", u.username, { resetMfa:true });
+    showToast("✅ Verifikasi 2 langkah direset — user akan diminta enroll ulang.");
+  }
+
   return {
     akunModal, setAkunModal, akunForm, setAkunForm, akunBusy, setAkunBusy, akunResult, setAkunResult,
     gantiPasswordModal, setGantiPasswordModal, gantiPasswordForm, setGantiPasswordForm, gantiPasswordBusy, setGantiPasswordBusy,
     openAddAkun, openEditAkun, isUitScopedRole, isNationalRole, submitAkunEdit, submitAkunBaru,
-    openGantiPassword, submitGantiPassword,
+    openGantiPassword, submitGantiPassword, resetMfa,
   };
 }

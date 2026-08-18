@@ -216,7 +216,7 @@ WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 // Cache profil user di localStorage supaya layar "Memuat sesi..." tidak menunggu
 // network — dipakai sebagai initial state currentUser/authLoading (lihat effect
 // onAuthStateChange di bawah), profil sebenarnya tetap di-refresh dari Supabase.
-const PROFILE_CACHE_KEY = "warnoto_profile_cache_v2";
+const PROFILE_CACHE_KEY = "warnoto_profile_cache_v3"; // bump v2->v3: rollout 2FA wajib — paksa semua sesi lama (cache-first) lewat gate handleAuthSession, lihat App.jsx:1712
 const LEGACY_PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
 function readCachedProfile() {
   try {
@@ -282,6 +282,13 @@ export default function PLNWarehouse() {
   const [loginErr, setLoginErr] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false); // tombol Logout busy — cegah user refresh di tengah signOut yang bisa lambat
+  // 2FA TOTP (wajib semua user) — null = tidak sedang di alur MFA;
+  // {mode:'enroll', factorId?, qr?, secret?} = user belum punya factor verified;
+  // {mode:'challenge', factorId} = user punya factor tapi sesi masih aal1.
+  const [mfaState, setMfaState] = useState(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBusy, setMfaBusy] = useState(false);
+  const [mfaErr, setMfaErr] = useState("");
 
   const [users, setUsers] = useState([]); // di-fetch dari tabel "profiles" Supabase setelah login (lihat effect onAuthStateChange)
   const [rolePerms, setRolePerms] = useState({}); // override izin per role dari tabel role_permissions ({role: {key:bool}}); {} = pakai DEFAULT_PERMS
@@ -431,7 +438,7 @@ export default function PLNWarehouse() {
     akunModal, setAkunModal, akunForm, setAkunForm, akunBusy, setAkunBusy, akunResult, setAkunResult,
     gantiPasswordModal, setGantiPasswordModal, gantiPasswordForm, setGantiPasswordForm, gantiPasswordBusy, setGantiPasswordBusy,
     openAddAkun, openEditAkun, isUitScopedRole, isNationalRole, submitAkunEdit, submitAkunBaru,
-    openGantiPassword, submitGantiPassword,
+    openGantiPassword, submitGantiPassword, resetMfa,
   } = useAccountAdmin({ currentUser, showToast, reloadUsers });
   const [stockSubTab, setStockSubTab] = useState("katalog"); // "katalog" | "lokasi" | "satpam" | "timmutu" (within Master Data tab)
   const [tug15Filter, setTug15Filter] = useState({
@@ -1606,6 +1613,58 @@ export default function PLNWarehouse() {
     if (error) setLoginErr(describeLoginError(error));
   }
 
+  // 2FA TOTP — mulai pendaftaran factor baru (dipicu effect di bawah saat
+  // mfaState.mode==='enroll' tanpa qr, bukan dipanggil langsung dari klik user).
+  // Unenroll dulu factor 'unverified' yang nyangkut dari percobaan sebelumnya
+  // (gotcha GoTrue: enroll baru gagal kalau ada unverified factor lama).
+  async function mfaStartEnroll() {
+    setMfaBusy(true); setMfaErr("");
+    try {
+      const { data: factorsData } = await supabase.auth.mfa.listFactors();
+      const unverified = (factorsData?.totp || []).filter(f => f.status === "unverified");
+      for (const f of unverified) await supabase.auth.mfa.unenroll({ factorId: f.id });
+      // issuer "WARNOTO" (bukan default GoTrue "localhost:3000") + friendlyName =
+      // username biar tiap akun kebedaan di app authenticator (judul "WARNOTO",
+      // akun = username). Username diambil dari email sintetis sesi (username@...).
+      const { data: sessUser } = await supabase.auth.getUser();
+      const uname = (sessUser?.user?.email || "").split("@")[0] || "akun";
+      const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp", issuer: "WARNOTO", friendlyName: uname });
+      if (error) { setMfaErr(error.message); return; }
+      setMfaState({ mode: "enroll", factorId: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
+    } catch (err) {
+      setMfaErr(err?.message || "Gagal memulai pendaftaran verifikasi 2 langkah.");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  // Verifikasi kode 6 digit — dipakai untuk mode enroll maupun challenge (alurnya
+  // sama: challenge lalu verify). Sukses → GoTrue emit MFA_CHALLENGE_VERIFIED →
+  // handleAuthSession jalan lagi dengan aal2 → setCurrentUser di sana (bukan di sini).
+  async function mfaVerifyCode() {
+    if (!mfaState?.factorId) return;
+    const code = mfaCode.trim();
+    if (code.length !== 6) { setMfaErr("Masukkan 6 digit kode dari aplikasi authenticator."); return; }
+    setMfaBusy(true); setMfaErr("");
+    try {
+      const { data: challengeData, error: challengeErr } = await supabase.auth.mfa.challenge({ factorId: mfaState.factorId });
+      if (challengeErr) { setMfaErr(challengeErr.message); return; }
+      const { error: verifyErr } = await supabase.auth.mfa.verify({ factorId: mfaState.factorId, challengeId: challengeData.id, code });
+      if (verifyErr) { setMfaErr("Kode salah atau kedaluwarsa, coba lagi."); setMfaCode(""); return; }
+      setMfaCode("");
+    } catch (err) {
+      setMfaErr(err?.message || "Gagal memverifikasi kode.");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  function mfaCancel() {
+    setMfaState(null); setMfaCode(""); setMfaErr("");
+    supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    clearLocalAuthState();
+  }
+
   function clearLocalAuthState() {
     stocksBootstrapUserIdRef.current = null;
     try { sessionStorage.removeItem("warnoto_tab"); } catch {}
@@ -1704,26 +1763,46 @@ export default function PLNWarehouse() {
           await supabase.auth.signOut();
           clearLocalAuthState();
         } else {
-          // Resolusi upt_id (FK ke tabel upt) jadi nama pendek UPT (mis. "Malang") supaya scoping
-          // Alat Berat mengunci user ke UPT-nya sendiri. Tanpa ini semua fallback jatuh ke const
-          // UPT "Surabaya" hardcoded. uptList bisa belum ke-load saat login pertama → pakai DEFAULT.
-          const uptMatch = (uptList.length ? uptList : DEFAULT_UPT_LIST).find(u => u.id === profile.upt_id);
-          const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, upt: uptMatch ? uptMatch.nama.replace(/^UPT\s+/i, "").trim() : undefined, ultgId: profile.ultg_id, uitId: profile.uit_id, gudangIds: profile.gudang_ids };
-          setCurrentUser(userObj);
-          Sentry.setUser({ id: userObj.id, username: userObj.username });
-          Sentry.setTag("role", userObj.role);
-          Sentry.setTag("upt", userObj.upt);
-          writeCachedProfile(userObj);
-          // LOGIN dicatat cuma untuk login manual (SIGNED_IN) — bukan INITIAL_SESSION
-          // (buka tab/reload dgn sesi tersimpan) atau TOKEN_REFRESHED (refresh token
-          // tiap jam), supaya audit log tidak dibanjiri entri yang bukan aksi user nyata.
-          if (event === "SIGNED_IN") logAudit(userObj, "LOGIN", "auth");
-          // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
-          // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
-          supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
-            setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
-          });
-          reloadRolePerms();
+          // 2FA TOTP wajib semua user — gerbang AAL sebelum setCurrentUser. Tanpa
+          // ini session AAL1 (password benar, kode belum diverifikasi) sudah
+          // dianggap login. WAJIB await (getAuthenticatorAssuranceLevel return Promise).
+          const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+          if (aal?.currentLevel === "aal2") {
+            // Resolusi upt_id (FK ke tabel upt) jadi nama pendek UPT (mis. "Malang") supaya scoping
+            // Alat Berat mengunci user ke UPT-nya sendiri. Tanpa ini semua fallback jatuh ke const
+            // UPT "Surabaya" hardcoded. uptList bisa belum ke-load saat login pertama → pakai DEFAULT.
+            const uptMatch = (uptList.length ? uptList : DEFAULT_UPT_LIST).find(u => u.id === profile.upt_id);
+            const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, upt: uptMatch ? uptMatch.nama.replace(/^UPT\s+/i, "").trim() : undefined, ultgId: profile.ultg_id, uitId: profile.uit_id, gudangIds: profile.gudang_ids };
+            setMfaState(null);
+            setCurrentUser(userObj);
+            Sentry.setUser({ id: userObj.id, username: userObj.username });
+            Sentry.setTag("role", userObj.role);
+            Sentry.setTag("upt", userObj.upt);
+            writeCachedProfile(userObj);
+            // LOGIN dicatat untuk login manual (SIGNED_IN) DAN transisi lolos MFA
+            // (MFA_CHALLENGE_VERIFIED) — bukan INITIAL_SESSION (buka tab/reload dgn
+            // sesi tersimpan) atau TOKEN_REFRESHED, supaya audit log tidak dibanjiri
+            // entri yang bukan aksi login nyata.
+            if (event === "SIGNED_IN" || event === "MFA_CHALLENGE_VERIFIED") logAudit(userObj, "LOGIN", "auth");
+            // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
+            // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
+            supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
+              setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
+            });
+            reloadRolePerms();
+          } else if (aal?.nextLevel === "aal2" && aal?.currentLevel === "aal1") {
+            // Punya factor TOTP verified, tinggal challenge — override cache-first
+            // (currentUser bisa sudah terisi dari cache localStorage sebelum effect
+            // ini jalan) supaya app TIDAK render UI penuh sebelum kode diverifikasi.
+            const { data: factorsData } = await supabase.auth.mfa.listFactors();
+            const factorId = (factorsData?.totp || []).find(f => f.status === "verified")?.id;
+            setCurrentUser(null);
+            setMfaState({ mode: "challenge", factorId });
+          } else {
+            // Belum ada factor TOTP verified sama sekali — wajib enroll dulu.
+            setCurrentUser(null);
+            setMfaState({ mode: "enroll" });
+          }
         }
       } else {
         clearLocalAuthState();
@@ -1735,6 +1814,13 @@ export default function PLNWarehouse() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
+
+  // 2FA TOTP enroll wajib — begitu gate handleAuthSession menetapkan mode
+  // 'enroll' (belum punya factor verified), mulai pendaftaran otomatis (fetch
+  // QR) sekali saja, bukan menunggu klik user (tidak ada aksi lain di layar itu).
+  useEffect(() => {
+    if (mfaState?.mode === "enroll" && !mfaState.qr && !mfaBusy) mfaStartEnroll();
+  }, [mfaState?.mode]);
 
   // RBAC guard render: kalau role tidak (lagi) punya izin menu untuk tab aktif
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama
@@ -3572,19 +3658,46 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               <div style={{fontSize:12,color:C_LIGHT.muted,marginTop:6}}>Sistem Manajemen Gudang</div>
             </div>
           )}
-          <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:4}}>Selamat Datang</div>
-          <div style={{fontSize:13,color:C_LIGHT.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
-          <div style={{marginBottom:16}}>
-            <label style={loginSty.label}>Username</label>
-            <input style={loginSty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
-          </div>
-          <div style={{marginBottom:8}}>
-            <label style={loginSty.label}>Password</label>
-            <input style={loginSty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
-          </div>
-          {loginErr && <div style={{color:C_LIGHT.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius: 10}}>{loginErr}</div>}
-          <button style={{...loginSty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
-          <div style={{marginTop:16,fontSize:12,color:C_LIGHT.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
+          {mfaState ? (
+            <>
+              <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:4}}>{mfaState.mode==="enroll"?"Aktifkan Verifikasi 2 Langkah":"Verifikasi 2 Langkah"}</div>
+              <div style={{fontSize:13,color:C_LIGHT.muted,marginBottom:24}}>{mfaState.mode==="enroll"?"Scan kode QR memakai aplikasi authenticator (Google Authenticator/Authy), lalu masukkan kode 6 digit di bawah.":"Masukkan kode 6 digit dari aplikasi authenticator Anda."}</div>
+              {mfaState.mode==="enroll" && mfaState.qr && (
+                <div style={{textAlign:"center",marginBottom:16}}>
+                  <img src={mfaState.qr} alt="QR Code 2FA" style={{maxWidth:"100%",width:160,height:160,margin:"0 auto",display:"block"}}/>
+                  <div style={{fontSize:12,color:C_LIGHT.muted,marginTop:8,wordBreak:"break-all"}}>Kode manual: {mfaState.secret}</div>
+                </div>
+              )}
+              {mfaState.mode==="enroll" && !mfaState.qr ? (
+                <div style={{fontSize:13,color:C_LIGHT.muted,textAlign:"center",padding:"20px 0"}}>Menyiapkan...</div>
+              ) : (
+                <>
+                  <div style={{marginBottom:8}}>
+                    <input style={{...loginSty.input,textAlign:"center",fontSize:24,letterSpacing:8,fontWeight:700}} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="------" value={mfaCode} onChange={e=>setMfaCode(e.target.value.replace(/\D/g,"").slice(0,6))} onKeyDown={e=>e.key==="Enter"&&mfaVerifyCode()} autoFocus/>
+                  </div>
+                  {mfaErr && <div style={{color:C_LIGHT.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius: 10}}>{mfaErr}</div>}
+                  <button style={{...loginSty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:mfaBusy?0.6:1,cursor:mfaBusy?"default":"pointer"}} onClick={mfaVerifyCode} disabled={mfaBusy}>{mfaBusy?"Memverifikasi...":"Verifikasi"}</button>
+                </>
+              )}
+              <div style={{marginTop:16,fontSize:12,color:C_LIGHT.muted,textAlign:"center"}}><a href="#" onClick={e=>{e.preventDefault();mfaCancel();}} style={{color:C_LIGHT.muted,textDecoration:"underline"}}>Batal, kembali ke login</a></div>
+            </>
+          ) : (
+            <>
+              <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:4}}>Selamat Datang</div>
+              <div style={{fontSize:13,color:C_LIGHT.muted,marginBottom:24}}>Masuk untuk melanjutkan ke sistem.</div>
+              <div style={{marginBottom:16}}>
+                <label style={loginSty.label}>Username</label>
+                <input style={loginSty.input} placeholder="Masukkan username..." value={loginForm.username} onChange={e=>setLoginForm(f=>({...f,username:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} autoFocus/>
+              </div>
+              <div style={{marginBottom:8}}>
+                <label style={loginSty.label}>Password</label>
+                <input style={loginSty.input} type="password" placeholder="Masukkan password..." value={loginForm.password} onChange={e=>setLoginForm(f=>({...f,password:e.target.value}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()}/>
+              </div>
+              {loginErr && <div style={{color:C_LIGHT.red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fee2e2",borderRadius: 10}}>{loginErr}</div>}
+              <button style={{...loginSty.btn("primary"),width:"100%",padding:"12px",fontSize:15,marginTop:8,opacity:loginBusy?0.6:1,cursor:loginBusy?"default":"pointer"}} onClick={handleLogin} disabled={loginBusy}>{loginBusy?"Memeriksa...":"Masuk ke Sistem"}</button>
+              <div style={{marginTop:16,fontSize:12,color:C_LIGHT.muted,textAlign:"center"}}>Lupa password? Hubungi Admin untuk reset manual.</div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -3819,7 +3932,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         )}
 
         {/* MASTER DATA — Master Katalog, Master Lokasi, Satpam (identity/reference data) */}
-        {tab==="master" && <MasterDataTab C={C} sty={sty} currentUser={currentUser} isMobile={isMobile} rolePerms={rolePerms} stockSubTab={stockSubTab} filteredKatalog={filteredKatalog} satpamList={satpamList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} users={users} gudangList={gudangList} lokasiList={lokasiList} subGudangList={subGudangList} visibleGudangList={visibleGudangList} openAddKatalog={openAddKatalog} openAddSatpam={openAddSatpam} openAddUIT={openAddUIT} openAddGudang={openAddGudang} openAddAkun={openAddAkun} importGudangOpen={importGudangOpen} setImportGudangOpen={setImportGudangOpen} showGudangMaintenance={showGudangMaintenance} setShowGudangMaintenance={setShowGudangMaintenance} importLokasiOpen={importLokasiOpen} setImportLokasiOpen={setImportLokasiOpen} gudangCapacityImports={gudangCapacityImports} setGudangCapacityImports={setGudangCapacityImports} saveToCloud={saveToCloud} showToast={showToast} backfillGudangCoordFromCapacity={backfillGudangCoordFromCapacity} dedupeGudangDanSubGudang={dedupeGudangDanSubGudang} isKodeDuplicateInSubGudang={isKodeDuplicateInSubGudang} setLokasiList={setLokasiList} syncLokasi={syncLokasi} maraUploadProgress={maraUploadProgress} maraUploadLoading={maraUploadLoading} uploadMaraToDB={uploadMaraToDB} katalogList={katalogList} katalogSearch={katalogSearch} setKatalogSearch={setKatalogSearch} katalogFilterBelumMara={katalogFilterBelumMara} setKatalogFilterBelumMara={setKatalogFilterBelumMara} pagedKatalog={pagedKatalog} stocks={stocks} openEditKatalog={openEditKatalog} deleteKatalog={deleteKatalog} katalogPageSize={katalogPageSize} setKatalogPageSize={setKatalogPageSize} katalogPageClamped={katalogPageClamped} setKatalogPage={setKatalogPage} katalogTotalPages={katalogTotalPages} openEditSatpam={openEditSatpam} deleteSatpam={deleteSatpam} openEditTimMutu={openEditTimMutu} orgSearch={orgSearch} setOrgSearch={setOrgSearch} collapsedUitIds={collapsedUitIds} setCollapsedUitIds={setCollapsedUitIds} openAddUPT={openAddUPT} openEditUIT={openEditUIT} deleteUIT={deleteUIT} openAddULTG={openAddULTG} openEditUPT={openEditUPT} deleteUPT={deleteUPT} openEditULTG={openEditULTG} deleteULTG={deleteULTG} expandedGudangId={expandedGudangId} setExpandedGudangId={setExpandedGudangId} openEditGudang={openEditGudang} deleteGudang={deleteGudang} showGudangDenahTools={showGudangDenahTools} setShowGudangDenahTools={setShowGudangDenahTools} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} mapConfigGudangId={mapConfigGudangId} setMapConfigGudangId={setMapConfigGudangId} pendingMapLokasi={pendingMapLokasi} setPendingMapLokasi={setPendingMapLokasi} manualAddMode={manualAddMode} setManualAddMode={setManualAddMode} ocrSuggestGudangId={ocrSuggestGudangId} setOcrSuggestGudangId={setOcrSuggestGudangId} ocrSuggestSubGudangId={ocrSuggestSubGudangId} setOcrSuggestSubGudangId={setOcrSuggestSubGudangId} ocrSuggestions={ocrSuggestions} setOcrSuggestions={setOcrSuggestions} assignLokasiKoordinat={assignLokasiKoordinat} suggestKodeFromOcr={suggestKodeFromOcr} expandedSubGudangToolsIds={expandedSubGudangToolsIds} setExpandedSubGudangToolsIds={setExpandedSubGudangToolsIds} uploadDenahSubGudang={uploadDenahSubGudang} denahSubLoading={denahSubLoading} mapConfigSubGudangId={mapConfigSubGudangId} setMapConfigSubGudangId={setMapConfigSubGudangId} pendingMapLokasiSub={pendingMapLokasiSub} setPendingMapLokasiSub={setPendingMapLokasiSub} manualAddModeSub={manualAddModeSub} setManualAddModeSub={setManualAddModeSub} assignLokasiKoordinatSub={assignLokasiKoordinatSub} openEditLokasi={openEditLokasi} requestDeleteLokasi={requestDeleteLokasi} selectedSubGudangId={selectedSubGudangId} setSelectedSubGudangId={setSelectedSubGudangId} openEditAkun={openEditAkun} txns={txns} migratedTug15History={migratedTug15History} setMigratedTug15History={setMigratedTug15History} migrasiPendingReview={migrasiPendingReview} setMigrasiPendingReview={setMigrasiPendingReview} maraReference={maraReference} setMaraReference={setMaraReference} setStocks={setStocks} setKatalogList={setKatalogList} setTxns={setTxns} reloadRolePerms={reloadRolePerms} />}
+        {tab==="master" && <MasterDataTab C={C} sty={sty} currentUser={currentUser} isMobile={isMobile} rolePerms={rolePerms} stockSubTab={stockSubTab} filteredKatalog={filteredKatalog} satpamList={satpamList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} users={users} gudangList={gudangList} lokasiList={lokasiList} subGudangList={subGudangList} visibleGudangList={visibleGudangList} openAddKatalog={openAddKatalog} openAddSatpam={openAddSatpam} openAddUIT={openAddUIT} openAddGudang={openAddGudang} openAddAkun={openAddAkun} importGudangOpen={importGudangOpen} setImportGudangOpen={setImportGudangOpen} showGudangMaintenance={showGudangMaintenance} setShowGudangMaintenance={setShowGudangMaintenance} importLokasiOpen={importLokasiOpen} setImportLokasiOpen={setImportLokasiOpen} gudangCapacityImports={gudangCapacityImports} setGudangCapacityImports={setGudangCapacityImports} saveToCloud={saveToCloud} showToast={showToast} backfillGudangCoordFromCapacity={backfillGudangCoordFromCapacity} dedupeGudangDanSubGudang={dedupeGudangDanSubGudang} isKodeDuplicateInSubGudang={isKodeDuplicateInSubGudang} setLokasiList={setLokasiList} syncLokasi={syncLokasi} maraUploadProgress={maraUploadProgress} maraUploadLoading={maraUploadLoading} uploadMaraToDB={uploadMaraToDB} katalogList={katalogList} katalogSearch={katalogSearch} setKatalogSearch={setKatalogSearch} katalogFilterBelumMara={katalogFilterBelumMara} setKatalogFilterBelumMara={setKatalogFilterBelumMara} pagedKatalog={pagedKatalog} stocks={stocks} openEditKatalog={openEditKatalog} deleteKatalog={deleteKatalog} katalogPageSize={katalogPageSize} setKatalogPageSize={setKatalogPageSize} katalogPageClamped={katalogPageClamped} setKatalogPage={setKatalogPage} katalogTotalPages={katalogTotalPages} openEditSatpam={openEditSatpam} deleteSatpam={deleteSatpam} openEditTimMutu={openEditTimMutu} orgSearch={orgSearch} setOrgSearch={setOrgSearch} collapsedUitIds={collapsedUitIds} setCollapsedUitIds={setCollapsedUitIds} openAddUPT={openAddUPT} openEditUIT={openEditUIT} deleteUIT={deleteUIT} openAddULTG={openAddULTG} openEditUPT={openEditUPT} deleteUPT={deleteUPT} openEditULTG={openEditULTG} deleteULTG={deleteULTG} expandedGudangId={expandedGudangId} setExpandedGudangId={setExpandedGudangId} openEditGudang={openEditGudang} deleteGudang={deleteGudang} showGudangDenahTools={showGudangDenahTools} setShowGudangDenahTools={setShowGudangDenahTools} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} mapConfigGudangId={mapConfigGudangId} setMapConfigGudangId={setMapConfigGudangId} pendingMapLokasi={pendingMapLokasi} setPendingMapLokasi={setPendingMapLokasi} manualAddMode={manualAddMode} setManualAddMode={setManualAddMode} ocrSuggestGudangId={ocrSuggestGudangId} setOcrSuggestGudangId={setOcrSuggestGudangId} ocrSuggestSubGudangId={ocrSuggestSubGudangId} setOcrSuggestSubGudangId={setOcrSuggestSubGudangId} ocrSuggestions={ocrSuggestions} setOcrSuggestions={setOcrSuggestions} assignLokasiKoordinat={assignLokasiKoordinat} suggestKodeFromOcr={suggestKodeFromOcr} expandedSubGudangToolsIds={expandedSubGudangToolsIds} setExpandedSubGudangToolsIds={setExpandedSubGudangToolsIds} uploadDenahSubGudang={uploadDenahSubGudang} denahSubLoading={denahSubLoading} mapConfigSubGudangId={mapConfigSubGudangId} setMapConfigSubGudangId={setMapConfigSubGudangId} pendingMapLokasiSub={pendingMapLokasiSub} setPendingMapLokasiSub={setPendingMapLokasiSub} manualAddModeSub={manualAddModeSub} setManualAddModeSub={setManualAddModeSub} assignLokasiKoordinatSub={assignLokasiKoordinatSub} openEditLokasi={openEditLokasi} requestDeleteLokasi={requestDeleteLokasi} selectedSubGudangId={selectedSubGudangId} setSelectedSubGudangId={setSelectedSubGudangId} openEditAkun={openEditAkun} resetMfa={resetMfa} txns={txns} migratedTug15History={migratedTug15History} setMigratedTug15History={setMigratedTug15History} migrasiPendingReview={migrasiPendingReview} setMigrasiPendingReview={setMigrasiPendingReview} maraReference={maraReference} setMaraReference={setMaraReference} setStocks={setStocks} setKatalogList={setKatalogList} setTxns={setTxns} reloadRolePerms={reloadRolePerms} />}
         {tab==="transaction" && (
           <TransactionHubTab
             C={C} sty={sty} currentUser={currentUser} isMobile={isMobile}
