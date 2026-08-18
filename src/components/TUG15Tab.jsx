@@ -4,9 +4,10 @@ import { JENIS_BARANG, UPT } from "../constants.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { getSAPBadgeStyle } from "../lib/sap.js";
 import { buildMutasiRows, loadLegacyHistoryArchive, resolveLegacyPrivateUrl, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoMaterialToSupabase } from "../lib/supabaseSync.js";
+import { bolehTulisKatalog } from "../lib/roles.js";
 import { buildMonitoringWorkbook, buildTUG15ReportModel } from "../lib/tug15Report.js";
 
-export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasiList, gudangList }) {
+export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasiList, gudangList, currentUser }) {
   const [legacy, setLegacy] = useState({ rows:[], documents:[], loading:true, error:null });
   const autoSyncedRef = useRef(false);
   const [historyItem, setHistoryItem] = useState(null);
@@ -84,10 +85,12 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
   // Guard useRef supaya hanya jalan sekali per mount, tidak retry-loop kalau gagal.
   useEffect(() => {
     if (autoSyncedRef.current) return;
+    // VIEWER read-only — jangan push katalog/stok/foto (RLS opsi B menolak write untuk VIEWER).
+    if (!bolehTulisKatalog(currentUser?.role)) return;
     if (legacy.loading || allHistoryRows.length === 0) return;
     autoSyncedRef.current = true;
     handleSyncSupabase();
-  }, [allHistoryRows]);
+  }, [allHistoryRows, currentUser]);
 
   function downloadBlob(blob, filename) {
     const url = URL.createObjectURL(blob);

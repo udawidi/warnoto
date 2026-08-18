@@ -19,7 +19,7 @@ import { C as C_LIGHT, C_DARK, makeSty } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
 import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel } from "./src/lib/sap.js";
-import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt } from "./src/lib/roles.js";
+import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
 import { can } from "./src/lib/perms.js";
@@ -504,7 +504,8 @@ export default function PLNWarehouse() {
   // supaya tidak perlu klik tombol "Sync ke Supabase" manual. Di-debounce 2.5 detik supaya
   // tidak nembak Supabase berkali-kali kalau banyak perubahan state beruntun.
   useEffect(() => {
-    if (!currentUser || loading || !supabase) return;
+    // VIEWER read-only — jangan push katalog/stok/foto (RLS opsi B menolak, lihat migration 20260818b).
+    if (!currentUser || loading || !supabase || !bolehTulisKatalog(currentUser.role)) return;
     const timer = setTimeout(async () => {
       try {
         const filter = { dateFrom:"", dateTo:"", katalogId:"ALL", jenisBarang:"ALL", sapStatus:"ALL", docTypes:["TUG9","TUG8","TUG10","TUG3"] };

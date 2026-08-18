@@ -79,3 +79,11 @@ export function inScopeUpt(uptId, scope) {
   if (!uptId) return true;
   return scope.includes(uptId);
 }
+
+// Gate klien untuk tulis katalog (Security fix P1-katalog, opsi B, 2026-08-18) — cermin
+// predikat RLS "Operational write katalog" (migration 20260818b): SEMUA role operasional
+// boleh, HANYA VIEWER (satu-satunya role read-only) ditolak. Dipakai untuk mencegah
+// auto-sync klien memicu write yang toh akan ditolak RLS.
+export function bolehTulisKatalog(role) {
+  return !!role && role !== "VIEWER";
+}

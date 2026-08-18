@@ -129,7 +129,7 @@ export function TransactionHubTab({
                 txns={uptFilteredTxns} katalogList={katalogList} stocks={stocks}
                 sty={sty} C={C}
                 filter={{...tug15Filter, ultgList, uitList}} setFilter={setTug15Filter}
-                lokasiList={lokasiList} gudangList={gudangList}
+                lokasiList={lokasiList} gudangList={gudangList} currentUser={currentUser}
               />
             ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
