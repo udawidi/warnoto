@@ -40,6 +40,38 @@ const MATERIAL_RESULT = {
   breakdown:true, cumulativeValuePct:15,
 };
 
+const GUDANG = [
+  { id:"GDG-E2E-01", nama:"Gudang Ketintang", kode:"GTK", alamat:"Jl. Ketintang", uptId:"UPT-SBY", lat:null, lng:null, denahImageData:null, denahUploadedAt:null, createdAt:1784505600000 },
+];
+
+const LOKASI = [
+  { id:"LOK-E2E-A", kode:"A-01", keterangan:"Rak A blok 1", gudangId:"GDG-E2E-01", subGudangId:null },
+  { id:"LOK-E2E-B", kode:"B-02", keterangan:"Rak B blok 2", gudangId:"GDG-E2E-01", subGudangId:null },
+];
+
+// Sesi DRAFT Stock Opname (mode SAP) — 2 item, tiap item 1 blok beda (via lokasiBreakdown),
+// qtsFisik/hitungPerLokasi sengaja KOSONG (bukan default buildItemsFromSAP yang langsung
+// qtsFisik:qtySistem) supaya progress mulai dari 0% dan tombol "Mulai Hitung" (mode lapangan)
+// masih terlihat di HP — lihat StockOpnameTab.jsx renderPanel().
+const OPNAME_SESSION = {
+  id:"OPN-E2E-01", semester:"2026-2", jenisAlur:"SAP", kategori:"Material Cadang", status:"DRAFT",
+  dibuatOleh:"e2e-superadmin", dibuatAt:1784505600000, sapUploadedAt:1784505600000, totalRowsSAP:2,
+  items:[
+    {
+      katalogId:"KAT-E2E-01", namaBarang:"Isolator Keramik 150 kV", noKatalog:"301234567", satuan:"BUAH",
+      qtySistem:10, qtySAP:10, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
+      lokasiBreakdown:[{ lokasiId:"LOK-E2E-A", lokasiKode:"A-01", gudangId:"GDG-E2E-01", gudangKode:"GTK", qty:10 }],
+      hitungPerLokasi:{},
+    },
+    {
+      katalogId:"KAT-E2E-02", namaBarang:"Lightning Arrester 150 kV", noKatalog:"309876543", satuan:"SET",
+      qtySistem:4, qtySAP:4, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
+      lokasiBreakdown:[{ lokasiId:"LOK-E2E-B", lokasiKode:"B-02", gudangId:"GDG-E2E-01", gudangKode:"GTK", qty:4 }],
+      hitungPerLokasi:{},
+    },
+  ],
+};
+
 const WAREHOUSE_CAPACITY = [
   { id:"CAP-E2E-01", upt:"Surabaya", gudang:"Gudang Ketintang", subGudang:"Material Utama", luasLahanM2:1200, luasTerpakaiM2:1080, sisaLuasM2:120, persentaseTerpakai:0.9, statusKapasitas:"KRITIS", waktuUpdate:"20 Jul 2026" },
   { id:"CAP-E2E-02", upt:"Gresik", gudang:"Gudang Tandes", subGudang:"Material Cadang", luasLahanM2:900, luasTerpakaiM2:495, sisaLuasM2:405, persentaseTerpakai:0.55, statusKapasitas:"AMAN", waktuUpdate:"19 Jul 2026" },
@@ -48,13 +80,14 @@ const WAREHOUSE_CAPACITY = [
 const CLOUD_FIXTURES = {
   pln_stocks_v4: STOCKS,
   pln_katalog_v4: CATALOG,
-  pln_lokasi_v4: [],
+  pln_lokasi_v4: LOKASI,
+  pln_gudang_v1: GUDANG,
   pln_txns_v3: [
     { id:"TUG9-E2E-01", docType:"TUG9", status:"APPROVED", createdAt:1777507200000, approvedAt:1777507200000, namaPekerjaan:"Pemeliharaan Gardu Induk", lokasiPekerjaan:"GI Rungkut", penerimaNama:"Tim Har", penerimaUnit:"ULTG Surabaya", docNumbers:{ tug9:"TUG-9/E2E/001" }, stockItems:[{ stockId:"ST-E2E-01", qty:8 }] },
   ],
   pln_docseq_v3: 196,
   pln_rencana_v1: [],
-  pln_opname_v1: [],
+  pln_opname_v1: [OPNAME_SESSION],
   pln_stockcount_v1: [],
   pln_approval_history_v1: [],
   pln_maturity_v1: [],
@@ -101,7 +134,7 @@ const test = base.extend({
       localStorage.clear();
       sessionStorage.clear();
       localStorage.setItem("sb-e2e-auth-token", JSON.stringify({ e2e: true }));
-      localStorage.setItem("warnoto_profile_cache_v2", JSON.stringify({ endpoint: undefined, profile }));
+      localStorage.setItem("warnoto_profile_cache_v3", JSON.stringify({ endpoint: undefined, profile }));
       localStorage.setItem("warnoto_theme", "light");
       Object.entries(cloud).forEach(([key, value]) => {
         localStorage.setItem(`warnoto_${key}`, JSON.stringify(value));

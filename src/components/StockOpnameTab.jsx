@@ -883,8 +883,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     {prog.filled===0 ? "Mulai Hitung" : `Lanjut Hitung — ${prog.filled}/${prog.total}`}
                   </button>
                 )}
-                {/* Fase 2d: desktop tetap bisa buka mode lapangan juga (mis. tablet lebar/laptop touch) */}
-                {!isMobile && <button className="approval-btn--cancel" onClick={()=>setLapanganMode(true)}>📱 Mode Lapangan</button>}
+                {/* Fase 2d: desktop tetap bisa buka mode lapangan juga (mis. tablet lebar/laptop touch).
+                    Di HP juga WAJIB tampil saat progres 100%: di titik itu "Mulai/Lanjut Hitung" (satu-
+                    satunya pintu HP ke overlay) sudah berganti jadi Submit, jadi tanpa ini user HP dgn
+                    recount pending mentok — tak ada jalan balik ke overlay untuk hitung ulang. */}
+                {(!isMobile || prog.pct===100) && <button className="approval-btn--cancel" onClick={()=>setLapanganMode(true)}>📱 Mode Lapangan</button>}
               </div>
             )}
           </>
