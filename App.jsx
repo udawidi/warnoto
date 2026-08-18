@@ -3344,7 +3344,9 @@ Ringkasan terhitung:
 Rencana kedatangan:
 ${rencana.length===0?"Tidak ada rencana kedatangan":rencana.map(r=>`- ${r.jumlah} ${r.satuan} dari ${r.supplier} (${r.tanggalSerahTerima})`).join('\n')}
 
-Gunakan angka-angka pada "Ringkasan terhitung" di atas apa adanya (jangan menghitung ulang rata-rata/tren dari history mentah). Berikan analisis forecast dalam format:
+Gunakan angka-angka pada "Ringkasan terhitung" di atas apa adanya (jangan menghitung ulang rata-rata/tren dari history mentah).
+
+PENTING FORMAT: jawab HANYA teks biasa bahasa Indonesia. DILARANG keluarkan JSON, array, objek, tabel Markdown, atau tag HTML apa pun (mis. <br>). Untuk baris baru pakai newline biasa, untuk poin pakai tanda "- ". Ikuti persis struktur di bawah:
 
 📊 DATA
 [ringkasan data pemakaian, rata-rata, tren]
@@ -3367,7 +3369,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data?.error?.message || `Layanan AI merespons HTTP ${resp.status}.`);
-      const result = data.choices?.[0]?.message?.content||"Tidak ada hasil.";
+      let result = (data.choices?.[0]?.message?.content||"Tidak ada hasil.").trim();
+      // gpt-oss kadang balas JSON array/tabel walau diminta teks biasa — ratakan.
+      try {
+        const j = JSON.parse(result);
+        if (Array.isArray(j)) result = j.map(o => o && typeof o==="object" ? Object.values(o).join(": ") : String(o)).join("\n");
+      } catch { /* bukan JSON, biarkan apa adanya */ }
+      result = result.replace(/<br\s*\/?>/gi, "\n");
       setForecastDetailResult(result);
     } catch (error) {
       console.error("Forecast drill-down beralih ke mode data lokal:", error.message);
