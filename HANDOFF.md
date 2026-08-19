@@ -498,7 +498,8 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
   panjang tak kena rate-limit editMessageText.**
   Juga (`1d0e1f3`): **CSP enforce** — `vercel.json` key `-Report-Only`→`Content-Security-Policy` + `'wasm-unsafe-eval'`
   (pdf.js). Harness `npm run test:csp` uji terhadap **dist** (bukan Vite dev yg inline HMR=false positive),
-  shell production 0 violation. **SISA smoke live: connect-src API eksternal + tab-dalam + pdfjs WASM + tile peta.**
+  shell production 0 violation. **Smoke live production BERSIH** (Peta/tile, upload PDF/WASM, OCR/cohere,
+  Chat AI/ai-proxy — nol violation console, verified user 2026-08-19). CSP enforce TUNTAS.
   Gotcha di memory [[csp-enforce-test-against-dist]].
 - 2026-08-19 Claude: (1) **satpam+tim_mutu scope per-UPT** (`d4647a4`,`d338eaa`, 2 migration applied): RLS via
   `satpam_gudang_upt`/`can_access_upt` (satpam) & `can_access_upt(data->>'uptId')` (tim_mutu). (2) **AI longgar**
