@@ -199,6 +199,7 @@ Deno.serve(async (req) => {
     const qLower = question.toLowerCase().trim();
     let reply    = "";
     let intent   = "rag_query";
+    let streamedMessageId: number | undefined; // set kalau jawaban sudah tampil progresif via edit
 
     if (["/help", "help", "bantuan", "tolong"].includes(qLower)) {
       reply  = MSG_HELP;
@@ -213,19 +214,38 @@ Deno.serve(async (req) => {
       reply  = MSG_RATE_LIMITED;
       intent = "rate_limited";
     } else {
-      // 3. RAG query
+      // 3. RAG query — kirim placeholder dulu, lalu edit progresif tiap chunk stream
+      // masuk (bukan diam menunggu jawaban penuh). Kalau placeholder gagal terkirim
+      // (mis. Telegram down), tetap lanjut non-stream dan kirim sekali di akhir.
       await sendTypingAction(chatId);
-      const { text, chunksUsed } = await generateReply(question, userId, callerUptId);
+      const placeholder = await sendTelegramMessage(chatId, "Sedang menyusun jawaban...");
+      const messageId = placeholder?.result?.message_id as number | undefined;
+      let lastEditAt = 0;
+      let lastEditLen = 0;
+      const { text, chunksUsed } = await generateReply(question, userId, callerUptId, messageId
+        ? async (partial: string) => {
+            const now = Date.now();
+            // ponytail: throttle edit ~1.5s / +40 char; kalau kena 429 edit, perlebar interval
+            if (now - lastEditAt < 1500 && partial.length - lastEditLen < 40) return;
+            lastEditAt = now;
+            lastEditLen = partial.length;
+            await editTelegramMessage(chatId, messageId, partial);
+          }
+        : undefined);
       reply  = text;
       logEntry.rag_chunks_used = chunksUsed;
       intent = "rag_query";
+      streamedMessageId = messageId;
     }
 
     logEntry.intent         = intent;
     logEntry.answer_summary = reply.slice(0, 500);
     logEntry.response_ms    = Date.now() - t0;
 
-    await sendTelegramMessage(chatId, reply);
+    // Kalau sudah tampil progresif, tinggal pastikan edit terakhir berisi teks final
+    // lengkap (chunk terakhir bisa kena throttle & belum ter-flush).
+    if (streamedMessageId) await editTelegramMessage(chatId, streamedMessageId, reply);
+    else await sendTelegramMessage(chatId, reply);
     const savedLog = await writeLog(logEntry);
 
     // Setiap 4 pertanyaan (bukan tiap kali, biar tidak mengganggu), minta feedback 👍/👎 —
@@ -376,7 +396,12 @@ async function isRateLimited(userId: string): Promise<boolean> {
   }
 }
 
-async function generateReply(question: string, userId: string, callerUptId: string | null): Promise<{ text: string; chunksUsed: number }> {
+async function generateReply(
+  question: string,
+  userId: string,
+  callerUptId: string | null,
+  onProgress?: (partialText: string) => void | Promise<void>,
+): Promise<{ text: string; chunksUsed: number }> {
   const [{ context: ragContext, chunksUsed }, stateContext, conversationHistory] = await Promise.all([
     buildRagContext(question, callerUptId),
     // blob warnoto_state = ringkasan NASIONAL (top20ByValue, materialKritis, dst.) tanpa
@@ -432,6 +457,7 @@ Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang ter
   const orBody = JSON.stringify({
     model: OPENROUTER_MODEL,
     max_tokens: 700,
+    stream: true,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: question },
@@ -459,10 +485,35 @@ Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang ter
     totalWait += wait;
     await new Promise((r) => setTimeout(r, wait * 1000));
   }
-  if (!resp.ok) throw new Error(`OpenRouter gagal (${resp.status}): ${await resp.text()}`);
-  const data = await resp.json();
+  if (!resp.ok || !resp.body) throw new Error(`OpenRouter gagal (${resp.status}): ${await resp.text()}`);
+
+  // Baca SSE (format `data: {...}\n\n`, ditutup `data: [DONE]`) dan panggil
+  // onProgress(fullTextSoFar) tiap chunk supaya caller bisa edit pesan Telegram progresif.
+  let full = "";
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop() ?? "";
+    for (const line of lines) {
+      const data = line.startsWith("data:") ? line.slice(5).trim() : "";
+      if (!data || data === "[DONE]") continue;
+      try {
+        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+        if (delta) {
+          full += delta;
+          if (onProgress) await onProgress(full);
+        }
+      } catch { /* baris parsial/rusak, abaikan */ }
+    }
+  }
+
   return {
-    text: data.choices?.[0]?.message?.content?.trim() || "Maaf, terjadi kendala saat memproses pertanyaan Anda.",
+    text: full.trim() || "Maaf, terjadi kendala saat memproses pertanyaan Anda.",
     chunksUsed,
   };
 }
@@ -496,11 +547,43 @@ async function sendTelegramMessage(chatId: number | string, text: string) {
       });
       if (!retryResp.ok) {
         console.error("Gagal retry kirim Telegram plain text:", retryResp.status, await retryResp.text());
+        return undefined;
       }
-      return;
+      return retryResp.json();
     }
     console.error("Gagal kirim Telegram:", resp.status, errorBody);
+    return undefined;
   }
+  return resp.json();
+}
+
+// Edit pesan Telegram yang sudah terkirim (dipakai utk tampilkan jawaban AI progresif
+// selagi stream OpenRouter masuk). Sama pola retry Markdown→plain text seperti sendTelegramMessage.
+// "message is not modified" (edit dgn teks identik) diabaikan, bukan error nyata.
+async function editTelegramMessage(chatId: number | string, messageId: number, text: string) {
+  const endpoint = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/editMessageText`;
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, parse_mode: "Markdown" }),
+  });
+  if (resp.ok) return;
+  const errorBody = await resp.text();
+  if (/message is not modified/i.test(errorBody)) return;
+  const isMarkdownEntityError = resp.status === 400 && /(?:parse entities|find end of (?:the )?entity|unclosed entity)/i.test(errorBody);
+  if (isMarkdownEntityError) {
+    const retryResp = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, text }),
+    });
+    if (!retryResp.ok) {
+      const retryBody = await retryResp.text();
+      if (!/message is not modified/i.test(retryBody)) console.error("Gagal edit Telegram plain text:", retryResp.status, retryBody);
+    }
+    return;
+  }
+  console.error("Gagal edit Telegram:", resp.status, errorBody);
 }
 
 // Indikator "sedang mengetik..." — dipanggil sebelum RAG query (Cohere+Groq) yang

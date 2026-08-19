@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, useDeferredValue, Fr
 import { X } from "@phosphor-icons/react";
 import * as Sentry from "@sentry/react";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS, STATUS_SAP } from "./src/constants.js";
-import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError, isRetryableLoginError } from "./src/supabaseClient.js";
+import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError, isRetryableLoginError, fetchSupabase } from "./src/supabaseClient.js";
 import { CLOUD } from "./src/lib/cloud.js";
 import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.js";
 import { approveStockLocationMove, rejectStockLocationMove } from "./src/lib/stockLocationApproval.js";
@@ -271,6 +271,29 @@ const PHASE2_CACHE_KEYS = [
   "pln_lokasi_v4", "pln_gudang_v1", "pln_sub_gudang_v1", "pln_satpam_v1",
   "pln_tim_mutu_v1", "pln_uit_v1", "pln_upt_v1", "pln_ultg_v1",
 ];
+
+// Baca body SSE OpenRouter (format `data: {...}\n\n`, ditutup `data: [DONE]`)
+// dan panggil onDelta(text) tiap potongan choices[0].delta.content yang datang.
+async function streamSSEDeltas(body, onDelta) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop(); // sisa baris belum lengkap, simpan utk chunk berikutnya
+    for (const line of lines) {
+      const data = line.startsWith("data:") ? line.slice(5).trim() : "";
+      if (!data || data === "[DONE]") continue;
+      try {
+        const delta = JSON.parse(data)?.choices?.[0]?.delta?.content;
+        if (delta) onDelta(delta);
+      } catch { /* baris parsial/rusak, abaikan */ }
+    }
+  }
+}
 
 // ════════════════════════════════════════════════════════════════════
 // MAIN COMPONENT
@@ -3201,6 +3224,7 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
       return `${localNotice}\n\nBerikut ringkasan kondisi gudang saat ini:\n- Total item inventori: ${fmtNum(scopedEnrichedStocks.length)}\n- Nilai inventori: Rp ${fmtNum(Math.round(totalValue))}\n- Material kritis: ${fmtNum(kritis.length)}\n- Dokumen pending: ${fmtNum(pending.length)}\n- Rencana kedatangan 30 hari: ${fmtNum(rencana30.length)} item\n\nSebutkan nama atau kode katalog material bila ingin saya tampilkan stok yang lebih spesifik.`;
     }
 
+    let aiIndex = -1;
     try {
       const messages = [
         {role:"system",content:systemPrompt},
@@ -3214,16 +3238,34 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
       // Single-call (bukan tool-loop): tool-use bikin 3-4 panggilan/pertanyaan.
       // Akurasi tetap dijaga lewat snapshot data yang diperkaya di systemPrompt
       // di atas (top qty, proyeksi, dst). Retry 429 sudah ditangani di ai-proxy.
-      const { data, error } = await supabase.functions.invoke("ai-proxy", {
-        body: { messages, max_tokens: 900 },
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetchSupabase(`${SUPABASE_URL}/functions/v1/ai-proxy`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${session?.access_token || ""}`,
+          "apikey": SUPABASE_KEY,
+        },
+        body: JSON.stringify({ messages, max_tokens: 900, stream: true }),
       });
-      if (error) throw error;
-      const reply = data.choices?.[0]?.message?.content;
-      if (!reply) throw new Error("Layanan AI tidak mengirimkan jawaban.");
-      setChatHistory(h=>[...h,{role:"ai",text:reply}]);
+      if (!resp.ok || !resp.body) throw new Error(`Layanan AI gagal (${resp.status}).`);
+
+      setChatHistory(h=>{ aiIndex = h.length; return [...h,{role:"ai",text:""}]; });
+      let full = "";
+      await streamSSEDeltas(resp.body, (delta)=>{
+        full += delta;
+        setChatHistory(h=>h.map((m,i)=>i===aiIndex?{...m,text:full}:m));
+      });
+      if (!full) throw new Error("Layanan AI tidak mengirimkan jawaban.");
     } catch (error) {
       console.error("Pak War beralih ke mode data lokal:", error.message);
-      setChatHistory(h=>[...h,{role:"ai",text:buildLocalWarehouseAnswer()}]);
+      // Kalau stream sudah dapat sebagian teks, biarkan tersisa (jangan timpa fallback).
+      setChatHistory(h=>{
+        if (aiIndex>=0 && h[aiIndex]) {
+          return h[aiIndex].text ? h : h.map((m,i)=>i===aiIndex?{...m,text:buildLocalWarehouseAnswer()}:m);
+        }
+        return [...h,{role:"ai",text:buildLocalWarehouseAnswer()}];
+      });
     } finally {
       setChatLoading(false);
     }

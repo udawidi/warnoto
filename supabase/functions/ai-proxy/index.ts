@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
     const messages = Array.isArray(body.messages) ? body.messages : null;
     if (!messages || messages.length === 0) return json({ error: { message: "messages wajib diisi." } }, 400);
     const maxTokens = Math.min(Number(body.max_tokens) || 900, 2000);
+    const stream = body.stream === true;
 
     // ── 3. Forward ke OpenRouter, retry sekali kalau 429 (pola sama telegram-webhook) ──
     let resp;
@@ -66,6 +67,7 @@ Deno.serve(async (req) => {
           model: OPENROUTER_MODEL,
           messages,
           max_tokens: maxTokens,
+          ...(stream ? { stream: true } : {}),
           ...(body.temperature != null ? { temperature: body.temperature } : {}),
         }),
       });
@@ -74,6 +76,11 @@ Deno.serve(async (req) => {
       if (totalWait + wait > 40) break;
       totalWait += wait;
       await new Promise((r) => setTimeout(r, wait * 1000));
+    }
+
+    // Path stream: passthrough SSE mentah (cek status dulu; error tetap JSON dari OpenRouter).
+    if (stream && resp.status < 400) {
+      return new Response(resp.body, { status: resp.status, headers: { ...corsHeaders, "Content-Type": "text/event-stream" } });
     }
 
     return new Response(await resp.text(), { status: resp.status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
