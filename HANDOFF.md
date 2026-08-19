@@ -495,6 +495,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
   bukan fetch Groq langsung (VITE_GROQ_API_KEY tak lagi dipakai/bocor). telegram-webhook juga ke OpenRouter. Model
   `deepseek/deepseek-chat` via env `OPENROUTER_MODEL`. EF deployed self-host + env `OPENROUTER_API_KEY/MODEL` di
   `.env`+compose, container functions recreated. Server verified; **SISA: e2e happy-path (login in-app 4 tanya + Telegram) oleh user.**
+  **JANGAN hapus `VITE_GROQ_API_KEY` (Vercel/.env) — sengaja disimpan sbg backup (user 2026-08-19), meski client tak lagi memakainya.**
 - 2026-08-18 Claude (shift-11): **AI bot & Telegram pulih + authz API key** (`1131c1d`,`f58a8ed`). Groq
   decommission `llama-3.3-70b-versatile`→`openai/gpt-oss-120b`; model reasoning WAJIB `reasoning_effort:"low"`
   (else content kosong→fallback). 5 body Groq (App.jsx x3, materialCadang, telegram-webhook). Kelola API
