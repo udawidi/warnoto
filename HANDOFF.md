@@ -487,9 +487,12 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
-- 2026-08-19 Claude: **satpam scope per-UPT**. Bug TL-SBY lihat satpam UPT lain sbg "Belum di-assign".
-  RLS `satpam` di-scope via `satpam_gudang_upt` + `can_access_upt` (migration 20260819, applied). UI fix
-  `MasterDataTab.jsx`/`TugFormModals.jsx`: bucket "belum di-assign" hanya `!gudangId`. Verified RLS+build+unit. Belum commit.
+- 2026-08-19 Claude: (1) **satpam scope per-UPT** (`d4647a4`, migration 20260819 applied): RLS `satpam` via
+  `satpam_gudang_upt`+`can_access_upt`; UI `MasterDataTab.jsx`/`TugFormModals.jsx` bucket "belum di-assign" hanya
+  `!gudangId`. (2) **AI longgar** (`13306dd`, EF telegram-webhook deployed self-host): retry Groq 429 1x→3x
+  (hormati retry-after cap 25s, guard total>40s) + max_tokens turun (in-app 1500→900, TG 900→700) + trim ringan
+  RAG/history/stateContext — fix pertanyaan ke-2+ jatuh ke fallback (root cause free-tier TPM 8k). **PENDING:
+  migration `20260819_tim_mutu_scope_per_upt.sql` sudah ditulis, BELUM di-apply (nunggu konfirmasi user).**
 - 2026-08-18 Claude (shift-11): **AI bot & Telegram pulih + authz API key** (`1131c1d`,`f58a8ed`). Groq
   decommission `llama-3.3-70b-versatile`→`openai/gpt-oss-120b`; model reasoning WAJIB `reasoning_effort:"low"`
   (else content kosong→fallback). 5 body Groq (App.jsx x3, materialCadang, telegram-webhook). Kelola API
