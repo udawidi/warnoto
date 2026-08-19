@@ -501,6 +501,11 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
   shell production 0 violation. **Smoke live production BERSIH** (Peta/tile, upload PDF/WASM, OCR/cohere,
   Chat AI/ai-proxy — nol violation console, verified user 2026-08-19). CSP enforce TUNTAS.
   Gotcha di memory [[csp-enforce-test-against-dist]].
+  Juga (`abf76e9`): **Cohere & OCR.space diproksikan** — BARU EF `services-proxy` (JWT verify, `body.service`
+  cohere-embed|ocr, key server-side), `rag.js` 3 fungsi → `invoke("services-proxy")`, buang 3 gate `VITE_*`
+  di App.jsx, `connect-src` CSP dibuang api.cohere.com/api.ocr.space. EF live self-host (401 guard); env
+  `OCRSPACE_API_KEY` ditambah ke `docker-compose.yml` (env list functions) + `.env`, container recreated,
+  key valid. `COHERE_API_KEY` sudah ada. **SISA smoke live (login): Cari Foto nameplate/visual + RAG chat.**
 - 2026-08-19 Claude: (1) **satpam+tim_mutu scope per-UPT** (`d4647a4`,`d338eaa`, 2 migration applied): RLS via
   `satpam_gudang_upt`/`can_access_upt` (satpam) & `can_access_upt(data->>'uptId')` (tim_mutu). (2) **AI longgar**
   (`13306dd`): retry Groq 429 1x→3x + max_tokens turun + trim. (3) **AI pindah OpenRouter + proxy EF** (`de60a2f`):
