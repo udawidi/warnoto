@@ -487,12 +487,14 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
-- 2026-08-19 Claude: (1) **satpam scope per-UPT** (`d4647a4`, migration 20260819 applied): RLS `satpam` via
-  `satpam_gudang_upt`+`can_access_upt`; UI `MasterDataTab.jsx`/`TugFormModals.jsx` bucket "belum di-assign" hanya
-  `!gudangId`. (2) **AI longgar** (`13306dd`, EF telegram-webhook deployed self-host): retry Groq 429 1x→3x
-  (hormati retry-after cap 25s, guard total>40s) + max_tokens turun (in-app 1500→900, TG 900→700) + trim ringan
-  RAG/history/stateContext — fix pertanyaan ke-2+ jatuh ke fallback (root cause free-tier TPM 8k). **PENDING:
-  migration `20260819_tim_mutu_scope_per_upt.sql` sudah ditulis, BELUM di-apply (nunggu konfirmasi user).**
+- 2026-08-19 Claude: (1) **satpam+tim_mutu scope per-UPT** (`d4647a4`,`d338eaa`, 2 migration applied): RLS via
+  `satpam_gudang_upt`/`can_access_upt` (satpam) & `can_access_upt(data->>'uptId')` (tim_mutu). (2) **AI longgar**
+  (`13306dd`): retry Groq 429 1x→3x + max_tokens turun + trim. (3) **AI pindah OpenRouter + proxy EF** (`de60a2f`):
+  BARU `supabase/functions/ai-proxy` (forwarder OpenRouter, verifikasi JWT, key server-side) — 4 call-site AI in-app
+  (App.jsx sendChat/aiExtractKontrak/forecastDrillDown + materialCadang.js) sekarang `supabase.functions.invoke("ai-proxy")`,
+  bukan fetch Groq langsung (VITE_GROQ_API_KEY tak lagi dipakai/bocor). telegram-webhook juga ke OpenRouter. Model
+  `deepseek/deepseek-chat` via env `OPENROUTER_MODEL`. EF deployed self-host + env `OPENROUTER_API_KEY/MODEL` di
+  `.env`+compose, container functions recreated. Server verified; **SISA: e2e happy-path (login in-app 4 tanya + Telegram) oleh user.**
 - 2026-08-18 Claude (shift-11): **AI bot & Telegram pulih + authz API key** (`1131c1d`,`f58a8ed`). Groq
   decommission `llama-3.3-70b-versatile`→`openai/gpt-oss-120b`; model reasoning WAJIB `reasoning_effort:"low"`
   (else content kosong→fallback). 5 body Groq (App.jsx x3, materialCadang, telegram-webhook). Kelola API
