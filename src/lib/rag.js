@@ -7,11 +7,33 @@ import { supabase } from "../supabaseClient.js";
 // --- Util normalisasi teks nameplate (dipakai bersama semua pencocokan teks) ---
 export const npNorm    = s => (s || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
 
-export const npTokens  = s => new Set(npNorm(s).split(" ").filter(t => t.length >= 3));
+// Kata generik yang muncul di hampir semua nameplate (merek, satuan, boilerplate
+// regulasi) — dibuang dari token supaya tidak dihitung sbg "kecocokan".
+const NAMEPLATE_STOPWORDS = new Set([
+  "PLN", "TRAFO", "TRANSFORMER", "TYPE", "TIPE", "MODEL", "NO", "NOMOR", "SN", "SERIAL",
+  "MADE", "IN", "INDONESIA", "KV", "KVA", "KW", "HZ", "PHASE", "FASA", "VOLT", "VOLTAGE",
+  "AMP", "AMPERE", "CLASS", "STANDARD", "IEC", "SNI", "YEAR", "TAHUN", "WEIGHT", "BERAT",
+  "OIL", "MINYAK", "COOLING", "IMPEDANCE", "FREQ", "FREQUENCY",
+]);
+
+export const npTokens  = s => new Set(npNorm(s).split(" ").filter(t => t.length >= 3 && !NAMEPLATE_STOPWORDS.has(t)));
 
 export const npNums    = s => npNorm(s).match(/\d{5,}/g) || []; // angka ≥5 digit = kandidat nomor katalog
 
-export const NAMEPLATE_MIN = 0.45;
+// Jaccard similarity (inter/union) antar dua himpunan token. Butuh minimal 2 token
+// bermakna yg overlap (1 kata generik gampang kebetulan sama antar barang beda) —
+// kurang dari itu dianggap tak ada kecocokan teks. Di-cap 0.9: "100%" (1.0) hanya
+// untuk kecocokan nomor katalog eksak (skor 0.95/0.97 di caller), bukan overlap teks murni.
+function tokenSim(aTokens, bTokens) {
+  if (!aTokens.size || !bTokens.size) return 0;
+  let inter = 0;
+  for (const t of aTokens) if (bTokens.has(t)) inter++;
+  if (inter < 2) return 0;
+  const union = aTokens.size + bTokens.size - inter;
+  return Math.min(inter / union, 0.9);
+}
+
+export const NAMEPLATE_MIN = 0.5;
 
 // Embedding pakai Cohere (embed-multilingual-v3.0, 1024 dim) — model
 // terpisah dari Groq (dipakai untuk chat), karena Groq tidak punya endpoint
@@ -74,12 +96,10 @@ export function matchNameplateToKatalog(ocrText, katalogList) {
     // 1. Nomor katalog tercetak verbatim (>=5 digit) — sinyal paling kuat.
     const cat = String(kat.katalog || "").replace(/[^0-9]/g, "");
     if (cat.length >= 5 && ocrCompact.includes(cat)) score = Math.max(score, 0.95);
-    // 2. Tumpang-tindih kata dari nama/type/merk.
-    const katTokens = [...npTokens(`${kat.name} ${kat.type} ${kat.merk}`)];
-    if (katTokens.length) {
-      const hit = katTokens.filter(t => ocrTokens.has(t)).length;
-      score = Math.max(score, hit / katTokens.length);
-    }
+    // 2. Tumpang-tindih kata dari nama/kategori (field asli katalog: name, category —
+    //    bukan type/merk, katalog tidak punya field itu).
+    const katTokens = npTokens(`${kat.name || ""} ${kat.category || ""}`);
+    score = Math.max(score, tokenSim(ocrTokens, katTokens));
     if (score >= NAMEPLATE_MIN) results.push({ katalog: kat.katalog, similarity: score });
   }
   return results.sort((a, b) => b.similarity - a.similarity).slice(0, 10);
@@ -93,10 +113,7 @@ export function nameplateTextSim(qTokens, qNums, storedText) {
   const sNums = npNums(storedText);
   let score = 0;
   if (qNums.some(n => sNums.includes(n))) score = Math.max(score, 0.95);
-  if (qTokens.size && sTokens.size) {
-    let inter = 0; for (const t of qTokens) if (sTokens.has(t)) inter++;
-    score = Math.max(score, inter / Math.min(qTokens.size, sTokens.size));
-  }
+  score = Math.max(score, tokenSim(qTokens, sTokens));
   return score;
 }
 
