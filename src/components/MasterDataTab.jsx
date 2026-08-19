@@ -232,7 +232,11 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               if (satpamList.length===0) return <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada data Satpam. {hasRole(currentUser, "TL") && "Klik \"+ Tambah Satpam\" untuk menambahkan."}</div>;
               const groups = [
                 ...gudangList.map(g=>({ id:g.id, nama:g.nama, list:satpamList.filter(sp=>sp.gudangId===g.id) })),
-                { id:"__none__", nama:"Belum di-assign gudang", list:satpamList.filter(sp=>!sp.gudangId || !gudangList.some(g=>g.id===sp.gudangId)) },
+                // Hanya satpam yang benar-benar tak punya gudangId yang "belum di-assign".
+                // Satpam dengan gudangId valid tapi gudang-nya di luar scope UPT user (gudangList
+                // sudah ter-RLS per-UPT, sedangkan satpam ke-load semua UPT) sengaja TIDAK muncul:
+                // TL hanya mengelola satpam UPT-nya sendiri. Superadmin gudangList penuh → tak ada yang hilang.
+                { id:"__none__", nama:"Belum di-assign gudang", list:satpamList.filter(sp=>!sp.gudangId) },
               ].filter(grp=>grp.list.length>0);
               const renderCard = sp => (
                 <div key={sp.id} style={{...sty.card,borderTop:`3px solid ${C.accent}`}}>

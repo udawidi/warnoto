@@ -27,6 +27,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   - **Pusat (lihat semua UPT+UIT):** `ADMIN_LOG_PUSAT`.
 - **GOTCHA role baru:** `can()` (`src/lib/perms.js`) return `false` utk role tak terdaftar di `DEFAULT_PERMS` → app kosong tanpa menu. Titik daftar role yang WAJIB sinkron: `roles.js`, `perms.js` (MATRIX_ROLES+DEFAULT_PERMS), `App.jsx` (UIT_ROLE_QUOTA + deteksi form scoped-UIT + `canSwitchMaturityUpt`), `AkunModals.jsx`, `scripts/bulk_create_users.mjs`, `schema.sql`, + 2 Edge Function (`admin-create-user`, `maturity-drive`) yang perlu **REDEPLOY terpisah**.
 - **Helper scope 3-tier:** `getScopeUptIds(user,uptList)` → `null` (Pusat/SUPERADMIN=semua) | array upt id (UIT: semua UPT di `uitId`; UPT: `[uptId]`). Sumber tunggal `dataScope` di App.jsx, `scoped*` di-oper ke tab.
+- **RLS `satpam` di-scope per-UPT (2026-08-19, mengikat):** dulu policy `satpam` = semua authenticated baca/tulis SEMUA UPT (satpam tak punya kolom upt_id, cuma `data->>'gudangId'`). Mismatch dgn `gudang` yang sudah di-scope `can_access_upt` → TL UPT-SBY ke-load satpam UPT lain & muncul palsu "Belum di-assign gudang". Fix: helper SECURITY DEFINER `satpam_gudang_upt(gudangId)` + policy `Scoped all satpam` = `can_access_upt(satpam_gudang_upt(data->>'gudangId'))` (USING+WITH CHECK). Migration `supabase/migrations/20260819_satpam_scope_per_upt.sql` — SUDAH di-apply ke DB self-host. Definisi: user lihat satpam iff boleh akses UPT gudang-nya; satpam tanpa gudangId hanya untuk Pusat/SUPERADMIN. Verified RLS: widi(TL-SBY)=19 satpam semua SBY, pusat/super=38, insert cross-UPT ditolak. **Pola sibling-master lain (tim_mutu dll) belum tentu ikut di-scope — cek per kasus.**
 - Alur bisnis **review-first**; jangan auto-approve atau buat aksi turunan tanpa persetujuan.
 - **Frontend dev role (Kevin `kevinnsetiawan`, user 2026-08-12):** boleh edit presentasi (`src/components/*`, `src/theme.js`, `src/index.css`, JSX `App.jsx`) + **push langsung ke `main` tanpa PR**. Zona terlarang: state/handler/`saveToCloud`/`src/lib/*`/`src/hooks/*`/schema/workflows/deps. Aturan lengkap di `.github/ROLE_FRONTEND_DEVELOPER.md`. **Proteksi `main` DILONGGARKAN**: required PR review + required status check `build` DIHAPUS (force_push tetap off). Jaring rollback: Vercel Instant Rollback (UI) + tag `snapshot-YYYY-MM-DD` harian (`.github/workflows/daily-snapshot.yml`) + dump DB per-jam `vps-backup`.
 
@@ -486,12 +487,11 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
+- 2026-08-19 Claude: **satpam scope per-UPT**. Bug TL-SBY lihat satpam UPT lain sbg "Belum di-assign".
+  RLS `satpam` di-scope via `satpam_gudang_upt` + `can_access_upt` (migration 20260819, applied). UI fix
+  `MasterDataTab.jsx`/`TugFormModals.jsx`: bucket "belum di-assign" hanya `!gudangId`. Verified RLS+build+unit. Belum commit.
 - 2026-08-18 Claude (shift-11): **AI bot & Telegram pulih + authz API key** (`1131c1d`,`f58a8ed`). Groq
   decommission `llama-3.3-70b-versatile`→`openai/gpt-oss-120b`; model reasoning WAJIB `reasoning_effort:"low"`
   (else content kosong→fallback). 5 body Groq (App.jsx x3, materialCadang, telegram-webhook). Kelola API
   Integrasi dibatasi **SUPERADMIN-only** (server requireAdmin + gating menu/tab App.jsx). 2 EF (telegram-webhook,
   integration-api) redeployed+verified self-host. Bot in-app nunggu Vercel. Memory: groq-model-gpt-oss-reasoning.
-- 2026-08-18 Claude (shift-10): **Stock Opname Fase 2** (`92b66d2`) mode hitung lapangan + scanner
-  (blockInput/onScanStart, continuous, zxing iOS) + recount wajib (lapangan only) + autosave localStorage
-  recovery. 2 batch tukang-senior; arsitek tangkap+fix 3 hal: recount bocor ke desktop, hapus-draft saat
-  offline, char-pertama scan. SISA verifikasi browser + Fase 3. Detail di Status sekarang atas.

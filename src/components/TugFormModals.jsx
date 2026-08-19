@@ -203,7 +203,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                 {gudangList.map(g=>{ const list=satpamList.filter(sp=>sp.gudangId===g.id); return list.length===0?null:(
                   <optgroup key={g.id} label={g.nama}>{list.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
                 ); })}
-                {(() => { const list=satpamList.filter(sp=>!sp.gudangId || !gudangList.some(g=>g.id===sp.gudangId)); return list.length===0?null:(
+                {(() => { const list=satpamList.filter(sp=>!sp.gudangId); return list.length===0?null:(
                   <optgroup label="Belum di-assign gudang">{list.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
                 ); })()}
               </select>
