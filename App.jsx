@@ -3075,7 +3075,7 @@ export default function PLNWarehouse() {
     try {
       if (supabase && import.meta.env.VITE_COHERE_API_KEY) {
         const [queryVector] = await cohereEmbed([msg], "search_query");
-        const { data: matches, error } = await supabase.rpc("match_rag_chunks", { query_embedding: queryVector, match_count: 8, p_upts: dataScope });
+        const { data: matches, error } = await supabase.rpc("match_rag_chunks", { query_embedding: queryVector, match_count: 6, p_upts: dataScope });
         if (error) throw error;
         if (matches && matches.length>0) {
           ragContextText = matches.map(m=>`- (relevansi ${(m.similarity*100).toFixed(0)}%) ${m.content}`).join("\n");
@@ -3210,9 +3210,9 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
       if (!groqKey) throw new Error("Konfigurasi layanan AI belum tersedia.");
       const messages = [
         {role:"system",content:systemPrompt},
-        ...chatHistory.filter(m=>m.role!=="ai"||chatHistory.indexOf(m)>0).slice(-8).map(m=>({
+        ...chatHistory.filter(m=>m.role!=="ai"||chatHistory.indexOf(m)>0).slice(-6).map(m=>({
           role:m.role==="user"?"user":"assistant",
-          content:m.text
+          content:(m.text||"").slice(0,700)
         })),
         {role:"user",content:msg}
       ];
@@ -3222,20 +3222,24 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
       // snapshot data yang diperkaya di systemPrompt di atas (top qty, proyeksi, dst).
       const groqBody = JSON.stringify({
         model:"openai/gpt-oss-120b",reasoning_effort:"low",
-        max_tokens:1500,
+        max_tokens:900,
         messages,
       });
-      // ponytail: free-tier TPM 8k → request bertumpuk balas 429. Retry sekali
-      // hormati header retry-after (cap 20s). Naikkan tier Groq utk hilangkan.
+      // ponytail: free-tier TPM 8k → request bertumpuk balas 429. Retry sampai 3x
+      // hormati header retry-after (cap 25s), berhenti kalau total tunggu >40s
+      // (fallback lokal tetap jadi jaring terakhir). Naikkan tier Groq utk hilangkan.
       let resp;
+      let totalWait = 0;
       for (let attempt=0;;attempt++) {
         resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
           method:"POST",
           headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
           body:groqBody,
         });
-        if (resp.status!==429 || attempt>=1) break;
-        const wait = Math.min(Number(resp.headers.get("retry-after"))||8, 20);
+        if (resp.status!==429 || attempt>=3) break;
+        const wait = Math.min(Number(resp.headers.get("retry-after"))||8, 25);
+        if (totalWait+wait > 40) break;
+        totalWait += wait;
         await new Promise(r=>setTimeout(r, wait*1000));
       }
       const data = await resp.json();

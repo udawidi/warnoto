@@ -298,7 +298,7 @@ async function buildRagContext(question: string, callerUptId: string | null): Pr
     const [queryVector] = await cohereEmbed([question], "search_query");
     const { data: matches, error } = await supabase.rpc("match_rag_chunks", {
       query_embedding: queryVector,
-      match_count: 12,
+      match_count: 8,
       p_upts: callerUptId ? [callerUptId] : null,
     });
     if (error) throw error;
@@ -323,7 +323,7 @@ async function buildWarnotoStateContext(): Promise<string> {
     if (!data) return "";
     const s = data.state_data as Record<string, unknown>;
     const since = new Date(data.updated_at as string).toLocaleString("id-ID", { timeZone:"Asia/Jakarta" });
-    return `\nDATA KONDISI GUDANG (update: ${since}):\n` + JSON.stringify(s, null, 2).slice(0, 4000);
+    return `\nDATA KONDISI GUDANG (update: ${since}):\n` + JSON.stringify(s, null, 2).slice(0, 2500);
   } catch {
     return "";
   }
@@ -430,23 +430,27 @@ Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang ter
   // yang diperkaya (topByQtyPerSatuan, proyeksiStokHabis) di nightly_sync.mjs.
   const groqBody = JSON.stringify({
     model: "openai/gpt-oss-120b", reasoning_effort: "low",
-    max_tokens: 900,
+    max_tokens: 700,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: question },
     ],
   });
   // ponytail: free-tier TPM 8k → request bertumpuk dalam 1 menit balas 429.
-  // Retry sekali hormati header retry-after (cap 20s). Naikkan tier Groq utk hilangkan.
+  // Retry sampai 3x hormati header retry-after (cap 25s), berhenti kalau total
+  // tunggu >40s. Naikkan tier Groq utk hilangkan.
   let resp: Response;
+  let totalWait = 0;
   for (let attempt = 0; ; attempt++) {
     resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
       body: groqBody,
     });
-    if (resp.status !== 429 || attempt >= 1) break;
-    const wait = Math.min(Number(resp.headers.get("retry-after")) || 8, 20);
+    if (resp.status !== 429 || attempt >= 3) break;
+    const wait = Math.min(Number(resp.headers.get("retry-after")) || 8, 25);
+    if (totalWait + wait > 40) break;
+    totalWait += wait;
     await new Promise((r) => setTimeout(r, wait * 1000));
   }
   if (!resp.ok) throw new Error(`Groq gagal (${resp.status}): ${await resp.text()}`);
