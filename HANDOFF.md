@@ -487,6 +487,15 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Riwayat shift (maksimal 2)
+- 2026-08-19 Claude: **AI streaming (in-app chatbot + Telegram)** (`07676d3`) — respons LLM non-streaming
+  jadi token-per-token biar tak nunggu jawaban penuh. `ai-proxy` cabang `stream:true` passthrough SSE
+  (path non-stream/JSON utuh); `App.jsx` helper `streamSSEDeltas` + `sendChat` via `fetchSupabase` bubble
+  terisi bertahap (fallback lokal tak timpa teks parsial); `telegram-webhook` `generateReply(onProgress)` +
+  `editTelegramMessage` progresif throttle ~1.5s/+40char. Kedua EF **deployed self-host + live**
+  (ai-proxy 401 guard, telegram-webhook 200). Build hijau, unit `sse-stream-parse` pass. Saldo OpenRouter
+  $2.73 + model berbayar `deepseek/deepseek-chat` = cukup (429 bukan biang utama). **SISA: uji e2e user di
+  production live — chatbot in-app teks bertahap + fallback; Telegram placeholder→edit progresif, jawaban
+  panjang tak kena rate-limit editMessageText.**
 - 2026-08-19 Claude: (1) **satpam+tim_mutu scope per-UPT** (`d4647a4`,`d338eaa`, 2 migration applied): RLS via
   `satpam_gudang_upt`/`can_access_upt` (satpam) & `can_access_upt(data->>'uptId')` (tim_mutu). (2) **AI longgar**
   (`13306dd`): retry Groq 429 1x→3x + max_tokens turun + trim. (3) **AI pindah OpenRouter + proxy EF** (`de60a2f`):
@@ -496,8 +505,3 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
   `deepseek/deepseek-chat` via env `OPENROUTER_MODEL`. EF deployed self-host + env `OPENROUTER_API_KEY/MODEL` di
   `.env`+compose, container functions recreated. Server verified; **SISA: e2e happy-path (login in-app 4 tanya + Telegram) oleh user.**
   **JANGAN hapus `VITE_GROQ_API_KEY` (Vercel/.env) — sengaja disimpan sbg backup (user 2026-08-19), meski client tak lagi memakainya.**
-- 2026-08-18 Claude (shift-11): **AI bot & Telegram pulih + authz API key** (`1131c1d`,`f58a8ed`). Groq
-  decommission `llama-3.3-70b-versatile`→`openai/gpt-oss-120b`; model reasoning WAJIB `reasoning_effort:"low"`
-  (else content kosong→fallback). 5 body Groq (App.jsx x3, materialCadang, telegram-webhook). Kelola API
-  Integrasi dibatasi **SUPERADMIN-only** (server requireAdmin + gating menu/tab App.jsx). 2 EF (telegram-webhook,
-  integration-api) redeployed+verified self-host. Bot in-app nunggu Vercel. Memory: groq-model-gpt-oss-reasoning.
