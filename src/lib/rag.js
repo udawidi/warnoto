@@ -134,8 +134,13 @@ export function matchNameplateAll(ocrText, katalogList, stocks) {
   const qTokens = npTokens(ocrText);
   const qNums = npNums(ocrText);
   for (const st of (stocks || [])) {
-    if (!st.fotoNameplateOcr || st.katalog == null) continue;
-    put(st.katalog, nameplateTextSim(qTokens, qNums, st.fotoNameplateOcr));
+    if (st.katalog == null) continue;
+    // (a) teks nameplate foto tersimpan (kalau ada) — dua-duanya hasil OCR.
+    if (st.fotoNameplateOcr) put(st.katalog, nameplateTextSim(qTokens, qNums, st.fotoNameplateOcr));
+    // (b) field deskripsi stok (merk/type/keterangan/jenis) — sering lebih terisi
+    //     daripada katalog; cocokkan teks OCR ke situ juga, map ke katalog stok itu.
+    const stTokens = npTokens(`${st.name || ""} ${st.merk || ""} ${st.type || ""} ${st.keteranganBarang || ""} ${st.jenisBarang || ""}`);
+    put(st.katalog, tokenSim(qTokens, stTokens));
   }
   return [...best.entries()]
     .map(([katalog, similarity]) => ({ katalog, similarity }))

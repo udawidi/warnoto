@@ -1,6 +1,6 @@
-// Pencocokan nameplate OCR -> Master Katalog. Jaga metrik Jaccard + stopword +
-// lantai token supaya overlap kata generik tidak lagi disalahartikan "mirip 100%"
-// (bug asal: field type/merk yg tak ada di katalog + denominator kecil).
+// Pencocokan nameplate OCR -> Master Katalog + field deskripsi stok. Jaga metrik
+// overlap-coefficient + stopword + lantai >=2 token + cap 0.9 supaya overlap kata
+// generik tidak lagi disalahartikan "mirip 100%".
 import test from "node:test";
 import assert from "node:assert";
 import { matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, npTokens, npNums, NAMEPLATE_MIN } from "../../src/lib/rag.js";
@@ -50,4 +50,13 @@ test("matchNameplateAll dedup: skor tertinggi antar sumber katalog & stock dipak
   const matches = res.filter(r => r.katalog === "111112222");
   assert.strictEqual(matches.length, 1, "harus dedup per katalog, bukan muncul berkali-kali");
   assert.ok(matches[0].similarity >= 0.9);
+});
+
+test("matchNameplateAll cocokkan ke field deskripsi stok (merk/type/keterangan) walau katalog tipis", () => {
+  const ocr = "SCHNEIDER EASYPACT MCCB 250 AMPERE"; // AMPERE stopword; bermakna: SCHNEIDER, EASYPACT, MCCB, 250
+  const katalogList = [{ katalog: "70001", name: "MCCB", type: "", merk: "" }]; // katalog cuma 1 token bermakna -> jalur katalog tak lolos lantai
+  const stocks = [{ katalog: "70001", merk: "Schneider", type: "EasyPact", keteranganBarang: "MCCB 250A" }];
+  const res = matchNameplateAll(ocr, katalogList, stocks);
+  const m = res.find(r => r.katalog === "70001");
+  assert.ok(m && m.similarity >= NAMEPLATE_MIN, `match dari field stok diharapkan >= ${NAMEPLATE_MIN}, got ${m?.similarity}`);
 });
