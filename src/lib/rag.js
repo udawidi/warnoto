@@ -29,11 +29,14 @@ function tokenSim(aTokens, bTokens) {
   let inter = 0;
   for (const t of aTokens) if (bTokens.has(t)) inter++;
   if (inter < 2) return 0;
-  const union = aTokens.size + bTokens.size - inter;
-  return Math.min(inter / union, 0.9);
+  // Overlap coefficient (inter / himpunan terkecil), bukan Jaccard: teks OCR
+  // nameplate panjang & berisik sementara teks katalog ringkas — Jaccard (inter/union)
+  // menghukum ketimpangan ukuran itu & bikin match asli kesaring. Aman dari "100%
+  // palsu" karena tetap butuh >=2 token BERMAKNA (stopword sudah dibuang) & di-cap 0.9.
+  return Math.min(inter / Math.min(aTokens.size, bTokens.size), 0.9);
 }
 
-export const NAMEPLATE_MIN = 0.5;
+export const NAMEPLATE_MIN = 0.4;
 
 // Embedding pakai Cohere (embed-multilingual-v3.0, 1024 dim) — model
 // terpisah dari Groq (dipakai untuk chat), karena Groq tidak punya endpoint
@@ -96,9 +99,9 @@ export function matchNameplateToKatalog(ocrText, katalogList) {
     // 1. Nomor katalog tercetak verbatim (>=5 digit) — sinyal paling kuat.
     const cat = String(kat.katalog || "").replace(/[^0-9]/g, "");
     if (cat.length >= 5 && ocrCompact.includes(cat)) score = Math.max(score, 0.95);
-    // 2. Tumpang-tindih kata dari nama/kategori (field asli katalog: name, category —
-    //    bukan type/merk, katalog tidak punya field itu).
-    const katTokens = npTokens(`${kat.name || ""} ${kat.category || ""}`);
+    // 2. Tumpang-tindih kata dari deskripsi katalog. Field asli katalog: name, type,
+    //    merk, jenisBarang (filter Boolean lewat template + npTokens buang yang kosong).
+    const katTokens = npTokens(`${kat.name || ""} ${kat.type || ""} ${kat.merk || ""} ${kat.jenisBarang || ""}`);
     score = Math.max(score, tokenSim(ocrTokens, katTokens));
     if (score >= NAMEPLATE_MIN) results.push({ katalog: kat.katalog, similarity: score });
   }
