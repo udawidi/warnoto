@@ -9,7 +9,7 @@
 //   1. Chat @BotFather di Telegram -> /newbot -> dapat TELEGRAM_BOT_TOKEN
 //   2. npx supabase link --project-ref tadxodrzoquugnsyejld
 //   3. npx supabase secrets set TELEGRAM_BOT_TOKEN=<dari BotFather> \
-//        GROQ_API_KEY=<...> COHERE_API_KEY=<...>
+//        OPENROUTER_API_KEY=<...> COHERE_API_KEY=<...>
 //   4. npx supabase functions deploy telegram-webhook --no-verify-jwt
 //   5. curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://tadxodrzoquugnsyejld.supabase.co/functions/v1/telegram-webhook&secret_token=<TELEGRAM_WEBHOOK_SECRET>"
 //      (secret_token WAJIB sama persis dengan env TELEGRAM_WEBHOOK_SECRET di
@@ -19,7 +19,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const TELEGRAM_BOT_TOKEN     = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
-const GROQ_API_KEY           = Deno.env.get("GROQ_API_KEY") ?? "";
+const OPENROUTER_API_KEY     = Deno.env.get("OPENROUTER_API_KEY") ?? "";
+const OPENROUTER_MODEL       = Deno.env.get("OPENROUTER_MODEL") || "deepseek/deepseek-chat";
 const COHERE_API_KEY         = Deno.env.get("COHERE_API_KEY") ?? "";
 const SUPABASE_URL           = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -428,8 +429,8 @@ Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang ter
   // Single-call ke Groq (bukan tool-loop): tool-use bikin 3-4 panggilan/pertanyaan
   // yang menjebol limit free tier 12k token/menit. Akurasi dijaga lewat stateContext
   // yang diperkaya (topByQtyPerSatuan, proyeksiStokHabis) di nightly_sync.mjs.
-  const groqBody = JSON.stringify({
-    model: "openai/gpt-oss-120b", reasoning_effort: "low",
+  const orBody = JSON.stringify({
+    model: OPENROUTER_MODEL,
     max_tokens: 700,
     messages: [
       { role: "system", content: systemPrompt },
@@ -438,14 +439,19 @@ Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang ter
   });
   // ponytail: free-tier TPM 8k → request bertumpuk dalam 1 menit balas 429.
   // Retry sampai 3x hormati header retry-after (cap 25s), berhenti kalau total
-  // tunggu >40s. Naikkan tier Groq utk hilangkan.
+  // tunggu >40s. Naikkan tier OpenRouter utk hilangkan.
   let resp: Response;
   let totalWait = 0;
   for (let attempt = 0; ; attempt++) {
-    resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
-      body: groqBody,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
+        "HTTP-Referer": "https://warnoto.com",
+        "X-Title": "WARNOTO",
+      },
+      body: orBody,
     });
     if (resp.status !== 429 || attempt >= 3) break;
     const wait = Math.min(Number(resp.headers.get("retry-after")) || 8, 25);
@@ -453,7 +459,7 @@ Kalau ditanya jumlah/qty/harga/nilai material, cek dulu "Data kondisi gudang ter
     totalWait += wait;
     await new Promise((r) => setTimeout(r, wait * 1000));
   }
-  if (!resp.ok) throw new Error(`Groq gagal (${resp.status}): ${await resp.text()}`);
+  if (!resp.ok) throw new Error(`OpenRouter gagal (${resp.status}): ${await resp.text()}`);
   const data = await resp.json();
   return {
     text: data.choices?.[0]?.message?.content?.trim() || "Maaf, terjadi kendala saat memproses pertanyaan Anda.",

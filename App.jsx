@@ -2372,20 +2372,16 @@ export default function PLNWarehouse() {
     onLoading(true);
     try {
       const pdfText = await extractPdfText(pdfBase64);
-      const groqKey = (import.meta.env.VITE_GROQ_API_KEY || "").trim();
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${groqKey}` },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-120b",reasoning_effort:"low",
+      const { data, error } = await supabase.functions.invoke("ai-proxy", {
+        body: {
           max_tokens: 1000,
           messages: [
             { role: "system", content: `Kamu adalah asisten ekstraksi data dari Surat Rencana Pengiriman Material (delivery plan / surat jalan) vendor PLN. Dokumen ini biasanya mencantumkan nomor kontrak sebagai referensi dan tanggal rencana kirim/tiba barang. Ekstrak informasi dan kembalikan HANYA JSON valid tanpa teks lain. Format: {"noKontrak":"...","tanggalKontrak":"YYYY-MM-DD","supplier":"...","tanggalSerahTerima":"YYYY-MM-DD","items":[{"namaBarang":"...","jumlah":0,"satuan":"..."}]}. noKontrak diambil dari nomor kontrak yang direferensikan di surat. tanggalSerahTerima diambil dari tanggal rencana kirim/tiba barang yang tercantum di surat. Jika field tidak ditemukan gunakan string kosong atau 0.` },
             { role: "user", content: `Ekstrak data dari Surat Rencana Pengiriman Material vendor ini. Kembalikan JSON saja.\n\n${pdfText}` }
           ]
-        })
+        }
       });
-      const data = await resp.json();
+      if (error) throw error;
       const text = data.choices?.[0]?.message?.content || "{}";
       const clean = text.replace(/```json|```/g,"").trim();
       const parsed = JSON.parse(clean);
@@ -3206,8 +3202,6 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
     }
 
     try {
-      const groqKey = (import.meta.env.VITE_GROQ_API_KEY || "").trim();
-      if (!groqKey) throw new Error("Konfigurasi layanan AI belum tersedia.");
       const messages = [
         {role:"system",content:systemPrompt},
         ...chatHistory.filter(m=>m.role!=="ai"||chatHistory.indexOf(m)>0).slice(-6).map(m=>({
@@ -3217,33 +3211,13 @@ Jawab pertanyaan user berdasarkan data di atas (gabungkan snapshot dan hasil pen
         {role:"user",content:msg}
       ];
 
-      // Single-call ke Groq (bukan tool-loop): tool-use bikin 3-4 panggilan/pertanyaan
-      // yang menjebol limit free tier 12k token/menit. Akurasi tetap dijaga lewat
-      // snapshot data yang diperkaya di systemPrompt di atas (top qty, proyeksi, dst).
-      const groqBody = JSON.stringify({
-        model:"openai/gpt-oss-120b",reasoning_effort:"low",
-        max_tokens:900,
-        messages,
+      // Single-call (bukan tool-loop): tool-use bikin 3-4 panggilan/pertanyaan.
+      // Akurasi tetap dijaga lewat snapshot data yang diperkaya di systemPrompt
+      // di atas (top qty, proyeksi, dst). Retry 429 sudah ditangani di ai-proxy.
+      const { data, error } = await supabase.functions.invoke("ai-proxy", {
+        body: { messages, max_tokens: 900 },
       });
-      // ponytail: free-tier TPM 8k → request bertumpuk balas 429. Retry sampai 3x
-      // hormati header retry-after (cap 25s), berhenti kalau total tunggu >40s
-      // (fallback lokal tetap jadi jaring terakhir). Naikkan tier Groq utk hilangkan.
-      let resp;
-      let totalWait = 0;
-      for (let attempt=0;;attempt++) {
-        resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
-          method:"POST",
-          headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
-          body:groqBody,
-        });
-        if (resp.status!==429 || attempt>=3) break;
-        const wait = Math.min(Number(resp.headers.get("retry-after"))||8, 25);
-        if (totalWait+wait > 40) break;
-        totalWait += wait;
-        await new Promise(r=>setTimeout(r, wait*1000));
-      }
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error?.message || `Layanan AI merespons HTTP ${resp.status}.`);
+      if (error) throw error;
       const reply = data.choices?.[0]?.message?.content;
       if (!reply) throw new Error("Layanan AI tidak mengirimkan jawaban.");
       setChatHistory(h=>[...h,{role:"ai",text:reply}]);
@@ -3364,15 +3338,10 @@ PENTING FORMAT: jawab HANYA teks biasa bahasa Indonesia. DILARANG keluarkan JSON
 Sumber: Data TUG WARNOTO UPT Surabaya`;
 
     try {
-      const groqKey = (import.meta.env.VITE_GROQ_API_KEY || "").trim();
-      if (!groqKey) throw new Error("Konfigurasi layanan AI belum tersedia.");
-      const resp = await fetch("https://api.groq.com/openai/v1/chat/completions",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer ${groqKey}`},
-        body:JSON.stringify({model:"openai/gpt-oss-120b",reasoning_effort:"low",max_tokens:1200,messages:[{role:"user",content:prompt}]})
+      const { data, error } = await supabase.functions.invoke("ai-proxy", {
+        body: { messages: [{ role: "user", content: prompt }], max_tokens: 1200 },
       });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error?.message || `Layanan AI merespons HTTP ${resp.status}.`);
+      if (error) throw error;
       let result = (data.choices?.[0]?.message?.content||"Tidak ada hasil.").trim();
       // gpt-oss kadang balas JSON array/tabel walau diminta teks biasa — ratakan.
       try {

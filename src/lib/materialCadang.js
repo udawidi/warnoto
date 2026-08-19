@@ -1,8 +1,9 @@
-// Perhitungan Material Cadang (Poisson service-level, Health Index, AI insight Groq) — dipindah dari App.jsx Fase 5h.
+// Perhitungan Material Cadang (Poisson service-level, Health Index, AI insight via ai-proxy) — dipindah dari App.jsx Fase 5h.
 import { normalizeKatalog } from "./sap.js";
 import { parseIndoNumber } from "./utils.js";
 import { C } from "../theme.js";
 import * as XLSX from "xlsx";
+import { supabase } from "../supabaseClient.js";
 
 // Helper: hitung Poisson CDF P(X <= s) untuk lambda tertentu
 function poissonCDF(lambda, s) {
@@ -324,10 +325,10 @@ export async function generateMaterialCadangAiInsights(run, results, stocks, kat
   const fallback = {
     id: "MCAI-" + Date.now(),
     runId: run.id,
-    status: import.meta.env.VITE_GROQ_API_KEY ? "UNAVAILABLE" : "NO_API_KEY",
-    model: "openai/gpt-oss-120b",
+    status: "UNAVAILABLE",
+    model: "deepseek/deepseek-chat",
     createdAt: Date.now(),
-    executiveSummary: (import.meta.env.VITE_GROQ_API_KEY ? "AI insight belum tersedia (Groq gagal/kosong). " : "AI insight belum tersedia karena VITE_GROQ_API_KEY belum diisi. ") + `Ringkasan lokal: total gap ${context.totalGapQty} unit senilai Rp${(context.totalGapValue||0).toLocaleString("id-ID")} pada ${context.totalItems} material. Cek tabel Health Index untuk detail.`,
+    executiveSummary: `AI insight belum tersedia (layanan AI gagal/kosong). Ringkasan lokal: total gap ${context.totalGapQty} unit senilai Rp${(context.totalGapValue||0).toLocaleString("id-ID")} pada ${context.totalItems} material. Cek tabel Health Index untuk detail.`,
     topRisks: context.topRisks.slice(0,5).map(r => `${r.nama} (${r.noKatalog}) - ${r.healthStatus}, HI ${r.healthIndex}`),
     dataQualityFindings: ["Gunakan tabel Health Index untuk melihat flag kualitas data per material."],
     recommendedActions: ["Review material Critical/High Risk dan ajukan apply minQty melalui approval Asman."],
@@ -345,16 +346,12 @@ export async function generateMaterialCadangAiInsights(run, results, stocks, kat
     })),
     methodology: MATERIAL_CADANG_METHODOLOGY_TEXT,
   };
-  if (!import.meta.env.VITE_GROQ_API_KEY) return fallback;
   try {
-    const resp = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${import.meta.env.VITE_GROQ_API_KEY}` },
-      body:JSON.stringify({
-        model:"openai/gpt-oss-120b",reasoning_effort:"low",
-        temperature:0.2,
-        max_tokens:1800,
-        messages:[
+    const { data, error } = await supabase.functions.invoke("ai-proxy", {
+      body: {
+        temperature: 0.2,
+        max_tokens: 1800,
+        messages: [
           { role:"system", content:`Kamu adalah AI analis manajemen Material Cadang WARNOTO PLN. Jawab hanya JSON valid. Jangan mengubah angka resmi (pakai persis angka dari konteks). Beri insight manajemen detail, actionable, audit-friendly, dan rekomendasi read-only. Bahasa Indonesia, jelas untuk pembaca non-teknis.` },
           { role:"user", content:`Buat AI insight Health Index Material Cadang dari konteks berikut, mencakup 4 aspek: (1) diagnosis per-material, (2) ringkasan eksekutif actionable, (3) prioritas pengadaan dengan estimasi nilai, (4) penjelasan metodologi bahasa awam. Output JSON dengan key persis berikut:
 - executiveSummary (string): total gap qty & nilai, cluster/kelas ABC paling kritis, 1-2 rekomendasi utama.
@@ -364,10 +361,9 @@ export async function generateMaterialCadangAiInsights(run, results, stocks, kat
 - dataQualityFindings (array of string), recommendedActions (array of string), validationNeeded (array of noKatalog string), topRisks (array of string ringkas).
 Konteks:\n${JSON.stringify(context).slice(0,14000)}` }
         ]
-      })
+      }
     });
-    if (!resp.ok) throw new Error(`Groq ${resp.status}`);
-    const data = await resp.json();
+    if (error) throw error;
     const text = data.choices?.[0]?.message?.content || "";
     const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || text;
     const parsed = JSON.parse(jsonText);
