@@ -158,4 +158,4 @@ const test = base.extend({
   },
 });
 
-module.exports = { test, expect };
+module.exports = { test, expect, E2E_PROFILE, CLOUD_FIXTURES };

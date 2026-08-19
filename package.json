@@ -33,6 +33,7 @@
     "test:e2e": "playwright test",
     "test:responsive": "playwright test tests/e2e/responsive.spec.js",
     "test:responsive:update": "playwright test tests/e2e/responsive.spec.js --update-snapshots",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "test:csp": "vite build && node tests/csp/run-csp-e2e.mjs"
   }
 }
