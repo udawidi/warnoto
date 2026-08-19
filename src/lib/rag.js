@@ -2,6 +2,7 @@
 // ringkasan transaksi utk chunk RAG. Dipindah dari App.jsx (refactor Fase 3f).
 import { fmtDateOnly } from "./utils.js";
 import { compressImage } from "./supabaseSync.js";
+import { supabase } from "../supabaseClient.js";
 
 // --- Util normalisasi teks nameplate (dipakai bersama semua pencocokan teks) ---
 export const npNorm    = s => (s || "").toUpperCase().replace(/[^A-Z0-9]+/g, " ").replace(/\s+/g, " ").trim();
@@ -18,15 +19,10 @@ export const NAMEPLATE_MIN = 0.45;
 // schema.sql section 9), dicari via fungsi match_rag_chunks (cosine
 // similarity) saat user bertanya ke AI Agent.
 export async function cohereEmbed(texts, inputType) {
-  const key = import.meta.env.VITE_COHERE_API_KEY;
-  if (!key) throw new Error("VITE_COHERE_API_KEY belum diisi di .env");
-  const resp = await fetch("https://api.cohere.com/v1/embed", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-    body: JSON.stringify({ model: "embed-multilingual-v3.0", texts, input_type: inputType }),
+  const { data, error } = await supabase.functions.invoke("services-proxy", {
+    body: { service: "cohere-embed", model: "embed-multilingual-v3.0", texts, input_type: inputType },
   });
-  if (!resp.ok) throw new Error(`Cohere embed gagal (${resp.status}): ${await resp.text()}`);
-  const data = await resp.json();
+  if (error) throw error;
   return data.embeddings; // array of vectors, sejajar urutan dengan `texts`
 }
 
@@ -34,18 +30,13 @@ export async function cohereEmbed(texts, inputType) {
 // (1024), tapi input_type=image + param images (1 data-URL base64 per panggilan).
 // Dipakai saat user cari barang dengan foto → dicocokkan ke stock_photo_embeddings.
 export async function cohereEmbedImage(dataUri) {
-  const key = import.meta.env.VITE_COHERE_API_KEY;
-  if (!key) throw new Error("VITE_COHERE_API_KEY belum diisi di .env");
   // Foto kamera full-res (base64 3-7 MB) bikin upload embed lambat. Kompres sedang
   // dulu — 1280px cukup untuk kemiripan bentuk, tidak berlebihan menurunkan kualitas.
   const compact = await compressImage(dataUri, { maxDim: 1280, maxBytes: 700_000 });
-  const resp = await fetch("https://api.cohere.com/v1/embed", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` },
-    body: JSON.stringify({ model: "embed-multilingual-v3.0", input_type: "image", images: [compact] }),
+  const { data, error } = await supabase.functions.invoke("services-proxy", {
+    body: { service: "cohere-embed", model: "embed-multilingual-v3.0", input_type: "image", images: [compact] },
   });
-  if (!resp.ok) throw new Error(`Cohere image embed gagal (${resp.status}): ${await resp.text()}`);
-  const data = await resp.json();
+  if (error) throw error;
   const v = data.embeddings?.[0] || data.embeddings?.float?.[0];
   if (!v) throw new Error("Cohere tidak mengembalikan embedding gambar");
   return v;
@@ -54,23 +45,13 @@ export async function cohereEmbedImage(dataUri) {
 // OCR nameplate barang (mode pencarian foto "berdasarkan nameplate") — baca teks
 // yang tercetak di foto lewat OCR.space (OCREngine 2, lebih akurat utk teks cetak
 // & angka). Foto dikompres dulu ke <1MB karena itu batas free tier OCR.space.
-// Mengembalikan teks mentah (bisa multi-baris). Key di .env: VITE_OCRSPACE_API_KEY.
+// Mengembalikan teks mentah (bisa multi-baris). Key OCR.space server-side (EF services-proxy).
 export async function ocrSpaceOCR(dataUri) {
-  const key = (import.meta.env.VITE_OCRSPACE_API_KEY || "").trim();
-  if (!key) throw new Error("VITE_OCRSPACE_API_KEY belum diisi di .env");
   const compact = await compressImage(dataUri, { maxBytes: 900_000, maxDim: 1600 });
-  const form = new FormData();
-  form.append("base64Image", compact);
-  form.append("language", "eng");
-  form.append("OCREngine", "2");   // engine 2: lebih baik utk teks cetak/angka nameplate
-  form.append("scale", "true");    // upscale gambar kecil agar teks lebih terbaca
-  const resp = await fetch("https://api.ocr.space/parse/image", {
-    method: "POST",
-    headers: { apikey: key },      // JANGAN set Content-Type — biar boundary FormData otomatis
-    body: form,
+  const { data, error } = await supabase.functions.invoke("services-proxy", {
+    body: { service: "ocr", base64Image: compact },
   });
-  if (!resp.ok) throw new Error(`OCR.space gagal (${resp.status}): ${await resp.text()}`);
-  const data = await resp.json();
+  if (error) throw error;
   if (data.IsErroredOnProcessing) {
     const msg = Array.isArray(data.ErrorMessage) ? data.ErrorMessage.join("; ") : (data.ErrorMessage || "OCR.space gagal memproses gambar");
     throw new Error(msg);

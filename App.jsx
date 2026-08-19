@@ -2159,7 +2159,7 @@ export default function PLNWarehouse() {
     showToast(`📷 ${field==="fotoNameplate"?"Foto Nameplate":"Foto Keseluruhan"} diperbarui!`);
     // Nameplate: OCR teksnya sekali & cache di fotoNameplateOcr, supaya foto ini
     // ikut jadi pembanding di pencarian foto mode Nameplate tanpa OCR ulang tiap cari.
-    if (field==="fotoNameplate" && img && import.meta.env.VITE_OCRSPACE_API_KEY) {
+    if (field==="fotoNameplate" && img) {
       try {
         const text = await ocrSpaceOCR(img);
         ns = ns.map(s=>s.id===id?{...s,fotoNameplateOcr:text}:s);
@@ -2212,7 +2212,6 @@ export default function PLNWarehouse() {
   // data stok) & hanya kalau key OCR terpasang. Sepenuhnya latar belakang/senyap.
   useEffect(() => {
     if (nameplateAutoOcrRef.current) return;
-    if (!import.meta.env.VITE_OCRSPACE_API_KEY) return;
     if (!hasRole(currentUser, "ADMIN","TL")) return;
     if (!stocks.some(s => s.fotoNameplate && s.fotoNameplateOcr == null)) return;
     nameplateAutoOcrRef.current = true;
@@ -3092,7 +3091,7 @@ export default function PLNWarehouse() {
     // menerima p_upts (null=nasional, array=UPT/UIT) jadi RAG jalan untuk semua akun.
     let ragContextText = "Belum ada hasil pencarian (Knowledge Base RAG belum disinkron atau belum terkonfigurasi).";
     try {
-      if (supabase && import.meta.env.VITE_COHERE_API_KEY) {
+      if (supabase) {
         const [queryVector] = await cohereEmbed([msg], "search_query");
         const { data: matches, error } = await supabase.rpc("match_rag_chunks", { query_embedding: queryVector, match_count: 6, p_upts: dataScope });
         if (error) throw error;
