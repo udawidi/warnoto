@@ -7,7 +7,7 @@ import { ROLES, hasRole } from "../lib/roles.js";
 import { statusMaterialBadgeStyle } from "../lib/sap.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
 
-export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview }) {
+export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3 }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Form, setTug7Form] = useState({});
@@ -201,6 +201,10 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                 rejectingId===t.id
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG7_MgrLogistik(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
                   : <><button className="approval-btn--approve" onClick={()=>approveTUG7_MgrLogistik(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-7 → Draft TUG-8</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
+              )}
+              {/* TUG-3 PENDING_TL — TL boleh hapus permanen langsung dari Approval (beda dari Tolak/REJECTED) */}
+              {t.docType==="TUG3" && t.stage==="PENDING_TL" && hasRole(currentUser, "TL") && (
+                <button className="approval-btn--danger" onClick={()=>{ if (window.confirm(`Hapus ${docNoOf(t)}? Tindakan ini permanen.`)) deleteDraftTug3?.(t); }}><span className="approval-btn__ic" aria-hidden="true">🗑️</span>Hapus</button>
               )}
               {/* TUG-5 dari ULTG — approval Manager ULTG */}
               {t.docType==="TUG5" && t.sourceType==="ULTG" && t.stage==="PENDING_MGR_ULTG" && hasRole(currentUser, "MGR_ULTG") && (

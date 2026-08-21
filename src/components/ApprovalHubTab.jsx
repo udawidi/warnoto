@@ -30,6 +30,7 @@ export function ApprovalHubTab({
   approvalOpnamePage, setApprovalOpnamePage, approveOpname_Asman, approveOpname_Manager, rejectOpname,
   stockCountList, approvalStockCountPage, setApprovalStockCountPage, approveStockCountItem, rejectStockCountItem,
   txns, approvalHistoryList, approvalHistoryPage, setApprovalHistoryPage,
+  deleteDraftTug3,
 }) {
   // UIT dulu dianggap "global" (nasional) — sekarang dibatasi ke semua UPT di UIT-nya lewat
   // getScopeUptIds/inScopeUpt (sumber tunggal 3-tier, lihat src/lib/roles.js).
@@ -123,6 +124,7 @@ export function ApprovalHubTab({
         stockCountPendingCount={hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0}
         approvalTypeFilter={approvalTypeFilter}
         approvalPageSize={approvalPageSize}
+        deleteDraftTug3={deleteDraftTug3}
       />
 
       {/* Perpindahan gudang oleh ADMIN wajib direview TL. */}

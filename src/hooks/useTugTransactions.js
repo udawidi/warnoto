@@ -547,12 +547,17 @@ export function useTugTransactions({
     await commitNewTxn("TUG3", { ...txn, stockItems: validItems }, { targetStage: "PENDING_TL", replaceDraftId: txn.id });
   }
   async function deleteDraftTug3(txn) {
-    if (txn.createdBy !== currentUser.id) { showToast("Hanya pembuat draft yang bisa menghapusnya.","error"); return; }
+    // Pembuat boleh hapus draftnya sendiri; TL juga boleh hapus TUG-3 yang sedang
+    // menunggu approvalnya (PENDING_TL) langsung dari menu Approval (keputusan user).
+    const isOwner = txn.createdBy === currentUser.id;
+    const isTLPending = hasRole(currentUser, "TL") && txn.stage === "PENDING_TL";
+    if (!isOwner && !isTLPending) { showToast("Tidak diizinkan menghapus transaksi ini.","error"); return; }
     const newTxns = txns.filter(t => t.id !== txn.id);
     setTxns(newTxns);
     await saveToCloud({ txns: newTxns });
     await deleteTug3Transaction(txn.id); // no-op aman kalau txn ini belum sempat ke-upsert ke DB
-    showToast("🗑️ Draft TUG-3 dihapus.");
+    logAudit(currentUser, "DELETE", "txns", txn.docNumbers?.tug3 || txn.id);
+    showToast("🗑️ TUG-3 dihapus.");
   }
 
   return {

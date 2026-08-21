@@ -13,7 +13,7 @@ export function PhotoSlot({ label, value, onChange, onRemove, handleImg, sty, C,
         <label tabIndex={0} style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer",minHeight:44,touchAction:"manipulation",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
           onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); e.currentTarget.querySelector("input[type=file]")?.click(); } }}>
           <Camera size={15} weight="bold" aria-hidden="true" /> {value?"Ganti Foto":"Ambil Foto"}
-          <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={e=>handleImg(e, onChange)}/>
+          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleImg(e, onChange)}/>
         </label>
         {value && <button type="button" style={{...sty.btn("danger","sm"),minHeight:44,touchAction:"manipulation"}} aria-label={`Hapus ${label}`} onClick={onRemove}><Trash size={15} weight="bold" aria-hidden="true" /></button>}
       </div>

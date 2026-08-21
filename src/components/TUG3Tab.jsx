@@ -3,7 +3,6 @@ import { useState } from "react";
 import { UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
-import { PhotoSlot } from "./PhotoSlot.jsx";
 
 export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview }) {
   const [rejectingId, setRejectingId] = useState(null);
@@ -17,7 +16,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
     const map = {
       DRAFT: { label:"Draft", bg:"#f3f4f6", fg:"#4b5563" },
       PENDING_TL: { label:"Menunggu TL Logistik", bg:"#fef3c7", fg:"#92400e" },
-      MENUNGGU_TUG4: { label:"Isi TUG-4 & Lampiran", bg:"#dbeafe", fg:"#1e40af" },
+      MENUNGGU_TUG4: { label:"Isi Form TUG-4", bg:"#dbeafe", fg:"#1e40af" },
       PENDING_ASMAN: { label:"Menunggu Asman Konstruksi", bg:"#fef3c7", fg:"#92400e" },
       APPROVED: { label:"APPROVED — Stok Bertambah", bg:"#dcfce7", fg:"#166534" },
       REJECTED: { label:"DITOLAK", bg:"#fee2e2", fg:"#991b1b" },
@@ -26,7 +25,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
     return <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
   }
 
-  function openTug4Modal(txn) { setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", fotoKendaraan:null, fotoSimKtp:null, fotoSuratJalanImg:null, fotoKontrak:null }); setTug4Modal(txn); }
+  function openTug4Modal(txn) { setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan" }); setTug4Modal(txn); }
 
   // Satu baris progres approval (TL/Asman) menggantikan 3 baris riwayat lama.
   function approvalLine(t, tlUser, asmanUser) {
@@ -106,7 +105,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 )}
                 {/* Stage 2: Admin/TL isi TUG-4 + lampiran final sekaligus */}
                 {t.stage==="MENUNGGU_TUG4" && hasRole(currentUser, "ADMIN","TL") && (
-                  <button style={sty.btn("primary","sm")} onClick={()=>openTug4Modal(t)}>📋 Isi TUG-4 & Lampiran</button>
+                  <button style={sty.btn("primary","sm")} onClick={()=>openTug4Modal(t)}>📋 Isi Form TUG-4</button>
                 )}
                 {/* Stage 3: Asman approves final */}
                 {t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
@@ -133,7 +132,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
       {tug4Modal && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:500,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>TUG-4 & Lampiran Final</h3>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Isi Form TUG-4 (Pemeriksaan)</h3>
             <p style={{fontSize:12,color:C.muted,marginBottom:16}}>untuk {tug4Modal.docNumbers.tug3}</p>
             <div style={{marginBottom:12}}>
               <label style={sty.label}>Paket Tim Mutu</label>
@@ -158,15 +157,9 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               <label style={sty.label}>Hasil Pemeriksaan</label>
               <input style={sty.input} value={tug4Form.hasilPemeriksaan||""} onChange={e=>setTug4Form(f=>({...f,hasilPemeriksaan:e.target.value}))} placeholder="Barang Diterima Sesuai Pengadaan"/>
             </div>
-            <div className="tug3-attachment-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-              <PhotoSlot label="Foto Kendaraan" value={tug4Form.fotoKendaraan} onChange={img=>setTug4Form(f=>({...f,fotoKendaraan:img}))} onRemove={()=>setTug4Form(f=>({...f,fotoKendaraan:null}))} handleImg={handleImg} sty={sty} C={C}/>
-              <PhotoSlot label="SIM / KTP" value={tug4Form.fotoSimKtp} onChange={img=>setTug4Form(f=>({...f,fotoSimKtp:img}))} onRemove={()=>setTug4Form(f=>({...f,fotoSimKtp:null}))} handleImg={handleImg} sty={sty} C={C}/>
-              <PhotoSlot label="Surat Jalan" value={tug4Form.fotoSuratJalanImg} onChange={img=>setTug4Form(f=>({...f,fotoSuratJalanImg:img}))} onRemove={()=>setTug4Form(f=>({...f,fotoSuratJalanImg:null}))} handleImg={handleImg} sty={sty} C={C}/>
-              <PhotoSlot label="Foto Kontrak" value={tug4Form.fotoKontrak} onChange={img=>setTug4Form(f=>({...f,fotoKontrak:img}))} onRemove={()=>setTug4Form(f=>({...f,fotoKontrak:null}))} handleImg={handleImg} sty={sty} C={C}/>
-            </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{submitTUG4DanLampiran(tug4Modal, tug4Form); setTug4Modal(null);}}>📋 Submit TUG-4 & Lampiran</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{submitTUG4DanLampiran(tug4Modal, tug4Form); setTug4Modal(null);}}>📋 Submit TUG-4</button>
             </div>
           </div>
         </div>

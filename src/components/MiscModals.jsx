@@ -126,7 +126,7 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
         <label style={{...sty.btn("ghost"),display:"flex",minHeight:44,alignItems:"center",justifyContent:"center",gap:6,textAlign:"center",cursor:"pointer",marginBottom:10}}>
           {photoSearchImg ? <ArrowsClockwise size={17} weight="bold" aria-hidden="true" /> : <Camera size={17} weight="bold" aria-hidden="true" />}
           {photoSearchImg ? "Ganti Foto" : "Ambil / Pilih Foto"}
-          <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setPhotoSearchImg(img))} style={{display:"none"}}/>
+          <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setPhotoSearchImg(img))} style={{display:"none"}}/>
         </label>
         {photoSearchImg && <img src={photoSearchImg} alt="query" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius: 10,marginBottom:12,border:`1px solid ${C.border}`,background:"#f8fafc"}}/>}
         <div style={{display:"flex",gap:8}}>
