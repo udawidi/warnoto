@@ -69,13 +69,13 @@ export const DEFAULT_PERMS = {
   TL: { ...FULL_MENUS, "menu.integrasiApi": true, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true, "aksi.buatInspeksiMaterial": true, "aksi.migrasiData": true, "aksi.kelolaApiIntegrasi": true },
   ASMAN: { ...FULL_MENUS, "aksi.migrasiData": true },
   MANAGER: { ...FULL_MENUS, "aksi.migrasiData": true },
-  ADMIN_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },
+  ADMIN_UIT: { ...FULL_MENUS },
   // Peninjau UIT & Pusat: lihat semua menu, TANPA aksi.* (peninjau, bukan pembuat
   // data). Entri ini WAJIB ada — can() mengembalikan false untuk role yang tidak
   // terdaftar, jadi tanpa ini akunnya membuka aplikasi tanpa satu menu pun.
-  ASMAN_LOG_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },
-  MGR_LOGISTIK_UIT: { ...FULL_MENUS, "aksi.migrasiData": true },
-  ADMIN_LOG_PUSAT: { ...FULL_MENUS, "aksi.migrasiData": true },
+  ASMAN_LOG_UIT: { ...FULL_MENUS },
+  MGR_LOGISTIK_UIT: { ...FULL_MENUS },
+  ADMIN_LOG_PUSAT: { ...FULL_MENUS },
   // VIEWER: cabang normal TANPA menu approval.
   VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "inspeksiMaterial", "ai"),
   PENGADAAN: menus("dashboard", "rencana"),

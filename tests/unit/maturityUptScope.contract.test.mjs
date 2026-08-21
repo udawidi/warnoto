@@ -7,6 +7,11 @@ import { readFile } from "node:fs/promises";
 // materialInspectionMultiUpt.contract.test.mjs.
 const syncSource = await readFile(new URL("../../src/lib/maturitySync.js", import.meta.url), "utf8");
 const appSource = await readFile(new URL("../../App.jsx", import.meta.url), "utf8");
+// Logika tulis/guard/scope Maturity dipindah dari App.jsx ke hook ini (refactor
+// Tranche-1/4). Kontrak dibaca dari lokasi kanonik barunya.
+const hookSource = await readFile(new URL("../../src/hooks/useMaturity.jsx", import.meta.url), "utf8");
+// Deteksi form scoped-UIT (array literal role) ikut pindah ke hook Akun.
+const accountHookSource = await readFile(new URL("../../src/hooks/useAccountAdmin.js", import.meta.url), "utf8");
 const dashSource = await readFile(new URL("../../src/components/MaturityDashboardTab.jsx", import.meta.url), "utf8");
 const editorSource = await readFile(new URL("../../src/components/MaturityAuditSystem.jsx", import.meta.url), "utf8");
 const rolesSource = await readFile(new URL("../../src/lib/roles.js", import.meta.url), "utf8");
@@ -40,7 +45,7 @@ test("delete maturity yang ditolak RLS tidak dianggap sukses", () => {
 });
 
 test("tulis maturity diblokir di mode demo dan digate per jenjang", () => {
-  const guard = appSource.slice(appSource.indexOf("function guardMaturityWrite("), appSource.indexOf("function saveMaturityAssessment("));
+  const guard = hookSource.slice(hookSource.indexOf("function guardMaturityWrite("), hookSource.indexOf("async function saveMaturityAssessment("));
   // Demo paling depan, sebelum pengecekan role apa pun.
   assert.ok(guard.indexOf("isDemoMode()") < guard.indexOf("REVIEW_UIT"));
   // hasRole() dipakai di kedua jenjang supaya SUPERADMIN ikut lolos — sama seperti
@@ -50,13 +55,13 @@ test("tulis maturity diblokir di mode demo dan digate per jenjang", () => {
   assert.match(guard, /status === "REVIEW_PUSAT" \|\| status === "FINAL"[\s\S]*?hasRole\(currentUser, "ADMIN_LOG_PUSAT"\)/);
   assert.match(guard, /hasRole\(currentUser, "ADMIN", "TL"\)/);
   ["saveMaturityAssessment", "saveMaturity5SAssessment", "saveMaturityAudit", "deleteMaturityAudit"].forEach(fn => {
-    const body = appSource.slice(appSource.indexOf(`function ${fn}(`));
+    const body = hookSource.slice(hookSource.indexOf(`async function ${fn}(`));
     assert.match(body.slice(0, 700), /guardMaturityWrite\(/, `${fn} harus lewat guardMaturityWrite`);
   });
   // Pelaku ditentukan status LAMA (klausa USING), bukan status tujuan.
-  assert.match(appSource, /guardMaturityWrite\("menyimpan Audit Maturity", audit\?\.isNew \? "DRAFT" : \(audit\?\.status \|\| "DRAFT"\)\)/);
+  assert.match(hookSource, /guardMaturityWrite\("menyimpan Audit Maturity", audit\?\.isNew \? "DRAFT" : \(audit\?\.status \|\| "DRAFT"\)\)/);
   // Form 5S wajib mengirim UPT user; tanpa ini insert ditolak RLS GELOMBANG B.
-  assert.match(appSource, /uptId: form\.uptId \|\| uptIdByNama\(uptNama\)/);
+  assert.match(hookSource, /uptId: form\.uptId \|\| uptIdByNama\(uptNama\)/);
 });
 
 test("jenjang UPT → UIT → Pusat lengkap dan tidak ada tahap yang dilompati", () => {
@@ -82,7 +87,7 @@ test("jenjang UPT → UIT → Pusat lengkap dan tidak ada tahap yang dilompati",
 });
 
 test("peninjau UIT/Pusat bebas pindah UPT, MANAGER terkunci di UPT-nya", () => {
-  const line = appSource.split("\n").find(l => l.includes("canSwitchMaturityUpt = "));
+  const line = hookSource.split("\n").find(l => l.includes("canSwitchMaturityUpt = "));
   ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT", "ADMIN_LOG_PUSAT", "SUPERADMIN"].forEach(r =>
     assert.match(line, new RegExp(`"${r}"`), `${r} harus bisa berpindah UPT`));
   // MANAGER terikat SATU UPT (keputusan user 2026-08-02) — bukan peninjau lintas UPT.
@@ -98,7 +103,7 @@ test("role baru terdaftar utuh, tidak setengah jalan", () => {
     assert.doesNotMatch(permsSource, new RegExp(`${role}: \\{[^}]*aksi\\.`), `${role} peninjau, tidak boleh punya aksi.*`);
   });
   // Scope-UIT: ASMAN_LOG_UIT ikut, ADMIN_LOG_PUSAT (nasional) tidak.
-  [appSource, akunSource].forEach(src => {
+  [accountHookSource, akunSource].forEach(src => {
     assert.match(src, /\["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT"\]/);
   });
   assert.match(appSource, /UIT_ROLE_QUOTA = \{ ADMIN_UIT: 1, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 \}/);
@@ -106,7 +111,7 @@ test("role baru terdaftar utuh, tidak setengah jalan", () => {
 });
 
 test("history dimuat ulang setelah audit FINAL (baris terbit dari trigger DB)", () => {
-  assert.match(appSource, /newStatus === "FINAL"[\s\S]{0,320}await loadMaturityAuditHistory\(\)[\s\S]{0,240}CLOUD\.set\("pln_maturity_audit_history_v1", freshHistory\)/);
+  assert.match(hookSource, /newStatus === "FINAL"[\s\S]{0,320}await loadMaturityAuditHistory\(\)[\s\S]{0,240}CLOUD\.set\("pln_maturity_audit_history_v1", freshHistory\)/);
 });
 
 test("UI maturity discope pakai id UPT, bukan kecocokan nama", () => {
