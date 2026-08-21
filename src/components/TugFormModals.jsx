@@ -8,6 +8,7 @@ import { statusMaterialBadgeStyle } from "../lib/sap.js";
 import { can } from "../lib/perms.js";
 import { ROLES } from "../lib/roles.js";
 import { sortBlokOptions } from "../lib/masterSync.js";
+import { STATUS_SAP } from "../constants.js";
 
 export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C, uptKode }) {
   return (
@@ -545,7 +546,7 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                   onChange={v=>{
                     if (v === "__add_new__") { openAddSupplier(); return; }
                     const sp = supplierList.find(s=>s.id===v);
-                    setTxnForm(tf=>({...tf, supplierId:v, dariSupplier: sp?.nama||"" }));
+                    setTxnForm(tf=>({...tf, supplierId:v, dariSupplier: sp?.nama||"", supplierPic: sp?.pic||"" }));
                   }}
                   getLabel={s=>s.nama}
                   placeholder="-- Cari & pilih Supplier --"
@@ -663,6 +664,12 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                     </select>
                     {txnForm.gudangTujuanId && tug3Bloks.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada blok pada gudang ini.</div>}
                   </div>
+                </div>
+                <div style={{marginTop:8,maxWidth:260}}>
+                  <label style={sty.label}>Status Barang</label>
+                  <select style={sty.select} value={si.sapStatus||STATUS_SAP[0]} onChange={e=>updateItemRow(idx,"sapStatus",e.target.value)}>
+                    {STATUS_SAP.map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
                 </div>
                 <div style={{marginTop:8,maxWidth:220}}>
                   <PhotoSlot label="Foto Barang" value={si.fotoBarang} onChange={img=>updateItemRow(idx,"fotoBarang",img)} onRemove={()=>updateItemRow(idx,"fotoBarang",null)} handleImg={handleImg} sty={sty} C={C}/>

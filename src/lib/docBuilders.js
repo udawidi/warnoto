@@ -1291,7 +1291,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
 <div class="page">
   <div class="top-accent"></div>
   <div class="header-kop">
-    <div style="font-size:8.5px;font-weight:bold;line-height:1.3">TUG.3<br/>Lembar 3 : GUDANG</div>
+    <div style="font-size:8.5px;font-weight:bold;line-height:1.3">${isPenerimaan ? "TUG-3 PENERIMAAN" : "TUG-3 KARANTINA"}<br/>Lembar 3 : GUDANG</div>
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">PLN: UIT - JBM</div>
@@ -1360,7 +1360,8 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
         <div><i>Diserahkan oleh,</i></div>
         <div class="sig-role">&nbsp;</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(txn.dariSupplier || "-")}</div>
+        <div class="sig-name">${esc(txn.supplierPic || txn.dariSupplier || "-")}</div>
+        ${txn.supplierPic ? `<div style="font-size:10px">${esc(txn.dariSupplier || "-")}</div>` : ""}
       </div>
       <div class="sig-col">
         <div><i>Diterima oleh,</i></div>

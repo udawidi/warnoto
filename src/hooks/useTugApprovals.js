@@ -3,6 +3,7 @@ import { logAudit } from "../lib/audit.js";
 import { generateDocNumbers, uid } from "../lib/utils.js";
 import { processTxnPhotos } from "../lib/supabaseSync.js";
 import { upsertTug3Transaction } from "../lib/tug3Sync.js";
+import { STATUS_SAP } from "../constants.js";
 
 // Domain: mesin approval transisi TUG-3/4/5/5-ULTG/7 (dan turunan draft TUG-8/9).
 // Murni relokasi — semua state (txns/stocks/katalogList/docSeq/dst.) tetap dimiliki
@@ -84,6 +85,10 @@ export function useTugApprovals({
     txn.stockItems.forEach(si => {
       const lokasiId = si.lokasiTujuanId || txn.stockItems[0]?.lokasiTujuanId;
       if (!lokasiId) return;
+      // Status Barang dipilih per-item di form (FIX 2): "SAP — Persediaan"/"SAP — Cadang"/
+      // "Non-SAP" — sebelumnya jenisBarang di-hardcode "Persediaan" utk semua barang masuk.
+      const sapStatus = si.sapStatus || STATUS_SAP[0];
+      const jenisBarang = sapStatus === "SAP — Cadang" ? "Cadang" : "Persediaan";
       if (si.katalogMode === "existing" && si.katalogId) {
         const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===lokasiId);
         if (existingRow) {
@@ -91,7 +96,7 @@ export function useTugApprovals({
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
+          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:null, createdAt:Date.now() });
           touchedStockIds.add(newId);
         }
       } else {
@@ -99,7 +104,7 @@ export function useTugApprovals({
         newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
         touchedKatalogIds.add(newKatId);
         const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-        newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
+        newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:null, createdAt:Date.now() });
         touchedStockIds.add(newStkId);
       }
     });

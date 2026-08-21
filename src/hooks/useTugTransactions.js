@@ -7,6 +7,7 @@ import { generateDocNumbers, generateReservasiDocNo, uid } from "../lib/utils.js
 import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
 import { createAndSubmitCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
 import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js";
+import { STATUS_SAP } from "../constants.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -127,7 +128,8 @@ export function useTugTransactions({
       setTug3ExpandedIdx(0);
       setTxnForm({
         ...base,
-        stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"" }],
+        uptId: canonicalUptId,
+        stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"", sapStatus:STATUS_SAP[0] }],
         gudangTujuanId: "", // scope Lokasi Tujuan per-item ke gudang ini
         tanggalDiterima: "", dariSupplier: "", denganKirim: "Dikirim Langsung",
         noSuratJalan: "", tglSuratJalan: "",
@@ -190,7 +192,7 @@ export function useTugTransactions({
         return { ...tf, stockItems: [...tf.stockItems, { katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }] };
       }
       if (tf.docType === "TUG3") {
-        return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"" }] };
+        return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"", sapStatus:STATUS_SAP[0] }] };
       }
       return { ...tf, stockItems: [...tf.stockItems, { stockId:"", qty:1 }] };
     });
@@ -448,6 +450,9 @@ export function useTugTransactions({
         docSeq: keepExistingDocs ? (replacedDraft3?.docSeq ?? null) : seq,
         docNumbers: keepExistingDocs ? (replacedDraft3?.docNumbers || {}) : docNumbers,
         ...formData,
+        // Fallback data-loss: draft lama (dibuat sebelum uptId disetel di openNewTxn) atau
+        // formData yang lolos tanpa uptId — isi dari user saat ini supaya upsert DB tak gagal.
+        uptId: formData.uptId || currentUser?.uptId || currentUserUptId || "",
         stage: isDraft3 ? "DRAFT" : "PENDING_TL",
         status: isDraft3 ? "DRAFT" : "PENDING", // kept for compatibility with generic PENDING/APPROVED/REJECTED filters
         requiredApprover: "TL",
@@ -467,7 +472,7 @@ export function useTugTransactions({
       // sebagai jaring pengaman (dobel-tulis aman untuk sekarang). Gagal upsert DB tidak
       // membatalkan transaksi yang sudah tersimpan di blob — cukup diberi tahu.
       if (!(await upsertTug3Transaction(nt3))) {
-        showToast("⚠️ Transaksi tersimpan tapi gagal sinkron ke database.", "info");
+        showToast("⚠️ Gagal simpan ke database (transaksi belum tersimpan permanen) — cek koneksi & coba lagi.", "error");
       }
       if (isDraft3) {
         showToast(`💾 Draft ${nt3.docNumbers.tug3} disimpan. Lengkapi lalu ajukan ke TL saat siap.`);

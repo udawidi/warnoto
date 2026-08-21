@@ -41,6 +41,8 @@ export async function loadTug3Transactions() {
 
 export async function upsertTug3Transaction(txn) {
   if (!supabase || !txn?.id) return false;
+  // upt_id NOT NULL di DB — jangan tulis null (gagal senyap sebelumnya, data hilang).
+  if (!txn.uptId) { console.warn("upsertTug3Transaction ditolak: txn tanpa uptId", txn.id); return false; }
   let createdBy = null;
   try { createdBy = (await supabase.auth.getUser()).data?.user?.id || null; } catch {}
   const row = {
