@@ -1159,24 +1159,63 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
   const docNoSJ = docs.sj || docs.tug3 || `${txn.docSeq || "1"}.SI/LOG.00.02/${uptKode}/VII/2026`;
   const docNoBA = docs.ba || docs.tug4 || docNoSJ.replace(".SI/", ".BA/").replace(".SJ/", ".BA/");
 
+  const asmanUser = users.find(u => u.role === "ASMAN") || {};
+  const managerUser = users.find(u => u.role === "MANAGER") || {};
+  const tm = (timMutuList || []).find(t => t.id === txn.timMutuId) || {};
+  const isPenerimaan = !!txn.approvedByAsman;
+  const showBAP = !!txn.timMutuId;
+
   const items = txn?.stockItems || [];
   const materialRowsTable = items.map(si => {
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
     const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
-    const lokasi = (lokasiList||[]).find(l=>l.id===si.lokasiId)?.kode || "GUDANG";
+    const kodeKatalog = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-");
+    const hargaSatuan = si.hargaSatuan || 0;
+    const jumlahRp = hargaSatuan * (si.qty || 0);
     return `
     <tr>
       <td>${esc(namaBarang)}</td>
-      <td style="text-align:center">${esc(lokasi)}</td>
+      <td style="text-align:center">${esc(kodeKatalog)}</td>
+      <td style="text-align:center">${esc(satuan)}</td>
+      <td style="text-align:center">${fmtNum(si.qty)}</td>
+      <td>${txn.dariSupplier ? `(Pengadaan ${esc(txn.dariSupplier)}) ` : ""}${esc(txn.keteranganTug3 || "")}</td>
+      <td style="text-align:right">${fmtRp(hargaSatuan)}</td>
+      <td style="text-align:right">${fmtRp(jumlahRp)}</td>
+    </tr>`;
+  }).join("");
+  const totalRp = items.reduce((sum, si) => sum + (si.hargaSatuan || 0) * (si.qty || 0), 0);
+
+  const materialRowsTableBA = items.map(si => {
+    const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
+    const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
+    const kodeKatalog = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-");
+    return `
+    <tr>
+      <td>${esc(namaBarang)}</td>
+      <td style="text-align:center">${esc(kodeKatalog)}</td>
       <td style="text-align:center">${fmtNum(si.qty)}</td>
       <td style="text-align:center">${esc(satuan)}</td>
-      <td>${txn.dariSupplier ? `(Pengadaan ${esc(txn.dariSupplier)}) ` : ""}${esc(txn.keteranganTug3 || "")}</td>
+      <td>${esc(txn.keteranganTug3 || "-")}</td>
     </tr>`;
   }).join("");
 
+  const pemeriksaRows = [
+    [tm.ketua, "KETUA"],
+    [tm.sekretaris, "SEKRETARIS"],
+    [tm.anggota1, "ANGGOTA"],
+    [tm.anggota2, "ANGGOTA"],
+    [tm.anggota3, "ANGGOTA"],
+  ].map(([nama, jabatan], i) => `
+    <tr>
+      <td style="text-align:center">${i + 1}</td>
+      <td>${esc(nama || "-")}</td>
+      <td style="text-align:center">${esc(jabatan)}</td>
+      <td></td>
+    </tr>`).join("");
+
   const materialPhotoRowsTable = items.map(si => {
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
-    const photo = si.fotoBarangRetur || si.fotoNameplate || ((txn.fotoMaterial||[]).find(fm => fm.katalogId === si.katalogId || fm.stockId === si.stockId)?.img);
+    const photo = si.fotoBarang || si.fotoBarangRetur || si.fotoNameplate || ((txn.fotoMaterial||[]).find(fm => fm.katalogId === si.katalogId || fm.stockId === si.stockId)?.img);
     return `
       <tr>
         <td style="padding:10px;vertical-align:top;font-weight:bold;width:35%">${esc(namaBarang)}</td>
@@ -1248,135 +1287,164 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
 
 <div class="print-bar">📄 Dokumen TUG-3 / TUG-4 / BAST-B siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 
-<!-- ════════ PAGE 1: SURAT JALAN & BAST-B ════════ -->
+<!-- ════════ PAGE 1: BON PENERIMAAN & BERITA ACARA PEMERIKSAAN ════════ -->
 <div class="page">
   <div class="top-accent"></div>
   <div class="header-kop">
-    <div></div>
+    <div style="font-size:8.5px;font-weight:bold;line-height:1.3">TUG.3<br/>Lembar 3 : GUDANG</div>
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
-      <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
-      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
+      <div class="kop-text">PLN: UIT - JBM</div>
+      <div class="kop-sub">Unit: ${esc(uptNama)}</div>
     </div>
   </div>
 
-  <!-- BOX 1: SURAT JALAN PENGAMBILAN MATERIAL -->
+  <!-- BOX 1: BON PENERIMAAN BARANG-BARANG / SPARE PARTS (TUG-3) -->
   <div class="section-box">
-    <div class="doctitle">SURAT JALAN PENGAMBILAN MATERIAL</div>
+    <div class="doctitle">Bon Penerimaan Barang-Barang / Spare Parts</div>
     <div class="docno">${esc(docNoSJ)}</div>
 
     <table class="meta-tbl">
       <tr>
-        <td class="lbl">Dibawa Ke</td><td style="width:10px">:</td><td>${esc(txn.lokasiPekerjaan || txn.lokasiPenyerahan || "-")}</td>
-        <td class="lbl" style="width:140px">Kendaraan / Nopol</td><td style="width:10px">:</td><td>${esc(txn.nopol || "-")}</td>
+        <td class="lbl">Diterima Tanggal</td><td style="width:10px">:</td><td>${esc(txn.tanggalDiterima || fmtDateOnly(txn.createdAt))}</td>
+        <td class="lbl" style="width:190px">Diterima Bon Pengeluaran / Surat Jalan</td><td style="width:10px">:</td><td>No ${esc(txn.noSuratJalan || "-")} Tgl ${esc(txn.tglSuratJalan || "-")}</td>
       </tr>
       <tr>
-        <td class="lbl">Tanggal Pengambilan</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
-        <td class="lbl">No SIM / KTP Pengemudi</td><td>:</td><td>${esc(txn.simKtp || "-")}</td>
+        <td class="lbl">Dari</td><td>:</td><td>${esc(txn.dariSupplier || "-")}</td>
+        <td class="lbl">Menurut Surat Pesanan / Daftar Permintaan</td><td>:</td><td>No ${esc(txn.suratPesananNo || "-")} Tgl ${esc(txn.suratPesananTgl || "-")}</td>
       </tr>
       <tr>
-        <td class="lbl">PIC Gudang ${esc(uptNama)}</td><td>:</td><td colspan="4">${esc(creator.name || "-")}${creator.officialPhone ? ` (${esc(creator.officialPhone)})` : ""}</td>
+        <td class="lbl">Dengan</td><td>:</td><td>${esc(txn.denganKirim || "-")}</td>
+        <td class="lbl">Amandemen / Kontrak Rinci</td><td>:</td><td>No ${esc(txn.amandemenNo || "-")} Tgl ${esc(txn.amandemenTgl || "-")}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Judul Kontrak</td><td>:</td><td colspan="4">${esc(txn.judulKontrak || "-")}</td>
       </tr>
     </table>
 
     <table class="items-tbl">
       <thead>
         <tr>
-          <th style="width:30%">MATERIAL</th>
-          <th style="width:15%">GUDANG</th>
-          <th style="width:10%">JUMLAH</th>
-          <th style="width:10%">SATUAN</th>
-          <th style="width:35%">KETERANGAN</th>
+          <th style="width:24%">NAMA BARANG/SPARE PART (DITULIS LENGKAP)</th>
+          <th style="width:12%">KODE KATALOG</th>
+          <th style="width:6%">SAT</th>
+          <th style="width:8%">JUMLAH</th>
+          <th style="width:22%">KETERANGAN</th>
+          <th style="width:14%">HARGA SATUAN</th>
+          <th style="width:14%">JUMLAH</th>
         </tr>
       </thead>
       <tbody>${materialRowsTable}</tbody>
     </table>
 
-    <div class="closing-note">Demikian Surat Jalan ini kami buat agar dipergunakan sebagaimana mestinya</div>
+    <div class="closing-note" style="font-style:normal">Jumlah : Rp ${fmtRp(totalRp)}</div>
+    <div class="closing-note">Keterangan : ${esc(txn.keteranganTug3 || "Baik")}</div>
 
-    <div class="sig-row-3">
+    ${isPenerimaan ? `
+    <div class="sig-row-2">
       <div class="sig-col">
-        <div><i>Transporter,</i></div>
-        <div class="sig-role">PENGEMUDI</div>
+        <div><i>Diperiksa oleh,</i></div>
+        <div class="sig-role">ASISTEN MANAGER KONSTRUKSI</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(txn.namaPengemudi || ".....................")}</div>
+        <div class="sig-name">${esc(asmanUser.name || "-")}</div>
       </div>
       <div class="sig-col">
-        <div><i>Mengetahui,</i></div>
-        <div class="sig-role">SATPAM GUDANG ${esc((satpamUser.gudangNama || WAREHOUSE).toUpperCase())}</div>
+        <div><i>Menyerahkan,</i></div>
+        <div class="sig-role">TL LOGISTIK</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(satpamUser.name || ".....................")}</div>
+        <div class="sig-name">${esc(menyerahkanUser.name || "-")}</div>
+      </div>
+    </div>` : `
+    <div class="sig-row-2">
+      <div class="sig-col">
+        <div><i>Diserahkan oleh,</i></div>
+        <div class="sig-role">&nbsp;</div>
+        <div class="sig-space"></div>
+        <div class="sig-name">${esc(txn.dariSupplier || "-")}</div>
       </div>
       <div class="sig-col">
-        <div><i>Yang menyerahkan,</i></div>
-        <div class="sig-role">ADMINISTRASI GUDANG</div>
+        <div><i>Diterima oleh,</i></div>
+        <div class="sig-role">TL LOGISTIK</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(creator.name || ".....................")}</div>
+        <div class="sig-name">${esc(menyerahkanUser.name || "-")}</div>
       </div>
-    </div>
+    </div>`}
   </div>
 
-  <!-- BOX 2: BERITA ACARA SERAH TERIMA BARANG (BAST-B) -->
+  ${showBAP ? `
+  <!-- BOX 2: BERITA ACARA PEMERIKSAAN BARANG/SPARE PARTS (TUG-4) -->
   <div class="section-box">
-    <div class="doctitle">BERITA ACARA SERAH TERIMA BARANG (BAST-B)</div>
+    <div class="doctitle">Berita Acara Pemeriksaan Barang/Spare Parts</div>
     <div class="docno">${esc(docNoBA)}</div>
 
     <div class="bast-intro">
-      Pada hari ini <b>${dateInfo.hari}</b> tanggal <b>${dateInfo.tanggal}</b> bulan <b>${dateInfo.bulan}</b> tahun <b>${dateInfo.tahun}</b> (${dateInfo.tanggalLengkap}), Kami yang bertanda di bawah ini :
+      Pada hari ini <b>${dateInfo.hari}</b>, tanggal <b>${dateInfo.tanggal}</b> bulan <b>${dateInfo.bulan}</b> tahun <b>${dateInfo.tahun}</b> (${dateInfo.tanggalLengkap}), Para pemeriksa terdiri dari :
     </div>
-
-    <table class="meta-tbl" style="margin-bottom:4px">
-      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${esc(menyerahkanUser.name || creator.name || "-")}</td></tr>
-      <tr><td class="lbl">Jabatan</td><td>:</td><td>${esc(menyerahkanUser.jabatan || `TL LOG ${uptNama.toUpperCase()}`)}</td></tr>
-      <tr><td class="lbl">Unit</td><td>:</td><td>${esc(uptNama.toUpperCase())}</td></tr>
-    </table>
-    <div style="font-size:9.5px;font-style:italic;margin-bottom:6px">Untuk selanjutnya disebut <b>PIHAK YANG MENYERAHKAN</b></div>
-
-    <table class="meta-tbl" style="margin-bottom:4px">
-      <tr><td class="lbl" style="width:70px">Nama</td><td style="width:10px">:</td><td>${esc(txn.penerimaNama || "-")}</td></tr>
-      <tr><td class="lbl">Jabatan</td><td>:</td><td>${esc(txn.penerimaJabatan || "-")}</td></tr>
-      <tr><td class="lbl">Unit</td><td>:</td><td>${esc(txn.penerimaUnit || "-")}</td></tr>
-    </table>
-    <div style="font-size:9.5px;font-style:italic;margin-bottom:6px">Untuk selanjutnya disebut <b>PIHAK YANG MENERIMA</b></div>
-
-    <div style="font-size:9.5px;margin-bottom:6px">Telah melaksanakan serah terima barang, sesuai dengan data sebagai berikut :</div>
 
     <table class="items-tbl">
       <thead>
         <tr>
-          <th style="width:30%">MATERIAL</th>
-          <th style="width:15%">GUDANG</th>
-          <th style="width:10%">JUMLAH</th>
-          <th style="width:10%">SATUAN</th>
-          <th style="width:35%">KETERANGAN</th>
+          <th style="width:8%">NO</th>
+          <th style="width:37%">NAMA</th>
+          <th style="width:30%">SATUAN ADMINISTRASI</th>
+          <th style="width:25%">TANDA TANGAN</th>
         </tr>
       </thead>
-      <tbody>${materialRowsTable}</tbody>
+      <tbody>${pemeriksaRows}</tbody>
     </table>
 
-    <table class="meta-tbl" style="margin-top:6px">
-      <tr><td class="lbl">Sesuai Nodin / Surat Permintaan No</td><td style="width:10px">:</td><td>${esc(txn.noNodin || "-")}</td></tr>
-      <tr><td class="lbl">Sesuai Surat Persetujuan No</td><td>:</td><td>${esc(txn.noPersetujuan || "-")}</td></tr>
-      <tr><td class="lbl">Untuk Pekerjaan</td><td>:</td><td>${esc(txn.namaPekerjaan || txn.pekerjaan || "-")}</td></tr>
+    <div class="bast-intro">
+      Telah mengadakan pemeriksaan atas barang-barang / spare parts milik PT PLN (Persero) Unit Induk JBM - ${esc(uptNama)} dengan perincian :
+    </div>
+
+    <table class="meta-tbl" style="margin-bottom:4px">
+      <tr>
+        <td class="lbl">Lokasi Penyerahan</td><td style="width:10px">:</td><td>${esc(txn.lokasiPenyerahan || "-")}</td>
+        <td class="lbl" style="width:170px">No Surat Perjanjian / SPK</td><td style="width:10px">:</td><td>${esc(txn.noSPK || "-")}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Diterima Dari</td><td>:</td><td>${esc(txn.dariSupplier || "-")}</td>
+        <td class="lbl">Tanggal</td><td>:</td><td>${esc(txn.tglSPK || "-")}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Tanggal Penerimaan</td><td>:</td><td>${esc(txn.tanggalDiterima || fmtDateOnly(txn.createdAt))}</td>
+        <td class="lbl">Amandemen / Kontrak Rinci</td><td>:</td><td>-</td>
+      </tr>
+      <tr>
+        <td class="lbl">No Surat Jalan</td><td>:</td><td>${esc(txn.noSuratJalan || "-")}</td>
+        <td class="lbl">Tanggal</td><td>:</td><td>-</td>
+      </tr>
+      <tr>
+        <td class="lbl">dan menyatakan bahwa</td><td>:</td><td colspan="4">${esc(txn.hasilPemeriksaan || "Barang Diterima Sesuai Pengadaan")}</td>
+      </tr>
     </table>
 
-    <div class="closing-note">Demikian Berita Acara ini kami buat agar dipergunakan sebagaimana mestinya</div>
+    <table class="items-tbl">
+      <thead>
+        <tr>
+          <th style="width:32%">NAMA BARANG/SPARE PART</th>
+          <th style="width:18%">KODE KATALOG</th>
+          <th style="width:15%">BANYAKNYA</th>
+          <th style="width:15%">SATUAN</th>
+          <th style="width:20%">CATATAN</th>
+        </tr>
+      </thead>
+      <tbody>${materialRowsTableBA}</tbody>
+    </table>
+
+    <div class="closing-note">Spesifikasi, hasil uji dan jumlah sesuai klausul kontrak dan dapat diterima oleh PENGGUNA BARANG</div>
 
     <div class="sig-row-2">
+      <div class="sig-col"></div>
       <div class="sig-col">
-        <div><i>Yang menerima,</i></div>
-        <div class="sig-role">${esc((txn.penerimaUnit || "PIHAK MENERIMA").toUpperCase())}</div>
+        <div>PT PLN (PERSERO) UIT - JBM</div>
+        <div>Unit Pelaksana Transmisi ${esc(uptNama)}</div>
+        <div class="sig-role">MANAGER</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(txn.penerimaNama || ".....................")}</div>
-      </div>
-      <div class="sig-col">
-        <div><i>Yang menyerahkan,</i></div>
-        <div class="sig-role">TL LOG ${esc(uptNama.toUpperCase())}</div>
-        <div class="sig-space"></div>
-        <div class="sig-name">${esc(menyerahkanUser.name || creator.name || ".....................")}</div>
+        <div class="sig-name">${esc(managerUser.name || "-")}</div>
       </div>
     </div>
-  </div>
+  </div>` : ""}
   <div class="bottom-accent"></div>
 </div>
 
@@ -1426,9 +1494,9 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
   <div class="page-title-center">Lampiran Foto</div>
 
   <div class="photo-box-full">
-    <div class="cell-title" style="margin-bottom:12px">Surat Permintaan / Pengadaan</div>
+    <div class="cell-title" style="margin-bottom:12px">Surat Jalan</div>
     <div class="cell-img-wrap-large">
-      ${txn.fotoSuratJalanImg || txn.fotoKontrak ? `<img src="${esc(txn.fotoSuratJalanImg || txn.fotoKontrak)}" alt="Surat Permintaan"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat jalan]&gt;&gt;</div>`}
+      ${txn.fotoSuratJalanImg || txn.fotoKontrak ? `<img src="${esc(txn.fotoSuratJalanImg || txn.fotoKontrak)}" alt="Surat Jalan"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat jalan]&gt;&gt;</div>`}
     </div>
   </div>
   <div class="bottom-accent"></div>

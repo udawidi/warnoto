@@ -1,6 +1,8 @@
 import { hasRole } from "../lib/roles.js";
 import { logAudit } from "../lib/audit.js";
 import { generateDocNumbers, uid } from "../lib/utils.js";
+import { processTxnPhotos } from "../lib/supabaseSync.js";
+import { upsertTug3Transaction } from "../lib/tug3Sync.js";
 
 // Domain: mesin approval transisi TUG-3/4/5/5-ULTG/7 (dan turunan draft TUG-8/9).
 // Murni relokasi — semua state (txns/stocks/katalogList/docSeq/dst.) tetap dimiliki
@@ -17,19 +19,21 @@ export function useTugApprovals({
   commitNewTxn,
 }) {
   // ══════════════════════════════════════════════════════════════════
-  // TUG-3 / TUG-4 — 3-stage approval chain on a single transaction:
-  //   Stage 1: PENDING_TL      -> TL Logistik approves      -> MENUNGGU_TUG4
-  //   Stage 2: PENDING_MANAGER -> Manager approves (TUG-4)  -> MENUNGGU_FINAL
-  //   Stage 3: PENDING_ASMAN   -> Asman approves (TUG-3 Final) -> APPROVED (stock increases)
+  // TUG-3 / TUG-4 — 2-stage approval chain on a single transaction:
+  //   Stage 1: PENDING_TL    -> TL Logistik approves                -> MENUNGGU_TUG4
+  //   Stage 2: MENUNGGU_TUG4 -> Admin/TL isi TUG-4 + lampiran final -> PENDING_ASMAN
+  //   Stage 3: PENDING_ASMAN -> Asman approves (TUG-3 Final)        -> APPROVED (stock increases)
+  // Approval Manager (MUP) dihapus dari alur; Asman satu-satunya approval final.
   // ══════════════════════════════════════════════════════════════════
 
   // Stage 1: TL Logistik approves the TUG-3 Karantina submission
   async function approveTUG3_TL(txn) {
     if (!hasRole(currentUser, "TL")) { showToast("Hanya TL Logistik yang bisa menyetujui TUG-3 Karantina.","error"); return; }
     if (txn.stage !== "PENDING_TL") { showToast("Transaksi ini tidak dalam tahap menunggu TL.","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_TUG4", approvedByTL:currentUser.id, approvedAtTL:Date.now(), requiredApprover:"MANAGER" } : t);
+    const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_TUG4", approvedByTL:currentUser.id, approvedAtTL:Date.now(), requiredApprover:"ASMAN" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"MENUNGGU_TUG4"});
     showToast(`✅ ${txn.docNumbers.tug3} disetujui TL Logistik! Lanjut ke tahap TUG-4 (Pemeriksaan Mutu).`);
   }
@@ -39,47 +43,29 @@ export function useTugApprovals({
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug3, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug3} DITOLAK oleh TL Logistik.`, "error");
   }
 
-  // Stage 2a: Admin/TL fills in the TUG-4 form (Tim Mutu, Lokasi Penyerahan, hasil pemeriksaan)
-  async function submitTUG4Form(txn, tug4Data) {
-    if (!tug4Data.timMutuId) { showToast("Pilih paket Tim Mutu!","error"); return; }
-    if (!tug4Data.lokasiPenyerahan?.trim()) { showToast("Lokasi Penyerahan wajib diisi!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? { ...t, ...tug4Data, stage:"PENDING_MANAGER" } : t);
+  // Stage 2: Admin/TL isi data pemeriksaan TUG-4 (Tim Mutu, Lokasi Penyerahan, hasil
+  // pemeriksaan) + lampiran final (foto kendaraan, SIM/KTP, surat jalan, kontrak) SEKALIGUS
+  // dalam satu langkah — langsung ke antrean Asman (Manager dihapus dari approval).
+  async function submitTUG4DanLampiran(txn, data) {
+    if (!data.timMutuId) { showToast("Pilih paket Tim Mutu!","error"); return; }
+    if (!data.lokasiPenyerahan?.trim()) { showToast("Lokasi Penyerahan wajib diisi!","error"); return; }
+    // Foto lampiran (fotoKendaraan/fotoSimKtp/fotoSuratJalanImg/fotoKontrak) masuk sebagai
+    // base64 dari PhotoSlot — upload ke Storage dulu (jalur sama commitNewTxn) supaya baris
+    // DB tidak menyimpan blob base64. Gagal upload → tetap base64 + toast.
+    const { data: uploadedData, pending } = await processTxnPhotos(data, txn.id, () => {});
+    if (pending.length) showToast(`⚠️ ${pending.length} foto lampiran belum terunggah (sinyal?). Data tetap tersimpan; foto disinkron otomatis saat online.`, "info");
+    const newTxns = txns.map(t => t.id===txn.id ? { ...t, ...uploadedData, stage:"PENDING_ASMAN" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
-    showToast(`📋 Form TUG-4 dilengkapi! Menunggu approval Manager.`);
+    await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
+    showToast(`📋 TUG-4 & lampiran dilengkapi! Menunggu approval Asman Konstruksi.`);
   }
-  // Stage 2b: Manager approves the TUG-4 pemeriksaan
-  async function approveTUG4_Manager(txn) {
-    if (!hasRole(currentUser, "MANAGER")) { showToast("Hanya Manager yang bisa menyetujui TUG-4.","error"); return; }
-    if (txn.stage !== "PENDING_MANAGER") { showToast("Transaksi ini tidak dalam tahap menunggu Manager.","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_FINAL", approvedByManager:currentUser.id, approvedAtManager:Date.now(), requiredApprover:"ASMAN" } : t);
-    setTxns(newTxns);
-    await saveToCloud({txns: newTxns});
-    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug4, {stage:"MENUNGGU_FINAL"});
-    showToast(`✅ ${txn.docNumbers.tug4} disetujui Manager! Lanjut ke tahap finalisasi TUG-3.`);
-  }
-  async function rejectTUG4_Manager(txn, reason) {
-    if (!hasRole(currentUser, "MANAGER")) { showToast("Hanya Manager yang bisa menolak TUG-4.","error"); return; }
-    if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
-    setTxns(newTxns);
-    await saveToCloud({txns: newTxns});
-    logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug4, {stage:"REJECTED", alasan:reason});
-    showToast(`❌ ${txn.docNumbers.tug4} DITOLAK oleh Manager.`, "error");
-  }
-
-  // Stage 3a: Admin/TL completes the TUG-3 Final lampiran (foto kendaraan, SIM/KTP, surat jalan, kontrak, per-material)
-  async function submitTUG3FinalLampiran(txn, lampiranData) {
-    const newTxns = txns.map(t => t.id===txn.id ? { ...t, ...lampiranData, stage:"PENDING_ASMAN" } : t);
-    setTxns(newTxns);
-    await saveToCloud({txns: newTxns});
-    showToast(`📎 Lampiran TUG-3 Final dilengkapi! Menunggu approval Asman Konstruksi.`);
-  }
-  // Stage 3b: Asman Konstruksi approves the final receipt — THIS is when stock actually increases
+  // Stage 3: Asman Konstruksi approves the final receipt — THIS is when stock actually increases
   async function approveTUG3Final_Asman(txn) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menyetujui TUG-3 Final.","error"); return; }
     if (txn.stage !== "PENDING_ASMAN") { showToast("Transaksi ini tidak dalam tahap menunggu Asman.","error"); return; }
@@ -105,7 +91,7 @@ export function useTugApprovals({
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.harga||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
+          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
           touchedStockIds.add(newId);
         }
       } else {
@@ -113,7 +99,7 @@ export function useTugApprovals({
         newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
         touchedKatalogIds.add(newKatId);
         const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-        newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId, qty:si.qty, minQty:0, price:si.harga||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
+        newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang:"Persediaan", img:null, createdAt:Date.now() });
         touchedStockIds.add(newStkId);
       }
     });
@@ -125,6 +111,7 @@ export function useTugApprovals({
       katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
     });
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"APPROVED"});
+    await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     showToast(`✅ ${txn.docNumbers.tug3} DISETUJUI FINAL! Stok bertambah ke gudang.`);
   }
   async function rejectTUG3Final_Asman(txn, reason) {
@@ -133,6 +120,7 @@ export function useTugApprovals({
     const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug3, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug3} DITOLAK oleh Asman Konstruksi (tahap final).`, "error");
   }
@@ -381,8 +369,8 @@ export function useTugApprovals({
 
   return {
     approveTUG3_TL, rejectTUG3_TL,
-    submitTUG4Form, approveTUG4_Manager, rejectTUG4_Manager,
-    submitTUG3FinalLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman,
+    submitTUG4DanLampiran,
+    approveTUG3Final_Asman, rejectTUG3Final_Asman,
     approveTUG5_Asman, rejectTUG5_Asman,
     approveTUG5_Manager, rejectTUG5_Manager,
     approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG,

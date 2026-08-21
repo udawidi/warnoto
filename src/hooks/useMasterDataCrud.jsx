@@ -10,11 +10,13 @@ import { syncMasterTable } from "../lib/masterSync.js";
 // sama pola dgn useHeavyEquipment.js. Satpam/TimMutu/UIT/UPT/ULTG pakai syncMasterTable
 // (import modul langsung, tidak kena TDZ) + CLOUD.set, katalog pakai saveToCloud (pola
 // lama, ada stocksChangedRows dsb.).
-export function useMasterDataCrud({ currentUser, showToast, stateRef, askConfirmDelete, katalogList, setKatalogList, stocks, satpamList, setSatpamList, timMutuList, setTimMutuList, uitList, setUitList, uptList, setUptList, ultgList, setUltgList }) {
+export function useMasterDataCrud({ currentUser, showToast, stateRef, askConfirmDelete, katalogList, setKatalogList, stocks, satpamList, setSatpamList, timMutuList, setTimMutuList, uitList, setUitList, uptList, setUptList, ultgList, setUltgList, supplierList, setSupplierList }) {
   const [katalogModal, setKatalogModal] = useState(null);
   const [katalogForm, setKatalogForm] = useState({});
   const [satpamModal, setSatpamModal] = useState(null);
   const [satpamForm, setSatpamForm] = useState({});
+  const [supplierModal, setSupplierModal] = useState(null);
+  const [supplierForm, setSupplierForm] = useState({});
   const [timMutuModal, setTimMutuModal] = useState(null);
   const [timMutuForm, setTimMutuForm] = useState({});
   const [uitModal, setUitModal] = useState(null);
@@ -99,6 +101,41 @@ export function useMasterDataCrud({ currentUser, showToast, stateRef, askConfirm
         CLOUD.set("pln_satpam_v1", nsp);
         logAudit(currentUser, "DELETE", "satpam", id, {nama:s?.name});
         showToast("Satpam dihapus.");
+      }
+    });
+  }
+
+  // ── Supplier CRUD (nasional, tanpa scope UPT) ──
+  function openAddSupplier() { setSupplierForm({ id:"SUP"+uid().slice(-6), nama:"", pic:"", telp:"", alamat:"" }); setSupplierModal("add"); }
+  function openEditSupplier(sp) { setSupplierForm({...sp}); setSupplierModal("edit"); }
+  async function saveSupplier() {
+    if (!supplierForm.nama?.trim()) { showToast("Nama Supplier tidak boleh kosong!","error"); return; }
+    const prevList = supplierList;
+    let nsp;
+    if (supplierModal==="edit") nsp = supplierList.map(s=>s.id===supplierForm.id?{...supplierForm}:s);
+    else nsp = [...supplierList, {...supplierForm, createdAt:Date.now()}];
+    setSupplierList(nsp); setSupplierModal(null);
+    const ok = await syncMasterTable("supplier", nsp);
+    if (!ok) { setSupplierList(prevList); showToast("Gagal menyimpan ke server, perubahan Supplier DIBATALKAN. Coba lagi.","error"); return; }
+    CLOUD.set("pln_supplier_v1", nsp);
+    logAudit(currentUser, supplierModal==="edit"?"UPDATE":"CREATE", "supplier", supplierForm.id, {nama:supplierForm.nama});
+    showToast(supplierModal==="edit" ? "Data Supplier diupdate!" : "Supplier baru ditambahkan!");
+  }
+  async function deleteSupplier(id) {
+    const s = supplierList.find(x=>x.id===id);
+    askConfirmDelete({
+      title: "Hapus Data Supplier?",
+      message: <>Apakah Anda yakin ingin menghapus data Supplier <b>{s?.nama||"-"}</b>?</>,
+      warning: "Tindakan ini tidak bisa dibatalkan.",
+      onConfirm: async () => {
+        const prevList = supplierList;
+        const nsp = supplierList.filter(x=>x.id!==id);
+        setSupplierList(nsp);
+        const ok = await syncMasterTable("supplier", nsp);
+        if (!ok) { setSupplierList(prevList); showToast("Gagal menghapus di server, data Supplier DIKEMBALIKAN. Coba lagi.","error"); return; }
+        CLOUD.set("pln_supplier_v1", nsp);
+        logAudit(currentUser, "DELETE", "supplier", id, {nama:s?.nama});
+        showToast("Supplier dihapus.");
       }
     });
   }
@@ -225,6 +262,8 @@ export function useMasterDataCrud({ currentUser, showToast, stateRef, askConfirm
     openAddKatalog, openEditKatalog, saveKatalog, deleteKatalog,
     satpamModal, setSatpamModal, satpamForm, setSatpamForm,
     openAddSatpam, openEditSatpam, saveSatpam, deleteSatpam,
+    supplierModal, setSupplierModal, supplierForm, setSupplierForm,
+    openAddSupplier, openEditSupplier, saveSupplier, deleteSupplier,
     timMutuModal, setTimMutuModal, timMutuForm, setTimMutuForm,
     openEditTimMutu, saveTimMutu,
     uitModal, setUitModal, uitForm, setUitForm,

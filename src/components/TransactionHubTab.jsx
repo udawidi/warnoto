@@ -21,8 +21,9 @@ export function TransactionHubTab({
   tug15Filter, setTug15Filter,
   setDocPreview, handleImg,
   approveTUG3_TL, rejectTUG3_TL,
-  submitTUG4Form, approveTUG4_Manager, rejectTUG4_Manager,
-  submitTUG3FinalLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman,
+  submitTUG4DanLampiran,
+  approveTUG3Final_Asman, rejectTUG3Final_Asman,
+  editDraftTug3, submitDraftTug3, deleteDraftTug3,
   approveTUG5_Asman, rejectTUG5_Asman, approveTUG5_Manager, rejectTUG5_Manager,
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
@@ -103,8 +104,9 @@ export function TransactionHubTab({
                 users={users} sty={sty} C={C} currentUser={currentUser}
                 katalogList={katalogList} lokasiList={lokasiList} timMutuList={timMutuList}
                 approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
-                submitTUG4Form={submitTUG4Form} approveTUG4_Manager={approveTUG4_Manager} rejectTUG4_Manager={rejectTUG4_Manager}
-                submitTUG3FinalLampiran={submitTUG3FinalLampiran} approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
+                submitTUG4DanLampiran={submitTUG4DanLampiran}
+                approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
+                editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
                 handleImg={handleImg} setDocPreview={setDocPreview}
               />
             ) : tugSubTab==="TUG5" ? (

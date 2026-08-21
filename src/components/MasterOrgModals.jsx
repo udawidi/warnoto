@@ -46,6 +46,36 @@ export function SatpamModal({ satpamModal, setSatpamModal, satpamForm, setSatpam
   );
 }
 
+export function SupplierModal({ supplierModal, setSupplierModal, supplierForm, setSupplierForm, saveSupplier, sty, C }) {
+  return (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:400,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>{supplierModal==="edit"?"Edit Supplier":"Tambah Supplier Baru"}</span><button onClick={()=>setSupplierModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Nama Supplier *</label>
+              <input style={sty.input} value={supplierForm.nama||""} onChange={e=>setSupplierForm(sf=>({...sf,nama:e.target.value}))} placeholder="cth: PT. Sedayu"/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Nama Penanggung Jawab / PIC</label>
+              <input style={sty.input} value={supplierForm.pic||""} onChange={e=>setSupplierForm(sf=>({...sf,pic:e.target.value}))}/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>No. Telepon</label>
+              <input style={sty.input} value={supplierForm.telp||""} onChange={e=>setSupplierForm(sf=>({...sf,telp:e.target.value}))} placeholder="08xxxxxxxxxx"/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Alamat</label>
+              <input style={sty.input} value={supplierForm.alamat||""} onChange={e=>setSupplierForm(sf=>({...sf,alamat:e.target.value}))}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setSupplierModal(null)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={saveSupplier}>💾 Simpan ke Cloud</button>
+            </div>
+          </div>
+        </div>
+  );
+}
+
 export function TimMutuModal({ timMutuModal, setTimMutuModal, timMutuForm, setTimMutuForm, saveTimMutu, sty, C }) {
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>

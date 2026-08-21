@@ -640,7 +640,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
         if (!shouldIncludeKatalog(kat, fakeStockRow)) return;
         rows.push(addLiveSearchFields({
           katalog: kat?.katalog||"-", deskripsi: kat?.name||"-", merk:resolveMerk(kat, si), type:resolveType(kat, si),
-          satuan: kat?.satuan||"-", valuasi: si.harga||0,
+          satuan: kat?.satuan||"-", valuasi: si.hargaSatuan||0,
           masuk: si.qty||0, keluar: 0,
           upt: "UPT Surabaya",
           tugBaDoc: `TUG-3 / ${docNo}`,
@@ -664,8 +664,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           workLocation: t.lokasiPekerjaan,
           counterparty: t.dariSupplier,
           unit: t.dariSupplier,
-          contractRefs: [t.noSpk, t.noAmandemen].filter(Boolean).join(" | "),
-          documentRefs: [t.noSuratJalan, t.noFaktur].filter(Boolean).join(" | "),
+          contractRefs: [t.suratPesananNo, t.amandemenNo].filter(Boolean).join(" | "),
+          documentRefs: [t.noSuratJalan, t.buktiKasNo].filter(Boolean).join(" | "),
           notes: t.keteranganTug3 || t.keteranganBarang,
           storageLocation: (lokasiList||[]).find(l=>l.id===si.lokasiTujuanId)?.kode,
           quality: t.keteranganTug3,

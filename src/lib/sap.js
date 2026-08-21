@@ -171,13 +171,39 @@ export function applyMaraNameSearch(builder, query) {
   );
 }
 
+// Jarak edit Levenshtein, dengan early-exit begitu batas maksimal terlampaui
+// (kita hanya butuh tahu "<=1 atau tidak", bukan jarak persisnya).
+function levenshteinAtMost1(a, b) {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  if (a === b) return true;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i];
+    let rowMin = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+      cur.push(v);
+      if (v < rowMin) rowMin = v;
+    }
+    if (rowMin > 1) return false;
+    prev = cur;
+  }
+  return prev[b.length] <= 1;
+}
+
 export function matchesMaterialSearch(fields, query) {
   if (!query || !query.trim()) return true;
   const haystackWords = expandHaystackSynonyms(normalizeSearchText(
     fields.filter(Boolean).join(" ")
   )).split(" ").filter(Boolean);
   const groups = queryTokenGroups(query);
-  return groups.every(alts => alts.some(t => haystackWords.some(w => (t.length <= 2 ? w === t : w.startsWith(t)))));
+  return groups.every(alts => alts.some(t => haystackWords.some(w => {
+    if (t.length <= 2) return w === t;
+    if (w.startsWith(t)) return true;
+    // ponytail: Levenshtein <=1, kata >=4; upgrade ke trigram bila perlu ranking
+    return t.length >= 4 && levenshteinAtMost1(w, t);
+  })));
 }
 
 export function matchesStockSearch(stock, query) {

@@ -120,6 +120,7 @@ export function AppSidebar({
                       {[
                         {id:"katalog",icon:<SidebarIcon name="catalog" size={16}/>,label:"Master Katalog"},
                         {id:"satpam",icon:<SidebarIcon name="shield" size={16}/>,label:"Satpam"},
+                        {id:"supplier",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Supplier"},
                         {id:"timmutu",icon:<SidebarIcon name="users" size={16}/>,label:"Tim Mutu"},
                         {id:"organisasi",icon:<SidebarIcon name="organization" size={16}/>,label:"Struktur Organisasi"},
                         {id:"gudang",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Master Gudang"},

@@ -1,11 +1,13 @@
 // Modal form transaksi TUG (dipindah dari App.jsx, refactor batch 1).
 // Tug5FormModal, Tug98FormModal (TUG9/TUG8), Tug10FormModal, Tug3FormModal.
 import { SearchableSelect } from "./SearchableSelect.jsx";
+import { PhotoSlot } from "./PhotoSlot.jsx";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { generateReservasiDocNo } from "../lib/utils.js";
 import { statusMaterialBadgeStyle } from "../lib/sap.js";
 import { can } from "../lib/perms.js";
 import { ROLES } from "../lib/roles.js";
+import { sortBlokOptions } from "../lib/masterSync.js";
 
 export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C, uptKode }) {
   return (
@@ -513,14 +515,20 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
   );
 }
 
-export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, katalogList, lokasiList, CATEGORIES, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C }) {
+export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, editingDraftTxnId, savingTxn, docSeq, katalogList, lokasiList, visibleGudangList, supplierList, openAddSupplier, CATEGORIES, tug3ExpandedIdx, setTug3ExpandedIdx, addItemRow, removeItemRow, updateItemRow, handleImg, saveTxn, maraSearch, setMaraSearch, maraSearchResults, setMaraSearchResults, maraSearchLoading, maraSearchError, searchMaraCatalog, applyMaraToItemRow, isMobile, sty, C }) {
+  // Auto-pilih Gudang Tujuan kalau cuma ada 1 opsi (pola "adjust state saat render" React,
+  // aman krn kondisi jadi false setelah state ke-set, tidak infinite-loop).
+  if (!txnForm.gudangTujuanId && (visibleGudangList||[]).length===1) {
+    setTxnForm(tf=>tf.gudangTujuanId ? tf : ({...tf, gudangTujuanId: visibleGudangList[0].id}));
+  }
+  const tug3Bloks = txnForm.gudangTujuanId ? sortBlokOptions(lokasiList.filter(l=>l.gudangId===txnForm.gudangTujuanId)) : [];
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={sty.modalHeader}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-3 Karantina — Bon Penerimaan</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-3/...</span>
+                <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>{editingDraftTxnId ? `No: ${txnForm.docNumbers?.tug3 || "..."} (Draft)` : `No: ${docSeq}.TUG-3/...`}</span>
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
@@ -529,32 +537,69 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, katalo
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DATA PENERIMAAN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>
               <div><label style={sty.label}>Tanggal Diterima *</label><input type="date" style={sty.input} value={txnForm.tanggalDiterima} onChange={e=>setTxnForm(tf=>({...tf,tanggalDiterima:e.target.value}))}/></div>
-              <div><label style={sty.label}>Dari (Supplier) *</label><input style={sty.input} value={txnForm.dariSupplier} onChange={e=>setTxnForm(tf=>({...tf,dariSupplier:e.target.value}))} placeholder="cth: PT. Sedayu"/></div>
+              <div>
+                <label style={sty.label}>Dari (Supplier) *</label>
+                <SearchableSelect
+                  options={[{ id:"__add_new__", nama:"+ Tambah supplier baru" }, ...supplierList]}
+                  value={txnForm.supplierId}
+                  onChange={v=>{
+                    if (v === "__add_new__") { openAddSupplier(); return; }
+                    const sp = supplierList.find(s=>s.id===v);
+                    setTxnForm(tf=>({...tf, supplierId:v, dariSupplier: sp?.nama||"" }));
+                  }}
+                  getLabel={s=>s.nama}
+                  placeholder="-- Cari & pilih Supplier --"
+                  sty={sty} C={C} isMobile={isMobile}
+                />
+              </div>
               <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Dengan</label><input style={sty.input} value={txnForm.denganKirim} onChange={e=>setTxnForm(tf=>({...tf,denganKirim:e.target.value}))} placeholder="cth: Dikirim Langsung"/></div>
             </div>
-            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Pengiriman</div>
+            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Referensi</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>
+              <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Judul Kontrak</label><input style={sty.input} value={txnForm.judulKontrak} onChange={e=>setTxnForm(tf=>({...tf,judulKontrak:e.target.value}))} placeholder="cth: Pengadaan Gas SF6 UPT Surabaya"/></div>
               <div><label style={sty.label}>No. Surat Jalan</label><input style={sty.input} value={txnForm.noSuratJalan} onChange={e=>setTxnForm(tf=>({...tf,noSuratJalan:e.target.value}))}/></div>
               <div><label style={sty.label}>Tgl. Surat Jalan</label><input type="date" style={sty.input} value={txnForm.tglSuratJalan} onChange={e=>setTxnForm(tf=>({...tf,tglSuratJalan:e.target.value}))}/></div>
-              <div><label style={sty.label}>No. SPK / Surat Pesanan</label><input style={sty.input} value={txnForm.noSpk} onChange={e=>setTxnForm(tf=>({...tf,noSpk:e.target.value}))}/></div>
-              <div><label style={sty.label}>Tgl. SPK</label><input type="date" style={sty.input} value={txnForm.tglSpk} onChange={e=>setTxnForm(tf=>({...tf,tglSpk:e.target.value}))}/></div>
+              <div><label style={sty.label}>No. Surat Pesanan</label><input style={sty.input} value={txnForm.suratPesananNo} onChange={e=>setTxnForm(tf=>({...tf,suratPesananNo:e.target.value}))}/></div>
+              <div><label style={sty.label}>Tgl. Surat Pesanan</label><input type="date" style={sty.input} value={txnForm.suratPesananTgl} onChange={e=>setTxnForm(tf=>({...tf,suratPesananTgl:e.target.value}))}/></div>
+              <div><label style={sty.label}>No. Amandemen/Kontrak</label><input style={sty.input} value={txnForm.amandemenNo} onChange={e=>setTxnForm(tf=>({...tf,amandemenNo:e.target.value}))}/></div>
+              <div><label style={sty.label}>Tgl. Amandemen</label><input type="date" style={sty.input} value={txnForm.amandemenTgl} onChange={e=>setTxnForm(tf=>({...tf,amandemenTgl:e.target.value}))}/></div>
             </div>
-            <div style={{fontSize:12,fontWeight:700,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Dokumen Keuangan</div>
-            <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
-              <div><label style={sty.label}>No. Faktur / Bukti Kas</label><input style={sty.input} value={txnForm.noFaktur} onChange={e=>setTxnForm(tf=>({...tf,noFaktur:e.target.value}))}/></div>
-              <div><label style={sty.label}>Tgl. Faktur</label><input type="date" style={sty.input} value={txnForm.tglFaktur} onChange={e=>setTxnForm(tf=>({...tf,tglFaktur:e.target.value}))}/></div>
-              <div><label style={sty.label}>No. Amandemen/Kontrak</label><input style={sty.input} value={txnForm.noAmandemen} onChange={e=>setTxnForm(tf=>({...tf,noAmandemen:e.target.value}))}/></div>
-              <div><label style={sty.label}>Biaya Angkutan</label><input type="number" inputMode="decimal" style={sty.input} value={txnForm.biayaAngkutan} onChange={e=>setTxnForm(tf=>({...tf,biayaAngkutan:Number(e.target.value)}))}/></div>
+
+            <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>LOKASI PENYIMPANAN</div>
+            <div style={{marginBottom:14}}>
+              <label style={sty.label}>Gudang Tujuan *</label>
+              <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,gudangTujuanId:e.target.value}))}>
+                <option value="">-- Pilih Gudang --</option>
+                {(visibleGudangList||[]).map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+              </select>
+              {(visibleGudangList||[]).length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Master Gudang yang bisa diakses. Tambahkan/pastikan akses di Master Data → Master Gudang.</div>}
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / SPARE PARTS</div>
             <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Pilih dari katalog yang sudah ada, atau daftarkan barang baru langsung di sini.</div>
-            {txnForm.stockItems.map((si,idx)=>(
+            {txnForm.stockItems.map((si,idx)=>{
+              const isExpanded = idx===tug3ExpandedIdx;
+              const kat = si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId) : null;
+              const namaBarang = si.katalogMode==="existing" ? (kat ? `${kat.name} [${kat.katalog||"-"}]` : null) : (si.namaBaru||null);
+              if (!isExpanded) {
+                return (
+                  <div key={idx} style={{display:"flex",alignItems:isMobile?"stretch":"center",flexDirection:isMobile?"column":"row",gap:8,border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px",marginBottom:8,background:C.surface,cursor:"pointer"}} onClick={()=>setTug3ExpandedIdx(idx)}>
+                    <span style={{fontSize:12,fontWeight:700,color:C.muted}}>#{idx+1}</span>
+                    <span style={{flex:1,fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{namaBarang || <span style={{color:C.muted,fontStyle:"italic"}}>Belum dipilih</span>}</span>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:isMobile?"space-between":"flex-start",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontSize:12,color:C.accent,fontWeight:700}}>Qty: {si.qty||0}</span>
+                      <span style={{fontSize:12,color:C.muted}}>✏️ Edit</span>
+                      {txnForm.stockItems.length>1 && <button type="button" title="Hapus barang ini" style={{...sty.btn("danger","sm"),padding:"3px 8px"}} onClick={e=>{e.stopPropagation();removeItemRow(idx);if(tug3ExpandedIdx===idx)setTug3ExpandedIdx(Math.max(0,idx-1));}}>✕</button>}
+                    </div>
+                  </div>
+                );
+              }
+              return (
               <div key={idx} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:12,marginBottom:10,background:"#f9fafb"}}>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
                   <button type="button" style={{...sty.btn(si.katalogMode==="existing"?"primary":"ghost","sm"),flex:1}} onClick={()=>updateItemRow(idx,"katalogMode","existing")}>📑 Dari Katalog</button>
-                  <button type="button" style={{...sty.btn(si.katalogMode==="new"?"primary":"ghost","sm"),flex:1}} onClick={()=>updateItemRow(idx,"katalogMode","new")}>✨ Barang Baru</button>
-                  {txnForm.stockItems.length>1 && <button type="button" title="Hapus barang ini" style={{...sty.btn("danger","sm")}} onClick={()=>removeItemRow(idx)}>✕</button>}
+                  <button type="button" style={{...sty.btn(si.katalogMode==="new"?"primary":"ghost","sm"),flex:1}} onClick={()=>updateItemRow(idx,"katalogMode","new")}>✨ Catalog Baru</button>
+                  {txnForm.stockItems.length>1 && <button type="button" title="Hapus barang ini" style={{...sty.btn("danger","sm")}} onClick={()=>{removeItemRow(idx);setTug3ExpandedIdx(Math.max(0,idx-1));}}>✕</button>}
                 </div>
                 {si.katalogMode==="existing" ? (
                   <div style={{marginBottom:8}}>
@@ -569,41 +614,81 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, katalo
                       sty={sty} C={C} isMobile={isMobile}
                     />
                   </div>
+                ) : si._maraLocked ? (
+                  <div style={{marginBottom:8}}>
+                    <div style={{marginBottom:8,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — {si.namaBaru} [{si.katalogBaru}] · {si.satuanBaru}</span>
+                      <button type="button" style={sty.btn("ghost","sm")} onClick={()=>updateItemRow(idx,"_maraLocked",false)}>Lepas kunci</button>
+                    </div>
+                  </div>
                 ) : (
-                  <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-                    <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: INSUL MEDIA;OIL;NAPHTHENIC"/></div>
-                    <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)} placeholder="cth: 4180023"/></div>
-                    <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: L, BH, pcs"/></div>
-                    <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+                  <div style={{marginBottom:8}}>
+                    <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:8}}>
+                      <div style={{display:"flex",gap:6}}>
+                        <input style={{...sty.input,flex:1}} value={maraSearch} placeholder="Ketik nama material MARA (min. 2 huruf)..." onChange={e=>searchMaraCatalog(e.target.value)}/>
+                        {maraSearch && <button style={sty.btn("ghost","sm")} onClick={()=>{setMaraSearch("");setMaraSearchResults([])}}>✕</button>}
+                      </div>
+                      {maraSearchLoading && <div style={{fontSize:12,color:"#0369a1",marginTop:6}}>Mencari...</div>}
+                      {maraSearchError && <div style={{fontSize:12,color:C.red,marginTop:6,padding:"6px 8px",background:"#fef2f2",borderRadius:10}}>⚠️ {maraSearchError}</div>}
+                      {maraSearchResults.length>0 && (
+                        <div style={{marginTop:8,maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+                          {maraSearchResults.map(item=>(
+                            <div key={item.kode_material} onClick={()=>applyMaraToItemRow(idx,item)}
+                              style={{padding:"6px 10px",borderRadius:10,border:"1px solid #bae6fd",background:C.surface,cursor:"pointer",fontSize:12,display:"flex",justifyContent:"space-between",gap:8}}>
+                              <div><span style={{fontWeight:700,color:"#0369a1"}}>{item.kode_material}</span><span style={{color:"#64748b",marginLeft:8}}>{item.nama}</span></div>
+                              <span style={{color:"#64748b",flexShrink:0}}>{item.satuan}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}" — isi manual di bawah.</div>}
+                      {maraSearchResults.length>0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Klik item untuk auto-fill, atau isi manual di bawah.</div>}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
+                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: INSUL MEDIA;OIL;NAPHTHENIC"/></div>
+                      <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)} placeholder="cth: 4180023"/></div>
+                      <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: L, BH, pcs"/></div>
+                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+                    </div>
                   </div>
                 )}
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:8}}>
-                  <div><label style={sty.label}>Jumlah</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/></div>
-                  <div><label style={sty.label}>Harga Satuan</label><input style={sty.input} type="number" inputMode="decimal" min="0" value={si.harga} onChange={e=>updateItemRow(idx,"harga",Number(e.target.value))}/></div>
+                  <div><label style={sty.label}>Jumlah</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty||""} onChange={e=>updateItemRow(idx,"qty",e.target.value===""?"":Number(e.target.value))}/></div>
+                  <div><label style={sty.label}>Harga Satuan</label><input style={sty.input} type="number" inputMode="decimal" min="0" value={si.hargaSatuan||""} onChange={e=>updateItemRow(idx,"hargaSatuan",e.target.value===""?"":Number(e.target.value))}/></div>
                   <div>
                     <label style={sty.label}>Lokasi Tujuan</label>
-                    <select style={sty.select} value={si.lokasiTujuanId||""} onChange={e=>updateItemRow(idx,"lokasiTujuanId",e.target.value)}>
-                      <option value="">-- Pilih --</option>
-                      {lokasiList.map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                    <select style={sty.select} value={si.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>updateItemRow(idx,"lokasiTujuanId",e.target.value)}>
+                      <option value="">{txnForm.gudangTujuanId?"-- Pilih --":"Pilih gudang dulu"}</option>
+                      {tug3Bloks.map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                     </select>
+                    {txnForm.gudangTujuanId && tug3Bloks.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada blok pada gudang ini.</div>}
                   </div>
                 </div>
+                <div style={{marginTop:8,maxWidth:220}}>
+                  <PhotoSlot label="Foto Barang" value={si.fotoBarang} onChange={img=>updateItemRow(idx,"fotoBarang",img)} onRemove={()=>updateItemRow(idx,"fotoBarang",null)} handleImg={handleImg} sty={sty} C={C}/>
+                </div>
               </div>
-            ))}
+              );
+            })}
             <button type="button" style={{...sty.btn("ghost","sm"),marginBottom:14}} onClick={addItemRow}>+ Tambah Barang Lain</button>
+
+            <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>📸 LAMPIRAN FOTO (opsional)</div>
+            <div className="tug3-attachment-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+              <PhotoSlot label="Foto Kendaraan" value={txnForm.fotoKendaraan} onChange={img=>setTxnForm(f=>({...f,fotoKendaraan:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoKendaraan:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="SIM / KTP" value={txnForm.fotoSimKtp} onChange={img=>setTxnForm(f=>({...f,fotoSimKtp:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoSimKtp:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="Surat Jalan" value={txnForm.fotoSuratJalanImg} onChange={img=>setTxnForm(f=>({...f,fotoSuratJalanImg:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoSuratJalanImg:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="Foto Kontrak" value={txnForm.fotoKontrak} onChange={img=>setTxnForm(f=>({...f,fotoKontrak:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoKontrak:null}))} handleImg={handleImg} sty={sty} C={C}/>
+            </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>ADMINISTRASI</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:16}}>
-              <div><label style={sty.label}>Nota No.</label><input style={sty.input} value={txnForm.notaNo} onChange={e=>setTxnForm(tf=>({...tf,notaNo:e.target.value}))}/></div>
-              <div><label style={sty.label}>Kode Perkiraan</label><input style={sty.input} value={txnForm.kodePerkiraan} onChange={e=>setTxnForm(tf=>({...tf,kodePerkiraan:e.target.value}))}/></div>
-              <div><label style={sty.label}>Perintah Kerja</label><input style={sty.input} value={txnForm.perintahKerja} onChange={e=>setTxnForm(tf=>({...tf,perintahKerja:e.target.value}))}/></div>
-              <div><label style={sty.label}>Fungsi</label><input style={sty.input} value={txnForm.fungsi} onChange={e=>setTxnForm(tf=>({...tf,fungsi:e.target.value}))}/></div>
               <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Keterangan</label><input style={sty.input} value={txnForm.keteranganTug3} onChange={e=>setTxnForm(tf=>({...tf,keteranganTug3:e.target.value}))} placeholder="Baik"/></div>
             </div>
 
             <div style={sty.stickyFooter}>
-              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTxnModal(false)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={saveTxn}>📤 Ajukan TUG-3 Karantina</button>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}}>Batal</button>
+              <button disabled={savingTxn} style={{...sty.btn("ghost"),flex:1,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn("DRAFT")}>💾 Simpan Draft</button>
+              <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn("PENDING_TL")}>{savingTxn?"⏳ Menyimpan...":"📤 Ajukan TUG-3 Karantina"}</button>
             </div>
           </div>
         </div>
