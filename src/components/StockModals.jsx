@@ -1,6 +1,7 @@
 // Modal-modal terkait stok & dokumen (dipindah dari App.jsx, refactor batch 1).
 // StockDetailModal (form tambah/edit stok), MaturityAssessmentModal (asesmen manual),
 // DocPreviewModal (preview & unduh dokumen TUG).
+import { useRef } from "react";
 import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { resolveSapLabel } from "../lib/sap.js";
@@ -123,6 +124,7 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
   // dp = transaksi dgn SIM/KTP privat sudah jadi signed URL (foto lain sudah
   // URL publik). Fallback ke docPreview mentah selama resolusi berjalan.
   const dp = docPreviewDoc || docPreview;
+  const iframeRef = useRef(null);
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:1500}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 18px",background:C.sidebar,flexShrink:0}}>
@@ -135,11 +137,13 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
                 else if (dp.docType==="TUG7") downloadTUG7HTML(dp, katalogList, uitList, uptList, users, showToast);
                 else downloadTUG9HTML(dp, enrichedStocks, users, satpamList, showToast, uptList);
               }}>⬇️ Unduh File (untuk Print/PDF)</button>
+              <button style={{...sty.btn("primary"),padding:"7px 16px"}} onClick={()=>iframeRef.current?.contentWindow?.print()}>🖨️ Print / Save PDF</button>
               <button style={sty.btn("danger","sm")} onClick={()=>setDocPreview(null)}>✕ Tutup</button>
             </div>
           </div>
           <div style={{flex:1,background:"#e5e7eb",overflow:"hidden"}}>
             <iframe
+              ref={iframeRef}
               title="Document Preview"
               srcDoc={dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList)}
               style={{width:"100%",height:"100%",border:"none"}}

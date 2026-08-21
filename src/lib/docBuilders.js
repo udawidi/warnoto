@@ -1178,7 +1178,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
       <td style="text-align:center">${esc(kodeKatalog)}</td>
       <td style="text-align:center">${esc(satuan)}</td>
       <td style="text-align:center">${fmtNum(si.qty)}</td>
-      <td>${txn.dariSupplier ? `(Pengadaan ${esc(txn.dariSupplier)}) ` : ""}${esc(txn.keteranganTug3 || "")}</td>
+      <td style="word-break:break-word">${txn.dariSupplier ? `Pengadaan ${esc(txn.dariSupplier)}` : "-"}</td>
       <td style="text-align:right">${fmtRp(hargaSatuan)}</td>
       <td style="text-align:right">${fmtRp(jumlahRp)}</td>
     </tr>`;
@@ -1337,8 +1337,8 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
       <tbody>${materialRowsTable}</tbody>
     </table>
 
-    <div class="closing-note" style="font-style:normal">Jumlah : Rp ${fmtRp(totalRp)}</div>
-    <div class="closing-note">Keterangan : ${esc(txn.keteranganTug3 || "Baik")}</div>
+    <div class="closing-note" style="font-style:normal;display:flex;gap:6px"><b>Jumlah</b> : Rp ${fmtRp(totalRp)}</div>
+    <div class="closing-note" style="display:flex;gap:6px;word-break:break-word"><b style="flex-shrink:0">Keterangan</b> : ${esc(txn.keteranganTug3 || "Baik")}</div>
 
     ${isPenerimaan ? `
     <div class="sig-row-2">
@@ -1358,10 +1358,9 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <div class="sig-row-2">
       <div class="sig-col">
         <div><i>Diserahkan oleh,</i></div>
-        <div class="sig-role">&nbsp;</div>
+        <div class="sig-role">${esc(txn.dariSupplier || "-")}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(txn.supplierPic || txn.dariSupplier || "-")}</div>
-        ${txn.supplierPic ? `<div style="font-size:10px">${esc(txn.dariSupplier || "-")}</div>` : ""}
+        <div class="sig-name">${esc(txn.supplierPic || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Diterima oleh,</i></div>

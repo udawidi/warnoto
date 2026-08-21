@@ -2458,12 +2458,11 @@ export default function PLNWarehouse() {
     }
   }
 
-  function handleImg(e, setter, onError) {
+  async function handleImg(e, setter, onError) {
     const f = e.target.files[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = ev => setter(ev.target.result);
-    r.onerror = () => onError?.(new Error("browser tidak dapat membaca file"));
-    try { r.readAsDataURL(f); } catch (error) { onError?.(error); }
+    if (!f.type.startsWith("image/")) { onError?.(new Error("File harus berupa gambar.")); return; }
+    try { setter(await compressImage(f, { maxDim: 1280, maxBytes: 400_000 })); }
+    catch (error) { onError?.(error); }
   }
   // Foto satpam disimpan inline di jsonb (bukan bucket) → wajib dikompres kecil (maks 400px)
   // supaya tidak membengkakkan master jsonb & localStorage.
