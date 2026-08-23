@@ -124,6 +124,13 @@ function buildLokasiPublik(katalogId, stocks, lokasiList, subGudangList, gudangL
     });
 }
 
+// A3 (fix perf reload): snapshot qty per katalog yang TERAKHIR di-push, di memori sesi ini —
+// dipakai supaya upsert stock_current/katalog cuma kirim baris yang qty-nya BENAR berubah,
+// bukan semua ~752 katalog tiap sync (itu sumber 503 di trace). ponytail: snapshot di
+// memori (bukan localStorage) — reload = 1x full-push lagi, upgrade ke persisted kalau itu
+// juga jadi masalah.
+const lastSyncedStockQty = new Map(); // katalogId -> qty terakhir di-push
+
 export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
   if (isDemoMode()) return { katalogCount: 0, stockCount: 0 }; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -137,7 +144,9 @@ export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
     if (!s.katalogId) return;
     qtyMap[s.katalogId] = (qtyMap[s.katalogId]||0) + (s.qty||0);
   });
-  const katalogIds = Object.keys(qtyMap);
+  // Cuma push katalog yang qty-nya benar-benar berubah sejak sync terakhir — INTI fix 503
+  // (dulu upsert SELURUH katalog tiap kali, walau cuma 1 baris yang berubah).
+  const katalogIds = Object.keys(qtyMap).filter(kid => lastSyncedStockQty.get(kid) !== qtyMap[kid]);
   if (katalogIds.length === 0) return { katalogCount: 0, stockCount: 0 };
 
   // Pastikan katalog-nya ada dulu (FK target). ignore-duplicates supaya tidak
@@ -183,6 +192,7 @@ export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
     if (!enrichRes.ok) throw new Error(`Gagal sync lokasi katalog: ${await enrichRes.text()}`);
   }
 
+  katalogIds.forEach(kid => lastSyncedStockQty.set(kid, qtyMap[kid]));
   return { katalogCount: katalogPayload.length, stockCount: stockPayload.length };
 }
 

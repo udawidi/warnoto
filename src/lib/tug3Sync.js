@@ -3,6 +3,7 @@
 // selalu fail-safe (tak throw, tak sukses palsu). Pola ringkas dari tugCanonical.js.
 import { supabase } from "../supabaseClient.js";
 import { isCanonicalUnavailable } from "./tugCanonical.js";
+import { processTxnPhotos } from "./supabaseSync.js";
 
 function rowToTxn(row) {
   const data = row.data || {};
@@ -45,6 +46,11 @@ export async function upsertTug3Transaction(txn) {
   if (!txn.uptId) { console.warn("upsertTug3Transaction ditolak: txn tanpa uptId", txn.id); return false; }
   let createdBy = null;
   try { createdBy = (await supabase.auth.getUser()).data?.user?.id || null; } catch {}
+  // Fix akar base64-di-DB: kalau ada foto masih data:image (upload sebelumnya
+  // belum jalan/gagal), upload dulu ke Storage sebelum disimpan. Normal path
+  // (foto sudah URL/priv:) = no-op murah, processTxnPhotos skip non-dataURL.
+  // Fail-safe: gagal upload → field tetap base64 + txn._fotoPending=true, TIDAK dibuang.
+  const { data: txnForRow } = await processTxnPhotos(txn, txn.id);
   const row = {
     id: txn.id,
     upt_id: txn.uptId || null,
@@ -52,7 +58,7 @@ export async function upsertTug3Transaction(txn) {
     doc_number: txn.docNumbers?.tug3 || null,
     stage: txn.stage,
     status: txn.status,
-    data: txn,
+    data: txnForRow,
     created_at: txn.createdAt || Date.now(),   // kolom bigint (epoch ms), bukan ISO string
     updated_at: Date.now(),
   };

@@ -111,6 +111,7 @@ import { useWarehouseConfig } from "./src/hooks/useWarehouseConfig.jsx";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./src/lib/openLocationCode.js";
 import { fmtNum, buildKatalogRagContent, getKritisAgg, splitChunksForEmbed } from "./src/lib/ragShared.mjs";
 import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoMaterialToSupabase, processTxnPhotos, resolveTxnPrivPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
+import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
@@ -532,6 +533,12 @@ export default function PLNWarehouse() {
   useEffect(() => {
     // VIEWER read-only — jangan push katalog/stok/foto (RLS opsi B menolak, lihat migration 20260818b).
     if (!currentUser || loading || !supabase || !bolehTulisKatalog(currentUser.role)) return;
+    // FIX perf reload (A1): skip kalau data sync-relevan belum berubah sejak sync terakhir —
+    // paling sering kena tepat setelah hydration reload (data itu-itu saja yang baru dibaca
+    // dari server, re-push-nya sia-sia & itu sumber utama 503 di trace). loadCloud men-set
+    // syncedSigRef begitu load selesai, jadi effect ini langsung skip di render pertama.
+    const sig = syncSignature(txns, stocks, katalogList);
+    if (sig === syncedSigRef.current) return;
     const timer = setTimeout(async () => {
       try {
         const filter = { dateFrom:"", dateTo:"", katalogId:"ALL", jenisBarang:"ALL", sapStatus:"ALL", docTypes:["TUG9","TUG8","TUG10","TUG3"] };
@@ -539,6 +546,8 @@ export default function PLNWarehouse() {
         const histRes = await syncTUG15ToSupabase(rows, katalogList);
         await syncStockQtyToSupabase(stocks, katalogList, { lokasiList, subGudangList, gudangList });
         await syncFotoMaterialToSupabase(stocks, katalogList);
+        syncedSigRef.current = sig;
+        try { localStorage.setItem("warnoto_synced_sync_sig", sig); } catch {}
         if (histRes.historyCount > 0) {
           showToastRef.current && showToastRef.current(`☁️ Auto-sync Supabase: ${histRes.historyCount} baris histori baru.`, "success");
         }
@@ -640,6 +649,13 @@ export default function PLNWarehouse() {
   const [forecastDetailLoading, setForecastDetailLoading] = useState(false);
   const showToastRef = useRef(null);
   const lastSyncErrorToastRef = useRef(0);
+  // A1: signature data yang terakhir disinkron (src/lib/syncGuard.js). Dibaca dari localStorage
+  // (bukan cuma di-memori) supaya reload TIDAK re-push data yang sudah sama persis dengan sync
+  // terakhir — kalau cuma di-memori, ref selalu null tiap reload dan selalu memicu 1x sync sia-sia.
+  const syncedSigRef = useRef(undefined);
+  if (syncedSigRef.current === undefined) {
+    try { syncedSigRef.current = localStorage.getItem("warnoto_synced_sync_sig"); } catch { syncedSigRef.current = null; }
+  }
   const lastBotSyncErrorToastRef = useRef(0);
   const maturityMigrationPromptedRef = useRef({ assessments:false, audits:false });
   // Hanya aktif setelah bootstrap untuk user ini selesai. Ref mencegah channel
@@ -699,6 +715,14 @@ export default function PLNWarehouse() {
       ];
       // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
       const maturityLoads = [loadMaturityAssessments(), loadMaturityAudits(), loadMaturityAuditHistory(), loadMaturity5SAssessments()];
+      // FIX perf reload: dulu dua fetch ini menunggu masterLoads SELESAI dulu baru mulai
+      // (ekor serial) — di balik Cloudflare tunnel self-host tiap round-trip mahal. Keduanya
+      // tak butuh hasil masterLoads, jadi mulai SEKARANG supaya jalan konkuren; hasilnya
+      // baru dikonsumsi nanti di bawah (lihat `await canonicalLoadPromise`/`tug3LoadPromise`).
+      const canonicalLoadPromise = loadCanonicalTugTransactions();
+      canonicalLoadPromise.catch(() => {}); // cegah warning unhandled-rejection; error asli tetap ditangani di try/catch bawah
+      const tug3LoadPromise = loadTug3Transactions();
+      tug3LoadPromise.catch(() => {});
 
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
@@ -814,7 +838,7 @@ export default function PLNWarehouse() {
       // Legacy cache remains only for non-canonical records and as a pre-migration fallback.
       const legacyTxns = ct || DEFAULT_TXNS;
       try {
-        const canonicalLoad = await loadCanonicalTugTransactions();
+        const canonicalLoad = await canonicalLoadPromise;
         const withCanonical = canonicalLoad.unavailable ? legacyTxns : [
           ...legacyTxns.filter(t => !t.canonical && !canonicalLoad.rows.some(c => c.id === t.id)),
           ...canonicalLoad.rows,
@@ -822,7 +846,7 @@ export default function PLNWarehouse() {
         // TUG-3/4 (barang masuk) — sumber kebenaran tabel `tug3_transactions` sejak
         // migrasi persistensi ini. Buang blob legacy TUG-3 yang punya baris DB (dedupe
         // by id) + yang sudah ber-flag canonical3, lalu tambah baris DB.
-        const tug3Load = await loadTug3Transactions();
+        const tug3Load = await tug3LoadPromise;
         setTxns(tug3Load.unavailable ? withCanonical : [
           ...withCanonical.filter(t => !t.canonical3 && !tug3Load.rows.some(r => r.id === t.id)),
           ...tug3Load.rows,
