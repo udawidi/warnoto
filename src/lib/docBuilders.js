@@ -23,7 +23,7 @@ function resolveUptNama(uptId, uptList, fallback) {
 // Returns a full standalone HTML string. Used for both in-app preview
 // (rendered in an iframe inside a modal) and for downloading as a
 // .html file the user can open in any browser and Print > Save as PDF.
-export function buildTUG9HTML(txn, stocks, users, satpamList, uptList) {
+export function buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangList) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
@@ -38,6 +38,7 @@ export function buildTUG9HTML(txn, stocks, users, satpamList, uptList) {
   const scopedTl = users.find(u => u.role === "TL" && (!txn.uptId || u.uptId === txn.uptId)) || {};
   const menyerahkanUser = snapshotTl || (actualApprover.role === "TL" ? actualApprover : scopedTl);
   const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
+  const satpamGudangNama = (gudangList||[]).find(g => g.id === satpamUser.gudangId)?.nama || WAREHOUSE;
   const itemRows = (txn.stockItems || []).map(si => {
     const stock = stocks.find(s=>s.id===si.stockId) || {};
     return { stock, qty: si.qty };
@@ -57,13 +58,13 @@ export function buildTUG9HTML(txn, stocks, users, satpamList, uptList) {
   })();
 
   const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
-  const docNoSJ = docs.sj || `${txn.docSeq || "1"}.SJ/LOG.00.02/${uptKode}/VII/2026`;
+  const docNoSJ = docs.sj || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt).sj : `1.SJ/LOG.00.02/${uptKode}/VII/2026`);
   const docNoBA = docs.ba || docNoSJ.replace(".SJ/", ".BA/");
 
   const materialRowsTable = itemRows.map(({stock,qty}) => `
     <tr>
       <td>${esc(stock.name || "-")}</td>
-      <td style="text-align:center">${esc(stock.lokasi || "GUDANG")}</td>
+      <td style="text-align:center">${esc(stock.gudang || stock.lokasi || "GUDANG")}</td>
       <td style="text-align:center">${fmtNum(qty)}</td>
       <td style="text-align:center">${esc(stock.unit || "-")}</td>
       <td>${stock.jenisBarang ? `(${esc(stock.jenisBarang)}) ` : ""}${esc(txn.keteranganBarang || "")}</td>
@@ -197,7 +198,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
       </div>
       <div class="sig-col">
         <div><i>Mengetahui,</i></div>
-        <div class="sig-role">SATPAM GUDANG ${esc((satpamUser.gudangNama || WAREHOUSE).toUpperCase())}</div>
+        <div class="sig-role">SATPAM GUDANG ${esc(satpamGudangNama.toUpperCase())}</div>
         <div class="sig-space"></div>
         <div class="sig-name">${esc(satpamUser.name || ".....................")}</div>
       </div>
@@ -1546,8 +1547,8 @@ export function downloadTUG3HTML(txn, katalogList, lokasiList, timMutuList, user
   showToast && showToast("📄 File diunduh! Buka di browser HP/laptop, lalu Print > Save as PDF.", "success");
 }
 
-export function downloadTUG9HTML(txn, stocks, users, satpamList, showToast, uptList) {
-  const html = buildTUG9HTML(txn, stocks, users, satpamList, uptList);
+export function downloadTUG9HTML(txn, stocks, users, satpamList, showToast, uptList, gudangList) {
+  const html = buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangList);
   const blob = new Blob([html], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

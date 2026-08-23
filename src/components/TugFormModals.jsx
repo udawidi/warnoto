@@ -158,7 +158,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
   );
 }
 
-export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, satpamList, enrichedStocks, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
+export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, satpamList, enrichedStocks, tug98Collapsed, setTug98Collapsed, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
   const isDerivedDraft = Boolean(editingDraftTxnId);
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
@@ -217,8 +217,19 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
             <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Barang yang sama bisa ada di lokasi berbeda — pastikan pilih baris dengan lokasi yang benar.</div>
             {txnForm.stockItems.map((si,idx)=>{
               const stockOpt = enrichedStocks.find(s=>s.id===si.stockId);
+              const complete = !!si.stockId && si.qty>0;
+              // Auto-ringkas begitu item lengkap (tiru UX tug10Collapsed) — default collapsed
+              // saat complete kecuali user eksplisit buka lagi (tug98Collapsed[idx]===false).
+              const collapsed = complete && tug98Collapsed[idx] !== false;
               return (
-                <div key={idx} style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8,marginBottom:8,alignItems:isMobile?"stretch":"flex-end"}}>
+                <div key={idx} style={{border:`1px solid ${complete?"#bbf7d0":C.border}`,borderRadius:10,padding:collapsed?8:0,marginBottom:8,background:complete?"#f6fefb":"transparent"}}>
+                {collapsed ? (
+                  <div onClick={()=>setTug98Collapsed(c=>({...c,[idx]:false}))} style={{cursor:"pointer",fontSize:12,color:C.text,display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                    <span><b>Barang {idx+1}:</b> {stockOpt?.name||"-"} · {fmtNum(si.qty)} {stockOpt?.unit||""} <span style={{color:"#16a34a",fontWeight:700}}>✓ Lengkap</span></span>
+                    <button type="button" style={{...sty.btn("ghost","sm")}} onClick={e=>{e.stopPropagation();setTug98Collapsed(c=>({...c,[idx]:false}));}}>▼ Buka</button>
+                  </div>
+                ) : (
+                <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8,alignItems:isMobile?"stretch":"flex-end"}}>
                   <div style={{flex:isMobile?undefined:3}}>
                     <label style={sty.label}>Barang {idx+1}</label>
                     <SearchableSelect
@@ -240,8 +251,11 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                   <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
                     <div style={{flex:1}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/></div>
                     <button type="button" title="Scan barcode" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>openScanner({txnIndex:idx})}>📷</button>
+                    {complete && <button type="button" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>setTug98Collapsed(c=>({...c,[idx]:true}))}>▲ Ringkas</button>}
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus baris barang ini" style={{...sty.btn("danger","sm"),height:isMobile?44:36}} onClick={()=>removeItemRow(idx)}>✕</button>}
                   </div>
+                </div>
+                )}
                 </div>
               );
             })}
@@ -251,21 +265,9 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>📸 LAMPIRAN FOTO (opsional)</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:12,marginBottom:14}}>
-              <div>
-                <label style={sty.label}>Foto Kendaraan</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoKendaraan:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoKendaraan && <img src={txnForm.fotoKendaraan} alt="kendaraan" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius: 10,marginTop:6,border:`1px solid ${C.border}`}}/>}
-              </div>
-              <div>
-                <label style={sty.label}>Foto SIM / KTP Pengemudi</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoSimKtp:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoSimKtp && <img src={txnForm.fotoSimKtp} alt="sim ktp" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius: 10,marginTop:6,border:`1px solid ${C.border}`}}/>}
-              </div>
-              <div>
-                <label style={sty.label}>Surat Permintaan/Pengembalian</label>
-                <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setTxnForm(tf=>({...tf,fotoSuratPengembalian:img})))} style={{fontSize:12,color:C.text}}/>
-                {txnForm.fotoSuratPengembalian && <img src={txnForm.fotoSuratPengembalian} alt="surat" style={{width:"100%",height:isMobile?140:70,objectFit:"cover",borderRadius: 10,marginTop:6,border:`1px solid ${C.border}`}}/>}
-              </div>
+              <PhotoSlot label="Foto Kendaraan" value={txnForm.fotoKendaraan} onChange={img=>setTxnForm(tf=>({...tf,fotoKendaraan:img}))} onRemove={()=>setTxnForm(tf=>({...tf,fotoKendaraan:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="Foto SIM / KTP Pengemudi" value={txnForm.fotoSimKtp} onChange={img=>setTxnForm(tf=>({...tf,fotoSimKtp:img}))} onRemove={()=>setTxnForm(tf=>({...tf,fotoSimKtp:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="Surat Permintaan/Pengembalian" value={txnForm.fotoSuratPengembalian} onChange={img=>setTxnForm(tf=>({...tf,fotoSuratPengembalian:img}))} onRemove={()=>setTxnForm(tf=>({...tf,fotoSuratPengembalian:null}))} handleImg={handleImg} sty={sty} C={C}/>
             </div>
             <div style={{marginBottom:16}}>
               <label style={sty.label}>Foto Tiap Material</label>
@@ -287,7 +289,8 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
 
             <div style={sty.stickyFooter}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={saveTxn}>{editingDraftTxnId?`Lengkapi & Ajukan ${txnForm.docType.replace("TUG","TUG-")}`:`📤 Ajukan ${txnForm.docType.replace("TUG","TUG-")}`}</button>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>saveTxn("DRAFT")}>💾 Simpan Draft</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={()=>saveTxn()}>{editingDraftTxnId?`Lengkapi & Ajukan ${txnForm.docType.replace("TUG","TUG-")}`:`📤 Ajukan ${txnForm.docType.replace("TUG","TUG-")}`}</button>
             </div>
           </div>
         </div>

@@ -67,6 +67,7 @@ export function useTugTransactions({
   const [savingTxn, setSavingTxn] = useState(false); // mirror React untuk tombol Ajukan (disabled + "Menyimpan...")
   const [savingInfo, setSavingInfo] = useState(null); // {label, done, total} — overlay progres simpan transaksi
   const [tug10Collapsed, setTug10Collapsed] = useState({}); // {idx:true} kartu barang retur yang diringkas
+  const [tug98Collapsed, setTug98Collapsed] = useState({}); // {idx:true} baris barang TUG-8/9 yang diringkas, pola sama tug10Collapsed
   const [tug10Highlight, setTug10Highlight] = useState(null); // key field yang di-highlight setelah gagal validasi
   const tug10Refs = useRef({}); // anchor scroll per seksi/field TUG-10
 
@@ -261,6 +262,12 @@ export function useTugTransactions({
     }
 
     if (docType === "TUG9" || docType === "TUG8") {
+      if (targetStage === "DRAFT") {
+        // Draft: simpan apa adanya (boleh belum lengkap) ke blob lokal, TIDAK ke server
+        // canonical — pola sama draft TUG-3/10.
+        await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
+        return;
+      }
       // Canonical TUG8/9 (tugCanonical.js) selalu menulis ke RPC server sungguhan,
       // tidak ada jalur simulasi mode demo untuk dokumen resmi ini — blokir di sini
       // (pola sama dengan larangan mode demo lain di file ini) daripada diam-diam
@@ -357,10 +364,33 @@ export function useTugTransactions({
     if (_hasFoto) setSavingInfo({ label: "Mengunggah foto...", done: 0, total: 0 });
     const { data: _fd, pending: _pend } = await processTxnPhotos(formData, txnId, (done, total) => setSavingInfo({ label: "Mengunggah foto...", done, total }));
     formData = _fd;
-    if (_pend.length && ["TUG8", "TUG9"].includes(docType)) {
+    if (_pend.length && ["TUG8", "TUG9"].includes(docType) && targetStage !== "DRAFT") {
       throw new Error("Foto TUG-8/TUG-9 belum aman di Storage. Periksa koneksi lalu ajukan ulang; dokumen resmi belum dibuat.");
     }
     if (_pend.length) showToast(`⚠️ ${_pend.length} foto belum terunggah (sinyal?). Transaksi & dokumen tetap tersimpan; foto disinkron otomatis saat online.`, "info");
+
+    if ((docType === "TUG9" || docType === "TUG8") && targetStage === "DRAFT") {
+      // Draft TUG-8/9: blob-only (canonical:false), belum submit ke tug_transactions
+      // server sampai user "Ajukan" (submitDraftTug9 lalu promote lewat commitNewTxn biasa).
+      const replacedDraft98 = replaceDraftId ? txns.find(t => t.id === replaceDraftId) : null;
+      const nt98 = {
+        id: replacedDraft98?.id || txnId,
+        docType,
+        docSeq: null,
+        docNumbers: {},
+        draftLabel: "DRAFT — nomor resmi saat diajukan",
+        ...formData,
+        stage: "DRAFT",
+        status: "DRAFT",
+        canonical: false,
+        createdBy: replacedDraft98?.createdBy ?? currentUser.id, createdAt: replacedDraft98?.createdAt ?? Date.now(),
+      };
+      const newTxns98 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt98 : t) : [...txns, nt98];
+      setTxns(newTxns98); setTxnModal(false); setEditingDraftTxnId(null);
+      await saveToCloud({txns: newTxns98});
+      showToast(`💾 Draft ${docType.replace("TUG","TUG-")} disimpan. Lengkapi lalu ajukan saat siap.`);
+      return;
+    }
 
     // FIX bug counter: docSeq global bisa ketinggalan dari transaksi yang sudah ada
     // (mis. dipulihkan/diimpor manual) — jangan pakai docSeq mentah, pastikan seq baru
@@ -617,6 +647,7 @@ export function useTugTransactions({
     savingTxn, setSavingTxn, savingInfo, setSavingInfo,
     tug3ExpandedIdx, setTug3ExpandedIdx,
     tug10Collapsed, setTug10Collapsed, tug10Highlight, setTug10Highlight, tug10Refs,
+    tug98Collapsed, setTug98Collapsed,
     setMaterialPhoto, handleMaterialImg,
     openNewTxn, addItemRow, removeItemRow, updateItemRow,
     tug10Missing, flagTug10Invalid,

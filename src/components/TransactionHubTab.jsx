@@ -25,6 +25,7 @@ export function TransactionHubTab({
   approveTUG3Final_Asman, rejectTUG3Final_Asman,
   editDraftTug3, submitDraftTug3, deleteDraftTug3,
   editDraftTug10, submitDraftTug10, deleteDraftTug10,
+  editDraftTug9, submitDraftTug9, deleteDraftTug9,
   approveTUG5_Asman, rejectTUG5_Asman, approveTUG5_Manager, rejectTUG5_Manager,
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
@@ -147,7 +148,7 @@ export function TransactionHubTab({
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                       <div>
                         <div style={{fontWeight:800,fontSize:13}}>{t.namaPekerjaan}</div>
-                        <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers[dKey]}</div>
+                        <div style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers[dKey] || t.draftLabel || t.id}</div>
                       </div>
                       <div style={{display:"flex",gap:6,alignItems:"center"}}>
                         {t.legacyImport && <span title="Diimpor dari histori lama" style={{padding:"2px 8px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#ede9fe",color:"#6d28d9"}}>🕘 Legacy</span>}
@@ -181,6 +182,13 @@ export function TransactionHubTab({
                         <button style={sty.btn("ghost","sm")} onClick={()=>editDraftTug10(t)}>✏️ Edit</button>
                         <button style={sty.btn("primary","sm")} onClick={()=>submitDraftTug10(t)}>📤 Ajukan</button>
                         <button style={sty.btn("danger","sm")} onClick={()=>{ if (window.confirm("Hapus draft TUG-10 ini?")) deleteDraftTug10(t); }}>🗑️ Hapus</button>
+                      </div>
+                    )}
+                    {(t.docType==="TUG9"||t.docType==="TUG8") && t.status==="DRAFT" && t.createdBy===currentUser.id && (
+                      <div style={{display:"flex",gap:8,marginTop:8}}>
+                        <button style={sty.btn("ghost","sm")} onClick={()=>editDraftTug9(t)}>✏️ Edit</button>
+                        <button style={sty.btn("primary","sm")} onClick={()=>submitDraftTug9(t)}>📤 Ajukan</button>
+                        <button style={sty.btn("danger","sm")} onClick={()=>{ if (window.confirm(`Hapus draft ${t.docType.replace("TUG","TUG-")} ini?`)) deleteDraftTug9(t); }}>🗑️ Hapus</button>
                       </div>
                     )}
                   </div>

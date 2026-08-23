@@ -19,7 +19,7 @@ export function useTugApprovals({
   uptList, ultgList, currentUserUptId,
   canonicalActionKeysRef,
   setTxnForm, setEditingDraftTxnId, setTxnModal, editingDraftTxnId,
-  commitNewTxn,
+  commitNewTxn, stateRef,
 }) {
   // ══════════════════════════════════════════════════════════════════
   // TUG-3 / TUG-4 — 2-stage approval chain on a single transaction:
@@ -337,9 +337,37 @@ export function useTugApprovals({
     setTxnModal(true);
   }
   // Submit draft turunan mengganti satu baris local draft dengan record canonical.
+  // Ajukan draft TUG-8/9 (baik draft turunan ULTG maupun draft user biasa dari
+  // list) — validasi sama seperti saveTxn cabang TUG9/8, lalu promote ke canonical.
+  // replaceDraftId pakai formData.id (bukan closure editingDraftTxnId) supaya jalan
+  // juga saat dipanggil langsung dari kartu draft di list (form belum dibuka).
   async function submitDraftTug9(formData) {
-    if (!editingDraftTxnId) throw new Error("Draft transaksi tidak ditemukan.");
-    await commitNewTxn(formData.docType, formData, { replaceDraftId:editingDraftTxnId });
+    const draftId = formData?.id || editingDraftTxnId;
+    if (!draftId) throw new Error("Draft transaksi tidak ditemukan.");
+    if (!formData.penerimaNama?.trim()) { showToast("Nama Penerima wajib diisi!","error"); return; }
+    if (formData.docType === "TUG8" && !formData.unitTujuan?.trim()) { showToast("Unit/Sektor Tujuan wajib diisi untuk TUG-8!","error"); return; }
+    const submittedItems = formData.stockItems || [];
+    if (submittedItems.length === 0 || submittedItems.some(si => !si.stockId || !(Number(si.qty) > 0))) {
+      showToast("Setiap baris material wajib memiliki stok dan jumlah lebih dari nol.","error"); return;
+    }
+    for (const si of submittedItems) {
+      const stock = stateRef?.current?.enrichedStocks?.find(s=>s.id===si.stockId);
+      if (!stock) { showToast("Referensi stok tidak ditemukan. Pilih ulang material dari daftar stok.","error"); return; }
+      if (stock.jenisBarang !== "Non-Stock" && stock.qty < si.qty) {
+        showToast(`Stok ${stock.name} di ${stock.lokasi} tidak cukup! Tersedia: ${stock.qty} ${stock.unit}`,"error"); return;
+      }
+    }
+    await commitNewTxn(formData.docType, formData, { replaceDraftId: draftId });
+  }
+  // Hapus draft TUG-8/9 lokal (blob-only, belum pernah submit ke server canonical
+  // jadi tidak ada baris server untuk dibersihkan) — pola sama deleteDraftTug3/10.
+  async function deleteDraftTug9(txn) {
+    if (txn.createdBy !== currentUser.id) { showToast("Tidak diizinkan menghapus transaksi ini.","error"); return; }
+    const newTxns = txns.filter(t => t.id !== txn.id);
+    setTxns(newTxns);
+    await saveToCloud({ txns: newTxns });
+    logAudit(currentUser, "DELETE", "txns", txn.docNumbers?.[txn.docType==="TUG8"?"tug8":"tug9"] || txn.id);
+    showToast(`🗑️ ${txn.docType.replace("TUG","TUG-")} draft dihapus.`);
   }
 
   // ══════════════════════════════════════════════════════════════════
@@ -417,7 +445,7 @@ export function useTugApprovals({
     approveTUG5_Asman, rejectTUG5_Asman,
     approveTUG5_Manager, rejectTUG5_Manager,
     approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG,
-    openDraftTug9, submitDraftTug9,
+    openDraftTug9, submitDraftTug9, deleteDraftTug9,
     submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
     konfirmasiDraftTUG8,
   };

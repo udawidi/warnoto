@@ -1656,6 +1656,7 @@ export default function PLNWarehouse() {
     tug3ExpandedIdx, setTug3ExpandedIdx,
     savingTxn, setSavingTxn, savingInfo,
     tug10Collapsed, setTug10Collapsed, tug10Highlight, tug10Refs,
+    tug98Collapsed, setTug98Collapsed,
     setMaterialPhoto, handleMaterialImg,
     openNewTxn, addItemRow, removeItemRow, updateItemRow,
     tug10Missing, flagTug10Invalid,
@@ -2859,10 +2860,51 @@ export default function PLNWarehouse() {
         }
       });
 
+      // BAGIAN B: item berstatus "Bongkaran ATTB (MTU)" ikut jadi kandidat ATTB Tahap 1
+      // (Usulan AE.1), pola sama createAttbItem di atas. Idempotent per txn+index barang
+      // supaya approve ulang/re-entrant tidak menggandakan kandidat.
+      const docNoTUG10 = txn.docNumbers?.tug10 || txn.id;
+      const newAttbItems = [];
+      txn.stockItems.forEach((si, idx) => {
+        if (si.statusMaterial !== "Bongkaran ATTB (MTU)") return;
+        if (attbList.some(a => a.sourceTxnId === txn.id && a.sourceItemIdx === idx)) return;
+        const kat = si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId) : null;
+        const namaBarang = si.katalogMode === "existing" ? (kat?.name || "-") : (si.namaBaru || "-");
+        const satuan = si.katalogMode === "existing" ? (kat?.satuan || "unit") : (si.satuanBaru || "unit");
+        const lokTujuan = lokasiList.find(l => l.id === txn.lokasiTujuanId);
+        const gdgTujuan = lokTujuan ? gudangList.find(g => g.id === lokTujuan.gudangId) : null;
+        const lokasiNama = [gdgTujuan?.nama, lokTujuan?.kode].filter(Boolean).join(" - ") || "-";
+        const nowAttb = Date.now();
+        newAttbItems.push({
+          id: `ATTB-${uid().slice(-8)}`,
+          jenisAset: "MATERIAL",
+          description: namaBarang,
+          kuantitas: si.qty,
+          satuan,
+          noEquipment: si.noSeri || "",
+          nomorAT: si.noSeri || "",
+          keterangan: `Material Bongkaran TUG-10 ${docNoTUG10}`,
+          lokasi: lokasiNama,
+          foto: si.fotoNameplate || si.fotoBarangRetur || null,
+          upt: txn.uptId,
+          stage: "USULAN_AE1",
+          approvalStatus: "DRAFT",
+          lanjutBelumLanjut: false,
+          stageHistory: [{ stage:"USULAN_AE1", tanggal:nowAttb, oleh:currentUser.id, catatan:"Dari penerimaan TUG-10 (Bongkaran ATTB/MTU)" }],
+          source: "TUG10",
+          sourceTxnId: txn.id,
+          sourceItemIdx: idx,
+          createdAt: nowAttb, createdBy: currentUser.id,
+          updatedAt: nowAttb, updatedBy: currentUser.id,
+        });
+      });
+      const nextAttb = newAttbItems.length ? [...newAttbItems, ...attbList] : attbList;
+      if (newAttbItems.length) setAttbList(nextAttb);
+
       const approvedTxn = { ...txn, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated };
       const newTxns = txns.map(t => t.id===txn.id ? approvedTxn : t);
       setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-      await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog}, {
+      await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog, attbList: nextAttb}, {
         stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
         katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
       });
@@ -2908,7 +2950,7 @@ export default function PLNWarehouse() {
     approveTUG5_Asman, rejectTUG5_Asman,
     approveTUG5_Manager, rejectTUG5_Manager,
     approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG,
-    openDraftTug9, submitDraftTug9,
+    openDraftTug9, submitDraftTug9, deleteDraftTug9,
     submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
     konfirmasiDraftTUG8,
   } = useTugApprovals({
@@ -2919,7 +2961,7 @@ export default function PLNWarehouse() {
     uptList, ultgList, currentUserUptId,
     canonicalActionKeysRef,
     setTxnForm, setEditingDraftTxnId, setTxnModal, editingDraftTxnId,
-    commitNewTxn,
+    commitNewTxn, stateRef,
   });
   stateRef.current.submitDraftTug9 = submitDraftTug9;
 
@@ -4086,6 +4128,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
             editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
             editDraftTug10={editDraftTug10} submitDraftTug10={submitDraftTug10} deleteDraftTug10={deleteDraftTug10}
+            editDraftTug9={openDraftTug9} submitDraftTug9={submitDraftTug9} deleteDraftTug9={deleteDraftTug9}
             approveTUG5_Asman={approveTUG5_Asman} rejectTUG5_Asman={rejectTUG5_Asman} approveTUG5_Manager={approveTUG5_Manager} rejectTUG5_Manager={rejectTUG5_Manager}
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
@@ -4609,7 +4652,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} />}
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
-      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SCAN PICKER MODAL — kode scan TUG cocok >1 stok, biarkan user pilih (jangan auto-pilih) */}
       <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
