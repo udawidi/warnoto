@@ -5,6 +5,7 @@ import { useRef } from "react";
 import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { resolveSapLabel } from "../lib/sap.js";
+import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG7HTML, downloadTUG5HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, downloadTUG7HTML } from "../lib/docBuilders.js";
 import { SearchableSelect } from "./SearchableSelect.jsx";
 
@@ -22,7 +23,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                   options={katalogList}
                   value={stockForm.katalogId||""}
                   onChange={id=>setStockForm(sf=>({...sf,katalogId:id}))}
-                  getLabel={k=>`${k.name} [${k.katalog}]`}
+                  getLabel={k=>`${k.name} [${canonicalKatalogCode(k.katalog)}]`}
                   getSearchText={k=>[k.name, k.katalog, k.category, k.jenisBarang, k.keterangan].filter(Boolean).join(" ")}
                   placeholder="-- Cari nama / no katalog / kategori --"
                   sty={sty} C={C} isMobile={isMobile}
@@ -57,7 +58,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 </select>
                 {!stockForm.sapStatus && (
                   <div style={{fontSize:12,color:C.muted,marginTop:4}}>
-                    Otomatis → {resolveSapLabel(stockForm.katalog || katalogList.find(k=>k.id===stockForm.katalogId)?.katalog, "")}
+                    Otomatis → {resolveSapLabel(canonicalKatalogCode(stockForm.katalog || katalogList.find(k=>k.id===stockForm.katalogId)?.katalog), "")}
                   </div>
                 )}
               </div>

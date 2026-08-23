@@ -7,6 +7,7 @@ import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan } from "../lib/sap.js";
+import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
 import { fmtNum } from "../lib/ragShared.mjs";
@@ -292,7 +293,7 @@ export function DataStokTab({
                             : <div style={{width:48,height:48,background:"#eff6ff",borderRadius: 10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,border:`1px solid #bfdbfe`,margin:"0 auto"}}><ImageSquare size={22} color="#1d4ed8" aria-hidden="true"/></div>}
                         </td>
                         <td className="stock-mobile-summary" aria-label={`Ringkasan ${st.name}`}>
-                          <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{st.katalog||"-"}</span></div>
+                          <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{canonicalKatalogCode(st.katalog)||"-"}</span></div>
                           <div className="stock-mobile-summary__description">{st.keteranganBarang || "Keterangan barang belum diisi."}</div>
                           <div className="stock-mobile-summary__meta"><span><MapPin size={14} weight="bold" aria-hidden="true"/> {[gdg?.kode||gdg?.nama, lok?.kode||st.lokasi].filter(Boolean).join(" • ") || "Lokasi belum diisi"}</span><span className={isLow ? "is-critical" : "is-ok"}>{st.jenisBarang==="Non-Stock" ? "Project-Based" : `${fmtNum(st.qty)} ${st.unit}`}</span></div>
                           <div className="stock-mobile-summary__detail" aria-hidden="true">{isAgg ? "Lihat sebaran" : "Detail"} <CaretRight size={11} weight="bold" aria-hidden="true"/></div>
@@ -300,7 +301,7 @@ export function DataStokTab({
                         <td className="mobile-card-table__title" data-label="Nama Barang" style={{padding:"8px 10px",minWidth:200}}>
                           <div title={st.name} style={{fontWeight:700,color:C.text,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{highlightText(st.name)}</div>
                           <div style={{fontSize:12,color:C.muted,marginTop:2,display:"flex",alignItems:"center",gap:5,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                            <Tag size={13} style={{flexShrink:0}} aria-hidden="true"/> {highlightText(st.katalog||"-")}
+                            <Tag size={13} style={{flexShrink:0}} aria-hidden="true"/> {highlightText(canonicalKatalogCode(st.katalog)||"-")}
                             <span aria-hidden="true" style={{color:"#cbd5e1"}}>•</span>
                             <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:sapBs.fg,flexShrink:0}}/> {sapLabel}</span>
                           </div>

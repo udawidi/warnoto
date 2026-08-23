@@ -113,6 +113,7 @@ import { fmtNum, buildKatalogRagContent, getKritisAgg, splitChunksForEmbed } fro
 import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoMaterialToSupabase, processTxnPhotos, resolveTxnPrivPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
+import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
 import { loadMaterialInspections, loadMaterialInspectionBatches } from "./src/lib/materialInspectionSync.js";
 import { getMaterialAkanHabis, buildMonthlySeriesByKatalog, computeProcurementList, getTopStockByQty, getTotalPerSatuan } from "./src/lib/analytics.js";
@@ -162,7 +163,7 @@ const DEFAULT_TXNS = [];
 // Label menu TUG dalam bahasa awam (kode TUG jadi keterangan kecil sekunder) —
 // supaya staf baru/ULTG/awam tidak perlu hafal kode untuk tahu harus pilih mana.
 const TUG_UI = {
-  TUG3:  { title:"Terima Barang Baru",      code:"TUG-3/4", chip:"Terima Barang Baru",       buat:"Terima Barang Baru",      desc:"Barang datang dari vendor → diperiksa Tim Mutu → masuk gudang. (3 tahap: TL → Manager → Asman)" },
+  TUG3:  { title:"Terima Barang Baru",      code:"TUG-3/4", chip:"Terima Barang Baru",       buat:"Terima Barang Baru",      desc:"Barang datang dari vendor → diperiksa Tim Mutu → masuk gudang. (2 tahap: TL → Asman)" },
   TUG10: { title:"Barang Kembali / Retur",  code:"TUG-10",  chip:"Barang Kembali / Retur",   buat:"Catat Barang Kembali",    desc:"Sisa pekerjaan atau bekas bongkaran dikembalikan ke gudang." },
   TUG9:  { title:"Keluarkan / Pakai Barang",code:"TUG-9",   chip:"Pakai Barang",             buat:"Keluarkan Barang",        desc:"Ambil barang dari gudang untuk dipakai pekerjaan di unit sendiri (UPT Surabaya)." },
   TUG8:  { title:"Kirim ke Unit PLN Lain",  code:"TUG-8",   chip:"Kirim ke Unit Lain",       buat:"Kirim ke Unit Lain",      desc:"Keluarkan barang untuk dipakai unit PLN lain." },
@@ -4149,6 +4150,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={approveStockCountItem} rejectStockCountItem={rejectStockCountItem}
             txns={txns} approvalHistoryList={approvalHistoryList} approvalHistoryPage={approvalHistoryPage} setApprovalHistoryPage={setApprovalHistoryPage}
             deleteDraftTug3={deleteDraftTug3}
+            timMutuList={timMutuList}
+            submitTUG4DanLampiran={submitTUG4DanLampiran}
+            approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
+            approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
           />
         )}
 
@@ -4540,19 +4545,19 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {gantiPasswordModal && <GantiPasswordModal setGantiPasswordModal={setGantiPasswordModal} gantiPasswordForm={gantiPasswordForm} setGantiPasswordForm={setGantiPasswordForm} gantiPasswordBusy={gantiPasswordBusy} submitGantiPassword={submitGantiPassword} sty={sty} />}
 
       {/* TXN MODAL - TUG5 FORM */}
-      {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={docSeq} uitList={uitList} ultgList={ultgList} katalogList={katalogList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} />}
+      {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} />}
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
-      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={docSeq} gudangList={gudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SCAN PICKER MODAL — kode scan TUG cocok >1 stok, biarkan user pilih (jangan auto-pilih) */}
       <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
 
       {/* TXN MODAL - TUG10 FORM (incoming material / return to warehouse) */}
-      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={docSeq} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* TXN MODAL - TUG3 FORM (Karantina — penerimaan barang tahap 1) */}
-      {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={docSeq} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={nextSafeDocSeq(docSeq, txns)} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SUPPLIER MODAL — dirender setelah TUG3 supaya "+ Tambah supplier baru" (dari SearchableSelect di TUG3) stack di atas form TUG3 */}
       {supplierModal && <SupplierModal supplierModal={supplierModal} setSupplierModal={setSupplierModal} supplierForm={supplierForm} setSupplierForm={setSupplierForm} saveSupplier={saveSupplier} sty={sty} C={C} />}

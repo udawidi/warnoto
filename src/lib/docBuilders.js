@@ -5,6 +5,7 @@ import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
 import QRCode from "qrcode";
 import { fmtNum } from "./ragShared.mjs";
 import { katalogSapLabel } from "./sap.js";
+import { canonicalKatalogCode } from "./normalizeKatalogCode.js";
 import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
@@ -642,7 +643,7 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
     const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
       <td>${esc(kat.name||"-")}</td>
-      <td style="text-align:center">${esc(kat.katalog||"-")}</td>
+      <td style="text-align:center">${esc(canonicalKatalogCode(kat.katalog)||"-")}</td>
       <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.pemakaianBulan||0)}</td>
       <td style="text-align:center">${fmtNum(si.sisaPersediaan||0)}</td>
@@ -795,7 +796,7 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
     const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
       <td>${esc(kat.name||"-")}</td>
-      <td style="text-align:center">${esc(kat.katalog||"-")}</td>
+      <td style="text-align:center">${esc(canonicalKatalogCode(kat.katalog)||"-")}</td>
       <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.sisaPersediaan||0)}</td>
       <td style="text-align:center">${fmtNum(si.permintaan||0)}</td>
@@ -854,7 +855,7 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
     return `<tr>
       <td style="text-align:center">${idx+1}</td>
       <td>${esc(kat.name||"-")}</td>
-      <td style="text-align:center">${esc(kat.katalog||"-")}</td>
+      <td style="text-align:center">${esc(canonicalKatalogCode(kat.katalog)||"-")}</td>
       <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.qty||si.permintaan||0)}</td>
       <td style="text-align:right"></td>
@@ -1169,7 +1170,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
   const materialRowsTable = items.map(si => {
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
     const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
-    const kodeKatalog = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-");
+    const kodeKatalog = canonicalKatalogCode(si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-"));
     const hargaSatuan = si.hargaSatuan || 0;
     const jumlahRp = hargaSatuan * (si.qty || 0);
     return `
@@ -1188,7 +1189,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
   const materialRowsTableBA = items.map(si => {
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
     const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
-    const kodeKatalog = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-");
+    const kodeKatalog = canonicalKatalogCode(si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-"));
     return `
     <tr>
       <td>${esc(namaBarang)}</td>
@@ -1568,7 +1569,7 @@ export async function buildBarcodeSheetHTML(katalogItems, lokasiByKatalog) {
     const scanUrl = scanUrlFor(k.id);
     const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 220 });
     const lok = (lokasiByKatalog[k.id] || []).join("; ") || "-";
-    return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(k.name || "-")}</div><div class="kt">No. Kat: ${esc(k.katalog || "-")}</div><div class="meta">${esc(k.jenisBarang || "-")} · ${esc(katalogSapLabel(k))}</div><div class="lk">📍 ${esc(lok)}</div></div>`;
+    return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(k.name || "-")}</div><div class="kt">No. Kat: ${esc(canonicalKatalogCode(k.katalog) || "-")}</div><div class="meta">${esc(k.jenisBarang || "-")} · ${esc(katalogSapLabel(k))}</div><div class="lk">📍 ${esc(lok)}</div></div>`;
   }));
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>Cetak Barcode Kartu Gantung — ${labels.length} label</title>
 <style>
@@ -1633,7 +1634,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
   const sampleFoto = sampleStock ? resolveStockPhotoUrl(sampleStock.fotoKeseluruhan) : null;
   const kategoriMaterial = (stocks||[]).find(s=>s.katalogId===katalog.id)?.jenisBarang || "-";
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Kartu Gantung Depan TUG.2 - ${esc(katalog.katalog)}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Kartu Gantung Depan TUG.2 - ${esc(canonicalKatalogCode(katalog.katalog))}</title>
 <style>
   @page { size: A4 portrait; margin: 10mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1676,7 +1677,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
   <table class="meta-tbl">
     <tr>
       <td class="lbl">No. Katalog :</td>
-      <td style="font-weight:bold;color:#0284c7">${esc(katalog.katalog || "-")}</td>
+      <td style="font-weight:bold;color:#0284c7">${esc(canonicalKatalogCode(katalog.katalog) || "-")}</td>
       <td class="lbl">Lokasi :</td>
       <td style="font-weight:bold;font-size:9.5px">${esc(lokasiStr)}</td>
     </tr>
@@ -1745,7 +1746,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
     `);
   }
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Riwayat Keluar Masuk TUG.2 - ${esc(katalog.katalog)}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Riwayat Keluar Masuk TUG.2 - ${esc(canonicalKatalogCode(katalog.katalog))}</title>
 <style>
   @page { size: A4 portrait; margin: 10mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1788,7 +1789,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
   <table class="meta-tbl">
     <tr>
       <td class="lbl">No. Katalog :</td>
-      <td style="font-weight:bold;color:#0284c7">${esc(katalog.katalog || "-")}</td>
+      <td style="font-weight:bold;color:#0284c7">${esc(canonicalKatalogCode(katalog.katalog) || "-")}</td>
       <td class="lbl">Lokasi :</td>
       <td style="font-weight:bold;font-size:9.5px">${esc(lokasiStr)}</td>
     </tr>

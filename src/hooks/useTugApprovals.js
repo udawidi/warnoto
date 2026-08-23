@@ -3,6 +3,8 @@ import { logAudit } from "../lib/audit.js";
 import { generateDocNumbers, uid } from "../lib/utils.js";
 import { processTxnPhotos } from "../lib/supabaseSync.js";
 import { upsertTug3Transaction } from "../lib/tug3Sync.js";
+import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
+import { resolveSapLabel } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
 
 // Domain: mesin approval transisi TUG-3/4/5/5-ULTG/7 (dan turunan draft TUG-8/9).
@@ -31,7 +33,10 @@ export function useTugApprovals({
   async function approveTUG3_TL(txn) {
     if (!hasRole(currentUser, "TL")) { showToast("Hanya TL Logistik yang bisa menyetujui TUG-3 Karantina.","error"); return; }
     if (txn.stage !== "PENDING_TL") { showToast("Transaksi ini tidak dalam tahap menunggu TL.","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_TUG4", approvedByTL:currentUser.id, approvedAtTL:Date.now(), requiredApprover:"ASMAN" } : t);
+    // BUG 7 fix: requiredApprover tetap "TL" di tahap MENUNGGU_TUG4 (TL yang isi form
+    // TUG-4), baru pindah ke "ASMAN" saat submitTUG4DanLampiran — sebelumnya langsung
+    // "ASMAN" di sini bikin item muncul prematur di antrean Asman padahal TUG-4 belum diisi.
+    const newTxns = txns.map(t => t.id===txn.id ? { ...t, stage:"MENUNGGU_TUG4", approvedByTL:currentUser.id, approvedAtTL:Date.now(), requiredApprover:"TL" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
     await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
@@ -60,7 +65,14 @@ export function useTugApprovals({
     // DB tidak menyimpan blob base64. Gagal upload → tetap base64 + toast.
     const { data: uploadedData, pending } = await processTxnPhotos(data, txn.id, () => {});
     if (pending.length) showToast(`⚠️ ${pending.length} foto lampiran belum terunggah (sinyal?). Data tetap tersimpan; foto disinkron otomatis saat online.`, "info");
-    const newTxns = txns.map(t => t.id===txn.id ? { ...t, ...uploadedData, stage:"PENDING_ASMAN" } : t);
+    // Status SAP/Non-SAP per barang DIPUTUSKAN di sini (TL, tahap TUG-4), bukan lagi
+    // di form TUG-3 — data.itemSapStatus (array "SAP"/"Non-SAP" per index, opsional)
+    // menimpa si.sapStatus; label lengkap (Persediaan/Cadang by digit) diresolusi nanti
+    // di approveTUG3Final_Asman lewat resolveSapLabel.
+    const stockItems = data.itemSapStatus
+      ? txn.stockItems.map((si, idx) => data.itemSapStatus[idx] ? { ...si, sapStatus: data.itemSapStatus[idx] } : si)
+      : txn.stockItems;
+    const newTxns = txns.map(t => t.id===txn.id ? { ...t, ...uploadedData, stockItems, stage:"PENDING_ASMAN", requiredApprover:"ASMAN" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
     await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
@@ -85,27 +97,53 @@ export function useTugApprovals({
     txn.stockItems.forEach(si => {
       const lokasiId = si.lokasiTujuanId || txn.stockItems[0]?.lokasiTujuanId;
       if (!lokasiId) return;
-      // Status Barang dipilih per-item di form (FIX 2): "SAP — Persediaan"/"SAP — Cadang"/
-      // "Non-SAP" — sebelumnya jenisBarang di-hardcode "Persediaan" utk semua barang masuk.
-      const sapStatus = si.sapStatus || STATUS_SAP[0];
+      // FIX 3: kode katalog baru dari TUG-3 dinormalisasi (buang prefix "100" 10-digit
+      // gaya AppSheet) supaya konsisten dengan format katalog yang sudah ada.
+      const katalogCodeBaru = normalizeKatalogCode(si.katalogBaru || "");
+      // Status Barang: default dipilih di form TUG-3, TL bisa timpa di tahap TUG-4
+      // (si.sapStatus bisa berupa label eksplisit ATAU raw "SAP"/"Non-SAP" dari TUG-4)
+      // — resolveSapLabel mengurai keduanya dan, untuk "SAP", menurunkan label spesifik
+      // dari panjang digit kode katalog (7→Persediaan, 10→Cadang).
+      const katalogCodeForSap = si.katalogMode === "existing"
+        ? katalogList.find(k => k.id===si.katalogId)?.katalog
+        : katalogCodeBaru;
+      const sapStatus = resolveSapLabel(katalogCodeForSap, si.sapStatus || STATUS_SAP[0]);
       const jenisBarang = sapStatus === "SAP — Cadang" ? "Cadang" : "Persediaan";
+      // FIX 2: foto barang diisi dari lampiran TUG-3 (si.fotoBarang, sudah berupa URL
+      // Storage sejak commitNewTxn -> processTxnPhotos), bukan lagi null.
+      const fotoBarang = si.fotoBarang || null;
       if (si.katalogMode === "existing" && si.katalogId) {
         const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===lokasiId);
         if (existingRow) {
-          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty } : s);
+          // Jangan timpa foto lama kalau baris existing sudah punya foto sendiri.
+          // fotoKeseluruhan = field kanonik yang dirender sel Foto tabel Data Stok
+          // (DataStokTab.jsx:291); img cuma dipakai thumbnail fallback lain — isi dua-duanya.
+          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang } : s);
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:null, createdAt:Date.now() });
+          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now() });
           touchedStockIds.add(newId);
         }
       } else {
-        const newKatId = `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-        newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
-        touchedKatalogIds.add(newKatId);
-        const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-        newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:null, createdAt:Date.now() });
-        touchedStockIds.add(newStkId);
+        // FIX bug 3: master katalog lama campur zero-padded ("000000007020273") dan
+        // bersih ("7020273") — sebelum bikin katalog baru, cek dulu apakah kode kanoniknya
+        // sudah ada (cocok TUG-4 baru vs master lama), supaya tak dobel entri katalog.
+        const dupKatalog = katalogCodeBaru && newKatalog.find(k => canonicalKatalogCode(k.katalog) === canonicalKatalogCode(katalogCodeBaru));
+        const katId = dupKatalog ? dupKatalog.id : `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
+        if (!dupKatalog) {
+          newKatalog.push({ id:katId, katalog:katalogCodeBaru, name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
+          touchedKatalogIds.add(katId);
+        }
+        const existingRow2 = newStocks.find(s => s.katalogId===katId && s.lokasiId===lokasiId);
+        if (existingRow2) {
+          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: s.qty + si.qty, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang } : s);
+          touchedStockIds.add(existingRow2.id);
+        } else {
+          const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
+          newStocks.push({ id:newStkId, katalogId:katId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now() });
+          touchedStockIds.add(newStkId);
+        }
       }
     });
 

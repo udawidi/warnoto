@@ -4,14 +4,24 @@ import { KAPASITAS_LABEL, UIT, UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
-import { statusMaterialBadgeStyle } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, resolveSapLabel } from "../lib/sap.js";
+import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
 
-export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3 }) {
+export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, approveTUG3_TL, rejectTUG3_TL }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Form, setTug7Form] = useState({});
   const [tug7Modal, setTug7Modal] = useState(null);
+  const [tug4Form, setTug4Form] = useState({});
+  const [tug4Modal, setTug4Modal] = useState(null);
+  function openTug4Modal(txn) {
+    // Sama seperti TUG3Tab.jsx openTug4Modal — status SAP/Non-SAP per barang diputuskan
+    // di sini (TL, tahap TUG-4), default dibawa dari pilihan form TUG-3.
+    const itemSapStatus = txn.stockItems.map(si => si.sapStatus==="Non-SAP" ? "Non-SAP" : "SAP");
+    setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
+    setTug4Modal(txn);
+  }
   const [rejectingCapId, setRejectingCapId] = useState(null);
   const [capReason, setCapReason] = useState("");
   const [tugPage, setTugPage] = useState(1);
@@ -202,9 +212,21 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG7_MgrLogistik(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
                   : <><button className="approval-btn--approve" onClick={()=>approveTUG7_MgrLogistik(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-7 → Draft TUG-8</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
-              {/* TUG-3 PENDING_TL — TL boleh hapus permanen langsung dari Approval (beda dari Tolak/REJECTED) */}
+              {/* TUG-3 PENDING_TL — approve/tolak TUG-3 Karantina, plus Hapus permanen (beda dari Tolak/REJECTED) */}
               {t.docType==="TUG3" && t.stage==="PENDING_TL" && hasRole(currentUser, "TL") && (
-                <button className="approval-btn--danger" onClick={()=>{ if (window.confirm(`Hapus ${docNoOf(t)}? Tindakan ini permanen.`)) deleteDraftTug3?.(t); }}><span className="approval-btn__ic" aria-hidden="true">🗑️</span>Hapus</button>
+                rejectingId===t.id
+                  ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG3_TL(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
+                  : <><button className="approval-btn--approve" onClick={()=>approveTUG3_TL(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui TUG-3 Karantina</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button><button className="approval-btn--danger" onClick={()=>{ if (window.confirm(`Hapus ${docNoOf(t)}? Tindakan ini permanen.`)) deleteDraftTug3?.(t); }}><span className="approval-btn__ic" aria-hidden="true">🗑️</span>Hapus</button></>
+              )}
+              {/* TUG-3 MENUNGGU_TUG4 — TL isi form TUG-4 (Tim Mutu, Lokasi, hasil pemeriksaan) */}
+              {t.docType==="TUG3" && t.stage==="MENUNGGU_TUG4" && hasRole(currentUser, "TL") && (
+                <button className="approval-btn--primary" onClick={()=>openTug4Modal(t)}>📋 Isi Form TUG-4</button>
+              )}
+              {/* TUG-3 PENDING_ASMAN — approval final Asman, stok bertambah */}
+              {t.docType==="TUG3" && t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
+                rejectingId===t.id
+                  ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG3Final_Asman(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
+                  : <><button className="approval-btn--approve" onClick={()=>approveTUG3Final_Asman(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui — Stok Masuk</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
               {/* TUG-5 dari ULTG — approval Manager ULTG */}
               {t.docType==="TUG5" && t.sourceType==="ULTG" && t.stage==="PENDING_MGR_ULTG" && hasRole(currentUser, "MGR_ULTG") && (
@@ -325,6 +347,63 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug7Modal(null)}>Batal</button>
               <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{submitTUG7_AdminUIT(tug7Modal,tug7Form);setTug7Modal(null);}}>📋 Submit → Menunggu Mgr Logistik</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TUG-4 lengkapi modal (sama seperti TUG3Tab.jsx, supaya bisa langsung dari menu Approval) */}
+      {tug4Modal && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
+          <div style={{...sty.card,width:500,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <h3 style={{fontSize:17,fontWeight:800,marginBottom:6}}>Isi Form TUG-4 (Pemeriksaan)</h3>
+            <p style={{fontSize:12,color:C.muted,marginBottom:16}}>untuk {tug4Modal.docNumbers.tug3}</p>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Paket Tim Mutu</label>
+              <select style={sty.select} value={tug4Form.timMutuId||""} onChange={e=>setTug4Form(f=>({...f,timMutuId:e.target.value}))}>
+                <option value="">-- Pilih Paket --</option>
+                {(timMutuList||[]).filter(tm=>!tug4Modal?.uptId||tm.uptId===tug4Modal.uptId).map(tm=><option key={tm.id} value={tm.id}>{tm.label}</option>)}
+              </select>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Lokasi Penyerahan</label>
+              <input style={sty.input} value={tug4Form.lokasiPenyerahan||""} onChange={e=>setTug4Form(f=>({...f,lokasiPenyerahan:e.target.value}))} placeholder="cth: Gudang UPT Ketintang Surabaya"/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>No. Surat Perjanjian / SPK</label>
+              <input style={sty.input} value={tug4Form.noSPK||""} onChange={e=>setTug4Form(f=>({...f,noSPK:e.target.value}))}/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Tanggal SPK</label>
+              <input type="date" style={sty.input} value={tug4Form.tglSPK||""} onChange={e=>setTug4Form(f=>({...f,tglSPK:e.target.value}))}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Hasil Pemeriksaan</label>
+              <input style={sty.input} value={tug4Form.hasilPemeriksaan||""} onChange={e=>setTug4Form(f=>({...f,hasilPemeriksaan:e.target.value}))} placeholder="Barang Diterima Sesuai Pengadaan"/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Status SAP per Barang</label>
+              {tug4Modal.stockItems.map((si, idx) => {
+                const katalogCode = canonicalKatalogCode(si.katalogMode==="existing"
+                  ? (katalogList.find(k=>k.id===si.katalogId)?.katalog || "")
+                  : normalizeKatalogCode(si.katalogBaru || ""));
+                const status = tug4Form.itemSapStatus?.[idx] || "SAP";
+                const label = status==="Non-SAP" ? "Non-SAP" : resolveSapLabel(katalogCode, "SAP");
+                return (
+                  <div key={idx} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"6px 0",borderBottom:idx<tug4Modal.stockItems.length-1?`1px solid ${C.border}`:"none"}}>
+                    <span style={{fontSize:13}}>{si.namaBaru || katalogList.find(k=>k.id===si.katalogId)?.name || `Barang ${idx+1}`} <span style={{color:C.muted,fontSize:12}}>({label})</span></span>
+                    <button type="button" style={sty.btn(status==="Non-SAP"?"ghost":"primary")} onClick={()=>setTug4Form(f=>{
+                      const next = [...(f.itemSapStatus||tug4Modal.stockItems.map(()=>"SAP"))];
+                      next[idx] = next[idx]==="Non-SAP" ? "SAP" : "Non-SAP";
+                      return {...f, itemSapStatus: next};
+                    })}>{status==="Non-SAP" ? "Jadikan SAP" : "Jadikan Non-SAP"}</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{submitTUG4DanLampiran(tug4Modal, tug4Form); setTug4Modal(null);}}>📋 Submit TUG-4</button>
             </div>
           </div>
         </div>

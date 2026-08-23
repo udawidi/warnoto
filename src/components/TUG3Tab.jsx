@@ -3,6 +3,8 @@ import { useState } from "react";
 import { UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
+import { resolveSapLabel } from "../lib/sap.js";
+import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 
 export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview }) {
   const [rejectingId, setRejectingId] = useState(null);
@@ -25,7 +27,13 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
     return <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:m.bg,color:m.fg}}>{m.label}</span>;
   }
 
-  function openTug4Modal(txn) { setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan" }); setTug4Modal(txn); }
+  function openTug4Modal(txn) {
+    // Status SAP/Non-SAP diputuskan di sini (TL, TUG-4) — default dibawa dari pilihan
+    // di form TUG-3, TL boleh menimpanya per barang sebelum submit ke Asman.
+    const itemSapStatus = txn.stockItems.map(si => si.sapStatus==="Non-SAP" ? "Non-SAP" : "SAP");
+    setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
+    setTug4Modal(txn);
+  }
 
   // Satu baris progres approval (TL/Asman) menggantikan 3 baris riwayat lama.
   function approvalLine(t, tlUser, asmanUser) {
@@ -156,6 +164,26 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             <div style={{marginBottom:16}}>
               <label style={sty.label}>Hasil Pemeriksaan</label>
               <input style={sty.input} value={tug4Form.hasilPemeriksaan||""} onChange={e=>setTug4Form(f=>({...f,hasilPemeriksaan:e.target.value}))} placeholder="Barang Diterima Sesuai Pengadaan"/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Status SAP per Barang</label>
+              {tug4Modal.stockItems.map((si, idx) => {
+                const katalogCode = canonicalKatalogCode(si.katalogMode==="existing"
+                  ? (katalogList.find(k=>k.id===si.katalogId)?.katalog || "")
+                  : normalizeKatalogCode(si.katalogBaru || ""));
+                const status = tug4Form.itemSapStatus?.[idx] || "SAP";
+                const label = status==="Non-SAP" ? "Non-SAP" : resolveSapLabel(katalogCode, "SAP");
+                return (
+                  <div key={idx} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"6px 0",borderBottom:idx<tug4Modal.stockItems.length-1?`1px solid ${C.border}`:"none"}}>
+                    <span style={{fontSize:13}}>{si.namaBaru || katalogList.find(k=>k.id===si.katalogId)?.name || `Barang ${idx+1}`} <span style={{color:C.muted,fontSize:12}}>({label})</span></span>
+                    <button type="button" style={sty.btn(status==="Non-SAP"?"ghost":"primary")} onClick={()=>setTug4Form(f=>{
+                      const next = [...(f.itemSapStatus||tug4Modal.stockItems.map(()=>"SAP"))];
+                      next[idx] = next[idx]==="Non-SAP" ? "SAP" : "Non-SAP";
+                      return {...f, itemSapStatus: next};
+                    })}>{status==="Non-SAP" ? "Jadikan SAP" : "Jadikan Non-SAP"}</button>
+                  </div>
+                );
+              })}
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>

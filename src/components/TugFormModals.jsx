@@ -533,7 +533,7 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                 <button onClick={()=>setTxnModal(false)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button>
               </div>
             </div>
-            <div tabIndex={0} className="info-note" style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Setelah diajukan: TL Logistik approve → lanjut isi TUG-4 → Manager approve → lengkapi lampiran → Asman approve → stok masuk gudang.</div>
+            <div tabIndex={0} className="info-note" style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Setelah diajukan: TL Logistik approve → lanjut isi TUG-4 & lampiran → Asman approve → stok masuk gudang.</div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DATA PENERIMAAN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>

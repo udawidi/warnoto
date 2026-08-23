@@ -223,7 +223,7 @@ export async function processTxnPhotos(txn, prefix, onProgress) {
   // melapor "x/total" (dipakai overlay progres simpan transaksi di App.jsx).
   const total = TXN_PHOTO_SLOTS.filter(({ field }) => _isDataUrl(t[field])).length
     + (Array.isArray(t.fotoMaterial) ? t.fotoMaterial.filter(fm => _isDataUrl(fm?.img)).length : 0)
-    + (Array.isArray(t.stockItems) ? t.stockItems.reduce((n, si) => n + ["fotoNameplate", "fotoBarangRetur"].filter(f => _isDataUrl(si?.[f])).length, 0) : 0);
+    + (Array.isArray(t.stockItems) ? t.stockItems.reduce((n, si) => n + ["fotoNameplate", "fotoBarangRetur", "fotoBarang"].filter(f => _isDataUrl(si?.[f])).length, 0) : 0);
   let done = 0;
   const tick = () => onProgress?.(++done, total);
 
@@ -248,7 +248,7 @@ export async function processTxnPhotos(txn, prefix, onProgress) {
   if (Array.isArray(t.stockItems)) {
     t.stockItems = await Promise.all(t.stockItems.map(async (si, idx) => {
       const nsi = { ...si };
-      for (const field of ["fotoNameplate", "fotoBarangRetur"]) {
+      for (const field of ["fotoNameplate", "fotoBarangRetur", "fotoBarang"]) {
         if (_isDataUrl(nsi[field])) {
           try { nsi[field] = await _withTimeout(uploadPhotoToStorage(await compressImage(nsi[field], { maxBytes: 1_000_000 }), "tug-photos", `${prefix}/item${idx}-${field}.jpg`), 30_000, "unggah foto"); }
           catch { pending.push(`item${idx}.${field}`); }

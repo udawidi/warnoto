@@ -8,6 +8,7 @@ import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
 import { createAndSubmitCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
 import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js";
 import { STATUS_SAP } from "../constants.js";
+import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -344,7 +345,7 @@ export function useTugTransactions({
     // (offline) → foto tetap base64 + _fotoPending; transaksi & dokumen tetap jadi,
     // auto-sync menyusul saat online (syncPendingTxnPhotos).
     let txnId = `${docType}-${uid().slice(-6)}`;
-    const _hasFoto = formData && ([formData.fotoKendaraan,formData.fotoSimKtp,formData.fotoSuratPengembalian,formData.fotoBAPengembalian,formData.fotoSuratJalanImg,formData.fotoKontrak].some(_isDataUrl) || (formData.fotoMaterial||[]).some(fm=>_isDataUrl(fm?.img)) || (formData.stockItems||[]).some(si=>_isDataUrl(si.fotoNameplate)||_isDataUrl(si.fotoBarangRetur)));
+    const _hasFoto = formData && ([formData.fotoKendaraan,formData.fotoSimKtp,formData.fotoSuratPengembalian,formData.fotoBAPengembalian,formData.fotoSuratJalanImg,formData.fotoKontrak].some(_isDataUrl) || (formData.fotoMaterial||[]).some(fm=>_isDataUrl(fm?.img)) || (formData.stockItems||[]).some(si=>_isDataUrl(si.fotoNameplate)||_isDataUrl(si.fotoBarangRetur)||_isDataUrl(si.fotoBarang)));
     if (_hasFoto) setSavingInfo({ label: "Mengunggah foto...", done: 0, total: 0 });
     const { data: _fd, pending: _pend } = await processTxnPhotos(formData, txnId, (done, total) => setSavingInfo({ label: "Mengunggah foto...", done, total }));
     formData = _fd;
@@ -353,7 +354,10 @@ export function useTugTransactions({
     }
     if (_pend.length) showToast(`⚠️ ${_pend.length} foto belum terunggah (sinyal?). Transaksi & dokumen tetap tersimpan; foto disinkron otomatis saat online.`, "info");
 
-    let seq = docSeq;
+    // FIX bug counter: docSeq global bisa ketinggalan dari transaksi yang sudah ada
+    // (mis. dipulihkan/diimpor manual) — jangan pakai docSeq mentah, pastikan seq baru
+    // tidak lebih kecil dari nomor tertinggi yang sudah dipakai txn client-numbered manapun.
+    let seq = nextSafeDocSeq(docSeq, txns);
     const docCode = (docType === "TUG10" || docType === "TUG3") ? "LOG.00.01" : "LOG.00.02";
     const docKey = docType === "TUG9" ? "tug9" : docType === "TUG8" ? "tug8" : docType === "TUG10" ? "tug10" : docType === "TUG5" ? "tug5" : "tug3";
     let docNumbers = generateDocNumbers(seq, Date.now(), docCode);
