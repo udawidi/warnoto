@@ -31,7 +31,9 @@ export function makeSty(isMobile, C=C_LIGHT) {
     // balik ke bawah cuma untuk menemukan tombol submit. bottom/marginBottom
     // negatif menutupi padding bawah sty.card (20px) supaya menempel pas di
     // tepi, bukan menggantung dengan jarak kosong di bawahnya.
-    stickyFooter:{ display:"flex", gap:10, position:"sticky", bottom:-20, background:C.surface, padding:"14px 0 0", marginTop:14, marginBottom:-20, borderTop:`1px solid ${C.border}` },
+    // HP: grid 1-kolom → semua tombol footer stack full-width & SAMA lebar (rasio
+    // flex:1/flex:2 inline diabaikan di grid, jadi simetris). Desktop: flex + rasio.
+    stickyFooter:{ display:isMobile?"grid":"flex", gridTemplateColumns:isMobile?"1fr":"none", flexWrap:"wrap", gap:10, position:"sticky", bottom:-20, background:C.surface, padding:"14px 0 0", marginTop:14, marginBottom:-20, borderTop:`1px solid ${C.border}` },
     // Pakai padding longhand (bukan shorthand "Npx Mpx") supaya tempat yang
     // perlu override paddingRight sendiri (mis. input cari + tombol clear)
     // tidak bentrok shorthand-vs-longhand di style yang sama (React warning

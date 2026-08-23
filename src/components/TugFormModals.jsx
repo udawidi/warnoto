@@ -271,7 +271,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
             </div>
             <div style={{marginBottom:16}}>
               <label style={sty.label}>Foto Tiap Material</label>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginTop:6}}>
+              <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(auto-fill,minmax(96px,1fr))":"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginTop:6}}>
                 {txnForm.stockItems.filter(si=>si.stockId).map((si,idx)=>{
                   const stock = enrichedStocks.find(s=>s.id===si.stockId);
                   const existingPhoto = txnForm.fotoMaterial.find(fm=>fm.stockId===si.stockId);

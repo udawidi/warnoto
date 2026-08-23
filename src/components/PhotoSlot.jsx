@@ -5,7 +5,7 @@ import { Camera, Image, Trash } from "@phosphor-icons/react";
 export function PhotoSlot({ label, value, onChange, onRemove, handleImg, sty, C, required }) {
   return (
     <div>
-      <label style={sty.label}>{label}{required && <span style={{color:C.red}}> *</span>}</label>
+      <label style={{...sty.label, display:"block", minHeight:34, lineHeight:1.25}}>{label}{required && <span style={{color:C.red}}> *</span>}</label>
       <div style={{height:90,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,marginBottom:6}}>
         {value ? <img src={value} alt={label} width={120} height={90} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (<><Image size={24} weight="duotone" color="#9ca3af" aria-hidden="true" /><span style={{fontSize:11,color:C.muted}}>Belum ada foto</span></>)}
       </div>
