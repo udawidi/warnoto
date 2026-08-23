@@ -294,7 +294,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
   );
 }
 
-export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, docSeq, currentUser, rolePerms, tug10Highlight, tug10Refs, tug10Missing, tug10Collapsed, setTug10Collapsed, lokasiList, subGudangList, satpamList, gudangList, visibleGudangList, uptList, katalogList, CATEGORIES, STATUS_MATERIAL_RETUR, addItemRow, removeItemRow, updateItemRow, handleImg, savingTxn, saveTxn, isMobile, sty, C }) {
+export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, docSeq, currentUser, rolePerms, tug10Highlight, tug10Refs, tug10Missing, tug10Collapsed, setTug10Collapsed, lokasiList, subGudangList, satpamList, gudangList, visibleGudangList, uptList, katalogList, CATEGORIES, STATUS_MATERIAL_RETUR, addItemRow, removeItemRow, updateItemRow, handleImg, savingTxn, saveTxn, maraSearch, setMaraSearch, maraSearchResults, setMaraSearchResults, maraSearchLoading, maraSearchError, searchMaraCatalog, applyMaraToItemRow, isMobile, sty, C }) {
   const hl = key => tug10Highlight===key ? { boxShadow:"0 0 0 2px #dc2626", borderRadius: 10 } : {};
   const setRef = key => el => { tug10Refs.current[key] = el; };
   const isLegacyGud = txnForm.gudangTujuanId==="__legacy__";
@@ -335,9 +335,13 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>PIHAK & LOKASI PENYIMPANAN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:10}}>
+              <div ref={setRef("menyerahkanUnit")} style={{...hl("menyerahkanUnit")}}>
+                <label style={sty.label}>PT / Perusahaan Pengirim *</label>
+                <input style={sty.input} value={txnForm.menyerahkanUnit||""} onChange={e=>setTxnForm(tf=>({...tf,menyerahkanUnit:e.target.value}))} placeholder="cth: PT. Mitra Jaya"/>
+              </div>
               <div ref={setRef("menyerahkanNama")} style={{...hl("menyerahkanNama")}}>
-                <label style={sty.label}>Yang Menyerahkan *</label>
-                <input style={sty.input} value={txnForm.menyerahkanNama} onChange={e=>setTxnForm(tf=>({...tf,menyerahkanNama:e.target.value}))} placeholder="cth: PT. Mitra Jaya"/>
+                <label style={sty.label}>Nama Penyerah (orang) *</label>
+                <input style={sty.input} value={txnForm.menyerahkanNama} onChange={e=>setTxnForm(tf=>({...tf,menyerahkanNama:e.target.value}))} placeholder="cth: Budi Santoso"/>
               </div>
               <div>
                 <label style={sty.label}>Gudang Penyimpanan *</label>
@@ -387,7 +391,9 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               const seriOk = !isAttb || !!si.noSeri?.trim();
               const nameplateOk = !isAttb || !!si.fotoNameplate;
               const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk;
-              const collapsed = complete && tug10Collapsed[idx];
+              // Auto-ringkas begitu item lengkap (tiru UX tug3ExpandedIdx) — default collapsed
+              // saat complete kecuali user eksplisit buka lagi (tug10Collapsed[idx]===false).
+              const collapsed = complete && tug10Collapsed[idx] !== false;
               const kat = si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId) : null;
               const namaDisplay = si.katalogMode==="existing" ? (kat?.name||"-") : (si.namaBaru||"(barang baru)");
               const satuanDisplay = si.katalogMode==="existing" ? (kat?.satuan||"") : (si.satuanBaru||"");
@@ -400,7 +406,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                   <span style={{fontSize:12,fontWeight:700,padding:"1px 8px",borderRadius: 14,background:bs.bg,color:bs.fg}}>{si.statusMaterial}</span>
                   {complete && <span style={{fontSize:12,color:"#16a34a",fontWeight:700}}>✓ Lengkap</span>}
                   <div style={{marginLeft:"auto",display:"flex",gap:6}}>
-                    {complete && <button type="button" style={{...sty.btn("ghost","sm")}} onClick={()=>setTug10Collapsed(c=>({...c,[idx]:!c[idx]}))}>{collapsed?"▼ Buka":"▲ Ringkas"}</button>}
+                    {complete && <button type="button" style={{...sty.btn("ghost","sm")}} onClick={()=>setTug10Collapsed(c=>({...c,[idx]:!collapsed}))}>{collapsed?"▼ Buka":"▲ Ringkas"}</button>}
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus barang retur ini" style={{...sty.btn("danger","sm")}} onClick={()=>removeItemRow(idx)}>✕</button>}
                   </div>
                 </div>
@@ -429,12 +435,42 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                     />
                     {!barangOk && hint("Wajib: pilih barang dari katalog.")}
                   </div>
+                ) : si._maraLocked ? (
+                  <div style={{marginBottom:8}}>
+                    <div style={{marginBottom:8,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — {si.namaBaru} [{si.katalogBaru}] · {si.satuanBaru}</span>
+                      <button type="button" style={sty.btn("ghost","sm")} onClick={()=>updateItemRow(idx,"_maraLocked",false)}>Lepas kunci</button>
+                    </div>
+                  </div>
                 ) : (
-                  <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-                    <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru *</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: Relay CCP Bongkaran"/>{!barangOk && hint("Wajib: isi nama barang baru.")}</div>
-                    <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)}/></div>
-                    <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: BH, pcs, unit"/></div>
-                    <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+                  <div style={{marginBottom:8}}>
+                    <div style={{background:"#f0f9ff",border:"1px solid #bae6fd",borderRadius:10,padding:12,marginBottom:8}}>
+                      <div style={{display:"flex",gap:6}}>
+                        <input style={{...sty.input,flex:1}} value={maraSearch} placeholder="Ketik nama material MARA (min. 2 huruf)..." onChange={e=>searchMaraCatalog(e.target.value)}/>
+                        {maraSearch && <button style={sty.btn("ghost","sm")} onClick={()=>{setMaraSearch("");setMaraSearchResults([])}}>✕</button>}
+                      </div>
+                      {maraSearchLoading && <div style={{fontSize:12,color:"#0369a1",marginTop:6}}>Mencari...</div>}
+                      {maraSearchError && <div style={{fontSize:12,color:C.red,marginTop:6,padding:"6px 8px",background:"#fef2f2",borderRadius:10}}>⚠️ {maraSearchError}</div>}
+                      {maraSearchResults.length>0 && (
+                        <div style={{marginTop:8,maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
+                          {maraSearchResults.map(item=>(
+                            <div key={item.kode_material} onClick={()=>applyMaraToItemRow(idx,item)}
+                              style={{padding:"6px 10px",borderRadius:10,border:"1px solid #bae6fd",background:C.surface,cursor:"pointer",fontSize:12,display:"flex",justifyContent:"space-between",gap:8}}>
+                              <div><span style={{fontWeight:700,color:"#0369a1"}}>{item.kode_material}</span><span style={{color:"#64748b",marginLeft:8}}>{item.nama}</span></div>
+                              <span style={{color:"#64748b",flexShrink:0}}>{item.satuan}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}" — isi manual di bawah.</div>}
+                      {maraSearchResults.length>0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Klik item untuk auto-fill, atau isi manual di bawah.</div>}
+                    </div>
+                    <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
+                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru *</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: Relay CCP Bongkaran"/>{!barangOk && hint("Wajib: isi nama barang baru.")}</div>
+                      <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)}/></div>
+                      <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: BH, pcs, unit"/></div>
+                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
+                    </div>
                   </div>
                 )}
 
@@ -501,6 +537,13 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               </div>
             )}
 
+            <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>📸 LAMPIRAN FOTO (opsional)</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+              <PhotoSlot label="Foto Kendaraan" value={txnForm.fotoKendaraan} onChange={img=>setTxnForm(f=>({...f,fotoKendaraan:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoKendaraan:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="SIM / KTP Pengemudi" value={txnForm.fotoSimKtp} onChange={img=>setTxnForm(f=>({...f,fotoSimKtp:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoSimKtp:null}))} handleImg={handleImg} sty={sty} C={C}/>
+              <PhotoSlot label="Foto Surat Pengembalian" value={txnForm.fotoSuratPengembalian} onChange={img=>setTxnForm(f=>({...f,fotoSuratPengembalian:img}))} onRemove={()=>setTxnForm(f=>({...f,fotoSuratPengembalian:null}))} handleImg={handleImg} sty={sty} C={C}/>
+            </div>
+
             <div style={{border:`1px solid ${missingList.length?"#fecaca":"#bbf7d0"}`,background:missingList.length?"#fef2f2":"#f0fdf4",borderRadius: 10,padding:"8px 12px",marginBottom:12,fontSize:12}}>
               {missingList.length===0
                 ? <div style={{color:"#166534",fontWeight:800}}>✅ Siap diajukan</div>
@@ -509,7 +552,8 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 
             <div style={sty.stickyFooter}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}}>Batal</button>
-              <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1,cursor:savingTxn?"wait":"pointer"}} onClick={saveTxn}>{savingTxn?"⏳ Menyimpan...":"📤 Ajukan TUG-10"}</button>
+              <button disabled={savingTxn} style={{...sty.btn("ghost"),flex:1,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn("DRAFT")}>💾 Simpan Draft</button>
+              <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1,cursor:savingTxn?"wait":"pointer"}} onClick={()=>saveTxn("PENDING")}>{savingTxn?"⏳ Menyimpan...":"📤 Ajukan TUG-10"}</button>
             </div>
           </div>
         </div>

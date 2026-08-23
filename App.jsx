@@ -12,7 +12,7 @@ import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.j
 import { approveStockLocationMove, rejectStockLocationMove } from "./src/lib/stockLocationApproval.js";
 import { applyStockRealtimeEvent, applyStockRealtimeEvents, stockListsEqual } from "./src/lib/stockRealtime.js";
 import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
-import { normalizeKatalogCode } from "./src/lib/normalizeKatalogCode.js";
+import { normalizeKatalogCode, canonicalKatalogCode } from "./src/lib/normalizeKatalogCode.js";
 import { expandMonthlySeriesFromMap, tsbMonthlyForecast } from "./src/lib/tsbForecast.js";
 import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty } from "./src/theme.js";
@@ -114,6 +114,7 @@ import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoM
 import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
+import { loadTug10Transactions, upsertTug10Transaction } from "./src/lib/tug10Sync.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
 import { loadMaterialInspections, loadMaterialInspectionBatches } from "./src/lib/materialInspectionSync.js";
@@ -723,6 +724,8 @@ export default function PLNWarehouse() {
       canonicalLoadPromise.catch(() => {}); // cegah warning unhandled-rejection; error asli tetap ditangani di try/catch bawah
       const tug3LoadPromise = loadTug3Transactions();
       tug3LoadPromise.catch(() => {});
+      const tug10LoadPromise = loadTug10Transactions();
+      tug10LoadPromise.catch(() => {});
 
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
@@ -847,9 +850,16 @@ export default function PLNWarehouse() {
         // migrasi persistensi ini. Buang blob legacy TUG-3 yang punya baris DB (dedupe
         // by id) + yang sudah ber-flag canonical3, lalu tambah baris DB.
         const tug3Load = await tug3LoadPromise;
-        setTxns(tug3Load.unavailable ? withCanonical : [
+        const withTug3 = tug3Load.unavailable ? withCanonical : [
           ...withCanonical.filter(t => !t.canonical3 && !tug3Load.rows.some(r => r.id === t.id)),
           ...tug3Load.rows,
+        ];
+        // TUG-10 (barang kembali/retur) — sumber kebenaran tabel `tug10_transactions`
+        // sejak migrasi persistensi ini. Pola sama persis lapisan tug3 di atas.
+        const tug10Load = await tug10LoadPromise;
+        setTxns(tug10Load.unavailable ? withTug3 : [
+          ...withTug3.filter(t => !t.canonical10 && !tug10Load.rows.some(r => r.id === t.id)),
+          ...tug10Load.rows,
         ]);
       } catch (err) {
         console.warn("Canonical TUG load gagal; mempertahankan cache legacy tanpa menulis balik.", err);
@@ -1651,6 +1661,7 @@ export default function PLNWarehouse() {
     tug10Missing, flagTug10Invalid,
     saveTxn, commitNewTxn,
     editDraftTug3, submitDraftTug3, deleteDraftTug3,
+    editDraftTug10, submitDraftTug10, deleteDraftTug10,
   } = useTugTransactions({
     currentUser, showToast, rolePerms,
     txns, setTxns, stocks, setStocks, katalogList, setKatalogList,
@@ -1931,6 +1942,10 @@ export default function PLNWarehouse() {
       if (!alive || res.unavailable) return;
       setTxns(prev => [...prev.filter(t => !t.canonical3), ...res.rows]);
     }).catch(err => console.warn("Refresh TUG-3 gagal saat buka tab Approval.", err));
+    loadTug10Transactions().then(res => {
+      if (!alive || res.unavailable) return;
+      setTxns(prev => [...prev.filter(t => !t.canonical10), ...res.rows]);
+    }).catch(err => console.warn("Refresh TUG-10 gagal saat buka tab Approval.", err));
     return () => { alive = false; };
   }, [tab, currentUser]);
 
@@ -2812,30 +2827,47 @@ export default function PLNWarehouse() {
           // Find an existing Data Stok row for this katalog+location; bump qty if found
           const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===txn.lokasiTujuanId);
           if (existingRow) {
-            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty } : s);
+            // fix bug-2 (identik TUG-3): foto retur ikut fotoKeseluruhan (kolom Foto DataStokTab),
+            // jangan timpa foto lama kalau baris sudah punya.
+            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
             touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, createdAt:Date.now() });
+            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
             touchedStockIds.add(newId);
           }
         } else {
-          // Brand-new item: register into Master Katalog first
-          const newKatId = `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
-          touchedKatalogIds.add(newKatId);
-          const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, createdAt:Date.now() });
-          touchedStockIds.add(newStkId);
+          // Brand-new item: register into Master Katalog first — dedup via canonicalKatalogCode
+          // (fix bug-3, identik approveTUG3Final_Asman) supaya kode ber-zero-padding lama
+          // tak dobel dengan input baru yang sama tapi tanpa padding.
+          const katCodeBaru = canonicalKatalogCode(si.katalogBaru || "");
+          const dupKatalog = katCodeBaru && newKatalog.find(k => canonicalKatalogCode(k.katalog) === katCodeBaru);
+          const newKatId = dupKatalog ? dupKatalog.id : `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
+          if (!dupKatalog) {
+            newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
+            touchedKatalogIds.add(newKatId);
+          }
+          const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId);
+          if (existingRow2) {
+            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: s.qty + si.qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
+            touchedStockIds.add(existingRow2.id);
+          } else {
+            const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
+            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            touchedStockIds.add(newStkId);
+          }
         }
       });
 
-      const newTxns = txns.map(t => t.id===txn.id ? { ...t, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated } : t);
+      const approvedTxn = { ...txn, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated };
+      const newTxns = txns.map(t => t.id===txn.id ? approvedTxn : t);
       setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
       await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog}, {
         stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
         katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
       });
+      // Persist ke tabel dedicated TUG-10 (parity TUG-3) — fail-safe, blob tetap sumber cadangan.
+      upsertTug10Transaction(approvedTxn).catch(err => console.warn("upsertTug10Transaction (approve) gagal:", err));
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah. (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah.`);
       return true;
@@ -2858,9 +2890,13 @@ export default function PLNWarehouse() {
         return true;
       } catch (err) { showToast(`Penolakan belum dijalankan: ${err?.message||err}`, "error"); return false; }
     }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
+    const rejectedTxn = {...txn, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    const newTxns = txns.map(t => t.id===txn.id ? rejectedTxn : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
+    if (txn.docType === "TUG10") {
+      upsertTug10Transaction(rejectedTxn).catch(err => console.warn("upsertTug10Transaction (reject) gagal:", err));
+    }
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers[docKeyOf(txn)], {stage: txn.stage||null, alasan: reason});
     showToast(`❌ ${txn.docNumbers[docKeyOf(txn)]} DITOLAK.`, "error");
   }
@@ -4049,6 +4085,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             submitTUG4DanLampiran={submitTUG4DanLampiran}
             approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
             editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
+            editDraftTug10={editDraftTug10} submitDraftTug10={submitDraftTug10} deleteDraftTug10={deleteDraftTug10}
             approveTUG5_Asman={approveTUG5_Asman} rejectTUG5_Asman={rejectTUG5_Asman} approveTUG5_Manager={approveTUG5_Manager} rejectTUG5_Manager={rejectTUG5_Manager}
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
@@ -4578,7 +4615,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
 
       {/* TXN MODAL - TUG10 FORM (incoming material / return to warehouse) */}
-      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* TXN MODAL - TUG3 FORM (Karantina — penerimaan barang tahap 1) */}
       {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={nextSafeDocSeq(docSeq, txns)} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}

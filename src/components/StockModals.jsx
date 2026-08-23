@@ -146,7 +146,9 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
             <iframe
               ref={iframeRef}
               title="Document Preview"
-              srcDoc={dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList)}
+              srcDoc={(dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList))
+                /* print-bar (onclick window.print) diblok CSP di iframe app → buang dari PREVIEW; modal punya tombol Print React. File unduhan/window.open (tanpa CSP) tetap punya tombol yang jalan. */
+                .replace(/<div class="print-bar">[\s\S]*?<\/div>/, "")}
               style={{width:"100%",height:"100%",border:"none"}}
             />
           </div>

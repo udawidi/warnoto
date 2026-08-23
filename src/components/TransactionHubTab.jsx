@@ -24,6 +24,7 @@ export function TransactionHubTab({
   submitTUG4DanLampiran,
   approveTUG3Final_Asman, rejectTUG3Final_Asman,
   editDraftTug3, submitDraftTug3, deleteDraftTug3,
+  editDraftTug10, submitDraftTug10, deleteDraftTug10,
   approveTUG5_Asman, rejectTUG5_Asman, approveTUG5_Manager, rejectTUG5_Manager,
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
@@ -175,6 +176,13 @@ export function TransactionHubTab({
                     {t.status==="APPROVED" && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}
                     {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
                     <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat & Pratinjau Dokumen {t.docType.replace("TUG","TUG-")}</button>
+                    {t.docType==="TUG10" && t.status==="DRAFT" && t.createdBy===currentUser.id && (
+                      <div style={{display:"flex",gap:8,marginTop:8}}>
+                        <button style={sty.btn("ghost","sm")} onClick={()=>editDraftTug10(t)}>✏️ Edit</button>
+                        <button style={sty.btn("primary","sm")} onClick={()=>submitDraftTug10(t)}>📤 Ajukan</button>
+                        <button style={sty.btn("danger","sm")} onClick={()=>{ if (window.confirm("Hapus draft TUG-10 ini?")) deleteDraftTug10(t); }}>🗑️ Hapus</button>
+                      </div>
+                    )}
                   </div>
                 );
               })}

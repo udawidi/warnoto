@@ -374,7 +374,7 @@ export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, 
   const penerimaUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u=>u.role==="TL")||{});
   const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
 
-  const docNoTUG10 = docs.tug10 || (txn.docSeq ? `${txn.docSeq}.TUG-10/LOG.00.01/${uptKode}/VII/2026` : `TUG10-${(txn.id||"").slice(-6)}`);
+  const docNoTUG10 = docs.tug10 || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt).tug10 : `TUG10-${(txn.id||"").slice(-6)}`);
 
   const items = txn?.stockItems || [];
   const itemRows = items.map(si => {
@@ -463,7 +463,7 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
 
   <div class="section-box">
     <div class="doctitle">BON PENGEMBALIAN</div>
-    <div class="docno">&lt;&lt;${esc(docNoTUG10)}&gt;&gt;</div>
+    <div class="docno">${esc(docNoTUG10)}</div>
     <div class="company-subtitle">PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
 
     <table class="meta-tbl">
@@ -553,7 +553,7 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
     <div class="photo-col-cell">
       <div class="cell-title">Surat Pengembalian</div>
       <div class="cell-img-wrap">
-        ${txn.fotoBAPengembalian ? `<img src="${esc(txn.fotoBAPengembalian)}" alt="Surat Pengembalian"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat pengembalian]&gt;&gt;</div>`}
+        ${txn.fotoSuratPengembalian ? `<img src="${esc(txn.fotoSuratPengembalian)}" alt="Surat Pengembalian"/>` : `<div class="photo-empty">&lt;&lt;[Foto surat pengembalian]&gt;&gt;</div>`}
       </div>
     </div>
     <div class="photo-col-cell">
@@ -569,9 +569,9 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
       </div>
     </div>
     <div class="photo-col-cell">
-      <div class="cell-title">Lampiran Tambahan</div>
+      <div class="cell-title">Lampiran Tambahan (BA Pengembalian ATTB)</div>
       <div class="cell-img-wrap">
-        <div class="photo-empty">&lt;&lt;[Lampiran Tambahan]&gt;&gt;</div>
+        ${txn.fotoBAPengembalian ? `<img src="${esc(txn.fotoBAPengembalian)}" alt="BA Pengembalian ATTB"/>` : `<div class="photo-empty">&lt;&lt;[Lampiran Tambahan]&gt;&gt;</div>`}
       </div>
     </div>
   </div>

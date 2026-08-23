@@ -7,6 +7,7 @@ import { generateDocNumbers, generateReservasiDocNo, uid } from "../lib/utils.js
 import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
 import { createAndSubmitCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
 import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js";
+import { upsertTug10Transaction, deleteTug10Transaction } from "../lib/tug10Sync.js";
 import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 
@@ -119,11 +120,12 @@ export function useTugTransactions({
         stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null }],
         noBAPenggantian: "",
         // For TUG10 the flow is reversed: external party hands back to PLN
-        menyerahkanNama: "",
+        menyerahkanUnit: "", menyerahkanNama: "",
         gudangTujuanId: "", subGudangTujuanId: "", // cascade Gudang → Sub Gudang → Blok
         lokasiTujuanId: "", // which Master Lokasi (Blok) the returned items go into
         satpamId: "", // satpam gudang penyimpanan (Mengetahui di dokumen)
         fotoBAPengembalian: null,
+        fotoKendaraan: null, fotoSimKtp: null, fotoSuratPengembalian: null,
       });
     } else if (docType === "TUG3") {
       setTug3ExpandedIdx(0);
@@ -220,7 +222,8 @@ export function useTugTransactions({
     const m = [];
     if (!tf.namaPekerjaan?.trim()) m.push({ scrollKey:"namaPekerjaan", label:"Nama Pekerjaan" });
     if (!tf.lokasiPekerjaan?.trim()) m.push({ scrollKey:"lokasiPekerjaan", label:"Lokasi Pekerjaan" });
-    if (!tf.menyerahkanNama?.trim()) m.push({ scrollKey:"menyerahkanNama", label:"Yang Menyerahkan" });
+    if (!tf.menyerahkanUnit?.trim()) m.push({ scrollKey:"menyerahkanUnit", label:"PT / Perusahaan Pengirim" });
+    if (!tf.menyerahkanNama?.trim()) m.push({ scrollKey:"menyerahkanNama", label:"Nama Penyerah" });
     if (!tf.lokasiTujuanId) m.push({ scrollKey:"lokasiTujuanId", label:"Lokasi Penyimpanan (Blok)" });
     (tf.stockItems||[]).forEach((si,idx)=>{
       const n = idx+1;
@@ -284,6 +287,11 @@ export function useTugTransactions({
     }
 
     if (docType === "TUG10") {
+      if (targetStage === "DRAFT") {
+        // Draft: simpan apa adanya (boleh belum lengkap), tanpa validasi kelengkapan.
+        await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
+        return;
+      }
       const missing = tug10Missing(txnForm);
       if (missing.length) {
         flagTug10Invalid(missing[0].scrollKey);
@@ -291,7 +299,7 @@ export function useTugTransactions({
         return;
       }
       const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems });
+      await commitNewTxn(docType, { ...txnForm, stockItems: validItems }, { replaceDraftId: editingDraftTxnId });
       return;
     }
 
@@ -495,22 +503,29 @@ export function useTugTransactions({
       : (hasRole(currentUser, "ADMIN") ? "TL" : "ASMAN");
     const replacedDraft = replaceDraftId ? txns.find(t => t.id === replaceDraftId) : null;
     const { draftLabel:_localDraftLabel, ...draftBase } = replacedDraft || {};
+    // TUG-10 draft: boleh disimpan belum lengkap, tanpa approval-required. Nomor dok
+    // dipertahankan kalau draft yang diedit sudah punya satu (pola sama TUG-3
+    // keepExistingDocs) supaya tidak makan nomor urut tiap kali disimpan ulang.
+    const isDraft10 = docType === "TUG10" && targetStage === "DRAFT";
+    const keepExistingDocs10 = isDraft10 && !!replacedDraft?.docNumbers?.[docKey];
     const nt = {
       ...draftBase,
-      id: txnId,
-      docType, docSeq: seq, docNumbers,
+      id: replacedDraft?.id || txnId,
+      docType,
+      docSeq: keepExistingDocs10 ? (replacedDraft?.docSeq ?? null) : seq,
+      docNumbers: keepExistingDocs10 ? (replacedDraft?.docNumbers || {}) : docNumbers,
       ...formData,
-      status: "PENDING",
+      status: isDraft10 ? "DRAFT" : "PENDING",
       canonical: !!canonicalSubmission && !canonicalSubmission.unavailable,
       canonicalId: canonicalSubmission?.id || null,
       canonicalVersion: canonicalSubmission?.version || null,
       identitySnapshot: canonicalSubmission?.identitySnapshot || null,
-      stage: canonicalSubmission?.stage || undefined,
+      stage: isDraft10 ? "DRAFT" : (canonicalSubmission?.stage || undefined),
       requiredApprover,
       approvedBy: null, approvedAt: null,
       asmanAutoApproved: false,
       rejectedBy: null, rejectedAt: null, rejectReason: null,
-      createdBy: currentUser.id, createdAt: Date.now(),
+      createdBy: replacedDraft?.createdBy ?? currentUser.id, createdAt: replacedDraft?.createdAt ?? Date.now(),
     };
     const draftReplaced = replaceDraftId
       ? txns.map(t => t.id === replaceDraftId ? nt : t)
@@ -522,13 +537,20 @@ export function useTugTransactions({
         ? { ...t, adoptedTug9Id:txnId }
         : t.tug8DraftId === replaceDraftId ? { ...t, tug8DraftId:txnId } : t)
       : draftReplaced;
-    const newSeq = canonicalSubmission && !canonicalSubmission.unavailable ? docSeq : seq + 1;
+    const newSeq = (canonicalSubmission && !canonicalSubmission.unavailable) || keepExistingDocs10 ? docSeq : seq + 1;
     setTxns(newTxns); setDocSeq(newSeq); setTxnModal(false); setEditingDraftTxnId(null);
     setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
     await saveToCloud({txns: newTxns, docSeq: newSeq});
-    logAudit(currentUser, "CREATE", "txns", nt.docNumbers[docKey], { docType, jumlahBarang: (formData.stockItems||[]).length });
+    if (docType === "TUG10") {
+      upsertTug10Transaction(nt).catch(err => console.warn("upsertTug10Transaction (create) gagal:", err));
+    }
     canonicalActionKeysRef.current = null;
-    showToast(`Transaksi ${nt.docNumbers[docKey]} dibuat! Menunggu approval ${ROLES[requiredApprover]}. ⏳`);
+    if (isDraft10) {
+      showToast(`💾 Draft ${nt.docNumbers[docKey]} disimpan. Lengkapi lalu ajukan saat siap.`);
+    } else {
+      logAudit(currentUser, "CREATE", "txns", nt.docNumbers[docKey], { docType, jumlahBarang: (formData.stockItems||[]).length });
+      showToast(`Transaksi ${nt.docNumbers[docKey]} dibuat! Menunggu approval ${ROLES[requiredApprover]}. ⏳`);
+    }
     } catch (err) {
       console.error("commitNewTxn gagal:", err);
       showToast(`❌ Gagal menyimpan transaksi: ${err?.message||err}`, "error");
@@ -564,6 +586,29 @@ export function useTugTransactions({
     showToast("🗑️ TUG-3 dihapus.");
   }
 
+  // ── Draft TUG-10 (Barang Kembali) — sama pola dengan draft TUG-3 di atas ──
+  function editDraftTug10(txn) {
+    setTxnForm({ ...txn });
+    setEditingDraftTxnId(txn.id);
+    setTug10Collapsed({});
+    setTxnModal(true);
+  }
+  async function submitDraftTug10(txn) {
+    const missing = tug10Missing(txn);
+    if (missing.length) { showToast(`Belum lengkap — ${missing[0].label}${missing.length>1?` (dan ${missing.length-1} lainnya)`:""}`,"error"); return; }
+    const validItems = (txn.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+    await commitNewTxn("TUG10", { ...txn, stockItems: validItems }, { replaceDraftId: txn.id });
+  }
+  async function deleteDraftTug10(txn) {
+    if (txn.createdBy !== currentUser.id) { showToast("Tidak diizinkan menghapus transaksi ini.","error"); return; }
+    const newTxns = txns.filter(t => t.id !== txn.id);
+    setTxns(newTxns);
+    await saveToCloud({ txns: newTxns });
+    await deleteTug10Transaction(txn.id); // no-op aman kalau txn ini belum sempat ke-upsert ke DB
+    logAudit(currentUser, "DELETE", "txns", txn.docNumbers?.tug10 || txn.id);
+    showToast("🗑️ TUG-10 dihapus.");
+  }
+
   return {
     txnModal, setTxnModal, txnForm, setTxnForm,
     editingDraftTxnId, setEditingDraftTxnId,
@@ -577,5 +622,6 @@ export function useTugTransactions({
     tug10Missing, flagTug10Invalid,
     saveTxn, commitNewTxn,
     editDraftTug3, submitDraftTug3, deleteDraftTug3,
+    editDraftTug10, submitDraftTug10, deleteDraftTug10,
   };
 }
