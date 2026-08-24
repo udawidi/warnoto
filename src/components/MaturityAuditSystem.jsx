@@ -495,12 +495,10 @@ export function MaturityAuditEditor({
                                     })
                                     })));
                                     const newFiles = uploadedFiles.map(res => ({ ...res, folderPath: targetFolderPath }));
-
-                                    setMaturityAuditEvidence(prev => {
-                                      const cur = prev[activeAspect.id] || [];
-                                      return { ...prev, [activeAspect.id]: [...cur, ...newFiles] };
-                                    });
-                                    if (canScoreUPT && audit.id) autosaveMaturityDraft?.();
+                                    const cur = maturityAuditEvidence[activeAspect.id] || [];
+                                    const nextEvidence = { ...maturityAuditEvidence, [activeAspect.id]: [...cur, ...newFiles] };
+                                    setMaturityAuditEvidence(nextEvidence);
+                                    if (canScoreUPT && audit.id) autosaveMaturityDraft?.(nextEvidence);
                                   } catch (err) {
                                     console.warn("Upload evidence Maturity gagal:", err);
                                     setUploadError(err?.message || "Upload evidence Maturity gagal.");

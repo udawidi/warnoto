@@ -51,6 +51,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   const autosaveInFlight = useRef(false);
   const autosaveDirty = useRef(false);
   const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // {aspekId: [{url,name,size,itemId,...}]}
+  const maturityAuditEvidenceRef = useRef(maturityAuditEvidence);
+  maturityAuditEvidenceRef.current = maturityAuditEvidence;
   const [expandedAspek, setExpandedAspek] = useState(null); // kategori aktif di editor
   const [activeAspectId, setActiveAspectId] = useState(null);
   const [aspectPage, setAspectPage] = useState(1);
@@ -330,16 +332,17 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // dipicu tombol "Simpan Draft" manual. Gate izin (canScoreUPT) ada di sisi
   // pemanggil (komponen), bukan guardMaturityWrite, supaya kegagalan izin tak
   // memicu toast berulang saat mengetik.
-  async function autosaveMaturityDraft() {
+  async function autosaveMaturityDraft(evidenceOverride) {
     if (!maturityAuditModal?.id) return;
     if (autosaveInFlight.current) { autosaveDirty.current = true; return; }
     autosaveInFlight.current = true;
     try {
+      const ev = evidenceOverride || maturityAuditEvidenceRef.current;
       const audit = maturityAuditModal;
       const isExistingAudit = maturityAudits.some(item => item.id === audit.id);
       const { isNew: _isNew, ...auditData } = audit;
       const scores = maturityAuditForm.aspekScores;
-      const scoreResult = calcMaturityScore(scores, maturityAuditEvidence);
+      const scoreResult = calcMaturityScore(scores, ev);
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
       const periodKey = auditData.periodKey || `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
@@ -355,7 +358,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         score: Number(scoreResult.total.toFixed(2)),
         periodKey,
         aspekScores: scores,
-        evidence: maturityAuditEvidence,
+        evidence: ev,
         catatanUPT: maturityAuditForm.catatanUPT,
         catatanUIT: maturityAuditForm.catatanUIT,
         catatanPusat: maturityAuditForm.catatanPusat,
