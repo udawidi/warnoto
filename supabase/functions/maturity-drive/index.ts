@@ -294,6 +294,21 @@ async function uploadDriveFile(file: File, folderId: string, mappingKey: string)
   bytes.set(head); bytes.set(new Uint8Array(await file.arrayBuffer()), head.length); bytes.set(tail, head.length + file.size);
   return driveJson("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,md5Checksum,webViewLink", { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: bytes });
 }
+// Jalankan fn untuk tiap item, maksimal `limit` berjalan bersamaan.
+// Mengembalikan hasil per item sesuai urutan input.
+async function mapLimit(items: any[], limit: number, fn: (item: any, index: number) => Promise<any>) {
+  const results = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) break;
+      results[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
 async function listChildren(folderId: string) {
   const q = encodeURIComponent(`'${quoteDrive(folderId)}' in parents and trashed = false`);
   const out: any[] = []; let pageToken = "";
@@ -374,19 +389,25 @@ async function syncAudit(body: any, ctx: any) {
   const rows = await scopedFolders(audit, upt, { includeRoot: ctx.profile.role === "SUPERADMIN" });
   const itemFolders = rows.filter((row) => row.folder_type === "ITEM");
   await reconcileAssignments(audit, upt, itemFolders, ctx.user.id, { includeRoot: ctx.profile.role === "SUPERADMIN" });
-  for (const folder of itemFolders) {
+  // Fetch Drive listings for all folders in parallel (bounded), then write to
+  // DB serially — upsert/recordUnassigned are idempotent by drive_file_id so
+  // write order doesn't matter, and serial writes keep this simple.
+  const itemChildren = await mapLimit(itemFolders, 8, async (folder) => ({ folder, files: await listChildren(folder.drive_folder_id) }));
+  for (const { folder, files } of itemChildren) {
     const meta = folder.metadata || {};
-    for (const driveFile of await listChildren(folder.drive_folder_id)) {
+    for (const driveFile of files) {
       if (driveFile.mimeType === "application/vnd.google-apps.folder") continue;
       await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId: meta.itemId, itemLabel: meta.itemLabel, categoryId: meta.categoryId, categoryLabel: meta.categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id });
       await admin.from("maturity_audit_drive_unassigned").update({ assignment_state: "ACTIVE", last_error: null, updated_at: nowMs() }).eq("audit_id", auditId).eq("drive_file_id", driveFile.id);
     }
   }
   const unassigned: any[] = [];
-  for (const folder of rows.filter((row) => ["ROOT", "PERIOD", "UPT", "CATEGORY", "ASPECT"].includes(row.folder_type))) {
-    for (const driveFile of await listChildren(folder.drive_folder_id)) {
+  const scanFolders = rows.filter((row) => ["ROOT", "PERIOD", "UPT", "CATEGORY", "ASPECT"].includes(row.folder_type));
+  const scanChildren = await mapLimit(scanFolders, 8, async (folder) => ({ folder, files: await listChildren(folder.drive_folder_id) }));
+  for (const { folder, files } of scanChildren) {
+    for (const driveFile of files) {
       if (driveFile.mimeType === "application/vnd.google-apps.folder") continue;
-      const record = await recordUnassigned({ auditId, upt, periodKey: period.key, sourceFolderId: folder.drive_folder_id, driveFile });
+      const record = await recordUnassigned({ auditId, upt, periodKey: period?.key || audit.period_key, sourceFolderId: folder.drive_folder_id, driveFile });
       if (record.assignment_state !== "ACTIVE") unassigned.push({ ...unassignedDto(record), folderType: folder.folder_type, context: folder.metadata || {} });
     }
   }
