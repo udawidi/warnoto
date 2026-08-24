@@ -13,7 +13,10 @@ export function PhotoSlot({ label, value, onChange, onRemove, handleImg, sty, C,
         <label tabIndex={0} style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer",minHeight:44,touchAction:"manipulation",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
           onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); e.currentTarget.querySelector("input[type=file]")?.click(); } }}>
           <Camera size={15} weight="bold" aria-hidden="true" /> {value?"Ganti Foto":"Ambil Foto"}
-          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleImg(e, onChange)}/>
+          {/* Sengaja TANPA accept="image/*": di Android 13+ accept image-only memicu
+              Photo Picker (galeri saja, tak ada kamera). Tanpa accept, muncul OS chooser
+              (Kamera + Galeri + Files). handleImg menolak non-gambar (App.jsx:2506). */}
+          <input type="file" style={{display:"none"}} onChange={e=>handleImg(e, onChange)}/>
         </label>
         {value && <button type="button" style={{...sty.btn("danger","sm"),minHeight:44,touchAction:"manipulation"}} aria-label={`Hapus ${label}`} onClick={onRemove}><Trash size={15} weight="bold" aria-hidden="true" /></button>}
       </div>
