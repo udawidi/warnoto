@@ -381,11 +381,20 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   async function deleteMaturityAudit(id) {
     if (!guardMaturityWrite("menghapus Audit Maturity")) return;
     const audit = maturityAudits.find(a => a.id === id);
+    const evidenceCount = Object.values(audit?.evidence || {}).flat().length;
+    // Hapus audit dijaga ekstra: 2 konfirmasi berturut + peringatan jumlah evidence,
+    // karena satu audit bisa memuat banyak berkas hasil upload.
     askConfirmDelete({
-      title: "Hapus Riwayat Audit Maturity?",
-      message: <>Apakah Anda yakin ingin menghapus data audit maturity untuk <b>{audit?.upt || "UPT"}</b> (Level {audit?.level || "?"})?</>,
-      warning: "Tindakan ini tidak bisa dibatalkan.",
-      onConfirm: async () => {
+      title: "Hapus Audit Maturity? (1/2)",
+      message: <>Anda akan menghapus audit <b>{audit?.upt || "UPT"}</b> (Level {audit?.level || "?"}). Audit ini memuat <b>{evidenceCount} berkas evidence</b> terunggah beserta seluruh penilaiannya.</>,
+      warning: "Menghapus audit menghapus catatan penilaian & tautan evidence-nya. Tindakan ini TIDAK bisa dibatalkan.",
+      confirmLabel: "Lanjut Hapus…",
+      onConfirm: () => askConfirmDelete({
+        title: "Konfirmasi Terakhir (2/2)",
+        message: <>Yakin hapus <b>PERMANEN</b> audit <b>{audit?.upt || "UPT"}</b>? {evidenceCount} berkas evidence &amp; semua nilai akan hilang dan tak bisa dikembalikan.</>,
+        warning: "Ini konfirmasi terakhir — setelah ini data hilang permanen.",
+        confirmLabel: "🗑️ Ya, Hapus Permanen",
+        onConfirm: async () => {
         const deleted = await deleteMaturityAuditRow(id);
         if (!deleted) {
           // Bisa gagal koneksi ATAU ditolak server (angka audit memang tidak
@@ -398,6 +407,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         showToast("Riwayat audit maturity berhasil dihapus.");
         if (maturityAuditModal && maturityAuditModal.id === id) setMaturityAuditModal(null);
       }
+      })
     });
   }
   async function exportMaturityAuditExcel(audit) {
