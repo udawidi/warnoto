@@ -70,17 +70,24 @@ function fileAllowed(file: File) {
   const extensionOk = /\.(pdf|doc|docx|xls|xlsx|zip|rar|txt|csv)$/i.test(file.name || "");
   return file.size > 0 && file.size <= MAX_FILE_BYTES && (image || ALLOWED_MIME.has(mime) || extensionOk);
 }
+// Access token valid ~1 jam; cache di scope modul (isolate) supaya tidak tukar
+// refresh-token ke Google tiap driveFetch — satu sync bisa puluhan panggilan Drive.
+let cachedDriveToken = "";
+let cachedDriveTokenExpiry = 0;
 async function driveToken() {
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REFRESH_TOKEN) {
     throw new Error("Google Drive belum dikonfigurasi. Lengkapi secret OAuth server-side terlebih dahulu.");
   }
+  if (cachedDriveToken && nowMs() < cachedDriveTokenExpiry) return cachedDriveToken;
   const response = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, client_secret: GOOGLE_CLIENT_SECRET, refresh_token: GOOGLE_REFRESH_TOKEN, grant_type: "refresh_token" }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.access_token) throw new Error("Token Google Drive tidak dapat diperbarui.");
-  return data.access_token as string;
+  cachedDriveToken = data.access_token as string;
+  cachedDriveTokenExpiry = nowMs() + (Number(data.expires_in) > 0 ? Number(data.expires_in) * 1000 : 3600000) - 60000; // buffer 60s
+  return cachedDriveToken;
 }
 async function driveFetch(path: string, init: RequestInit = {}) {
   const token = await driveToken();
