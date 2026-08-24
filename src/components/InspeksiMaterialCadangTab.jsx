@@ -19,6 +19,7 @@ import {
   MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH,
 } from "../lib/materialInspectionSync.js";
 import { getInspectionIdentity, getInspectionScope } from "../lib/inspectionScope.mjs";
+import { matchesMaterialSearch } from "../lib/sap.js";
 
 const KONDISI = ["BAIK", "RUSAK_RINGAN", "RUSAK_BERAT", "PERLU_KALIBRASI"];
 const KELAYAKAN = ["READY", "MAINTENANCE", "RETEST", "ATTB_RECOMMENDED"];
@@ -76,6 +77,10 @@ function itemComplete(item) {
   return item.photos.length === MATERIAL_INSPECTION_MAX_PHOTOS;
 }
 
+function pelaksaraDisplay(x) {
+  return Array.isArray(x) ? x.join(", ") : (x || "—");
+}
+
 export function InspeksiMaterialCadangTab({
   stocks = [],
   katalogList = [],
@@ -102,7 +107,8 @@ export function InspeksiMaterialCadangTab({
   const [searchOpen, setSearchOpen] = useState(true);
   const [expandedItemIndex, setExpandedItemIndex] = useState(null);
   const [pelaksanaLogistik, setPelaksanaLogistik] = useState(currentUser?.name || "");
-  const [pelaksaraPemeliharaan, setPelaksaraPemeliharaan] = useState("");
+  const [pelaksaraPemeliharaan, setPelaksaraPemeliharaan] = useState([]);
+  const [pelaksaraDraft, setPelaksaraDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [lastSavedBa, setLastSavedBa] = useState(null);
   const [expandedBatchId, setExpandedBatchId] = useState(null);
@@ -175,21 +181,20 @@ export function InspeksiMaterialCadangTab({
 
   const pickerResults = useMemo(() => {
     if (!activeGudangId) return [];
-    const q = pickerQuery.trim().toLowerCase();
+    if (!pickerQuery.trim()) return [];
     const alreadySelected = new Set(items.map(it => it.stockId));
     return cadangStockOptions
       .filter(opt => !alreadySelected.has(opt.stock.id))
       .filter(opt => opt.lokasi?.gudangId === activeGudangId)
       .filter(opt => {
-        if (!q) return true;
-        const label = `${opt.katalog?.katalog || ""} ${opt.katalog?.name || ""} ${opt.stock.name || ""}`.toLowerCase();
-        return label.includes(q);
+        const label = `${opt.katalog?.katalog || ""} ${opt.katalog?.name || ""} ${opt.stock.name || ""}`;
+        return matchesMaterialSearch([label], pickerQuery);
       })
       .slice(0, 50);
   }, [cadangStockOptions, items, activeGudangId, pickerQuery]);
 
   const completeCount = items.filter(itemComplete).length;
-  const formInvalid = !items.length || items.some(it => !itemComplete(it)) || !pelaksanaLogistik.trim() || !pelaksaraPemeliharaan.trim();
+  const formInvalid = !items.length || items.some(it => !itemComplete(it)) || !pelaksanaLogistik.trim() || !pelaksaraPemeliharaan.length;
 
   useEffect(() => {
     if (activeGudangId && pickerSearchRef.current) pickerSearchRef.current.focus();
@@ -222,6 +227,7 @@ export function InspeksiMaterialCadangTab({
     });
     setExpandedItemIndex(nextIndex);
     setPickerQuery("");
+    setSearchOpen(false);
   }
 
   function removeItem(index) {
@@ -248,6 +254,7 @@ export function InspeksiMaterialCadangTab({
 
   function addPhotos(index, files) {
     const incoming = Array.from(files || []);
+    let nowComplete = false;
     setItems(prev => prev.map((it, i) => {
       if (i !== index) return it;
       const combined = [...it.photos, ...incoming];
@@ -255,8 +262,10 @@ export function InspeksiMaterialCadangTab({
         showToast("Maksimal dua foto per material.", "error");
         return it;
       }
+      if (combined.length === MATERIAL_INSPECTION_MAX_PHOTOS) nowComplete = true;
       return { ...it, photos: combined };
     }));
+    if (nowComplete) setExpandedItemIndex(cur => (cur === index ? null : cur));
   }
 
   function removePhoto(index, photoIndex) {
@@ -266,16 +275,29 @@ export function InspeksiMaterialCadangTab({
   function resetForm() {
     setItems([]);
     setExpandedItemIndex(null);
-    setPelaksaraPemeliharaan("");
+    setPelaksaraPemeliharaan([]);
+    setPelaksaraDraft("");
     setSelectedGudangId("");
     setPickerQuery("");
+    setSearchOpen(true);
+  }
+
+  function addPelaksara() {
+    const name = pelaksaraDraft.trim();
+    if (!name) return;
+    setPelaksaraPemeliharaan(prev => (prev.includes(name) ? prev : [...prev, name]));
+    setPelaksaraDraft("");
+  }
+
+  function removePelaksara(name) {
+    setPelaksaraPemeliharaan(prev => prev.filter(n => n !== name));
   }
 
   async function saveBatch() {
     if (!writer) return;
     if (!items.length) { showToast("Minimal satu material harus diperiksa.", "error"); return; }
     if (!pelaksanaLogistik.trim()) { showToast("Pelaksana Logistik wajib diisi.", "error"); return; }
-    if (!pelaksaraPemeliharaan.trim()) { showToast("Pelaksara Pemeliharaan wajib diisi.", "error"); return; }
+    if (!pelaksaraPemeliharaan.length) { showToast("Pelaksara Pemeliharaan wajib diisi.", "error"); return; }
     for (const [i, it] of items.entries()) {
       if (it.photos.length !== MATERIAL_INSPECTION_MAX_PHOTOS) {
         showToast(`Material baris ${i + 1} wajib punya tepat ${MATERIAL_INSPECTION_MAX_PHOTOS} foto.`, "error");
@@ -291,7 +313,7 @@ export function InspeksiMaterialCadangTab({
         gudangId: lockedGudangId,
         tanggal: today,
         pelaksanaLogistik: pelaksanaLogistik.trim(),
-        pelaksaraPemeliharaan: pelaksaraPemeliharaan.trim(),
+        pelaksaraPemeliharaan: pelaksaraPemeliharaan,
         managerUpt: inspectionIdentity.managerUpt,
         namaUpt: inspectionIdentity.namaUpt,
         namaGudang: lockedGudang?.nama || "",
@@ -415,8 +437,8 @@ export function InspeksiMaterialCadangTab({
       {view === "form" && writer && (
         <div className="no-print" style={{ ...sty.card, display: "grid", gap: 18 }}>
           {/* Langkah 1 — Identitas BA */}
-          <StepHeader n={1} title="Identitas Berita Acara" C={C} />
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(200px,1fr))", gap: 10 }}>
+          <StepHeader title="Identitas Berita Acara" C={C} />
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(200px,1fr))", gap: 10, alignItems: "start" }}>
             <ChipReadonly label="Tanggal" value={today} C={C} />
             <ChipReadonly label="UPT" value={inspectionIdentity.namaUpt} C={C} />
             {items.length === 0 ? (
@@ -447,19 +469,47 @@ export function InspeksiMaterialCadangTab({
             <ChipReadonly label="Nomor BA" value={lastSavedBa?.nomorBa || "Otomatis saat simpan"} muted={!lastSavedBa} C={C} />
             <ChipReadonly label="Manager UPT" value={inspectionIdentity.managerUpt} C={C} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(220px,1fr))", gap: 12 }}>
-            <label style={labelStyle(C)}>Pelaksana Logistik *
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(220px,1fr))", gap: 12, alignItems: "start" }}>
+            <div>
+              <label style={labelStyle(C)}>Pelaksana Logistik *</label>
               <input style={{ ...sty.input, marginTop: 4 }} value={pelaksanaLogistik} onChange={e => setPelaksanaLogistik(e.target.value)} placeholder="Nama pelaksana logistik" />
-            </label>
-            <label style={labelStyle(C)}>Pelaksara Pemeliharaan *
-              <input style={{ ...sty.input, marginTop: 4 }} value={pelaksaraPemeliharaan} onChange={e => setPelaksaraPemeliharaan(e.target.value)} placeholder="Nama pelaksara pemeliharaan" />
-            </label>
+            </div>
+            <div>
+              <label style={labelStyle(C)}>Pelaksara Pemeliharaan *</label>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                <input
+                  style={{ ...sty.input, flex: 1 }}
+                  value={pelaksaraDraft}
+                  onChange={e => setPelaksaraDraft(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addPelaksara(); } }}
+                  placeholder="Nama pelaksara pemeliharaan"
+                />
+                <button type="button" onClick={addPelaksara} className="approval-btn--cancel" style={{ minHeight: 44 }}>Tambah</button>
+              </div>
+              {pelaksaraPemeliharaan.length > 0 && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                  {pelaksaraPemeliharaan.map(name => (
+                    <span key={name} style={{
+                      display: "inline-flex", alignItems: "center", gap: 6,
+                      padding: "6px 10px", borderRadius: 999, fontSize: 13, fontWeight: 700,
+                      border: `1.5px solid ${C.green}`, background: "#dcfce7", color: C.green,
+                    }}>
+                      {name}
+                      <button type="button" onClick={() => removePelaksara(name)} style={{
+                        border: "none", background: "transparent", color: C.green, cursor: "pointer",
+                        fontSize: 15, lineHeight: 1, padding: 0,
+                      }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <p style={{ margin: 0, fontSize: 12, color: C.muted }}>Field bertanda * wajib diisi sebelum menyimpan BA.</p>
 
           {/* Langkah 2 — Pilih material */}
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, display: "grid", gap: 12 }}>
-            <StepHeader n={2} title="Pilih Material Cadang" C={C} trailing={
+            <StepHeader title="Pilih Material Cadang" C={C} trailing={
               <span style={{ fontSize: 12, fontWeight: 800, color: C.muted }}>
                 Material {items.length}/{MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH}
               </span>
@@ -474,7 +524,18 @@ export function InspeksiMaterialCadangTab({
               <p style={{ margin: 0, fontSize: 12, color: C.muted }}>Maksimal {MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH} material per BA tercapai.</p>
             )}
 
-            {activeGudangId && items.length < MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH && (
+            {activeGudangId && items.length > 0 && items.length < MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH && !searchOpen && (
+              <button
+                type="button"
+                className="approval-btn--primary"
+                onClick={() => setSearchOpen(true)}
+                style={{ minHeight: 44, width: isMobile ? "100%" : "auto", justifySelf: isMobile ? "stretch" : "start" }}
+              >
+                ＋ Tambah Material
+              </button>
+            )}
+
+            {activeGudangId && items.length < MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH && searchOpen && (
               <div style={{
                 border: `1.5px solid ${C.accent}40`,
                 borderRadius: 14,
@@ -511,10 +572,16 @@ export function InspeksiMaterialCadangTab({
                         }}>×</button>
                       )}
                     </div>
-                    <p style={{ margin: 0, fontSize: 12, color: C.muted }}>
-                      {pickerResults.length} material Cadang di Gudang {lockedGudang?.nama || scopedGudangList.find(g => g.id === activeGudangId)?.nama || "—"}
-                    </p>
-                    {pickerResults.length === 0 ? (
+                    {pickerQuery.trim() && (
+                      <p style={{ margin: 0, fontSize: 12, color: C.muted }}>
+                        {pickerResults.length} material Cadang di Gudang {lockedGudang?.nama || scopedGudangList.find(g => g.id === activeGudangId)?.nama || "—"}
+                      </p>
+                    )}
+                    {!pickerQuery.trim() ? (
+                      <div style={{ padding: 20, textAlign: "center", color: C.muted, fontSize: 13 }}>
+                        Ketik nama atau nomor katalog untuk mencari material.
+                      </div>
+                    ) : pickerResults.length === 0 ? (
                       <div style={{ padding: 24, textAlign: "center", color: C.muted, fontSize: 13 }}>
                         <Package size={32} weight="thin" style={{ opacity: 0.5 }} />
                         <p style={{ margin: "8px 0 0" }}>Tidak ada material Cadang di gudang ini.</p>
@@ -544,7 +611,7 @@ export function InspeksiMaterialCadangTab({
               </div>
             )}
 
-            <StepHeader n={3} title="Isi Hasil Inspeksi per Material" C={C} trailing={
+            <StepHeader title="Isi Hasil Inspeksi per Material" C={C} trailing={
               items.length > 0 ? (
                 <span style={{ fontSize: 12, color: C.muted }}>
                   {completeCount === items.length ? "Semua lengkap" : (completeCount + "/" + items.length + " lengkap — klik material untuk membuka")}
@@ -573,7 +640,7 @@ export function InspeksiMaterialCadangTab({
                     key={item.stockId}
                     item={item}
                     index={index}
-                    expanded={isMobile || expandedItemIndex === index}
+                    expanded={expandedItemIndex === index}
                     isMobile={isMobile}
                     C={C}
                     sty={sty}
@@ -601,7 +668,7 @@ export function InspeksiMaterialCadangTab({
             borderTop: `1px solid ${C.border}`,
           }}>
             <div style={{ display: "grid", gap: 2, minWidth: 0, flex: "1 1 auto" }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Langkah 4 · Simpan Berita Acara</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>Simpan Berita Acara</span>
               <span style={{ fontSize: 12, color: C.muted }}>
                 {items.length === 0
                   ? "Tambahkan material dulu"
@@ -637,7 +704,7 @@ export function InspeksiMaterialCadangTab({
 
       {view === "history" && (
         <div className="no-print" style={{ ...sty.card, display: "grid", gap: 12 }}>
-          <StepHeader n={1} title="Riwayat Berita Acara" C={C} />
+          <StepHeader title="Riwayat Berita Acara" C={C} />
           {scopedBatches.length === 0 ? (
             <p style={{ margin: 0, fontSize: 13, color: C.muted }}>Belum ada BA tersimpan.</p>
           ) : (
@@ -702,7 +769,7 @@ export function InspeksiMaterialCadangTab({
           )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginTop: 45, textAlign: "center", fontSize: 12 }}>
             <div>Pelaksana Logistik<br /><br /><br /><b>{printBatch.pelaksanaLogistik || "—"}</b></div>
-            <div>Pelaksara Pemeliharaan<br /><br /><br /><b>{printBatch.pelaksaraPemeliharaan || "—"}</b></div>
+            <div>Pelaksara Pemeliharaan<br /><br /><br /><b>{pelaksaraDisplay(printBatch.pelaksaraPemeliharaan)}</b></div>
             <div>Manager UPT<br /><br /><br /><b>{printBatch.managerUpt || "—"}</b></div>
           </div>
         </article>
@@ -711,16 +778,15 @@ export function InspeksiMaterialCadangTab({
   );
 }
 
-function StepHeader({ n, title, C, trailing }) {
+function StepHeader({ title, C, trailing }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <span style={{
-        width: 26, height: 26, borderRadius: "50%", flex: "0 0 auto",
-        background: "#1d4ed8", color: "#fff",
-        display: "grid", placeItems: "center", fontSize: 12, fontWeight: 900,
-      }}>{n}</span>
-      <h3 style={{ margin: 0, fontSize: 13, fontWeight: 700, color: C.text }}>{title}</h3>
-      {trailing && <span style={{ marginLeft: "auto" }}>{trailing}</span>}
+    <div style={{
+      display: "flex", alignItems: "center", gap: 10,
+      fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase",
+      borderBottom: `1px solid ${C.border}`, paddingBottom: 4,
+    }}>
+      <span>{title}</span>
+      {trailing && <span style={{ marginLeft: "auto", textTransform: "none" }}>{trailing}</span>}
     </div>
   );
 }
@@ -777,7 +843,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
       {expanded && (
         <div style={{ borderTop: `1px solid ${C.border}`, padding: 14, display: "grid", gap: 14 }}>
           {/* 3.1 — Identitas terkunci + Hapus material */}
-          <MicroStep n="3.1" title="Identitas material (terkunci)" C={C}>
+          <MicroStep title="Identitas material (terkunci)" C={C}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
               <ChipReadonly label="No. Katalog" value={item.noKatalog || "—"} C={C} />
               <ChipReadonly label="Lokasi" value={item.lokasiNama || "—"} C={C} />
@@ -794,7 +860,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
           </MicroStep>
 
           {/* 3.2 — Penilaian */}
-          <MicroStep n="3.2" title="Penilaian" C={C}>
+          <MicroStep title="Penilaian" C={C}>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(160px,1fr))", gap: 10 }}>
               <label style={labelStyle(C)}>Kondisi
                 <select style={{ ...sty.select, marginTop: 4 }} value={item.kondisi} onChange={e => onUpdate({ kondisi: e.target.value })}>
@@ -813,7 +879,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
           </MicroStep>
 
           {/* 3.3 — Checklist visual (chip toggle) */}
-          <MicroStep n="3.3" title="Checklist Visual" C={C}>
+          <MicroStep title="Checklist Visual" C={C}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {CHECKLIST_KEYS.map(([key, label]) => {
                 const on = item.checklist[key];
@@ -834,7 +900,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
           </MicroStep>
 
           {/* 3.4 — Keterangan + Catatan */}
-          <MicroStep n="3.4" title="Keterangan & Catatan" C={C}>
+          <MicroStep title="Keterangan & Catatan" C={C}>
             <div style={{ display: "grid", gap: 10 }}>
               <label style={labelStyle(C)}>Keterangan Visual
                 <textarea style={{ ...sty.input, marginTop: 4, minHeight: 56 }} value={item.keteranganVisual} onChange={e => onUpdate({ keteranganVisual: e.target.value })} placeholder="Contoh: cat mengelupas pada body…" />
@@ -846,7 +912,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
           </MicroStep>
 
           {/* 3.5 — Foto wajib 2 */}
-          <MicroStep n="3.5" title="Foto Inspeksi (wajib tepat 2)" C={C} trailing={
+          <MicroStep title="Foto Inspeksi (wajib tepat 2)" C={C} trailing={
             <span style={{
               fontSize: 12, fontWeight: 800, padding: "3px 10px", borderRadius: 999,
               background: complete ? "#dcfce7" : "#fee2e2", color: complete ? C.green : C.red,
@@ -895,11 +961,10 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
   );
 }
 
-function MicroStep({ n, title, C, trailing, children }) {
+function MicroStep({ title, C, trailing, children }) {
   return (
     <div style={{ display: "grid", gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ fontSize: 12, fontWeight: 800, color: C.accent }}>{n}</span>
         <span style={{ fontSize: 12, fontWeight: 800, color: C.text, textTransform: "uppercase", letterSpacing: ".3px" }}>{title}</span>
         {trailing && <span style={{ marginLeft: "auto" }}>{trailing}</span>}
       </div>
@@ -937,7 +1002,7 @@ function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onP
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
         <MetaChip C={C} bold>UPT: {batch.namaUpt || batch.uptId || "—"}</MetaChip>
         <MetaChip C={C}>Logistik: {batch.pelaksanaLogistik || "—"}</MetaChip>
-        <MetaChip C={C}>Pemeliharaan: {batch.pelaksaraPemeliharaan || "—"}</MetaChip>
+        <MetaChip C={C}>Pemeliharaan: {pelaksaraDisplay(batch.pelaksaraPemeliharaan)}</MetaChip>
         <MetaChip C={C}>Manager: {batch.managerUpt || "—"}</MetaChip>
       </div>
       {expanded && (batch.items || []).length > 0 && (
