@@ -1,7 +1,7 @@
 // Kumpulan modal/popup kecil — dipindah dari App.jsx (refactor batch 2g).
 // Murni relokasi JSX; tidak ada perubahan tampilan/teks/logic. State & handler
 // tetap hidup di App.jsx dan diteruskan sebagai props.
-import { ArrowsClockwise, Camera, IdentificationCard, MagnifyingGlass } from "@phosphor-icons/react";
+import { Camera, IdentificationCard, Images, MagnifyingGlass } from "@phosphor-icons/react";
 
 // USULAN BLOK DARI DENAH — popup terpusat (guard hasRole/ocr tetap di App.jsx).
 export function OcrSuggestGudangModal({ ocrSuggestGudangId, ocrSuggestSubGudangId, ocrSuggestions, updateOcrSuggestion, removeOcrSuggestion, dismissOcrSuggestions, confirmOcrSuggestions, isMobile, sty, C }) {
@@ -123,11 +123,18 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
             ? "Foto papan nama/label barang — sistem membaca teksnya (nomor katalog, type, merk) lalu mencocokkan ke Master Katalog & ke foto nameplate yang sudah di-upload di Data Stok."
             : "Ambil/unggah foto barang — sistem mencari material paling mirip bentuknya di Data Stok (kemiripan ≥75%, maks 10 hasil)."}
         </p>
-        <label style={{...sty.btn("ghost"),display:"flex",minHeight:44,alignItems:"center",justifyContent:"center",gap:6,textAlign:"center",cursor:"pointer",marginBottom:10}}>
-          {photoSearchImg ? <ArrowsClockwise size={17} weight="bold" aria-hidden="true" /> : <Camera size={17} weight="bold" aria-hidden="true" />}
-          {photoSearchImg ? "Ganti Foto" : "Ambil / Pilih Foto"}
-          <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setPhotoSearchImg(img))} style={{display:"none"}}/>
-        </label>
+        {/* Dua sumber: Kamera (foto langsung, capture) + Galeri (pilih file). Dipisah
+            karena satu input accept=image/* di sebagian device hanya membuka galeri. */}
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <label style={{...sty.btn("ghost"),flex:1,display:"flex",minHeight:44,alignItems:"center",justifyContent:"center",gap:6,textAlign:"center",cursor:"pointer"}}>
+            <Camera size={17} weight="bold" aria-hidden="true" /> {photoSearchImg ? "Foto Ulang" : "Kamera"}
+            <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setPhotoSearchImg(img))} style={{display:"none"}}/>
+          </label>
+          <label style={{...sty.btn("ghost"),flex:1,display:"flex",minHeight:44,alignItems:"center",justifyContent:"center",gap:6,textAlign:"center",cursor:"pointer"}}>
+            <Images size={17} weight="bold" aria-hidden="true" /> Galeri
+            <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setPhotoSearchImg(img))} style={{display:"none"}}/>
+          </label>
+        </div>
         {photoSearchImg && <img src={photoSearchImg} alt="query" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius: 10,marginBottom:12,border:`1px solid ${C.border}`,background:"#f8fafc"}}/>}
         <div style={{display:"flex",gap:8}}>
           <button style={{...sty.btn("ghost"),flex:1}} disabled={photoSearchLoading} onClick={()=>setPhotoSearchOpen(false)}>Batal</button>
