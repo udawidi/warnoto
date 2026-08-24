@@ -1,7 +1,34 @@
 import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
-import { AUDIT_ASPECTS } from "../data/auditAspects.js";
+import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
+
+// Progres kelengkapan evidence audit — nol fetch Drive, murni hitung dari
+// audit.evidence yg sudah ter-load (pola sama dgn MaturityAuditSystem.jsx:175).
+function auditProgress(audit) {
+  const evidence = audit?.evidence || {};
+  let filledItems = 0, totalItems = 0;
+  const aspekLengkap = [], aspekKurang = [];
+  const perCategory = AUDIT_CATEGORIES.map(cat => ({ label: cat.label, filled: 0, total: 0 }));
+  const catIndex = Object.fromEntries(AUDIT_CATEGORIES.map((c, i) => [c.id, i]));
+  AUDIT_ASPECTS.forEach(a => {
+    const req = a.requiredEvidence.length;
+    const got = (evidence[a.id] || []).length;
+    const min = Math.min(got, req);
+    filledItems += min;
+    totalItems += req;
+    const ci = catIndex[a.category];
+    if (ci !== undefined) { perCategory[ci].total += req; perCategory[ci].filled += min; }
+    if (got >= req) aspekLengkap.push({ id: a.id, title: a.title });
+    else aspekKurang.push({ id: a.id, title: a.title, got, req });
+  });
+  return {
+    filledItems, totalItems,
+    pct: totalItems > 0 ? Math.round((filledItems / totalItems) * 100) : 0,
+    aspekLengkap, aspekKurang,
+    perCategory: perCategory.map(c => ({ ...c, pct: c.total > 0 ? Math.round((c.filled / c.total) * 100) : 0 })),
+  };
+}
 
 const HISTORY_STATUS_COLOR = {
   ARSIP: "#64748b",
@@ -181,6 +208,52 @@ export function MaturityDashboardTab({
               {maturitySubTab === "dashboard" && (() => {
                 return (
                   <div>
+                    {/* Progres Pengisian per UPT (lintas-UPT, khusus akun induk) */}
+                    {canSwitchMaturityUpt && (
+                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, marginBottom: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Progres Pengisian per UPT</h3>
+                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Kelengkapan evidence audit terbaru tiap UPT.</p>
+                        <table className="mobile-card-table" style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>UPT</th>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Status</th>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Level</th>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Progres</th>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Aspek</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {DEFAULT_UPT_LIST.map(u => {
+                              const auditU = maturityAudits.filter(a => (a.uptId && u.id) ? a.uptId === u.id : (a.upt || "") === u.nama)[0] || null;
+                              const p = auditProgress(auditU);
+                              const isRowSelected = u.nama === selectedMaturityUpt;
+                              return (
+                                <tr key={u.id} onClick={() => setSelectedMaturityUpt(u.nama)} style={{ cursor: "pointer", background: isRowSelected ? `${C.accent}0d` : undefined }}>
+                                  <td data-label="UPT" style={{ padding: "8px", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{u.nama}</td>
+                                  <td data-label="Status" style={{ padding: "8px" }}>
+                                    <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 14, background: (MATURITY_WORKFLOW_COLOR[auditU?.status] || "#64748b") + "15", color: MATURITY_WORKFLOW_COLOR[auditU?.status] || "#64748b" }}>
+                                      {auditU ? (MATURITY_WORKFLOW_LABEL[auditU.status] || auditU.status) : "—"}
+                                    </span>
+                                  </td>
+                                  <td data-label="Level" style={{ padding: "8px", fontSize: 13, color: "#0f172a" }}>{auditU?.level || "—"}</td>
+                                  <td data-label="Progres" style={{ padding: "8px", minWidth: 120 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                      <div style={{ flex: 1, height: 6, borderRadius: 10, background: "#e2e8f0", overflow: "hidden" }}>
+                                        <div style={{ height: "100%", width: `${p.pct}%`, background: "#1d4ed8", borderRadius: 10 }} />
+                                      </div>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{p.pct}%</span>
+                                    </div>
+                                  </td>
+                                  <td data-label="Aspek" style={{ padding: "8px", fontSize: 13, color: "#0f172a" }}>{p.aspekLengkap.length}/{AUDIT_ASPECTS.length}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+
                     {/* Three Cards Row */}
                     <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
                       {[
@@ -344,134 +417,77 @@ export function MaturityDashboardTab({
                       </div>
                     )}</div>
 
-                    {/* Bottom 2x2 Grid */}
-                    <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 20 }}>
-                      {/* Yang sudah bagus */}
-                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Yang Sudah Bagus</h3>
-                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Kategori dengan skor tertinggi</p>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                          {[
-                            { title: "Tata Kelola", desc: "Sudah mendekati standar maturity yang diharapkan.", val: "1.10", color: "#1d4ed8", bg: "#eff6ff" },
-                            { title: "Tenaga Kerja", desc: "Sudah mendekati standar maturity yang diharapkan.", val: "0.00", color: "#1d4ed8", bg: "#eff6ff" }
-                          ].map((item, idx) => (
-                            <div key={idx} style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              padding: "10px 14px",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: 14,
-                              background: "#f8fafc"
-                            }}>
-                              <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{item.title}</div>
-                                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, lineHeight: 1.35, overflowWrap: "anywhere", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{item.desc}</div>
-                              </div>
-                              <span style={{
-                                background: item.bg,
-                                color: item.color,
-                                border: `1px solid ${item.color}33`,
-                                borderRadius: 10,
-                                padding: "4px 10px",
-                                fontSize: 13,
-                                fontWeight: 900
-                              }}>{item.val}</span>
-                            </div>
-                          ))}
+                    {/* Detail kelengkapan pengisian UPT terpilih */}
+                    {(() => {
+                      const prog = auditProgress(latestAudit);
+                      if (!latestAudit) return (
+                        <div style={{ background: "white", border: "1px dashed #cbd5e1", borderRadius: 14, padding: 32, textAlign: "center", color: "#64748b", fontSize: 13, marginBottom: 20 }}>
+                          Belum ada audit untuk {selectedMaturityUpt}.
                         </div>
-                      </div>
+                      );
+                      return (
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16, marginBottom: 20 }}>
+                          {/* Progres Pengisian */}
+                          <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                            <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Progres Pengisian</h3>
+                            <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>{prog.filledItems}/{prog.totalItems} item evidence ({prog.pct}%)</p>
+                            <div style={{ height: 8, borderRadius: 10, background: "#e2e8f0", overflow: "hidden", marginBottom: 14 }}>
+                              <div style={{ height: "100%", width: `${prog.pct}%`, background: "#1d4ed8", borderRadius: 10 }} />
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                              {prog.perCategory.map((c, idx) => (
+                                <div key={idx}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                                    <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a" }}>{c.label}</span>
+                                    <span style={{ fontSize: 12, color: "#64748b" }}>{c.filled}/{c.total}</span>
+                                  </div>
+                                  <div style={{ height: 6, borderRadius: 10, background: "#e2e8f0", overflow: "hidden" }}>
+                                    <div style={{ height: "100%", width: `${c.pct}%`, background: "#0e7490", borderRadius: 10 }} />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
 
-                      {/* Yang masih kurang */}
-                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Yang Masih Kurang</h3>
-                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Prioritas pemeriksaan berikutnya</p>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                          {[
-                            { title: "Tenaga Kerja", desc: "Perlu penguatan evidence, konsistensi proses, dan catatan tindak lanjut.", val: "0.00", color: "#ea580c", bg: "#fff7ed" },
-                            { title: "Sarana Prasarana", desc: "Perlu penguatan evidence, konsistensi proses, dan catatan tindak lanjut.", val: "0.00", color: "#ea580c", bg: "#fff7ed" }
-                          ].map((item, idx) => (
-                            <div key={idx} style={{
-                              display: "flex",
-                              justifyContent: "space-between",
-                              alignItems: "center",
-                              padding: "10px 14px",
-                              border: "1px solid #e2e8f0",
-                              borderRadius: 14,
-                              background: "#f8fafc"
-                            }}>
-                              <div style={{ flex: 1, minWidth: 0, paddingRight: 10 }}>
-                                <div style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{item.title}</div>
-                                <div style={{ fontSize: 12, color: "#64748b", marginTop: 2, lineHeight: 1.35, overflowWrap: "anywhere", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{item.desc}</div>
-                              </div>
-                              <span style={{
-                                background: item.bg,
-                                color: item.color,
-                                border: `1px solid ${item.color}33`,
-                                borderRadius: 10,
-                                padding: "4px 10px",
-                                fontSize: 13,
-                                fontWeight: 900
-                              }}>{item.val}</span>
+                          {/* Sudah Diisi */}
+                          <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Sudah Diisi</h3>
+                              <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 14, background: "#eff6ff", color: "#1d4ed8" }}>{prog.aspekLengkap.length}</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
+                            <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Aspek dengan evidence lengkap</p>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                              {prog.aspekLengkap.length === 0 ? (
+                                <div style={{ fontSize: 12, color: "#94a3b8" }}>Belum ada aspek lengkap.</div>
+                              ) : prog.aspekLengkap.map(a => (
+                                <div key={a.id} style={{ padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 10, background: "#f8fafc", fontSize: 12, color: "#0f172a" }}>
+                                  <strong>{a.id}</strong> {a.title}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
 
-                      {/* Peluang peningkatan nilai */}
-                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Peluang Peningkatan Nilai</h3>
-                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Target per kategori sampai akhir periode</p>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-                          {[
-                            { title: "Tenaga Kerja", target: "Naikkan dari 0.00 ke 4.00", val: 50 },
-                            { title: "Sarana Prasarana", target: "Naikkan dari 0.00 ke 4.00", val: 35 }
-                          ].map((item, idx) => (
-                            <div key={idx}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>{item.title}</span>
-                                <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{item.target}</span>
-                              </div>
-                              <div style={{ height: 6, borderRadius: 10, background: "#e2e8f0", overflow: "hidden" }}>
-                                <div style={{ height: "100%", width: `${item.val}%`, background: "#0e7490", borderRadius: 10 }} />
-                              </div>
+                          {/* Belum Diisi */}
+                          <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Belum Diisi</h3>
+                              <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 14, background: "#fff7ed", color: "#ea580c" }}>{prog.aspekKurang.length}</span>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Target waktu */}
-                      <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Target Waktu</h3>
-                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Rencana penyelesaian audit berjalan</p>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 16, position: "relative", paddingLeft: 16 }}>
-                          {/* Vertical line */}
-                          <div style={{ position: "absolute", left: 4, top: 8, bottom: 8, width: 2, background: "#cbd5e1" }} />
-                          {[
-                            { date: "31 Juli 2026", desc: "Input evidence wajib selesai oleh UPT." },
-                            { date: "14 Agustus 2026", desc: "Review dan koreksi UIT selesai." },
-                            { date: "31 Agustus 2026", desc: "Finalisasi skor auditor pusat." }
-                          ].map((item, idx) => (
-                            <div key={idx} style={{ position: "relative" }}>
-                              {/* Bullet circle */}
-                              <div style={{
-                                position: "absolute",
-                                left: -16.5,
-                                top: 3.5,
-                                width: 7,
-                                height: 7,
-                                borderRadius: "50%",
-                                background: "#2563eb",
-                                border: "2px solid white",
-                                boxShadow: "0 0 0 2px #2563eb33"
-                              }} />
-                              <div style={{ fontSize: 12, fontWeight: 800, color: "#1d4ed8" }}>{item.date}</div>
-                              <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>{item.desc}</div>
+                            <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Aspek yang masih perlu evidence</p>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
+                              {prog.aspekKurang.length === 0 ? (
+                                <div style={{ fontSize: 12, color: "#94a3b8" }}>Semua aspek sudah lengkap.</div>
+                              ) : prog.aspekKurang.map(a => (
+                                <div key={a.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "8px 12px", border: "1px solid #fed7aa", borderRadius: 10, background: "#fff7ed", fontSize: 12 }}>
+                                  <span style={{ color: "#0f172a" }}><strong>{a.id}</strong> {a.title}</span>
+                                  <span style={{ fontWeight: 800, color: "#ea580c", flexShrink: 0 }}>{a.got}/{a.req}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          </div>
                         </div>
-                      </div>
-                    </div>
+                      );
+                    })()}
                   </div>
                 );
               })()}

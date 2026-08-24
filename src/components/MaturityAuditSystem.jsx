@@ -350,7 +350,7 @@ export function MaturityAuditEditor({
                         const targetItem = activeAspect.requiredEvidence.find(item => item.id === selectedItemId);
                         return <div key={file.driveFileId} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9, fontSize: 12 }}>
                           <span style={{ flex: 1, minWidth: 0, color: C.text, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
-                          <select aria-label="Tetapkan evidence ke item audit" value={selectedItemId} onChange={event => setAssignmentTargets(previous => ({ ...previous, [file.driveFileId]: event.target.value }))} style={{ minWidth: 0, flex: 1, fontSize: 12 }}>
+                          <select aria-label="Tetapkan evidence ke item audit" value={selectedItemId} onChange={event => setAssignmentTargets(previous => ({ ...previous, [file.driveFileId]: event.target.value }))} style={{ minWidth: 0, flex: 1, fontSize: isMobile ? 16 : 12, minHeight: isMobile ? 44 : undefined }}>
                             {activeAspect.requiredEvidence.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
                           </select>
                           <button type="button" onClick={async () => {
