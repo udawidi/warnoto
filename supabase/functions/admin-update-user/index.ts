@@ -28,7 +28,7 @@ const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT",
 // Kuota role per UPT — sama seperti admin-create-user, tapi exclude user yang
 // sedang diedit sendiri dari hitungan (dia "pindah slot", bukan nambah slot baru).
 const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
-const UIT_ROLE_QUOTA = { ADMIN_UIT: 1, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 }; // ADMIN_LOG_PUSAT nasional, tidak terikat 1 UIT
+const UIT_ROLE_QUOTA = { ADMIN_UIT: 5, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 }; // ADMIN_LOG_PUSAT nasional, tidak terikat 1 UIT
 const ROLE_LABELS = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", PENGADAAN: "Tim Pengadaan", ADMIN_UIT: "Admin UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat" };
 const UIT_SCOPED_ROLES = ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT"];
 // Peran nasional (Pusat): lingkupnya seluruh UPT dan UIT, tidak terikat unit mana pun.

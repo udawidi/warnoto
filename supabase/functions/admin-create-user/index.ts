@@ -39,7 +39,7 @@ const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
 // Kuota role per UIT — sama prinsipnya, level di atas UPT. PENGADAAN dibagi 2
 // scope independen (UPT vs UIT), dibedakan lewat upt_id vs uit_id yang terisi
 // (lihat pengecekan di bawah), bukan role value yang berbeda.
-const UIT_ROLE_QUOTA = { ADMIN_UIT: 1, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 }; // ADMIN_LOG_PUSAT nasional, tidak terikat 1 UIT
+const UIT_ROLE_QUOTA = { ADMIN_UIT: 5, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 }; // ADMIN_LOG_PUSAT nasional, tidak terikat 1 UIT
 const ROLE_LABELS = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", PENGADAAN: "Tim Pengadaan", ADMIN_UIT: "Admin UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat" };
 const UIT_SCOPED_ROLES = ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT"]; // PENGADAAN scope UIT ditentukan lewat body.pengadaanScope, bukan role tetap
 // Peran nasional (Pusat): lingkupnya seluruh UPT dan UIT, jadi TIDAK terikat

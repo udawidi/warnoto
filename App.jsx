@@ -134,7 +134,7 @@ const ULTG_ROLES = ["ADMIN_ULTG","MGR_ULTG"]; // role dengan sidebar terbatas (v
 // (hard limit) ditegakkan server-side di admin-create-user/admin-update-user.
 const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
 // ADMIN_LOG_PUSAT sengaja TIDAK di sini: Pusat tingkat nasional, tidak terikat satu UIT.
-const UIT_ROLE_QUOTA = { ADMIN_UIT: 1, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 };
+const UIT_ROLE_QUOTA = { ADMIN_UIT: 5, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 };
 
 // Who can create TUG-9 transactions
 
