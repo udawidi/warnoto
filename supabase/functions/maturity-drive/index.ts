@@ -333,7 +333,7 @@ Deno.serve(async (req) => {
     const ctx = await authContext(req);
     const isMultipart = (req.headers.get("content-type") || "").includes("multipart/form-data");
     const form = isMultipart ? await req.formData() : null;
-    const body = form ? Object.fromEntries([...form.entries()].filter(([key]) => key !== "file").map(([key, value]) => [key, parseJson(value)])) : await req.json().catch(() => ({}));
+    const body = form ? Object.fromEntries([...form.entries()].filter(([key]) => key !== "file").map(([key, value]) => [key, parseJson(value, value)])) : await req.json().catch(() => ({}));
     const action = text(form?.get("action") ?? body.action, 40).toLowerCase();
     if (!action) return json({ ok: false, error: "action wajib diisi." }, 400);
 
