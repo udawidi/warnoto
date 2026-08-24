@@ -377,6 +377,8 @@ export default function PLNWarehouse() {
     calcMaturityScore,
     calcMaturityLevel,
     saveMaturityAudit,
+    autosaveMaturityDraft,
+    maturityDraftSavedAt,
     deleteMaturityAudit,
     exportMaturityAuditExcel,
   } = useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL });
@@ -4217,6 +4219,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               setAspectPage={setAspectPage}
               maturityAuditSaving={maturityAuditSaving}
               saveMaturityAudit={saveMaturityAudit}
+              autosaveMaturityDraft={autosaveMaturityDraft}
+              maturityDraftSavedAt={maturityDraftSavedAt}
               deleteMaturityAudit={deleteMaturityAudit}
               createMaturityAudit={createMaturityAudit}
               openMaturityAudit={openMaturityAudit}

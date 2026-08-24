@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { uid, fmtDateOnly } from "../lib/utils.js";
 import { CLOUD } from "../lib/cloud.js";
 import { isDemoMode } from "../lib/demo.js";
@@ -46,6 +46,10 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
   const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
   const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
+  const [maturityDraftSavedAt, setMaturityDraftSavedAt] = useState(null);
+  // ponytail: in-flight/dirty flags via ref (bukan state) — tak perlu re-render, cukup gate concurrency
+  const autosaveInFlight = useRef(false);
+  const autosaveDirty = useRef(false);
   const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // {aspekId: [{url,name,size,itemId,...}]}
   const [expandedAspek, setExpandedAspek] = useState(null); // kategori aktif di editor
   const [activeAspectId, setActiveAspectId] = useState(null);
@@ -321,6 +325,59 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       showToast(`Audit ${entry.upt} disimpan — ${MATURITY_WORKFLOW_LABEL[newStatus]}${newStatus === "FINAL" ? " (Nilai Final)" : ""}`);
     } finally { setMaturityAuditSaving(false); }
   }
+  // Autosave draft audit yang sedang dibuka (evidence/skor UPT) TANPA menutup
+  // modal, TANPA toast, TANPA append history — beda dari saveMaturityAudit yang
+  // dipicu tombol "Simpan Draft" manual. Gate izin (canScoreUPT) ada di sisi
+  // pemanggil (komponen), bukan guardMaturityWrite, supaya kegagalan izin tak
+  // memicu toast berulang saat mengetik.
+  async function autosaveMaturityDraft() {
+    if (!maturityAuditModal?.id) return;
+    if (autosaveInFlight.current) { autosaveDirty.current = true; return; }
+    autosaveInFlight.current = true;
+    try {
+      const audit = maturityAuditModal;
+      const isExistingAudit = maturityAudits.some(item => item.id === audit.id);
+      const { isNew: _isNew, ...auditData } = audit;
+      const scores = maturityAuditForm.aspekScores;
+      const scoreResult = calcMaturityScore(scores, maturityAuditEvidence);
+      const createdAt = auditData.createdAt || Date.now();
+      const createdDate = new Date(createdAt);
+      const periodKey = auditData.periodKey || `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
+      const uptName = auditData.upt || selectedMaturityUpt || "UPT Surabaya";
+      const uptId = auditData.uptId || uptIdByNama(uptName) || null;
+      const entry = {
+        ...(isExistingAudit ? auditData : {}),
+        id: audit.id,
+        upt: uptName,
+        uptId,
+        status: auditData.status || "DRAFT", // status TETAP — autosave bukan pindah tahap
+        level: scoreResult.level,
+        score: Number(scoreResult.total.toFixed(2)),
+        periodKey,
+        aspekScores: scores,
+        evidence: maturityAuditEvidence,
+        catatanUPT: maturityAuditForm.catatanUPT,
+        catatanUIT: maturityAuditForm.catatanUIT,
+        catatanPusat: maturityAuditForm.catatanPusat,
+        fileUrl: maturityAuditForm.fileUrl,
+        fileNama: maturityAuditForm.fileNama,
+        createdAt,
+        createdBy: auditData.createdBy || currentUser.id,
+        updatedAt: Date.now(),
+        updatedBy: currentUser.id,
+        history: auditData.history || [], // tidak append — bukan aksi tahap
+      };
+      const saved = await upsertMaturityAudit(entry);
+      if (!saved) return; // diam-diam — retry alami di siklus autosave berikutnya
+      setMaturityAudits(current => isExistingAudit ? current.map(a => a.id === entry.id ? entry : a) : [entry, ...current]);
+      // Sinkronkan id/isNew ke modal supaya autosave berikutnya jadi UPDATE, bukan CREATE (hindari duplikat 23505)
+      setMaturityAuditModal(prev => (prev && prev.id === entry.id) ? { ...prev, ...entry, isNew: false } : prev);
+      setMaturityDraftSavedAt(Date.now());
+    } finally {
+      autosaveInFlight.current = false;
+      if (autosaveDirty.current) { autosaveDirty.current = false; autosaveMaturityDraft(); }
+    }
+  }
   async function deleteMaturityAudit(id) {
     if (!guardMaturityWrite("menghapus Audit Maturity")) return;
     const audit = maturityAudits.find(a => a.id === id);
@@ -381,6 +438,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityAuditModal, setMaturityAuditModal,
     maturityAuditForm, setMaturityAuditForm,
     maturityAuditSaving, setMaturityAuditSaving,
+    maturityDraftSavedAt,
+    autosaveMaturityDraft,
     maturityAuditEvidence, setMaturityAuditEvidence,
     expandedAspek, setExpandedAspek,
     activeAspectId, setActiveAspectId,

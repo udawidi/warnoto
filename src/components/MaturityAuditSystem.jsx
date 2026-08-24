@@ -71,6 +71,8 @@ export function MaturityAuditEditor({
   aspectPage,
   setAspectPage,
   saveMaturityAudit,
+  autosaveMaturityDraft,
+  maturityDraftSavedAt,
   deleteMaturityAudit,
   maturityAuditSaving,
   calculateItemLevel,
@@ -101,6 +103,15 @@ export function MaturityAuditEditor({
   const canScoreUPT = isUPT && (status === "DRAFT" || status === "SELF_ASSESSMENT" || status === "REVISION");
   const canScoreUIT = isUIT && status === "REVIEW_UIT";
   const canScorePusat = isPusat && (status === "REVIEW_PUSAT" || status === "FINAL");
+  // Autosave draft UPT (evidence + skor) — debounce, skip run pertama (mount) biar
+  // tidak autosave tanpa perubahan nyata.
+  const autosaveFirstRun = useRef(true);
+  useEffect(() => {
+    if (autosaveFirstRun.current) { autosaveFirstRun.current = false; return; }
+    if (!canScoreUPT || !audit.id || !autosaveMaturityDraft) return;
+    const timer = setTimeout(() => { autosaveMaturityDraft(); }, 1500);
+    return () => clearTimeout(timer);
+  }, [maturityAuditForm.aspekScores, maturityAuditEvidence]);
   // Gate "Kirim Hasil ke UIT": wajib Form 5S sudah disimpan pada bulan berjalan
   const chk5S = maturityAuditEvidence?.["4.5"]?.find(f => f.id === "k3_5s_chk");
   const now = new Date();
@@ -227,6 +238,11 @@ export function MaturityAuditEditor({
           <p style={{ fontSize: 13, color: "rgba(219,234,254,.82)", margin: "5px 0 0", lineHeight: 1.45 }}>Area kerja pengelolaan kelengkapan bukti fisik dan penilaian skor kematangan.</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+          {canScoreUPT && maturityDraftSavedAt && (
+            <span style={{ fontSize: 13, color: "rgba(219,234,254,.82)" }}>
+              Tersimpan otomatis {new Date(maturityDraftSavedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
           <span style={{ padding: "5px 13px", borderRadius: 999, background: `${MATURITY_WORKFLOW_COLOR[status]}26`, color: "#fff", fontSize: 13, fontWeight: 800, letterSpacing: ".3px", border: `1px solid ${MATURITY_WORKFLOW_COLOR[status]}66`, boxShadow: `inset 0 0 0 1px ${MATURITY_WORKFLOW_COLOR[status]}33` }}>
             {MATURITY_WORKFLOW_LABEL[status]}
           </span>
@@ -481,6 +497,7 @@ export function MaturityAuditEditor({
                                       const cur = prev[activeAspect.id] || [];
                                       return { ...prev, [activeAspect.id]: [...cur, ...newFiles] };
                                     });
+                                    if (canScoreUPT && audit.id) autosaveMaturityDraft?.();
                                   } catch (err) {
                                     console.warn("Upload evidence Maturity gagal:", err);
                                     setUploadError(err?.message || "Upload evidence Maturity gagal.");

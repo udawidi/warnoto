@@ -26,7 +26,7 @@ export function MaturityDashboardTab({
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
   maturityAuditSaving,
-  saveMaturityAudit, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel,
+  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel,
   calculateItemLevel, calcMaturityScore,
   gudangList, askConfirmDelete,
   MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, MATURITY_WORKFLOW_COLOR,
@@ -512,6 +512,8 @@ export function MaturityDashboardTab({
                         aspectPage={aspectPage}
                         setAspectPage={setAspectPage}
                         saveMaturityAudit={saveMaturityAudit}
+                        autosaveMaturityDraft={autosaveMaturityDraft}
+                        maturityDraftSavedAt={maturityDraftSavedAt}
                         deleteMaturityAudit={deleteMaturityAudit}
                         maturityAuditSaving={maturityAuditSaving}
                         calculateItemLevel={calculateItemLevel}
