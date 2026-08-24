@@ -43,6 +43,11 @@ export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
   return result.evidence;
 }
 
+export async function openMaturityDriveEvidence(evidenceId) {
+  const { blob, fileName } = await request("download", { evidenceId }, { responseType: "blob" });
+  return { url: URL.createObjectURL(blob), fileName, mime: blob.type || "" };
+}
+
 export async function downloadMaturityDriveEvidence(evidenceId) {
   const { blob, fileName } = await request("download", { evidenceId }, { responseType: "blob" });
   const objectUrl = URL.createObjectURL(blob);

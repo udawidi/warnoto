@@ -4,6 +4,7 @@ import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import {
   assignMaturityDriveEvidence,
   downloadMaturityDriveEvidence,
+  openMaturityDriveEvidence,
   syncMaturityDrive,
   unlinkMaturityDriveEvidence,
   uploadMaturityDriveEvidence,
@@ -49,6 +50,109 @@ const Icons = {
 // =========================================================================
 
 // =========================================================================
+// EVIDENCE VIEWER — popup in-app (scroll & zoom), buang keharusan download
+// =========================================================================
+
+function isImageEvidence(mime, name = "") {
+  if (mime && mime.startsWith("image/")) return true;
+  if (!mime && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(name)) return true;
+  return false;
+}
+
+function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
+  const [state, setState] = useState({ loading: true, error: "", url: "", mime: "" });
+  const [zoom, setZoom] = useState(100);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+    openMaturityDriveEvidence(evidenceId)
+      .then(({ url, mime }) => {
+        if (cancelled) { URL.revokeObjectURL(url); return; }
+        objectUrl = url;
+        setState({ loading: false, error: "", url, mime });
+      })
+      .catch(error => {
+        if (!cancelled) setState({ loading: false, error: error?.message || "Berkas tidak dapat dibuka.", url: "", mime: "" });
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [evidenceId]);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const isImage = isImageEvidence(state.mime, fileName);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 2000,
+        background: "rgba(15,23,42,0.55)", backdropFilter: "blur(6px)",
+        display: "flex", alignItems: isMobile ? "flex-end" : "center", justifyContent: "center",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: isMobile ? "100vw" : "min(1100px, 94vw)",
+          height: isMobile ? "100dvh" : "min(90vh, 900px)",
+          background: C.surface,
+          borderRadius: isMobile ? 0 : 16,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.35)",
+          display: "flex", flexDirection: "column", overflow: "hidden",
+        }}
+      >
+        <div style={{
+          position: "sticky", top: 0, zIndex: 1,
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          padding: "10px 16px",
+          background: "rgba(255,255,255,0.72)", backdropFilter: "blur(10px)",
+          borderBottom: `1px solid ${C.border}`,
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileName}</span>
+          {isImage && !state.loading && !state.error && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button type="button" onClick={() => setZoom(z => Math.max(50, z - 25))} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontWeight: 800 }}>−</button>
+              <button type="button" onClick={() => setZoom(100)} style={{ padding: "0 8px", height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{zoom}%</button>
+              <button type="button" onClick={() => setZoom(z => Math.min(400, z + 25))} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontWeight: 800 }}>+</button>
+            </div>
+          )}
+          <button type="button" onClick={() => downloadMaturityDriveEvidence(evidenceId)} style={{ padding: "6px 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontSize: 12, fontWeight: 800, color: C.text }}>Download</button>
+          <button type="button" onClick={onClose} aria-label="Tutup" style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontWeight: 800, color: C.text }}>×</button>
+        </div>
+
+        <div style={{ flex: 1, overflow: "auto", background: "#0f172a08", display: "flex", alignItems: state.loading || state.error ? "center" : "flex-start", justifyContent: state.loading || state.error ? "center" : "flex-start" }}>
+          {state.loading && <div style={{ padding: 24, fontSize: 13, color: C.muted, fontWeight: 700 }}>Memuat berkas...</div>}
+          {state.error && (
+            <div style={{ padding: 24, textAlign: "center" }}>
+              <div style={{ fontSize: 13, color: C.text, fontWeight: 700, marginBottom: 10 }}>{state.error}</div>
+              <button type="button" onClick={onClose} style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontSize: 12, fontWeight: 800 }}>Tutup</button>
+            </div>
+          )}
+          {!state.loading && !state.error && (isImage ? (
+            <img
+              src={state.url}
+              alt={fileName}
+              draggable={false}
+              style={{ width: `${zoom}%`, maxWidth: "none", userSelect: "none", touchAction: "pinch-zoom", display: "block", margin: "auto" }}
+            />
+          ) : (
+            <iframe src={state.url} title={fileName} style={{ width: "100%", height: "100%", border: "none" }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =========================================================================
 // COMPONENT: MaturityAuditEditor
 // =========================================================================
 
@@ -85,6 +189,7 @@ export function MaturityAuditEditor({
   const [syncingDrive, setSyncingDrive] = useState(false);
   const [unassignedFiles, setUnassignedFiles] = useState([]);
   const [assignmentTargets, setAssignmentTargets] = useState({});
+  const [viewerFile, setViewerFile] = useState(null);
   const activeAspectId = propsActiveAspectId ?? internalActiveAspectId;
   const setActiveAspectId = (id) => {
     setInternalActiveAspectId(id);
@@ -554,7 +659,7 @@ export function MaturityAuditEditor({
                                       type="button"
                                       onClick={() => {
                                         if (f.auto && f.url) window.location.hash = f.url.replace(/^#/, "");
-                                        else if (f.id) downloadMaturityDriveEvidence(f.id).catch(error => setUploadError(error?.message || "Berkas tidak dapat diunduh."));
+                                        else if (f.id) setViewerFile({ id: f.id, name: f.name });
                                       }}
                                       style={{
                                         color: C.text,
@@ -1017,6 +1122,15 @@ export function MaturityAuditEditor({
           </div>
         )}
       </div>
+      {viewerFile && (
+        <EvidenceViewer
+          C={C}
+          isMobile={isMobile}
+          evidenceId={viewerFile.id}
+          fileName={viewerFile.name}
+          onClose={() => setViewerFile(null)}
+        />
+      )}
     </div>
   );
 }
