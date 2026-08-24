@@ -178,8 +178,18 @@ function chooseFolderMerge(foundIds: string[], dbId: string | null | undefined) 
   const extras = foundIds.filter((id) => id !== keep);
   return { keep, extras };
 }
-// Merges duplicate Drive folders sharing a mapping key: moves every child of
-// the extras into the kept folder, then trashes the extras. Idempotent —
+// Moves every child of the extra folders into the kept folder, then trashes
+// the extras. Idempotent — an empty extras list is a no-op.
+async function mergeFolderGroup(keepId: string, extraIds: string[]) {
+  for (const extraId of extraIds) {
+    if (!extraId || extraId === keepId) continue;
+    for (const child of await listChildren(extraId)) {
+      await driveJson(`/files/${encodeURIComponent(child.id)}?addParents=${encodeURIComponent(keepId)}&removeParents=${encodeURIComponent(extraId)}&fields=id&supportsAllDrives=true`, { method: "PATCH" });
+    }
+    await driveJson(`/files/${encodeURIComponent(extraId)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+  }
+}
+// Merges duplicate Drive folders sharing a mapping key. Idempotent —
 // found.length <= 1 is a no-op.
 async function consolidateFolders(mappingKey: string, dbId: string | null | undefined) {
   const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='warnoto_maturity_key' and value='${quoteDrive(mappingKey)}' }`);
@@ -187,13 +197,34 @@ async function consolidateFolders(mappingKey: string, dbId: string | null | unde
   const ids = (found.files || []).map((f: any) => f.id);
   if (ids.length <= 1) return ids[0] || dbId;
   const { keep, extras } = chooseFolderMerge(ids, dbId);
-  for (const extraId of extras) {
-    for (const child of await listChildren(extraId)) {
-      await driveJson(`/files/${encodeURIComponent(child.id)}?addParents=${encodeURIComponent(keep)}&removeParents=${encodeURIComponent(extraId)}&fields=id&supportsAllDrives=true`, { method: "PATCH" });
-    }
-    await driveJson(`/files/${encodeURIComponent(extraId)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
-  }
+  await mergeFolderGroup(keep, extras);
   return keep;
+}
+// One Drive query for every maturity folder tagged under the app root,
+// grouped by mapping key, merging duplicates scoped to this UPT/period.
+// Idempotent — groups with <= 1 folder are skipped.
+async function healDuplicateFolders(upt: any, period: any) {
+  const prefix = `maturity-v1:${period.key}:${upt.name}`;
+  const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='warnoto_maturity_root' and value='${quoteDrive(DRIVE_ROOT_ID)}' }`);
+  const groups = new Map<string, string[]>();
+  let pageToken = "";
+  do {
+    const page = await driveJson(`/files?q=${q}&fields=nextPageToken,files(id,appProperties)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`);
+    for (const f of page.files || []) {
+      const key = f.appProperties?.warnoto_maturity_key;
+      if (!key || !key.startsWith(prefix)) continue;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(f.id);
+    }
+    pageToken = page.nextPageToken || "";
+  } while (pageToken);
+  for (const [mappingKey, ids] of groups) {
+    if (ids.length <= 1) continue;
+    const { data: dbRow } = await admin.from("maturity_audit_drive_folders").select("drive_folder_id").eq("mapping_key", mappingKey).maybeSingle();
+    const { keep, extras } = chooseFolderMerge(ids, dbRow?.drive_folder_id);
+    await mergeFolderGroup(keep, extras);
+    await admin.from("maturity_audit_drive_folders").update({ drive_folder_id: keep, updated_at: nowMs() }).eq("mapping_key", mappingKey);
+  }
 }
 async function ensureFolder(input: any) {
   const cached = await getFolder(input.mappingKey);
@@ -336,17 +367,11 @@ async function syncAudit(body: any, ctx: any) {
   const period = periodFromKey(audit.period_key);
   // Direct-root files have no UPT ownership. Only SUPERADMIN may claim that
   // shared inbox; scoped users scan the canonical period/UPT hierarchy only.
+  // Heal folder duplication (see healDuplicateFolders) with a single grouped
+  // Drive query before deriving itemFolders, so scanning below hits the
+  // canonical folder id. Skipped if period_key can't be parsed.
+  if (period) await healDuplicateFolders(upt, period);
   const rows = await scopedFolders(audit, upt, { includeRoot: ctx.profile.role === "SUPERADMIN" });
-  // Heal folder duplication (see consolidateFolders) before deriving
-  // itemFolders, so scanning below hits the canonical folder id.
-  for (const folder of rows) {
-    if (folder.folder_type === "ROOT" || !folder.drive_folder_id) continue;
-    const keep = await consolidateFolders(folder.mapping_key, folder.drive_folder_id);
-    if (keep && keep !== folder.drive_folder_id) {
-      await admin.from("maturity_audit_drive_folders").update({ drive_folder_id: keep, updated_at: nowMs() }).eq("mapping_key", folder.mapping_key);
-      folder.drive_folder_id = keep;
-    }
-  }
   const itemFolders = rows.filter((row) => row.folder_type === "ITEM");
   await reconcileAssignments(audit, upt, itemFolders, ctx.user.id, { includeRoot: ctx.profile.role === "SUPERADMIN" });
   for (const folder of itemFolders) {
