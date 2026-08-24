@@ -163,13 +163,39 @@ async function getFolder(mappingKey: string) {
   const { data } = await admin.from("maturity_audit_drive_folders").select("*").eq("mapping_key", mappingKey).maybeSingle();
   return data;
 }
+// Two+ folders can end up tagged with the same mapping key when concurrent
+// uploads race ensureFolder's cache-miss (see consolidateFolders). Pure so it
+// can be unit-tested without a Drive round-trip.
+function chooseFolderMerge(foundIds: string[], dbId: string | null | undefined) {
+  const keep = dbId && foundIds.includes(dbId) ? dbId : foundIds[0];
+  const extras = foundIds.filter((id) => id !== keep);
+  return { keep, extras };
+}
+// Merges duplicate Drive folders sharing a mapping key: moves every child of
+// the extras into the kept folder, then trashes the extras. Idempotent —
+// found.length <= 1 is a no-op.
+async function consolidateFolders(mappingKey: string, dbId: string | null | undefined) {
+  const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='warnoto_maturity_key' and value='${quoteDrive(mappingKey)}' }`);
+  const found = await driveJson(`/files?q=${q}&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`);
+  const ids = (found.files || []).map((f: any) => f.id);
+  if (ids.length <= 1) return ids[0] || dbId;
+  const { keep, extras } = chooseFolderMerge(ids, dbId);
+  for (const extraId of extras) {
+    for (const child of await listChildren(extraId)) {
+      await driveJson(`/files/${encodeURIComponent(child.id)}?addParents=${encodeURIComponent(keep)}&removeParents=${encodeURIComponent(extraId)}&fields=id&supportsAllDrives=true`, { method: "PATCH" });
+    }
+    await driveJson(`/files/${encodeURIComponent(extraId)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+  }
+  return keep;
+}
 async function ensureFolder(input: any) {
   const cached = await getFolder(input.mappingKey);
   if (cached?.drive_folder_id) return cached;
   const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and '${quoteDrive(input.parentFolderId)}' in parents and appProperties has { key='warnoto_maturity_key' and value='${quoteDrive(input.mappingKey)}' }`);
   const found = await driveJson(`/files?q=${q}&fields=files(id,name,parents)&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true`);
-  if ((found.files?.length || 0) > 1) throw new Error(`Konflik mapping Google Drive untuk ${input.mappingKey}; ditemukan lebih dari satu folder.`);
-  let driveFolderId = found.files?.[0]?.id;
+  let driveFolderId = (found.files?.length || 0) > 1
+    ? await consolidateFolders(input.mappingKey, found.files[0].id)
+    : found.files?.[0]?.id;
   if (!driveFolderId) {
     const metadata = { name: input.name, mimeType: "application/vnd.google-apps.folder", parents: [input.parentFolderId], appProperties: { warnoto_maturity_key: input.mappingKey, warnoto_maturity_root: DRIVE_ROOT_ID } };
     const created = await driveJson("/files?fields=id,name,parents&supportsAllDrives=true", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata) });
@@ -304,6 +330,16 @@ async function syncAudit(body: any, ctx: any) {
   // Direct-root files have no UPT ownership. Only SUPERADMIN may claim that
   // shared inbox; scoped users scan the canonical period/UPT hierarchy only.
   const rows = await scopedFolders(audit, upt, { includeRoot: ctx.profile.role === "SUPERADMIN" });
+  // Heal folder duplication (see consolidateFolders) before deriving
+  // itemFolders, so scanning below hits the canonical folder id.
+  for (const folder of rows) {
+    if (folder.folder_type === "ROOT" || !folder.drive_folder_id) continue;
+    const keep = await consolidateFolders(folder.mapping_key, folder.drive_folder_id);
+    if (keep && keep !== folder.drive_folder_id) {
+      await admin.from("maturity_audit_drive_folders").update({ drive_folder_id: keep, updated_at: nowMs() }).eq("mapping_key", folder.mapping_key);
+      folder.drive_folder_id = keep;
+    }
+  }
   const itemFolders = rows.filter((row) => row.folder_type === "ITEM");
   await reconcileAssignments(audit, upt, itemFolders, ctx.user.id, { includeRoot: ctx.profile.role === "SUPERADMIN" });
   for (const folder of itemFolders) {
@@ -400,8 +436,17 @@ Deno.serve(async (req) => {
       if (evidence.upt_id !== context.upt.id) throw Object.assign(new Error("Scope evidence tidak cocok dengan audit canonical."), { status: 409 });
       await assertUptAccess(ctx, context.upt, true);
       assertMutableAudit(context.audit);
+      try {
+        await driveJson(`/files/${encodeURIComponent(evidence.drive_file_id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) });
+      } catch (trashError) {
+        const msg = trashError instanceof Error ? trashError.message : "";
+        if (!/\(404\)|not found/i.test(msg)) throw trashError; // already gone is fine, anything else must surface
+      }
       const { error } = await admin.from("maturity_audit_evidence").update({ unlinked_at: nowMs(), unlinked_by: ctx.user.id }).eq("id", evidenceId);
       if (error) throw new Error(`Evidence tidak dapat dilepas: ${error.message}`);
+      // Prevent resurrection: syncAudit's listChildren(trashed=false) would
+      // otherwise re-find this file in the unassigned inbox and re-link it.
+      await admin.from("maturity_audit_drive_unassigned").delete().eq("audit_id", evidence.audit_id).eq("drive_file_id", evidence.drive_file_id);
       await event(evidence.audit_id, "EVIDENCE_UNLINKED", ctx.user.id, { evidenceId, driveFileId: evidence.drive_file_id });
       return json({ ok: true });
     }

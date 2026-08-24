@@ -590,15 +590,18 @@ export function MaturityAuditEditor({
                                   setUploadError("");
                                   setUploadingItems(prev => ({ ...prev, [eviItem.id]: true }));
                                   try {
-                                    const uploadedFiles = await Promise.all(files.map(f => uploadMaturityDriveEvidence({
-                                      file: f,
-                                      ...drivePayload({
-                                      aspectId: activeAspect.id,
-                                      aspectTitle: activeAspect.title,
-                                      itemId: eviItem.id,
-                                      itemLabel: eviItem.label,
-                                    })
-                                    })));
+                                    const uploadedFiles = [];
+                                    for (const f of files) {
+                                      uploadedFiles.push(await uploadMaturityDriveEvidence({
+                                        file: f,
+                                        ...drivePayload({
+                                          aspectId: activeAspect.id,
+                                          aspectTitle: activeAspect.title,
+                                          itemId: eviItem.id,
+                                          itemLabel: eviItem.label,
+                                        })
+                                      }));
+                                    }
                                     const newFiles = uploadedFiles.map(res => ({ ...res, folderPath: targetFolderPath }));
                                     const cur = maturityAuditEvidence[activeAspect.id] || [];
                                     const nextEvidence = { ...maturityAuditEvidence, [activeAspect.id]: [...cur, ...newFiles] };
@@ -690,15 +693,21 @@ export function MaturityAuditEditor({
                                      </span>
                                     {canScoreUPT && !f.auto && (
                                       <button
-                                        onClick={async () => {
-                                          try {
-                                            if (f.id) await unlinkMaturityDriveEvidence({ evidenceId: f.id });
-                                            setMaturityAuditEvidence(prev => {
-                                              const cur = prev[activeAspect.id] || [];
-                                              return { ...prev, [activeAspect.id]: cur.filter((_, ci) => ci !== globalIdx) };
-                                            });
-                                          } catch (error) { setUploadError(error?.message || "Evidence tidak dapat dilepas."); }
-                                        }}
+                                        onClick={() => askConfirmDelete?.({
+                                          title: "Lepas & Hapus Evidence?",
+                                          message: `Berkas "${f.name}" akan dilepas dari audit DAN dipindahkan ke Trash Google Drive. Tindakan ini tidak otomatis bisa dibatalkan.`,
+                                          confirmLabel: "Ya, Hapus",
+                                          variant: "danger",
+                                          onConfirm: async () => {
+                                            try {
+                                              if (f.id) await unlinkMaturityDriveEvidence({ evidenceId: f.id });
+                                              setMaturityAuditEvidence(prev => {
+                                                const cur = prev[activeAspect.id] || [];
+                                                return { ...prev, [activeAspect.id]: cur.filter((_, ci) => ci !== globalIdx) };
+                                              });
+                                            } catch (error) { setUploadError(error?.message || "Evidence tidak dapat dilepas."); }
+                                          },
+                                        })}
                                         style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", fontWeight: 800, padding: 0, marginLeft: 4, fontSize: 15 }}
                                         title="Hapus file"
                                       >×</button>
