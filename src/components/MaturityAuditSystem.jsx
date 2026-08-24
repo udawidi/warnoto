@@ -174,6 +174,9 @@ export function MaturityAuditEditor({
   const completedAspectsCount = AUDIT_ASPECTS.filter(
     a => (maturityAuditEvidence[a.id] || []).length >= a.requiredEvidence.length
   ).length;
+  // Evidence dianggap lengkap bila SEMUA aspek sudah memenuhi jumlah bukti wajib.
+  const incompleteAspectsCount = AUDIT_ASPECTS.length - completedAspectsCount;
+  const evidenceComplete = incompleteAspectsCount === 0;
 
   const uitReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.uit || 0) > 0).length;
   const pusatReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.pusat || 0) > 0).length;
@@ -975,6 +978,15 @@ export function MaturityAuditEditor({
                 <>
                   <button className="approval-btn--cancel" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
                   <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => {
+                    if (!evidenceComplete) {
+                      askConfirmDelete?.({
+                        title: "Evidence Belum Lengkap",
+                        message: `Masih ada ${incompleteAspectsCount} aspek yang bukti wajibnya belum lengkap diunggah. Lengkapi semua evidence dulu sebelum kirim hasil ke UIT.`,
+                        confirmLabel: "Mengerti",
+                        variant: "warning",
+                      });
+                      return;
+                    }
                     if (!form5SSavedThisMonth) {
                       askConfirmDelete?.({
                         title: "Form 5S Belum Diisi",
