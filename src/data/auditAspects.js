@@ -370,7 +370,7 @@ export const AUDIT_ASPECTS = [
   {
     id: "3.1",
     category: "sarana_prasarana",
-    title: "Ketersediaan Peralatan Kerja dan Alat Angkut/Angkat",
+    title: "Ketersediaan dan Pemeliharaan Sarana Prasarana Gudang",
     subtext: "Sarana Prasarana • Fasilitas Gudang • 6 evidence wajib",
     requiredEvidence: [
       { id: "area_loading_dock", label: "Foto Area Loading Dock / Bongkar Muat / Drop Zone" },
@@ -396,7 +396,7 @@ export const AUDIT_ASPECTS = [
   {
     id: "3.2",
     category: "sarana_prasarana",
-    title: "Ketersediaan dan Pemeliharaan Sarana Prasarana Gudang",
+    title: "Ketersediaan Peralatan Kerja dan Alat Angkut/Angkat",
     subtext: "Sarana Prasarana • Alat Angkut • 7 evidence wajib",
     requiredEvidence: [
       { id: "eq_forklift", label: "Foto Forklift" },
@@ -466,7 +466,7 @@ export const AUDIT_ASPECTS = [
   {
     id: "3.5",
     category: "sarana_prasarana",
-    title: "Penyampaian Kondisi Sarana Prasarana dan Peralatan Kerja",
+    title: "Penyampaian Kondisi Gudang (Material Ex-Operasi)",
     subtext: "Sarana Prasarana • Material Ex-Ops • 2 evidence wajib (Sampling 3 Material)",
     requiredEvidence: [
       { id: "exops_tug10", label: "TUG 10 / Pengembalian (terisi lengkap: nama material, jumlah, satuan, keterangan pekerjaan, tanggal penerimaan/pengembalian, tanggal TUG 9/operasi terakhir, nama gudang/SLoc, nama lokasi pekerjaan/GI) — ditandatangani PIC ULTG dan PIC Gudang UPT" },
