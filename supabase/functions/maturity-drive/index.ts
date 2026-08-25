@@ -315,9 +315,12 @@ async function uploadSheetExport(base64: string, fileName: string, folderId: str
 }
 // Folder ASPEK & ITEM = evidence (file taruh langsung di folder aspek juga
 // dianggap evidence aspek itu); KATEGORI ke atas tetap unassigned (ambigu,
-// tak bisa ditebak aspeknya).
-function folderSyncRole(folderType: string): "evidence" | "unassigned" {
-  return folderType === "ITEM" || folderType === "ASPECT" ? "evidence" : "unassigned";
+// tak bisa ditebak aspeknya). FORM5S = skip: foto Form5S bukan evidence audit,
+// jangan mencemari kotak unassigned (folder-nya sengaja di luar alur evidence).
+function folderSyncRole(folderType: string): "evidence" | "unassigned" | "skip" {
+  if (folderType === "ITEM" || folderType === "ASPECT") return "evidence";
+  if (folderType === "FORM5S") return "skip";
+  return "unassigned"; // ROOT/PERIOD/UPT/CATEGORY
 }
 // Folder ASPEK (lihat ensureTree) cuma simpan {upt,categoryId,aspectId,aspectTitle},
 // tanpa itemId/itemLabel/categoryLabel — beri fallback. No-op utk folder ITEM
@@ -444,6 +447,9 @@ async function syncAudit(body: any, ctx: any) {
   for (const { folder, files } of scanChildren) {
     for (const driveFile of files) {
       if (driveFile.mimeType === "application/vnd.google-apps.folder") continue;
+      // Sheet hasil "Export ke Google Sheet" tinggal di folder UPT (yang ikut
+      // di-scan) — itu output rekap, bukan evidence; jangan masuk unassigned.
+      if (driveFile.mimeType === "application/vnd.google-apps.spreadsheet") continue;
       const record = await recordUnassigned({ auditId, upt, periodKey: period?.key || audit.period_key, sourceFolderId: folder.drive_folder_id, driveFile });
       if (record.assignment_state !== "ACTIVE") unassigned.push({ ...unassignedDto(record), folderType: folder.folder_type, context: folder.metadata || {} });
     }

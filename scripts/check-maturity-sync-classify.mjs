@@ -4,7 +4,9 @@
 import assert from "node:assert/strict";
 
 function folderSyncRole(folderType) {
-  return folderType === "ITEM" || folderType === "ASPECT" ? "evidence" : "unassigned";
+  if (folderType === "ITEM" || folderType === "ASPECT") return "evidence";
+  if (folderType === "FORM5S") return "skip";
+  return "unassigned";
 }
 function aspectEvidenceMeta(meta) {
   return {
@@ -19,6 +21,7 @@ assert.equal(folderSyncRole("ASPECT"), "evidence");
 for (const t of ["ROOT", "PERIOD", "UPT", "CATEGORY"]) {
   assert.equal(folderSyncRole(t), "unassigned", `${t} harus tetap unassigned`);
 }
+assert.equal(folderSyncRole("FORM5S"), "skip", "FORM5S jangan masuk unassigned (foto Form5S bukan evidence)");
 
 // Folder ITEM: metadata lengkap, fallback tak boleh kepakai (no-op).
 assert.deepEqual(
