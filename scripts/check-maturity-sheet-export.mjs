@@ -2,13 +2,15 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { unzipSync, strFromU8 } from "fflate";
 import * as XLSX from "xlsx";
 import { buildMaturitySheetFromBytes } from "../src/lib/maturitySheetExport.js";
 
 const templatePath = fileURLToPath(new URL("../src/assets/maturity/matlev-template.xlsx", import.meta.url));
-const bytes = new Uint8Array(readFileSync(templatePath));
+const templateBytes = new Uint8Array(readFileSync(templatePath));
+const templateStylesLen = unzipSync(templateBytes)["xl/styles.xml"].length;
 
-const { base64, filename } = buildMaturitySheetFromBytes(bytes, {
+const { base64, filename } = buildMaturitySheetFromBytes(templateBytes, {
   scoresByAspek: { "1.1": 4, "3.4": 3 },
   tahun: 2026,
   namaUpt: "UPT Surabaya",
@@ -16,6 +18,21 @@ const { base64, filename } = buildMaturitySheetFromBytes(bytes, {
 
 assert.equal(filename, "2026_Maturity Level Gudang_UPT_UPT Surabaya_");
 
+const outBytes = Uint8Array.from(Buffer.from(base64, "base64"));
+const outZip = unzipSync(outBytes);
+
+// Bukti utama fix: styling TIDAK boleh hilang (dulu 29.627 -> 1.114 byte via XLSX.write).
+const outStylesLen = outZip["xl/styles.xml"].length;
+assert.ok(
+  outStylesLen > templateStylesLen * 0.9,
+  `styles.xml output harus ~sama besar dgn template (template=${templateStylesLen}, output=${outStylesLen})`
+);
+
+const sheetXml = strFromU8(outZip["xl/worksheets/sheet1.xml"]);
+assert.ok(sheetXml.includes("<f>AVERAGE("), "formula AVERAGE kategori harus tetap utuh di XML");
+assert.match(sheetXml, /<c r="X4" s="\d+"><v>4<\/v><\/c>/, "sel X4 harus terisi skor 4 dgn atribut style (s=) tetap ada");
+
+// Assertion nilai/lewat-formula: pakai xlsx (baca-saja) spy di atas base64 output.
 const wb = XLSX.read(base64, { type: "base64", sheetStubs: true });
 const ws = wb.Sheets["Matlev 2026 UPT"];
 const v = addr => ws[addr]?.v;
