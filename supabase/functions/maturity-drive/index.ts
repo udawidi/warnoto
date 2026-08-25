@@ -6,6 +6,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const DRIVE_ROOT_ID = Deno.env.get("GOOGLE_DRIVE_MATURITY_ROOT_ID") ?? "13FFto2pzVRLq4LBpRaJsIyGa2Bk5gaYD";
+// Folder khusus untuk hasil export Sheet penilaian Maturity (fitur terpisah dari
+// pohon evidence Drive di atas — TIDAK melalui ensureTree/mapping_key DB).
+const SHEET_EXPORT_FOLDER_ID = "1wh7A1c96VYEjYJ10ZcCFwImyqJxPAThB";
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_DRIVE_CLIENT_ID") ?? "";
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_DRIVE_CLIENT_SECRET") ?? "";
 const GOOGLE_REFRESH_TOKEN = Deno.env.get("GOOGLE_DRIVE_REFRESH_TOKEN") ?? "";
@@ -297,6 +300,19 @@ async function uploadDriveFile(file: File, folderId: string, mappingKey: string)
   bytes.set(head); bytes.set(new Uint8Array(await file.arrayBuffer()), head.length); bytes.set(tail, head.length + file.size);
   return driveJson("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,size,md5Checksum,webViewLink", { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body: bytes });
 }
+// mimeType metadata "google-apps.spreadsheet" != Content-Type xlsx dari body =>
+// Drive auto-convert ke Google Sheet hidup (bukan file xlsx statis).
+async function uploadSheetExport(base64: string, fileName: string, folderId: string) {
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const boundary = `warnoto-${crypto.randomUUID()}`;
+  const metadata = JSON.stringify({ name: fileName, parents: [folderId], mimeType: "application/vnd.google-apps.spreadsheet" });
+  const contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const head = new TextEncoder().encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
+  const tail = new TextEncoder().encode(`\r\n--${boundary}--`);
+  const body = new Uint8Array(head.length + bytes.length + tail.length);
+  body.set(head); body.set(bytes, head.length); body.set(tail, head.length + bytes.length);
+  return driveJson("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body });
+}
 // Jalankan fn untuk tiap item, maksimal `limit` berjalan bersamaan.
 // Mengembalikan hasil per item sesuai urutan input.
 async function mapLimit(items: any[], limit: number, fn: (item: any, index: number) => Promise<any>) {
@@ -464,6 +480,17 @@ Deno.serve(async (req) => {
       const form5sFolder = await ensureFolder({ mappingKey: `${base}:form5s`, name: "Form 5S", parentFolderId: uptFolder.drive_folder_id, periodKey: period.key, folderType: "FORM5S", parentMappingKey: uptFolder.mapping_key, metadata: { upt: upt.name } });
       const driveFile = await uploadDriveFile(file, form5sFolder.drive_folder_id, form5sFolder.mapping_key);
       return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), driveFileId: driveFile.id, isDrive: true, syncedToDrive: true } });
+    }
+    if (action === "export-sheet") {
+      const base64 = String(body.base64 || "");
+      if (!base64) return json({ ok: false, error: "Data Sheet wajib diisi." }, 400);
+      const approxBytes = Math.ceil((base64.length * 3) / 4);
+      if (approxBytes > MAX_FILE_BYTES) return json({ ok: false, error: "Berkas export melebihi batas ukuran." }, 400);
+      const upt = await findUptByName(text(body.namaUpt, 120));
+      await assertUptAccess(ctx, upt, true);
+      const fileName = safeName(body.filename, `Maturity Level Gudang - ${upt.name}`);
+      const driveFile = await uploadSheetExport(base64, fileName, SHEET_EXPORT_FOLDER_ID);
+      return json({ ok: true, fileId: driveFile.id, webViewLink: driveFile.webViewLink });
     }
     if (action === "sync") return json({ ok: true, ...(await syncAudit(body, ctx) ) });
     if (action === "assign") {

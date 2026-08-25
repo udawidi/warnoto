@@ -10,6 +10,8 @@ import {
   getDefaultMaturityAuditHistory, upsertMaturityAssessment, upsertMaturityAudit,
   insertMaturity5SAssessment, deleteMaturityAuditRow, loadMaturityAuditHistory,
 } from "../lib/maturitySync.js";
+import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
+import { exportMaturitySheet } from "../lib/maturityDrive.js";
 
 // Sama persis dengan readCachedList() di App.jsx — duplikasi 1 baris di sini
 // lebih murah & lebih aman (hindari circular import App.jsx <-> hook) daripada
@@ -261,7 +263,10 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     else if (total >= 2.5) level = 3;
     else if (total >= 1.5) level = 2;
     else level = 1;
-    return { c1, c2, c3, c4, c5, itemA, itemB, total, level };
+    // aspectScores: level efektif per-aspek (bulat, sama seperti dipakai kalkulasi
+    // di atas) — dipakai export Sheet Maturity, bukan cuma ringkasan kategori.
+    const aspectScores = Object.fromEntries(AUDIT_ASPECTS.map(a => [a.id, getAspectScore(a)]));
+    return { c1, c2, c3, c4, c5, itemA, itemB, total, level, aspectScores };
   }
   function calcMaturityLevel(scores, evidence = {}) {
     return calcMaturityScore(scores, evidence).level;
@@ -436,6 +441,22 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     XLSX.writeFile(wb, `Audit_Maturity_${audit.id}.xlsx`);
     showToast("File Excel berhasil didownload!");
   }
+  // Export ke Google Sheet berformat baku (template pemerintah) — isi nilai
+  // per-aspek ke folder Drive khusus. Fase 1: manual, tanpa tabel/skema baru.
+  async function exportMaturityGoogleSheet(audit) {
+    try {
+      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {});
+      const tahun = new Date(audit.createdAt || Date.now()).getFullYear();
+      const namaUpt = audit.upt || selectedMaturityUpt;
+      const { base64, filename } = await buildMaturitySheet({ scoresByAspek: scoreResult.aspectScores, tahun, namaUpt });
+      const result = await exportMaturitySheet({ base64, filename, namaUpt });
+      showToast("Google Sheet Maturity berhasil dibuat.");
+      return result;
+    } catch (err) {
+      showToast(err?.message || "Export Google Sheet Maturity gagal.", "error");
+      throw err;
+    }
+  }
 
   return {
     maturityAssessments, setMaturityAssessments,
@@ -472,5 +493,6 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     saveMaturityAudit,
     deleteMaturityAudit,
     exportMaturityAuditExcel,
+    exportMaturityGoogleSheet,
   };
 }

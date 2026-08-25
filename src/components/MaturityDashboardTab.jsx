@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
@@ -53,11 +54,24 @@ export function MaturityDashboardTab({
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
   maturityAuditSaving,
-  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel,
+  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet,
   calculateItemLevel, calcMaturityScore,
   gudangList, askConfirmDelete,
   MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, MATURITY_WORKFLOW_COLOR,
 }) {
+            const [exportingSheetId, setExportingSheetId] = useState(null); // id audit yang lagi export ke Google Sheet
+            const canExportSheet = hasRole(currentUser, "ADMIN", "TL") || canSwitchMaturityUpt;
+            async function handleExportSheet(a) {
+              setExportingSheetId(a.id);
+              try {
+                const result = await exportMaturityGoogleSheet(a);
+                if (result?.webViewLink) window.open(result.webViewLink, "_blank", "noopener");
+              } catch (err) {
+                console.warn("Export Google Sheet Maturity gagal:", err);
+              } finally {
+                setExportingSheetId(null);
+              }
+            }
             const is3D = false;
             // Scoping per-UPT pakai id (FK) supaya tidak bergantung kecocokan
             // string nama; cocokkan nama hanya bila salah satu sisi belum punya id
@@ -625,6 +639,15 @@ export function MaturityDashboardTab({
                                       <button style={{ ...sty.btn("ghost", "sm"), fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", pointerEvents: "auto" }} onClick={e => { e.stopPropagation(); exportMaturityAuditExcel(a); }}>
                                         Excel
                                       </button>
+                                      {canExportSheet && (
+                                        <button
+                                          style={{ ...sty.btn("ghost", "sm"), fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: exportingSheetId === a.id ? "wait" : "pointer", pointerEvents: "auto", opacity: exportingSheetId === a.id ? 0.6 : 1 }}
+                                          disabled={exportingSheetId === a.id}
+                                          onClick={e => { e.stopPropagation(); handleExportSheet(a); }}
+                                        >
+                                          {exportingSheetId === a.id ? "Mengekspor…" : "Google Sheet"}
+                                        </button>
+                                      )}
                                       {canReview && <button style={{ ...sty.btn("primary", "sm"), fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", pointerEvents: "auto" }} onClick={e => { e.stopPropagation(); openMaturityAudit(a); }}>
                                         {canEditUPT ? "Input" : "Review"}
                                       </button>}

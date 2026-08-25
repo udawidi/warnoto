@@ -31,6 +31,7 @@ async function request(action, body = {}, { formData = null, responseType = "jso
 }
 
 export const ensureMaturityDriveTree = payload => request("ensure-tree", payload);
+export const exportMaturitySheet = payload => request("export-sheet", payload);
 export const syncMaturityDrive = payload => request("sync", payload);
 export const loadMaturityDriveEvidence = auditId => request("sync", { auditId, scanDrive: false });
 export const assignMaturityDriveEvidence = payload => request("assign", payload);

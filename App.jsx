@@ -381,6 +381,7 @@ export default function PLNWarehouse() {
     maturityDraftSavedAt,
     deleteMaturityAudit,
     exportMaturityAuditExcel,
+    exportMaturityGoogleSheet,
   } = useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL });
   const [attbList, setAttbList] = useState(() => readCachedList("pln_attb_v1") ?? []);
   const [materialCadangData, setMaterialCadangData] = useState({ imports:[], analyses:[], applyHistory:[] });
@@ -4225,6 +4226,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               createMaturityAudit={createMaturityAudit}
               openMaturityAudit={openMaturityAudit}
               exportMaturityAuditExcel={exportMaturityAuditExcel}
+              exportMaturityGoogleSheet={exportMaturityGoogleSheet}
               calculateItemLevel={calculateItemLevel}
               calcMaturityScore={calcMaturityScore}
               gudangList={visibleGudangList}
