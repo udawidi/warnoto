@@ -537,7 +537,7 @@ export const AUDIT_ASPECTS = [
   {
     id: "4.1",
     category: "k3",
-    title: "Ketersediaan Sistem Keamanan dan Pengawasan Area Gudang",
+    title: "Ketersediaan Sarana Proteksi Kebakaran (APAR/Hydrant)",
     subtext: "K3 • Proteksi Kebakaran • 4 evidence wajib",
     requiredEvidence: [
       { id: "k3_apar_unit", label: "Foto APAR yang terpasang (di Gudang dan di Ruang Admin/Kantor apabila terpisah dengan Gudangnya)" },
@@ -590,7 +590,7 @@ export const AUDIT_ASPECTS = [
   {
     id: "4.3",
     category: "k3",
-    title: "Ketersediaan Sarana Proteksi Kebakaran (APAR/Hydrant)",
+    title: "Ketersediaan Sistem Keamanan dan Pengawasan Area Gudang",
     subtext: "K3 • Keamanan CCTV • 2 evidence wajib",
     requiredEvidence: [
       { id: "k3_cctv_cam", label: "Foto CCTV yang terpasang (di area vital gudang)" },
@@ -611,7 +611,7 @@ export const AUDIT_ASPECTS = [
   {
     id: "4.4",
     category: "k3",
-    title: "Ketersediaan Alat Pelindung Diri (APD) Bagi Petugas Gudang",
+    title: "Ketersediaan Izin Kerja (Working Permit) untuk Pekerjaan Berisiko",
     subtext: "K3 • Izin Kerja • 2 evidence wajib",
     requiredEvidence: [
       { id: "k3_wp_doc", label: "Working Permit yang ditandatangani pejabat terkait secara lengkap" },

@@ -37,6 +37,18 @@ const Icons = {
   Info: (p) => <Info size={16} weight="bold" {...p} />,
 };
 
+// Tier tablet (820/834/1024px) — breakpoint global App.jsx hanya punya isMobile,
+// jadi grid/tab desktop dipaksa muat di tablet. Hook lokal, presentation-only.
+function useIsTablet() {
+  const [t, setT] = useState(() => typeof window !== "undefined" && window.innerWidth <= 1024);
+  useEffect(() => {
+    const on = () => setT(window.innerWidth <= 1024);
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return t;
+}
+
 // =========================================================================
 // CATATAN PORT: DashboardMaturityBanner versi sumber TIDAK di-export di sini.
 // Project ini sudah punya widget `src/components/DashboardMaturityBanner.jsx`
@@ -178,6 +190,7 @@ export function MaturityAuditEditor({
   selectedUpt,
   askConfirmDelete
 }) {
+  const isTablet = useIsTablet();
   const [internalActiveAspectId, setInternalActiveAspectId] = useState(null);
   const [uploadingItems, setUploadingItems] = useState({});
   const [uploadError, setUploadError] = useState("");
@@ -354,7 +367,7 @@ export function MaturityAuditEditor({
 
       <div>
         {/* Metric Cards Grid */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
           <div style={{ ...sty.card, display: "flex", alignItems: "center", gap: 14 }}>
             <div style={{ width: 40, height: 40, borderRadius: 10, background: `${C.accent}1a`, color: C.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <Icons.Chart />
@@ -410,7 +423,7 @@ export function MaturityAuditEditor({
                 </button>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 1fr) minmax(260px, 300px)", gap: 16, width: "100%", maxWidth: "100%" }}>
+              <div style={{ display: "grid", gridTemplateColumns: (isMobile || isTablet) ? "1fr" : "minmax(0, 1fr) minmax(260px, 300px)", gap: 16, width: "100%", maxWidth: "100%" }}>
                 {/* Left Column */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
                   {/* Drive Banner */}
@@ -841,13 +854,13 @@ export function MaturityAuditEditor({
                     key={cat.id}
                     className={isActive ? "is-active" : ""}
                     onClick={() => { setExpandedAspek(cat.id); setAspectPage(1); }}
-                    style={{ "--segment-color": C.accent, justifyContent: "center", ...(isMobile ? { flex: "1 1 45%", whiteSpace: "normal" } : { flex: 1, whiteSpace: "nowrap" }) }}
+                    style={{ "--segment-color": C.accent, justifyContent: "center", ...((isMobile || isTablet) ? { flex: "1 1 45%", whiteSpace: "normal" } : { flex: 1, whiteSpace: "nowrap" }) }}
                   >{cat.label}</button>
                 );
               })}
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2.1fr 1fr", gap: 20, marginBottom: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: (isMobile || isTablet) ? "1fr" : "2.1fr 1fr", gap: 20, marginBottom: 20 }}>
               {/* Left Column: Aspect list */}
               <div style={{ ...sty.card, padding: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
                 <div style={{ padding: "14px 18px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -1235,6 +1248,7 @@ function format5SDate(value) {
 }
 
 function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList }) {
+  const isTablet = useIsTablet();
   const [gudangFilter, setGudangFilter] = useState("");
   const [tahunFilter, setTahunFilter] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -1251,7 +1265,7 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
       <div style={{ ...sty.card, marginBottom: 18 }}>
         <div style={{ fontSize: 15, fontWeight: 900, color: C.text, marginBottom: 5 }}>History Audit 5S</div>
         <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Riwayat disimpan permanen dan tidak mengubah hasil audit maturity semester.</div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 260px))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 260px))", gap: 12 }}>
           <div>
             <label style={sty.label}>Filter Gudang</label>
             <select style={sty.select} value={gudangFilter} onChange={event => { setGudangFilter(event.target.value); setSelectedId(null); }}>
@@ -1274,7 +1288,7 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
           Belum ada hasil Form 5S untuk filter ini.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(260px, .75fr) minmax(0, 1.25fr)", gap: 18, alignItems: "start" }}>
+        <div style={{ display: "grid", gridTemplateColumns: (isMobile || isTablet) ? "1fr" : "minmax(260px, .75fr) minmax(0, 1.25fr)", gap: 18, alignItems: "start" }}>
           <div style={{ ...sty.card, padding: 8 }}>
             {history.map(item => {
               const active = selected?.id === item.id;
@@ -1313,6 +1327,8 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
 }
 
 export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAssessments = [], saveMaturity5SAssessment, setMaturityAuditEvidence, onBack, isMobile, selectedUpt, askConfirmDelete }) {
+  const isTablet = useIsTablet();
+  const compact = isMobile || isTablet;
   const now = new Date();
   const [bulan, setBulan] = useState(now.getMonth());
   const [tahun, setTahun] = useState(now.getFullYear());
@@ -1510,7 +1526,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         <div style={{ fontSize: 13, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>
           Data Pengisian
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
           <div>
             <label style={sty.label}>Periode Bulan</label>
             <select style={sty.select} value={bulan} onChange={e => setBulan(Number(e.target.value))}>
@@ -1548,10 +1564,10 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
 
       {/* ── Main Table ── */}
       <div style={{ ...sty.card, padding: 0, overflowX: "auto", marginBottom: 20 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: isMobile ? 0 : 680, background: C.surface }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: compact ? 0 : 680, background: C.surface }}>
           <thead>
             <tr>
-              <td colSpan={isMobile ? 2 : 4} style={{
+              <td colSpan={compact ? 2 : 4} style={{
                 background: HEADER_BG, color: "white", textAlign: "center",
                 fontWeight: 900, fontSize: 15, padding: "14px 16px",
                 letterSpacing: "1px", textTransform: "uppercase"
@@ -1560,10 +1576,10 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               </td>
             </tr>
             <tr>
-              {!isMobile && <th style={{ ...thBase, width: 110 }}>5S</th>}
-              {!isMobile && <th style={{ ...thBase, width: 220 }}>Definition</th>}
+              {!compact && <th style={{ ...thBase, width: 110 }}>5S</th>}
+              {!compact && <th style={{ ...thBase, width: 220 }}>Definition</th>}
               <th style={{ ...thBase }}>Indikator</th>
-              <th style={{ ...thBase, width: isMobile ? 56 : 90 }}>Checklist</th>
+              <th style={{ ...thBase, width: compact ? 56 : 90 }}>Checklist</th>
             </tr>
           </thead>
 
@@ -1571,7 +1587,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
             {FORM_5S.map((cat) => {
               const catChecked = checks[cat.id].filter(Boolean).length;
               const rows = cat.indicators.length;
-              const catHeaderRow = isMobile && (
+              const catHeaderRow = compact && (
                 <tr key={`${cat.id}-head`} style={{ background: C.bg }}>
                   <td colSpan={2} style={{ ...tdBase, fontWeight: 800, fontSize: 13, color: C.text }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -1588,7 +1604,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               const indicatorRows = cat.indicators.map((ind, ii) => (
                 <tr key={`${cat.id}-${ii}`}
                   style={{ background: ii % 2 === 0 ? C.surface : C.bg }}>
-                  {!isMobile && ii === 0 && (
+                  {!compact && ii === 0 && (
                     <td rowSpan={rows} style={{
                       ...tdBase,
                       background: C.bg,
@@ -1605,7 +1621,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
                       </div>
                     </td>
                   )}
-                  {ii === 0 && !isMobile && (
+                  {ii === 0 && !compact && (
                     <td rowSpan={rows} style={{
                       ...tdBase,
                       fontSize: 13,
@@ -1626,7 +1642,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
                       onClick={() => toggle(cat.id, ii)}
                       title={checks[cat.id][ii] ? "Klik untuk hapus centang" : "Klik untuk centang"}
                       style={{
-                        width: isMobile ? 44 : 24, height: isMobile ? 44 : 24,
+                        width: compact ? 44 : 24, height: compact ? 44 : 24,
                         padding: 0,
                         border: "none",
                         background: "transparent",
@@ -1664,7 +1680,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
             })}
 
             <tr>
-              <td colSpan={isMobile ? 1 : 3} style={{
+              <td colSpan={compact ? 1 : 3} style={{
                 ...tdBase,
                 textAlign: "center",
                 fontWeight: 800,
@@ -1788,7 +1804,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3, 1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16 }}>
           {[0, 1, 2].map(slot => {
             const photo = samplePhotos[slot];
             return (
