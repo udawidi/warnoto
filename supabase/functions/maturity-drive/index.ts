@@ -244,6 +244,21 @@ async function ensureFolder(input: any) {
   if (error) throw new Error(`Metadata folder tidak tersimpan: ${error.message}`);
   return data;
 }
+// Tags the configured My Drive root once with the stable mapping key and
+// persists its ID locally. Shared by ensureTree and the Form5S upload path
+// so neither duplicates the root-init logic.
+async function ensureRoot() {
+  let root = await getFolder("maturity-v1:root");
+  if (root) return root;
+  const configuredRoot = await driveJson(`/files/${encodeURIComponent(DRIVE_ROOT_ID)}?fields=id,appProperties&supportsAllDrives=true`);
+  await driveJson(`/files/${encodeURIComponent(DRIVE_ROOT_ID)}?fields=id,appProperties&supportsAllDrives=true`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ appProperties: { ...(configuredRoot.appProperties || {}), warnoto_maturity_key: "maturity-v1:root", warnoto_maturity_root: DRIVE_ROOT_ID } }),
+  });
+  const { data, error } = await admin.from("maturity_audit_drive_folders").upsert({ mapping_key: "maturity-v1:root", audit_id: null, period_key: null, folder_type: "ROOT", parent_mapping_key: null, drive_folder_id: DRIVE_ROOT_ID, drive_root_id: DRIVE_ROOT_ID, metadata: { configuredRootId: DRIVE_ROOT_ID }, created_at: nowMs(), updated_at: nowMs() }, { onConflict: "mapping_key" }).select().single();
+  if (error) throw new Error(`Metadata root Drive tidak tersimpan: ${error.message}`);
+  return data;
+}
 async function ensureTree(body: any) {
   const auditId = text(body.auditId, 100);
   const upt = text(body.upt, 120);
@@ -253,19 +268,7 @@ async function ensureTree(body: any) {
   if (!auditId || !upt || !categoryId || !aspectId || !itemId) throw new Error("auditId, UPT, kategori, aspek, dan item wajib diisi.");
   const period = periodFromKey(body.periodKey) || periodFor(body.auditCreatedAt);
   const base = `maturity-v1:${period.key}:${upt}`;
-  let root = await getFolder("maturity-v1:root");
-  if (!root) {
-    // The approved root already exists in My Drive. Tag it once with the
-    // stable key, then persist its ID locally; no folder lookup relies on name.
-    const configuredRoot = await driveJson(`/files/${encodeURIComponent(DRIVE_ROOT_ID)}?fields=id,appProperties&supportsAllDrives=true`);
-    await driveJson(`/files/${encodeURIComponent(DRIVE_ROOT_ID)}?fields=id,appProperties&supportsAllDrives=true`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appProperties: { ...(configuredRoot.appProperties || {}), warnoto_maturity_key: "maturity-v1:root", warnoto_maturity_root: DRIVE_ROOT_ID } }),
-    });
-    const { data, error } = await admin.from("maturity_audit_drive_folders").upsert({ mapping_key: "maturity-v1:root", audit_id: null, period_key: null, folder_type: "ROOT", parent_mapping_key: null, drive_folder_id: DRIVE_ROOT_ID, drive_root_id: DRIVE_ROOT_ID, metadata: { configuredRootId: DRIVE_ROOT_ID }, created_at: nowMs(), updated_at: nowMs() }, { onConflict: "mapping_key" }).select().single();
-    if (error) throw new Error(`Metadata root Drive tidak tersimpan: ${error.message}`);
-    root = data;
-  }
+  const root = await ensureRoot();
   // The configured folder itself is the root. Do not create an extra visible root folder.
   const periodFolder = await ensureFolder({ mappingKey: `${base}:period`, name: period.label, parentFolderId: DRIVE_ROOT_ID, periodKey: period.key, folderType: "PERIOD", parentMappingKey: root.mapping_key, metadata: { period } });
   const uptFolder = await ensureFolder({ mappingKey: `${base}:upt`, name: safeName(upt, "UPT"), parentFolderId: periodFolder.drive_folder_id, periodKey: period.key, folderType: "UPT", parentMappingKey: periodFolder.mapping_key, metadata: { upt } });
@@ -447,6 +450,20 @@ Deno.serve(async (req) => {
       const row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id });
       await event(text(body.auditId), "EVIDENCE_UPLOADED", ctx.user.id, { evidenceId: row.id, driveFileId: driveFile.id, itemId: body.itemId });
       return json({ ok: true, evidence: evidenceDto(row), folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id });
+    }
+    if (action === "upload-5s") {
+      const file = form?.get("file");
+      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau ukurannya melebihi 25 MB." }, 400);
+      const upt = await findUptByName(text(body.upt, 120));
+      await assertUptAccess(ctx, upt, true);
+      const period = periodFor(Date.UTC(Number(body.tahun), Number(body.bulan), 1));
+      await ensureRoot();
+      const base = `maturity-v1:${period.key}:${upt.name}`;
+      const periodFolder = await ensureFolder({ mappingKey: `${base}:period`, name: period.label, parentFolderId: DRIVE_ROOT_ID, periodKey: period.key, folderType: "PERIOD", parentMappingKey: "maturity-v1:root", metadata: { period } });
+      const uptFolder = await ensureFolder({ mappingKey: `${base}:upt`, name: safeName(upt.name, "UPT"), parentFolderId: periodFolder.drive_folder_id, periodKey: period.key, folderType: "UPT", parentMappingKey: periodFolder.mapping_key, metadata: { upt: upt.name } });
+      const form5sFolder = await ensureFolder({ mappingKey: `${base}:form5s`, name: "Form 5S", parentFolderId: uptFolder.drive_folder_id, periodKey: period.key, folderType: "FORM5S", parentMappingKey: uptFolder.mapping_key, metadata: { upt: upt.name } });
+      const driveFile = await uploadDriveFile(file, form5sFolder.drive_folder_id, form5sFolder.mapping_key);
+      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), driveFileId: driveFile.id, isDrive: true, syncedToDrive: true } });
     }
     if (action === "sync") return json({ ok: true, ...(await syncAudit(body, ctx) ) });
     if (action === "assign") {

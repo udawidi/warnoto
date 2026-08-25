@@ -43,6 +43,13 @@ export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
   return result.evidence;
 }
 
+export async function uploadForm5SPhoto({ file, upt, bulan, tahun }) {
+  const formData = new FormData();
+  formData.set("file", file, file.name);
+  const result = await request("upload-5s", { upt, bulan, tahun }, { formData });
+  return result.evidence;
+}
+
 export async function openMaturityDriveEvidence(evidenceId) {
   const { blob, fileName } = await request("download", { evidenceId }, { responseType: "blob" });
   return { url: URL.createObjectURL(blob), fileName, mime: blob.type || "" };

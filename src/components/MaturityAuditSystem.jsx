@@ -7,6 +7,7 @@ import {
   openMaturityDriveEvidence,
   syncMaturityDrive,
   unlinkMaturityDriveEvidence,
+  uploadForm5SPhoto,
   uploadMaturityDriveEvidence,
 } from "../lib/maturityDrive.js";
 
@@ -17,12 +18,6 @@ import {
 const MATURITY_LEVELS = { 1: "Basic", 2: "Developing", 3: "Defined", 4: "Managed", 5: "Excellent" };
 const MATURITY_WORKFLOW_LABEL = { DRAFT: "Draft", SELF_ASSESSMENT: "Self Assessment (UPT)", REVIEW_UIT: "Review UIT", REVIEW_PUSAT: "Review Pusat", REVISION: "Revisi", FINAL: "Nilai Final (Pusat)" };
 const MATURITY_WORKFLOW_COLOR = { DRAFT: "#64748b", SELF_ASSESSMENT: "#3b82f6", REVIEW_UIT: "#f59e0b", REVIEW_PUSAT: "#6366f1", REVISION: "#ef4444", FINAL: "#1d4ed8" };
-
-// Form 5S keeps its established photo flow and its automatic evidence bridge.
-// Its separate Drive/storage decision remains outside the Maturity audit relay.
-function uploadFileToDrive() {
-  return Promise.reject(new Error("Upload foto Form 5S belum dikonfigurasi."));
-}
 
 // Icon set diselaraskan ke @phosphor-icons/react (dipakai app-wide di 3 varian
 // dashboard). Dibungkus di bawah nama lama `Icons.*` supaya seluruh call-site
@@ -1343,12 +1338,11 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     setPhotoUploadError("");
     setUploading5S(true);
     try {
-      const uploaded = await Promise.all(taken.map(f => uploadFileToDrive({
+      const uploaded = await Promise.all(taken.map(f => uploadForm5SPhoto({
         file: f,
         upt: selectedUpt || "UPT Surabaya",
-        category: "K3",
-        aspectId: "4.5",
-        itemLabel: "Foto Sampling 5S"
+        bulan,
+        tahun,
       })));
       const newEntries = uploaded.map(res => ({
         name: res.name,
@@ -1395,6 +1389,14 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     const selectedGudang = gudangList.find(item => item.id === gudang);
     if (!gudang.trim() || !auditor.trim() || !Number.isInteger(tahun) || tahun < 2000 || tahun > 2100) {
       setSaveError("Lengkapi gudang, nama auditor, dan tahun 2000–2100 sebelum menyimpan.");
+      return;
+    }
+    if (!catatan.trim()) {
+      setSaveError("Catatan / Temuan / Tindak Lanjut wajib diisi sebelum menyimpan.");
+      return;
+    }
+    if (samplePhotos.length === 0) {
+      setSaveError("Minimal 1 foto sampling wajib diunggah sebelum menyimpan.");
       return;
     }
     const record = {
@@ -1452,7 +1454,18 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     setTimeout(() => setSaved(false), 4000);
   };
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => {
+    if (!catatan.trim()) {
+      setSaveError("Catatan / Temuan / Tindak Lanjut wajib diisi sebelum mencetak.");
+      return;
+    }
+    if (samplePhotos.length === 0) {
+      setSaveError("Minimal 1 foto sampling wajib diunggah sebelum mencetak.");
+      return;
+    }
+    setSaveError("");
+    window.print();
+  };
 
   const tdBase = {
     border: `1px solid ${C.border}`,
@@ -1746,7 +1759,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               📷 Sampling Foto Implementasi 5S di Gudang
             </div>
             <div style={{ fontSize: 13, color: C.muted }}>
-              Upload foto sedang dinonaktifkan sementara sampai penyimpanan Drive selesai disiapkan.
+              Wajib minimal 1 foto sampling implementasi 5S.
             </div>
           </div>
           {samplePhotos.length < 3 && (
@@ -1756,12 +1769,12 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", fontSize: 13, fontWeight: 700,
               border: "none", userSelect: "none", marginLeft: 12,
             }}>
-              Upload Foto Belum Tersedia
+              {uploading5S ? "⌛ Mengunggah..." : "Pilih Foto"}
               <input
                 type="file"
                 accept="image/*"
                 multiple
-                disabled
+                disabled={uploading5S}
                 hidden
                 onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
               />
