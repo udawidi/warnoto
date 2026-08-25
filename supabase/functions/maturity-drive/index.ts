@@ -313,6 +313,22 @@ async function uploadSheetExport(base64: string, fileName: string, folderId: str
   body.set(head); body.set(bytes, head.length); body.set(tail, head.length + bytes.length);
   return driveJson("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink", { method: "POST", headers: { "Content-Type": `multipart/related; boundary=${boundary}` }, body });
 }
+// Folder ASPEK & ITEM = evidence (file taruh langsung di folder aspek juga
+// dianggap evidence aspek itu); KATEGORI ke atas tetap unassigned (ambigu,
+// tak bisa ditebak aspeknya).
+function folderSyncRole(folderType: string): "evidence" | "unassigned" {
+  return folderType === "ITEM" || folderType === "ASPECT" ? "evidence" : "unassigned";
+}
+// Folder ASPEK (lihat ensureTree) cuma simpan {upt,categoryId,aspectId,aspectTitle},
+// tanpa itemId/itemLabel/categoryLabel — beri fallback. No-op utk folder ITEM
+// (metadata itemId-nya sudah ada, || tak pernah kepakai).
+function aspectEvidenceMeta(meta: any) {
+  return {
+    itemId: meta.itemId || `${meta.aspectId}::aspek`,
+    itemLabel: meta.itemLabel || meta.aspectTitle || "Evidence Aspek",
+    categoryLabel: meta.categoryLabel || "",
+  };
+}
 // Jalankan fn untuk tiap item, maksimal `limit` berjalan bersamaan.
 // Mengembalikan hasil per item sesuai urutan input.
 async function mapLimit(items: any[], limit: number, fn: (item: any, index: number) => Promise<any>) {
@@ -411,17 +427,19 @@ async function syncAudit(body: any, ctx: any) {
   // Fetch Drive listings for all folders in parallel (bounded), then write to
   // DB serially — upsert/recordUnassigned are idempotent by drive_file_id so
   // write order doesn't matter, and serial writes keep this simple.
-  const itemChildren = await mapLimit(itemFolders, 8, async (folder) => ({ folder, files: await listChildren(folder.drive_folder_id) }));
-  for (const { folder, files } of itemChildren) {
+  const evidenceFolders = rows.filter((row) => folderSyncRole(row.folder_type) === "evidence");
+  const evidenceChildren = await mapLimit(evidenceFolders, 8, async (folder) => ({ folder, files: await listChildren(folder.drive_folder_id) }));
+  for (const { folder, files } of evidenceChildren) {
     const meta = folder.metadata || {};
+    const { itemId, itemLabel, categoryLabel } = aspectEvidenceMeta(meta);
     for (const driveFile of files) {
       if (driveFile.mimeType === "application/vnd.google-apps.folder") continue;
-      await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId: meta.itemId, itemLabel: meta.itemLabel, categoryId: meta.categoryId, categoryLabel: meta.categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id });
+      await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId, itemLabel, categoryId: meta.categoryId, categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id });
       await admin.from("maturity_audit_drive_unassigned").update({ assignment_state: "ACTIVE", last_error: null, updated_at: nowMs() }).eq("audit_id", auditId).eq("drive_file_id", driveFile.id);
     }
   }
   const unassigned: any[] = [];
-  const scanFolders = rows.filter((row) => ["ROOT", "PERIOD", "UPT", "CATEGORY", "ASPECT"].includes(row.folder_type));
+  const scanFolders = rows.filter((row) => folderSyncRole(row.folder_type) === "unassigned");
   const scanChildren = await mapLimit(scanFolders, 8, async (folder) => ({ folder, files: await listChildren(folder.drive_folder_id) }));
   for (const { folder, files } of scanChildren) {
     for (const driveFile of files) {
