@@ -1360,13 +1360,16 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         bulan,
         tahun,
       })));
-      const newEntries = uploaded.map(res => ({
+      const newEntries = uploaded.map((res, i) => ({
         name: res.name,
         url: res.url,
         size: res.size,
         driveFileId: res.driveFileId,
         isDrive: res.isDrive,
-        syncedToDrive: res.syncedToDrive
+        syncedToDrive: res.syncedToDrive,
+        // Foto Drive privat (webViewLink bukan bytes gambar) — pakai object URL File
+        // lokal utk preview slot di sesi ini. History cuma link, tak perlu thumbnail.
+        preview: URL.createObjectURL(taken[i]),
       }));
       setSamplePhotos(prev => [...prev, ...newEntries]);
       setSaved(false);
@@ -1779,22 +1782,40 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
             </div>
           </div>
           {samplePhotos.length < 3 && (
-            <label style={{
-              display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
-              padding: "7px 14px", borderRadius: 10, cursor: "pointer",
-              background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", fontSize: 13, fontWeight: 700,
-              border: "none", userSelect: "none", marginLeft: 12,
-            }}>
-              {uploading5S ? "⌛ Mengunggah..." : "Pilih Foto"}
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                disabled={uploading5S}
-                hidden
-                onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
-              />
-            </label>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 12, flexWrap: "wrap" }}>
+              <label style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", borderRadius: 10, cursor: "pointer",
+                background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", fontSize: 13, fontWeight: 700,
+                border: "none", userSelect: "none",
+              }}>
+                {uploading5S ? "⌛" : "📷 Kamera"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  disabled={uploading5S}
+                  hidden
+                  onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
+                />
+              </label>
+              <label style={{
+                display: "flex", alignItems: "center", gap: 6,
+                padding: "7px 14px", borderRadius: 10, cursor: "pointer",
+                background: "#eff6ff", color: "#1d4ed8", fontSize: 13, fontWeight: 700,
+                border: "1px solid #bfdbfe", userSelect: "none",
+              }}>
+                {uploading5S ? "⌛ Mengunggah..." : "🖼️ Galeri"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={uploading5S}
+                  hidden
+                  onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
+                />
+              </label>
+            </div>
           )}
         </div>
 
@@ -1823,7 +1844,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
                 {photo ? (
                   <>
                     <img
-                      src={photo.url}
+                      src={photo.preview || photo.url}
                       alt={`Sampling ${slot + 1}`}
                       style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
                     />
