@@ -9,6 +9,7 @@ import {
   unlinkMaturityDriveEvidence,
   uploadMaturityDriveEvidence,
 } from "../lib/maturityDrive.js";
+import { downloadForm5SHTML } from "../lib/docBuilders.js";
 
 // =========================================================================
 // CONSTANTS & ICONS
@@ -1293,7 +1294,10 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
           {selected && <div id={`form-5s-history-${selected.id}`} style={{ ...sty.card }}>
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginBottom: 15 }}>
               <div><div style={{ fontSize: 17, fontWeight: 900, color: C.text }}>Detail Audit 5S</div><div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{MONTH_LABELS[(selected.bulan || 1) - 1]} {selected.tahun} · {selected.gudangNama || "—"}</div></div>
-              <div style={{ fontSize: 17, fontWeight: 900, color: Number(selected.scorePercent) >= 80 ? C.green : C.accent }}>{Number(selected.scorePercent || 0).toFixed(2)}%</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button onClick={() => downloadForm5SHTML(selected)} style={{ border: `1px solid ${C.border}`, background: C.surface, color: C.text, borderRadius: 10, padding: "8px 14px", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>📄 Cetak / PDF</button>
+                <div style={{ fontSize: 17, fontWeight: 900, color: Number(selected.scorePercent) >= 80 ? C.green : C.accent }}>{Number(selected.scorePercent || 0).toFixed(2)}%</div>
+              </div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 9, fontSize: 13, marginBottom: 16 }}>
               <div><strong>Auditor:</strong> {selected.auditor || "—"}</div><div><strong>Diisi:</strong> {format5SDate(selected.createdAt)}</div>

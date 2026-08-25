@@ -1837,4 +1837,79 @@ export async function buildTUG2HTML(katalog, stocks, txns, lokasiList, subGudang
   return buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList);
 }
 
+// ─── FORM 5S DOCUMENT BUILDER ─────────────────────────────────────────────
+// Cetak/PDF hasil audit 5S (Form5SHistory di MaturityAuditSystem.jsx). Meniru
+// pola buildBeritaAcaraHTML di atas (@page A4, print-bar+window.print).
+const FORM5S_MONTH_LABELS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+export function buildForm5SHTML(a) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const bulanLabel = FORM5S_MONTH_LABELS[(a.bulan || 1) - 1] || "-";
+  const tanggalDiisi = a.createdAt ? new Date(a.createdAt).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" }) : "—";
+
+  const categoriesHtml = (a.checklist || []).map(cat => {
+    const indicators = cat.indicators || [];
+    const checkedCount = indicators.filter(i => i.checked).length;
+    const indicatorsHtml = indicators.map(i => `
+      <div class="ind-row"><span class="mark">${i.checked ? "✓" : "○"}</span><span>${esc(i.label)}</span></div>`).join("");
+    return `
+    <div class="cat">
+      <div class="cat-head">${esc(String(cat.label || "").replace(/\n/g, " "))} — ${checkedCount}/${indicators.length}</div>
+      <div class="cat-def">${esc(cat.definition || "")}</div>
+      ${indicatorsHtml}
+    </div>`;
+  }).join("");
+
+  const photos = a.samplePhotos || [];
+  const photosHtml = photos.length === 0
+    ? "Tidak ada foto sampling."
+    : photos.map((p, idx) => `<div>Foto ${idx + 1}: ${esc(p.name || "-")} — ${esc(p.url || "-")}</div>`).join("");
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Form 5S ${esc(a.id)}</title>
+<style>@page{size:A4;margin:12mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:11px;color:#111;background:#e5e7eb}.page{padding:20px;background:white;max-width:800px;margin:0 auto 16px}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:8px}.doctitle{text-align:center;margin-bottom:12px}.doctitle h2{font-size:15px;font-weight:800;text-decoration:underline}.doctitle .sub{font-size:9.5px;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:14px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:3px 6px;font-size:10.5px}table.meta td.label{width:170px}table.meta td.colon{width:10px}.cat{border-top:1px solid #ccc;padding:9px 0}.cat-head{font-weight:800;font-size:11.5px;margin-bottom:4px}.cat-def{font-style:italic;color:#555;font-size:10px;margin-bottom:6px}.ind-row{display:flex;gap:8px;padding:3px 0;font-size:10.5px}.ind-row .mark{font-weight:900;width:14px}.block{border-top:1px solid #ccc;padding-top:10px;margin-top:10px;font-size:10.5px}.sig-row{display:flex;justify-content:space-around;margin-top:26px;text-align:center}.sig-col{width:220px;font-size:10.5px}.sig-space{height:50px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:0}.cat,.sig-row{page-break-inside:avoid}}</style></head><body>
+<div class="print-bar">📄 Form Penilaian 5S — A4 &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="page">
+<div class="topbar"></div>
+<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+  <div><b>PT PLN (PERSERO)</b><br/>${esc(a.upt || "UPT Surabaya")}</div>
+</div>
+<div class="doctitle"><h2>FORM PENILAIAN 5S</h2><div class="sub">(Seiri • Seiton • Seiso • Seiketsu • Shitsuke)</div></div>
+<table class="meta">
+  <tr><td class="label">Gudang</td><td class="colon">:</td><td>${esc(a.gudangNama || "-")}</td></tr>
+  <tr><td class="label">Periode</td><td class="colon">:</td><td>${esc(bulanLabel)} ${esc(a.tahun)}</td></tr>
+  <tr><td class="label">Auditor</td><td class="colon">:</td><td>${esc(a.auditor || "-")}</td></tr>
+  <tr><td class="label">Tanggal Diisi</td><td class="colon">:</td><td>${esc(tanggalDiisi)}</td></tr>
+  <tr><td class="label">Skor</td><td class="colon">:</td><td>${Number(a.scorePercent || 0).toFixed(2)}%</td></tr>
+  <tr><td class="label">Indikator Terpenuhi</td><td class="colon">:</td><td>${esc(a.totalChecked)}/${esc(a.totalItems)}</td></tr>
+</table>
+${categoriesHtml}
+<div class="block"><b>Catatan / Temuan</b><div style="white-space:pre-wrap;margin-top:5px">${esc(a.catatan || "Tidak ada catatan.")}</div></div>
+<div class="block"><b>Sampling Foto</b><div style="margin-top:5px">${photosHtml}</div></div>
+<div class="sig-row">
+  <div class="sig-col">
+    <b>AUDITOR</b>
+    <div class="sig-space"></div>
+    <div class="sig-name">${esc(a.auditor || ".....................")}</div>
+  </div>
+  <div class="sig-col">
+    <b>MENGETAHUI<br/>MANAJER UPT</b>
+    <div class="sig-space"></div>
+    <div class="sig-name">.....................</div>
+  </div>
+</div>
+</div></body></html>`;
+}
+
+export function downloadForm5SHTML(a) {
+  const html = buildForm5SHTML(a);
+  const bulanLabel = FORM5S_MONTH_LABELS[(a.bulan || 1) - 1] || "-";
+  const fname = `Form5S_${a.gudangNama || "Gudang"}_${bulanLabel}_${a.tahun}`.replace(/[^a-zA-Z0-9_]/g, "_") + ".html";
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url; link.download = fname;
+  document.body.appendChild(link); link.click(); document.body.removeChild(link);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
 
