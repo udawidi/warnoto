@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { can } from "../lib/perms.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import {
@@ -357,7 +358,13 @@ export function InspeksiMaterialCadangTab({
     const urls = paths.length ? await loadInspectionPhotoUrls(paths) : {};
     setBatchPhotoUrls(urls);
     setPrintBatch(batch);
-    setTimeout(() => window.print(), 50);
+    // preload foto agar sudah ter-decode saat print (jika tidak, print fire sebelum <img> load = foto kosong)
+    await Promise.all(Object.values(urls).map(u => new Promise(res => {
+      const img = new Image();
+      img.onload = img.onerror = res;
+      img.src = u;
+    })));
+    setTimeout(() => window.print(), 100);
   }
 
   const tabs = [
@@ -371,7 +378,7 @@ export function InspeksiMaterialCadangTab({
 
   return (
     <div className="operations-page inspection-page" style={{ display: "grid", gap: 16 }}>
-      <style>{`@media screen { .inspection-ba { display:none; } } @media print { body * { visibility:hidden; } .inspection-ba, .inspection-ba * { visibility:visible; } .inspection-ba { position:absolute; inset:0; padding:20px; color:#111; background:#fff; font-family:Georgia,serif; } .no-print { display:none !important; } }`}</style>
+      <style>{`@media screen { .inspection-ba { display:none; } } @page { size:A4 landscape; margin:12mm; } @media print { #root { display:none !important; } .inspection-ba { display:block; color:#111; background:#fff; font-family:Georgia,serif; } }`}</style>
 
       <div className="no-print">
         <OperationsHero
@@ -727,13 +734,29 @@ export function InspeksiMaterialCadangTab({
         </div>
       )}
 
-      {printBatch && (
+      {printBatch && createPortal(
         <article className="inspection-ba">
           <h2 style={{ textAlign: "center", marginBottom: 2, fontSize: 18 }}>BERITA ACARA INSPEKSI MATERIAL CADANG</h2>
           <p style={{ textAlign: "center", marginTop: 0, fontSize: 13 }}>Nomor: {printBatch.nomorBa || "—"}</p>
-          <p style={{ fontSize: 13 }}>
-            Pada tanggal {printBatch.tanggal || "—"}, telah dilakukan inspeksi material cadang di Gudang {printBatch.namaGudang || printBatch.gudangId || "—"} ({printBatch.namaUpt || printBatch.uptId || "—"}).
+          <p style={{ fontSize: 13, lineHeight: 1.6, marginTop: 16 }}>
+            Telah dilakukan inspeksi material cadang dengan rincian sebagai berikut:
           </p>
+          <table style={{ fontSize: 13, marginTop: 6, borderCollapse: "collapse" }}>
+            <tbody>
+              {[
+                ["Tanggal", printBatch.tanggal || "—"],
+                ["Nama Gudang", printBatch.namaGudang || printBatch.gudangId || "—"],
+                ["No SLoc", printBatch.noSloc || "—"],
+                ["Nama UPT", printBatch.namaUpt || printBatch.uptId || "—"],
+              ].map(([k, v]) => (
+                <tr key={k}>
+                  <td style={{ padding: "2px 0", verticalAlign: "top", width: 130 }}>{k}</td>
+                  <td style={{ padding: "2px 10px", verticalAlign: "top" }}>:</td>
+                  <td style={{ padding: "2px 0", verticalAlign: "top" }}><b>{v}</b></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, marginTop: 8 }}>
             <thead>
               <tr>
@@ -757,22 +780,29 @@ export function InspeksiMaterialCadangTab({
               ))}
             </tbody>
           </table>
-          {printBatch.items?.some(it => it.photoPaths?.length) && (
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
-              {printBatch.items.flatMap((it, i) => (it.photoPaths || []).map((p, pi) => (
-                <figure key={`${i}-${pi}`} style={{ margin: 0 }}>
-                  {batchPhotoUrls[p] ? <img src={batchPhotoUrls[p]} alt={`Foto ${pi + 1}`} style={{ width: 180, maxHeight: 150, objectFit: "cover", border: "1px solid #222" }} /> : null}
-                  <figcaption style={{ fontSize: 10, textAlign: "center" }}>{it.namaBarang} #{pi + 1}</figcaption>
-                </figure>
-              )))}
-            </div>
-          )}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginTop: 45, textAlign: "center", fontSize: 12 }}>
-            <div>Pelaksana Logistik<br /><br /><br /><b>{printBatch.pelaksanaLogistik || "—"}</b></div>
-            <div>Pelaksara Pemeliharaan<br /><br /><br /><b>{pelaksaraDisplay(printBatch.pelaksaraPemeliharaan)}</b></div>
-            <div>Manager UPT<br /><br /><br /><b>{printBatch.managerUpt || "—"}</b></div>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-around", gap: 24, marginTop: 45, textAlign: "center", fontSize: 12 }}>
+            <div style={{ minWidth: 150 }}>Pelaksana Logistik<div style={{ height: 78 }} /><b>{printBatch.pelaksanaLogistik || "—"}</b></div>
+            {(Array.isArray(printBatch.pelaksaraPemeliharaan) ? printBatch.pelaksaraPemeliharaan : [printBatch.pelaksaraPemeliharaan].filter(Boolean)).map((nm, i) => (
+              <div key={i} style={{ minWidth: 150 }}>Pelaksara Pemeliharaan<div style={{ height: 78 }} /><b>{nm || "—"}</b></div>
+            ))}
+            <div style={{ minWidth: 150 }}>Manager UPT<div style={{ height: 78 }} /><b>{printBatch.managerUpt || "—"}</b></div>
           </div>
-        </article>
+          {printBatch.items?.some(it => it.photoPaths?.length) && (
+            <section style={{ pageBreakBefore: "always", breakBefore: "page", marginTop: 24 }}>
+              <h3 style={{ textAlign: "center", fontSize: 15, margin: "0 0 4px" }}>LAMPIRAN FOTO</h3>
+              <p style={{ textAlign: "center", fontSize: 11, marginTop: 0, marginBottom: 16 }}>BA Nomor: {printBatch.nomorBa || "—"}</p>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+                {printBatch.items.flatMap((it, i) => (it.photoPaths || []).map((p, pi) => (
+                  <figure key={`${i}-${pi}`} style={{ margin: 0, pageBreakInside: "avoid", breakInside: "avoid", border: "1px solid #222", borderRadius: 4, overflow: "hidden" }}>
+                    {batchPhotoUrls[p] ? <img src={batchPhotoUrls[p]} alt={`Foto ${it.namaBarang}`} style={{ display: "block", width: "100%", height: 200, objectFit: "cover" }} /> : <div style={{ height: 200, background: "#f0f0f0" }} />}
+                    <figcaption style={{ fontSize: 11, textAlign: "center", padding: "6px 4px", background: "#f4f4f4" }}>{it.namaBarang} — foto {pi + 1}</figcaption>
+                  </figure>
+                )))}
+              </div>
+            </section>
+          )}
+        </article>,
+        document.body
       )}
     </div>
   );
