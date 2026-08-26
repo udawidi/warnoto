@@ -162,7 +162,7 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
 // Tombol Check/Reject UIT untuk 1 ITEM evidence — reject butuh alasan singkat,
 // jadi dipisah biar tidak window.prompt (bisa diblok browser). Tinggi tombol
 // 40px di HP (target sentuh), input alasan full-width di HP.
-function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, isMobile }) {
+function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, isMobile, state }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const btnH = isMobile ? 40 : 30;
@@ -175,6 +175,17 @@ function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, 
           <button type="button" onClick={() => { setRejecting(false); setReason(""); }} style={{ flex: 1, height: btnH, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Batal</button>
         </div>
       </div>
+    );
+  }
+  // State-aware: cuma tombol aksi LAWAN dari state sekarang yang tampil (badge di atas sudah wakili state saat ini).
+  if (state === "CHECKED") {
+    return (
+      <button type="button" disabled={disabled} onClick={() => setRejecting(true)} style={{ height: btnH, width: isMobile ? "100%" : "auto", padding: "0 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: "#dc2626", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Ubah ke Reject</button>
+    );
+  }
+  if (state === "REJECTED") {
+    return (
+      <button type="button" disabled={disabled} onClick={() => setAspectReview(aspectId, itemId, "CHECKED", "")} style={{ height: btnH, width: isMobile ? "100%" : "auto", padding: "0 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.green, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Ubah ke Check</button>
     );
   }
   return (
@@ -599,7 +610,28 @@ export function MaturityAuditEditor({
                             </div>
                           </div>
 
-                          {canScoreUPT && !isAutoFilled && (
+                          {canScoreUPT && !isAutoFilled && itemReviewState === "CHECKED" && (
+                            <div style={{
+                              padding: "0 12px",
+                              height: isMobile ? 40 : 32,
+                              borderRadius: 10,
+                              background: `${C.green}22`,
+                              color: C.green,
+                              border: `1.5px solid ${C.green}55`,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 4,
+                              whiteSpace: "nowrap",
+                              flexShrink: 0,
+                              width: isMobile ? "100%" : "auto"
+                            }}>
+                              🔒 Terkunci — sudah di-Check UIT
+                            </div>
+                          )}
+                          {canScoreUPT && !isAutoFilled && itemReviewState !== "CHECKED" && (
                             <label style={{
                               padding: "0 16px",
                               height: isMobile ? 40 : 32,
@@ -689,12 +721,12 @@ export function MaturityAuditEditor({
                         {!isAutoFilled && (
                           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                              <span style={{ fontSize: 12, fontWeight: 800, padding: "1px 8px", borderRadius: 14, background: `${itemReviewColor}22`, color: itemReviewColor, border: `1px solid ${itemReviewColor}55`, whiteSpace: "nowrap", alignSelf: "flex-start" }}>{itemReviewLabel}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 14, background: `${itemReviewColor}22`, color: itemReviewColor, border: `1.5px solid ${itemReviewColor}55`, whiteSpace: "nowrap", alignSelf: "flex-start" }}>{itemReviewState === "CHECKED" ? "🔒 " : ""}{itemReviewLabel}</span>
                               {itemReviewStale && <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, wordBreak: "break-word" }}>Evidence berubah setelah review — perlu re-review</span>}
                               {itemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
                             </div>
                             {canReviewUIT && isUploaded && (
-                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={setAspectReview} disabled={maturityAuditSaving} isMobile={isMobile} />
+                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={setAspectReview} disabled={maturityAuditSaving} isMobile={isMobile} state={itemReviewState} />
                             )}
                           </div>
                         )}
@@ -752,7 +784,7 @@ export function MaturityAuditEditor({
                                      }}>
                                        {f.isDrive ? "✓ Google Drive" : "⚡ Berkas Lokal"}
                                      </span>
-                                    {canScoreUPT && !f.auto && (
+                                    {canScoreUPT && !f.auto && itemReviewState !== "CHECKED" && (
                                       <button
                                         onClick={() => askConfirmDelete?.({
                                           title: "Lepas & Hapus Evidence?",
