@@ -20,9 +20,12 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const scanUrl = scanUrlFor(katalog.id);
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
 
+  // window.open WAJIB dipanggil sinkron di dalam handler klik. Builder TUG.2 async
+  // (await QRCode.toDataURL) — kalau open dipanggil SETELAH await, gesture user
+  // sudah hilang dan browser memblokir popup (w=null, tak ada yang tercetak).
   const handlePrintFront = async () => {
-    const html = await buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList, uptNama);
     const w = window.open("", "_blank");
+    const html = await buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList, uptNama);
     if (w) {
       w.document.write(html);
       w.document.close();
@@ -30,8 +33,8 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   };
 
   const handlePrintBack = async () => {
-    const html = await buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGudangList, gudangList, uptNama);
     const w = window.open("", "_blank");
+    const html = await buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGudangList, gudangList, uptNama);
     if (w) {
       w.document.write(html);
       w.document.close();
