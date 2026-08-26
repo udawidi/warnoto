@@ -50,6 +50,7 @@ export function MaturityDashboardTab({
   auditListPage, setAuditListPage,
   maturityAuditForm, setMaturityAuditForm,
   maturityAuditEvidence, setMaturityAuditEvidence,
+  maturityAspectReviews, setAspectReview,
   expandedAspek, setExpandedAspek,
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
@@ -535,6 +536,8 @@ export function MaturityDashboardTab({
                         setMaturityAuditForm={setMaturityAuditForm}
                         maturityAuditEvidence={maturityAuditEvidence}
                         setMaturityAuditEvidence={setMaturityAuditEvidence}
+                        maturityAspectReviews={maturityAspectReviews}
+                        setAspectReview={setAspectReview}
                         expandedAspek={expandedAspek}
                         setExpandedAspek={setExpandedAspek}
                         activeAspectId={activeAspectId}
@@ -600,7 +603,10 @@ export function MaturityDashboardTab({
                               // Matriks sama persis dengan policy "Maturity audits update by stage".
                               // ASMAN/MANAGER read-only di jenjang UPT (keputusan user 2026-08-02).
                               const canEditUPT = hasRole(currentUser, "ADMIN", "TL") && (a.status === "DRAFT" || a.status === "SELF_ASSESSMENT" || a.status === "REVISION");
-                              const canEditUIT = hasRole(currentUser, "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT") && a.status === "REVIEW_UIT"; // SUPERADMIN ikut lolos
+                              // Review paralel: UIT boleh buka & Check/Reject per-aspek selama fase
+                              // sebelum kirim ke Pusat — bukan hanya saat REVIEW_UIT (yang kini tak
+                              // pernah tercapai karena UPT tak lagi "Kirim ke UIT"). Samakan dgn canReviewUIT editor.
+                              const canEditUIT = hasRole(currentUser, "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT") && ["DRAFT", "SELF_ASSESSMENT", "REVISION", "REVIEW_UIT"].includes(a.status); // SUPERADMIN ikut lolos
                               // Pusat = ADMIN_LOG_PUSAT (+ SUPERADMIN lewat hasRole). MANAGER sengaja
                               // TIDAK di sini — ia terikat satu UPT, jadi akan menilai final UPT-nya sendiri.
                               const canEditPusat = hasRole(currentUser, "ADMIN_LOG_PUSAT") && (a.status === "REVIEW_PUSAT" || a.status === "FINAL");

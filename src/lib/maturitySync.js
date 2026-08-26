@@ -3,7 +3,7 @@ import { isDemoMode } from "./demo.js";
 
 // Maturity memakai tabel khusus, bukan `warnoto_state` atau pola master generik.
 // Kolom yang sering difilter disimpan typed; detail form tetap disimpan di `data`.
-const AUDIT_STATUS = new Set(["DRAFT", "SELF_ASSESSMENT", "REVIEW_UIT", "REVISION", "FINAL"]);
+const AUDIT_STATUS = new Set(["DRAFT", "SELF_ASSESSMENT", "REVIEW_UIT", "REVISION", "REVIEW_PUSAT", "FINAL"]);
 const HISTORY_STATUS = new Set(["ARSIP", "FINAL", "BERJALAN"]);
 const isBinaryUrl = value => typeof value === "string" && /^(?:data|blob):/i.test(value);
 
@@ -263,3 +263,48 @@ export const deleteMaturityAuditRow = id => deleteRow("maturity_audits", id);
 // Form 5S adalah riwayat append-only: gunakan insert, bukan upsert, agar
 // inspeksi berulang pada periode yang sama tetap dapat diaudit.
 export const insertMaturity5SAssessment = item => insertRow("maturity_5s_assessments", maturity5SItemToRow(item), maturity5SRowToItem);
+
+// ─── Review paralel per-aspek (UIT Check/Reject sebelum UPT selesai semua aspek) ───
+function aspectReviewRowToItem(row) {
+  return {
+    auditId: row.audit_id,
+    aspectId: row.aspect_id,
+    itemId: row.item_id,
+    uptId: row.upt_id,
+    state: row.state || "PENDING",
+    note: row.note || "",
+    reviewedBy: row.reviewed_by ?? null,
+    reviewedAt: asEpoch(row.reviewed_at),
+  };
+}
+
+export async function loadAspectReviews(auditId) {
+  if (!supabase || !auditId) return [];
+  const { data, error } = await supabase.from("maturity_aspect_reviews").select("*").eq("audit_id", auditId);
+  if (error) {
+    console.error(`load maturity_aspect_reviews: ${error.message}`, error);
+    return [];
+  }
+  return (data || []).map(aspectReviewRowToItem);
+}
+
+export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, state, note, reviewedBy }) {
+  if (isDemoMode()) return true;
+  if (!supabase) return null;
+  const row = {
+    audit_id: auditId,
+    aspect_id: aspectId,
+    item_id: itemId,
+    upt_id: uptId || null,
+    state,
+    note: note || "",
+    reviewed_by: reviewedBy || null,
+    reviewed_at: Date.now(),
+  };
+  const { data, error } = await supabase.from("maturity_aspect_reviews").upsert(row, { onConflict: "audit_id,aspect_id,item_id" }).select().single();
+  if (error) {
+    console.error(`upsert maturity_aspect_reviews: ${error.message}`, error);
+    return null;
+  }
+  return aspectReviewRowToItem(data);
+}

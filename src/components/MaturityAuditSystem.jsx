@@ -159,6 +159,32 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
   );
 }
 
+// Tombol Check/Reject UIT untuk 1 ITEM evidence — reject butuh alasan singkat,
+// jadi dipisah biar tidak window.prompt (bisa diblok browser). Tinggi tombol
+// 40px di HP (target sentuh), input alasan full-width di HP.
+function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, isMobile }) {
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const btnH = isMobile ? 40 : 30;
+  if (rejecting) {
+    return (
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 6, width: isMobile ? "100%" : "auto" }}>
+        <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Alasan reject…" style={{ flex: 1, minWidth: 0, height: btnH, fontSize: 12, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}` }} />
+        <div style={{ display: "flex", gap: 6 }}>
+          <button type="button" disabled={disabled || !reason.trim()} onClick={() => { setAspectReview(aspectId, itemId, "REJECTED", reason.trim()); setRejecting(false); setReason(""); }} style={{ flex: 1, height: btnH, padding: "0 10px", borderRadius: 8, border: "1px solid #dc2626", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Kirim</button>
+          <button type="button" onClick={() => { setRejecting(false); setReason(""); }} style={{ flex: 1, height: btnH, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Batal</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ display: "flex", gap: 6, width: isMobile ? "100%" : "auto" }}>
+      <button type="button" disabled={disabled} onClick={() => setAspectReview(aspectId, itemId, "CHECKED", "")} style={{ flex: isMobile ? 1 : "none", height: btnH, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.green}`, background: C.green, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✓ Check</button>
+      <button type="button" disabled={disabled} onClick={() => setRejecting(true)} style={{ flex: isMobile ? 1 : "none", height: btnH, padding: "0 12px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✗ Reject</button>
+    </div>
+  );
+}
+
 // =========================================================================
 // COMPONENT: MaturityAuditEditor
 // =========================================================================
@@ -175,6 +201,8 @@ export function MaturityAuditEditor({
   setMaturityAuditForm,
   maturityAuditEvidence,
   setMaturityAuditEvidence,
+  maturityAspectReviews = {},
+  setAspectReview,
   expandedAspek,
   setExpandedAspek,
   activeAspectId: propsActiveAspectId,
@@ -216,6 +244,9 @@ export function MaturityAuditEditor({
   const canScoreUPT = isUPT && (status === "DRAFT" || status === "SELF_ASSESSMENT" || status === "REVISION");
   const canScoreUIT = isUIT && status === "REVIEW_UIT";
   const canScorePusat = isPusat && (status === "REVIEW_PUSAT" || status === "FINAL");
+  // Review paralel per-aspek: UIT boleh Check/Reject selama fase apa pun sebelum
+  // audit dikirim ke Pusat — bukan hanya saat status sudah REVIEW_UIT.
+  const canReviewUIT = isUIT && ["DRAFT", "SELF_ASSESSMENT", "REVISION", "REVIEW_UIT"].includes(status);
   // Autosave draft UPT (evidence + skor) — debounce, skip run pertama (mount) biar
   // tidak autosave tanpa perubahan nyata.
   const autosaveFirstRun = useRef(true);
@@ -290,6 +321,13 @@ export function MaturityAuditEditor({
   // Evidence dianggap lengkap bila SEMUA aspek sudah memenuhi jumlah bukti wajib.
   const incompleteAspectsCount = AUDIT_ASPECTS.length - completedAspectsCount;
   const evidenceComplete = incompleteAspectsCount === 0;
+  // Gate "Kirim Hasil ke Pusat": SEMUA item evidence non-auto harus sudah
+  // di-Check UIT (item auto-filled dari Form 5S dianggap auto-checked).
+  const allItemsChecked = AUDIT_ASPECTS.every(a => a.requiredEvidence.every(item => {
+    const files = maturityAuditEvidence[a.id]?.filter(f => f.itemId === item.id) || [];
+    if (files.length > 0 && files.every(f => f.auto === true)) return true; // auto-filled, skip
+    return maturityAspectReviews[`${a.id}::${item.id}`]?.state === "CHECKED";
+  }));
 
   const uitReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.uit || 0) > 0).length;
   const pusatReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.pusat || 0) > 0).length;
@@ -491,95 +529,94 @@ export function MaturityAuditEditor({
                     const isUploaded = itemFiles.length > 0;
                     const isAutoFilled = isUploaded && itemFiles.every(f => f.auto === true);
                     const targetFolderPath = `${currentUptName} / ${activeCategory.label} / Aspek ${activeAspect.id} / ${eviItem.label}`;
+                    // Review per-item: key komposit "aspectId::itemId". Auto-filled dari Form 5S
+                    // dianggap otomatis lolos, tidak perlu Check manual UIT.
+                    const itemReview = maturityAspectReviews[`${activeAspect.id}::${eviItem.id}`];
+                    const itemReviewState = itemReview?.state || "PENDING";
+                    const itemLatestAt = Math.max(0, ...itemFiles.map(f => f.savedAt || f.uploadedAt || f.createdAt || 0));
+                    const itemReviewStale = Boolean(itemReview?.reviewedAt) && itemLatestAt > itemReview.reviewedAt;
+                    const itemReviewColor = itemReviewState === "CHECKED" ? C.green : itemReviewState === "REJECTED" ? "#dc2626" : C.muted;
+                    const itemReviewLabel = itemReviewState === "CHECKED" ? "✓ Checked" : itemReviewState === "REJECTED" ? "✗ Rejected" : "Menunggu Review";
                     return (
                       <div key={eviItem.id} style={{
-                        background: isAutoFilled ? `${C.green}14` : C.surface,
-                        border: `1.5px solid ${isAutoFilled ? C.green : isUploaded ? C.accent : C.border}`,
-                        borderRadius: 14,
-                        padding: "16px 18px",
+                        background: isAutoFilled ? `${C.green}0d` : C.surface,
+                        border: `1px solid ${isAutoFilled ? C.green : isUploaded ? C.accent : C.border}`,
+                        borderRadius: 12,
+                        padding: 12,
                         display: "flex",
                         flexDirection: "column",
-                        gap: 12,
-                        boxShadow: "0 1px 3px rgba(15,23,42,0.04)",
-                        transform: is3D ? "translateZ(10px)" : "none",
+                        gap: 10,
+                        boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
                         transition: "all 0.2s"
                       }}>
-                        <div style={{ display: "flex", alignItems: isMobile ? "flex-start" : "center", justifyContent: "space-between", gap: 14, flexWrap: isMobile ? "wrap" : "nowrap", width: "100%" }}>
-                          <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 10, width: "100%" }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
                             <div style={{
-                              width: 30,
-                              height: 30,
+                              width: 26,
+                              height: 26,
                               borderRadius: "50%",
                               background: isAutoFilled ? C.green : isUploaded ? C.accent : C.border,
                               color: isUploaded ? "white" : C.muted,
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "center",
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: 800,
                               flexShrink: 0,
-                              marginTop: 2,
-                              border: `1.5px solid ${isAutoFilled ? C.green : isUploaded ? C.accent : C.border}`
+                              marginTop: 1
                             }}>
                               {isUploaded ? <Icons.Check /> : eviIdx + 1}
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                                <span style={{ fontSize: 13, fontWeight: 800, color: C.text, lineHeight: 1.3 }}>{eviItem.label}</span>
+                                <span style={{ fontSize: 13, fontWeight: 800, color: C.text, lineHeight: 1.35, whiteSpace: "normal", wordBreak: "break-word" }}>{eviItem.label}</span>
                                 {isAutoFilled && (
                                   <span style={{
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     fontWeight: 800,
-                                    padding: "2px 8px",
+                                    padding: "1px 7px",
                                     borderRadius: 14,
                                     background: `${C.green}22`,
                                     color: C.green,
                                     border: `1px solid ${C.green}55`,
-                                    letterSpacing: "0.3px",
-                                    textTransform: "uppercase",
                                     whiteSpace: "nowrap"
                                   }}>
-                                    ✓ Auto dari Form 5S
+                                    ✓ Auto 5S
                                   </span>
                                 )}
                               </div>
                               <div style={{
-                                fontSize: 13,
-                                color: C.accent,
-                                background: `${C.accent}12`,
-                                border: `1px solid ${C.accent}33`,
-                                padding: "3px 10px",
-                                borderRadius: 10,
-                                marginTop: 6,
-                                display: "flex",
-                                alignItems: "center",
-                                gap: 6,
-                                maxWidth: "100%",
-                                minWidth: 0,
-                                boxSizing: "border-box"
+                                fontSize: 12,
+                                color: C.muted,
+                                marginTop: 5,
+                                whiteSpace: "normal",
+                                wordBreak: "break-word",
+                                minWidth: 0
                               }}>
-                                <span style={{ fontWeight: 800, fontSize: 13, color: C.accent, flexShrink: 0 }}>📍 Sub-Bagian Target:</span>
-                                <span style={{ fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{targetFolderPath}</span>
+                                📍 {isMobile ? `Aspek ${activeAspect.id} / ${eviItem.label}` : targetFolderPath}
                               </div>
-                              {canScoreUPT && !isAutoFilled && <span style={{ display: "block", marginTop: 6, fontSize: 13, color: C.muted, fontWeight: 800 }}>Maks. 25 MB per berkas; foto, PDF, dokumen Office, ZIP/RAR, TXT, atau CSV.</span>}
+                              {canScoreUPT && !isAutoFilled && <span style={{ display: "block", marginTop: 5, fontSize: 12, color: C.muted, whiteSpace: "normal", wordBreak: "break-word" }}>Maks. 25 MB per berkas; foto, PDF, dokumen Office, ZIP/RAR, TXT, atau CSV.</span>}
                             </div>
                           </div>
 
                           {canScoreUPT && !isAutoFilled && (
                             <label style={{
-                              padding: "8px 18px",
+                              padding: "0 16px",
+                              height: isMobile ? 40 : 32,
                               borderRadius: 10,
                               background: uploadingItems[eviItem.id] ? "#fffbeb" : isUploaded ? C.surface : "linear-gradient(135deg, #2563eb, #1d4ed8)",
                               color: uploadingItems[eviItem.id] ? "#b45309" : isUploaded ? C.text : "#ffffff",
                               border: `1.5px solid ${uploadingItems[eviItem.id] ? "#fde68a" : isUploaded ? C.border : "#1d4ed8"}`,
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: 800,
                               cursor: uploadingItems[eviItem.id] ? "wait" : "pointer",
                               display: "inline-flex",
                               alignItems: "center",
+                              justifyContent: "center",
                               gap: 6,
                               whiteSpace: "nowrap",
                               flexShrink: 0,
+                              width: isMobile ? "100%" : "auto",
                               marginLeft: isMobile ? 0 : "auto",
                               boxShadow: isUploaded ? "0 1px 2px rgba(0,0,0,0.05)" : "0 3px 10px rgba(37,99,235,0.25)",
                               transition: "all 0.15s ease"
@@ -628,23 +665,39 @@ export function MaturityAuditEditor({
                           )}
                           {canScoreUPT && isAutoFilled && (
                             <div style={{
-                              padding: "6px 12px",
+                              padding: "0 12px",
+                              height: isMobile ? 40 : 32,
                               borderRadius: 10,
                               background: `${C.green}22`,
                               color: C.green,
                               border: `1.5px solid ${C.green}55`,
-                              fontSize: 13,
+                              fontSize: 12,
                               fontWeight: 800,
                               display: "flex",
                               alignItems: "center",
+                              justifyContent: "center",
                               gap: 4,
                               whiteSpace: "nowrap",
-                              flexShrink: 0
+                              flexShrink: 0,
+                              width: isMobile ? "100%" : "auto"
                             }}>
                               <Icons.Check /> Terisi Otomatis
                             </div>
                           )}
                         </div>
+
+                        {!isAutoFilled && (
+                          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
+                              <span style={{ fontSize: 12, fontWeight: 800, padding: "1px 8px", borderRadius: 14, background: `${itemReviewColor}22`, color: itemReviewColor, border: `1px solid ${itemReviewColor}55`, whiteSpace: "nowrap", alignSelf: "flex-start" }}>{itemReviewLabel}</span>
+                              {itemReviewStale && <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, wordBreak: "break-word" }}>Evidence berubah setelah review — perlu re-review</span>}
+                              {itemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
+                            </div>
+                            {canReviewUIT && isUploaded && (
+                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={setAspectReview} disabled={maturityAuditSaving} isMobile={isMobile} />
+                            )}
+                          </div>
+                        )}
 
                         <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
                           {isUploaded ? (
@@ -1095,13 +1148,26 @@ export function MaturityAuditEditor({
               )}
               <button className="approval-btn--cancel" onClick={() => setMaturityAuditModal(null)}>Batal</button>
               {canScoreUPT && (
+                <button className="approval-btn--cancel" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
+              )}
+              {canReviewUIT && (
                 <>
-                  <button className="approval-btn--cancel" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
+                  {/* Lempar-balik keseluruhan ke UPT — review per-aspek tetap tersimpan di tabel terpisah. */}
+                  <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
                   <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => {
+                    if (!allItemsChecked) {
+                      askConfirmDelete?.({
+                        title: "Masih Ada Item Belum Di-Check",
+                        message: "Masih ada item bukti yang belum di-Check UIT.",
+                        confirmLabel: "Mengerti",
+                        variant: "warning",
+                      });
+                      return;
+                    }
                     if (!evidenceComplete) {
                       askConfirmDelete?.({
                         title: "Evidence Belum Lengkap",
-                        message: `Masih ada ${incompleteAspectsCount} aspek yang bukti wajibnya belum lengkap diunggah. Lengkapi semua evidence dulu sebelum kirim hasil ke UIT.`,
+                        message: `Masih ada ${incompleteAspectsCount} aspek yang bukti wajibnya belum lengkap diunggah.`,
                         confirmLabel: "Mengerti",
                         variant: "warning",
                       });
@@ -1110,23 +1176,14 @@ export function MaturityAuditEditor({
                     if (!form5SSavedThisMonth) {
                       askConfirmDelete?.({
                         title: "Form 5S Belum Diisi",
-                        message: "Isi & simpan Form Pengisian 5S bulan ini dulu sebelum kirim hasil ke UIT.",
+                        message: "Isi & simpan Form Pengisian 5S bulan ini dulu sebelum kirim hasil ke Pusat.",
                         confirmLabel: "Mengerti",
                         variant: "warning",
                       });
                       return;
                     }
-                    // Serahkan ke jenjang UIT. Sebelumnya tombol ini menyimpan
-                    // SELF_ASSESSMENT — audit tidak pernah sampai ke meja UIT.
-                    saveMaturityAudit(audit, "REVIEW_UIT");
-                  }}>Kirim Hasil ke UIT</button>
-                </>
-              )}
-              {canScoreUIT && (
-                <>
-                  <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  {/* Ke meja Pusat, bukan langsung FINAL — Pusat yang menilai final. */}
-                  <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVIEW_PUSAT")}>Kirim Hasil ke Pusat</button>
+                    saveMaturityAudit(audit, "REVIEW_PUSAT");
+                  }}>Kirim Hasil ke Pusat</button>
                 </>
               )}
               {canScorePusat && (

@@ -361,6 +361,7 @@ export default function PLNWarehouse() {
     maturityAuditForm, setMaturityAuditForm,
     maturityAuditSaving, setMaturityAuditSaving,
     maturityAuditEvidence, setMaturityAuditEvidence,
+    maturityAspectReviews, setAspectReview,
     expandedAspek, setExpandedAspek,
     activeAspectId, setActiveAspectId,
     aspectPage, setAspectPage,
@@ -4211,6 +4212,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               setMaturityAuditForm={setMaturityAuditForm}
               maturityAuditEvidence={maturityAuditEvidence}
               setMaturityAuditEvidence={setMaturityAuditEvidence}
+              maturityAspectReviews={maturityAspectReviews}
+              setAspectReview={setAspectReview}
               saveMaturity5SAssessment={saveMaturity5SAssessment}
               expandedAspek={expandedAspek}
               setExpandedAspek={setExpandedAspek}

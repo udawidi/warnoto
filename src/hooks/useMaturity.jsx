@@ -9,6 +9,7 @@ import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import {
   getDefaultMaturityAuditHistory, upsertMaturityAssessment, upsertMaturityAudit,
   insertMaturity5SAssessment, deleteMaturityAuditRow, loadMaturityAuditHistory,
+  loadAspectReviews, upsertAspectReview,
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
 import { exportMaturitySheet } from "../lib/maturityDrive.js";
@@ -55,6 +56,10 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // {aspekId: [{url,name,size,itemId,...}]}
   const maturityAuditEvidenceRef = useRef(maturityAuditEvidence);
   maturityAuditEvidenceRef.current = maturityAuditEvidence;
+  // Review paralel per-aspek (UIT Check/Reject sebelum UPT kirim semua aspek):
+  // {aspekId: {state,note,reviewedBy,reviewedAt}} — hidup di tabel terpisah, dimuat
+  // ulang tiap audit dibuka (lihat createMaturityAudit/openMaturityAudit).
+  const [maturityAspectReviews, setMaturityAspectReviews] = useState({});
   const [expandedAspek, setExpandedAspek] = useState(null); // kategori aktif di editor
   const [activeAspectId, setActiveAspectId] = useState(null);
   const [aspectPage, setAspectPage] = useState(1);
@@ -212,6 +217,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     AUDIT_ASPECTS.forEach(a => { scores[a.id] = { upt:0, uit:0, pusat:0 }; });
     setMaturityAuditForm({ aspekScores: scores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
     setMaturityAuditEvidence(mergeCurrentMonth5SEvidence({}, selectedMaturityUpt));
+    setMaturityAspectReviews({}); // audit baru — belum ada review tersimpan
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
     setActiveAspectId(null);
     setAspectPage(1);
@@ -228,6 +234,29 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setActiveAspectId(null);
     setAspectPage(1);
     setMaturityAuditModal(audit);
+    setMaturityAspectReviews({});
+    if (audit?.id) {
+      loadAspectReviews(audit.id).then(rows => {
+        setMaturityAspectReviews(Object.fromEntries(rows.map(r => [`${r.aspectId}::${r.itemId}`, r])));
+      });
+    }
+  }
+  // UIT/Pusat Check/Reject satu ITEM evidence (bukan seluruh aspek) — paralel
+  // dgn UPT yang masih mengunggah item lain (tabel terpisah, tidak menyentuh
+  // baris maturity_audits). Key state lokal: "aspectId::itemId".
+  async function setAspectReview(aspectId, itemId, state, note = "") {
+    const audit = maturityAuditModal;
+    if (!audit?.id) return;
+    const uptName = audit.upt || selectedMaturityUpt || "UPT Surabaya";
+    const uptId = audit.uptId || uptIdByNama(uptName) || null;
+    const reviewedBy = currentUser?.name || currentUser?.username || currentUser?.id || null;
+    const saved = await upsertAspectReview({ auditId: audit.id, aspectId, itemId, uptId, state, note, reviewedBy });
+    if (!saved) {
+      showToast("Review item tidak tersimpan karena server tidak dapat dihubungi.", "error");
+      return;
+    }
+    setMaturityAspectReviews(current => ({ ...current, [`${aspectId}::${itemId}`]: saved }));
+    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${aspectId}:${itemId}`, { state });
   }
   // Skor akhir: getScore pilih pusat>uit>upt(rasio bukti), rata 5 kategori,
   // A = avg(5 kategori)*0.75 + B = avg(sarana_prasarana,k3,teknologi)*0.25;
@@ -475,6 +504,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityDraftSavedAt,
     autosaveMaturityDraft,
     maturityAuditEvidence, setMaturityAuditEvidence,
+    maturityAspectReviews, setAspectReview,
     expandedAspek, setExpandedAspek,
     activeAspectId, setActiveAspectId,
     aspectPage, setAspectPage,
