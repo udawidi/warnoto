@@ -82,6 +82,22 @@ function pelaksaraDisplay(x) {
   return Array.isArray(x) ? x.join(", ") : (x || "—");
 }
 
+// No SLoc (storage location SAP) melekat ke UPT, bukan gudang. Cocokkan nama kota
+// supaya tahan variasi ("UPT Surabaya", "Surabaya", huruf besar-kecil).
+const SLOC_BY_CITY = {
+  surabaya: "2000",
+  malang: "2010",
+  madiun: "2020",
+  probolinggo: "2030",
+  bali: "2040",
+  gresik: "2050",
+};
+function slocForUpt(namaUpt) {
+  const s = String(namaUpt || "").toLowerCase();
+  for (const city in SLOC_BY_CITY) if (s.includes(city)) return SLOC_BY_CITY[city];
+  return "";
+}
+
 export function InspeksiMaterialCadangTab({
   stocks = [],
   katalogList = [],
@@ -746,7 +762,7 @@ export function InspeksiMaterialCadangTab({
               {[
                 ["Tanggal", printBatch.tanggal || "—"],
                 ["Nama Gudang", printBatch.namaGudang || printBatch.gudangId || "—"],
-                ["No SLoc", printBatch.noSloc || "—"],
+                ["No SLoc", printBatch.noSloc || slocForUpt(printBatch.namaUpt) || "—"],
                 ["Nama UPT", printBatch.namaUpt || printBatch.uptId || "—"],
               ].map(([k, v]) => (
                 <tr key={k}>
