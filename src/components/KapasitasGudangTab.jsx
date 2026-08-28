@@ -292,7 +292,10 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
               </div>
             </div>
             {(() => {
-              const matchedGudang = gudangList.find(g=>g.id===detailRecord.matchedGudangId);
+              // matched_gudang_id sering kosong di data kapasitas → fallback cocokkan nama gudang.
+              const dgNama = (detailRecord.gudang||"").trim().toLowerCase();
+              const matchedGudang = (detailRecord.matchedGudangId && gudangList.find(g=>g.id===detailRecord.matchedGudangId))
+                || gudangList.find(g=>(g.nama||"").trim().toLowerCase()===dgNama);
               const fotoSrc = matchedGudang?.fotoGudang || matchedGudang?.denahImageData || null;
               return fotoSrc ? (
                 <img src={fotoSrc} alt="Foto gudang" style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius: 14,marginBottom:12}}/>
