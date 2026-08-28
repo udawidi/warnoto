@@ -235,7 +235,8 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                   : <><button className="approval-btn--approve" onClick={()=>approveTUG5_MgrULTG(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager ULTG)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
               {/* TL/SUPERADMIN bisa perbaiki file ajuan admin yang salah input, tanpa reject-recreate */}
-              {hasRole(currentUser, "TL","SUPERADMIN") && t.status==="PENDING" && rejectingId!==t.id && ["TUG3","TUG5","TUG8","TUG9","TUG10"].includes(t.docType) && (
+              {/* TUG-3 hanya editable in-place di stage PENDING_TL; stage MENUNGGU_TUG4/PENDING_ASMAN kalau diedit akan renumber+regress (isEditInPlace cuma cek PENDING_TL) */}
+              {hasRole(currentUser, "TL","SUPERADMIN") && t.status==="PENDING" && rejectingId!==t.id && ["TUG3","TUG5","TUG8","TUG9","TUG10"].includes(t.docType) && (t.docType!=="TUG3" || t.stage==="PENDING_TL") && (
                 <button className="approval-btn--cancel" onClick={()=>{
                   if (t.docType==="TUG3") editDraftTug3?.(t);
                   else if (t.docType==="TUG10") editTug10?.(t);
