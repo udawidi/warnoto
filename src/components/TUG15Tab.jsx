@@ -67,8 +67,13 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
   async function openAttachment(url) {
     if (!url) return;
     setAttachmentState({ loading:true, error:"" });
-    try { const resolved = await resolveLegacyPrivateUrl(url); if (!resolved) throw new Error("Lampiran tidak tersedia."); window.open(resolved, "_blank", "noopener,noreferrer"); setAttachmentState({ loading:false, error:"" }); }
-    catch (err) { setAttachmentState({ loading:false, error:err.message || "Lampiran tidak dapat dibuka." }); }
+    // Buka tab sinkron di dalam gesture; isi URL setelah await (open setelah
+    // await = popup diblokir). w.opener=null ganti "noopener" (fitur itu bikin
+    // window.open balik null).
+    const w = window.open("", "_blank");
+    if (w) w.opener = null;
+    try { const resolved = await resolveLegacyPrivateUrl(url); if (!resolved) throw new Error("Lampiran tidak tersedia."); if (w) w.location.href = resolved; setAttachmentState({ loading:false, error:"" }); }
+    catch (err) { if (w) w.close(); setAttachmentState({ loading:false, error:err.message || "Lampiran tidak dapat dibuka." }); }
   }
 
   async function handleSyncSupabase() {

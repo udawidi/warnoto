@@ -64,10 +64,18 @@ export function MaturityDashboardTab({
             const canExportSheet = hasRole(currentUser, "ADMIN", "TL") || canSwitchMaturityUpt;
             async function handleExportSheet(a) {
               setExportingSheetId(a.id);
+              // Buka tab sinkron di dalam gesture klik; isi URL setelah await
+              // (kalau open dipanggil setelah await, popup diblokir). Pola sama
+              // Kartu Gantung TUG.2. `w.opener=null` ganti fitur "noopener" yang
+              // bikin window.open balik null.
+              const w = window.open("", "_blank");
+              if (w) w.opener = null;
               try {
                 const result = await exportMaturityGoogleSheet(a);
-                if (result?.webViewLink) window.open(result.webViewLink, "_blank", "noopener");
+                if (result?.webViewLink && w) w.location.href = result.webViewLink;
+                else if (w) w.close();
               } catch (err) {
+                if (w) w.close();
                 console.warn("Export Google Sheet Maturity gagal:", err);
               } finally {
                 setExportingSheetId(null);
