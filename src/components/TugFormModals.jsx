@@ -222,7 +222,9 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
             <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Barang yang sama bisa ada di lokasi berbeda — pastikan pilih baris dengan lokasi yang benar.</div>
             {txnForm.stockItems.map((si,idx)=>{
               const stockOpt = enrichedStocks.find(s=>s.id===si.stockId);
-              const complete = !!si.stockId && si.qty>0;
+              // Baru boleh auto-ringkas kalau SEMUA terisi: barang + qty + foto.
+              const hasFoto = txnForm.fotoMaterial.some(fm=>fm.stockId===si.stockId);
+              const complete = !!si.stockId && Number(si.qty)>0 && hasFoto;
               // Auto-ringkas begitu item lengkap (tiru UX tug10Collapsed) — default collapsed
               // saat complete kecuali user eksplisit buka lagi (tug98Collapsed[idx]===false).
               const collapsed = complete && tug98Collapsed[idx] !== false;
@@ -234,8 +236,8 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                     <button type="button" style={{...sty.btn("ghost","sm")}} onClick={e=>{e.stopPropagation();setTug98Collapsed(c=>({...c,[idx]:false}));}}>▼ Buka</button>
                   </div>
                 ) : (
-                <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8,alignItems:isMobile?"stretch":"flex-end"}}>
-                  <div style={{flex:isMobile?undefined:3}}>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{minWidth:0}}>
                     <label style={sty.label}>Barang {idx+1}</label>
                     {txnForm.gudangId ? (
                       <SearchableSelect
@@ -257,18 +259,18 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                       <div style={{...sty.input,display:"flex",alignItems:"center",color:C.muted,background:"#f3f4f6"}}>Pilih gudang dulu</div>
                     )}
                   </div>
-                  <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-                    <div style={{flex:1}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty===0||si.qty===""?"":si.qty} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/></div>
+                  <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
+                    <div style={{width:isMobile?96:110,flexShrink:0}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty===0||si.qty===""?"":si.qty} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/></div>
                     <button type="button" title="Scan barcode" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>openScanner({txnIndex:idx})}>📷</button>
                     {complete && <button type="button" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>setTug98Collapsed(c=>({...c,[idx]:true}))}>▲ Ringkas</button>}
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus baris barang ini" style={{...sty.btn("danger","sm"),height:isMobile?44:36}} onClick={()=>removeItemRow(idx)}>✕</button>}
                   </div>
                   {si.stockId && (()=>{ const existingPhoto = txnForm.fotoMaterial.find(fm=>fm.stockId===si.stockId); return (
-                    <div style={{flexBasis:"100%",marginTop:4}}>
+                    <div style={{borderTop:`1px dashed ${C.border}`,paddingTop:8}}>
                       <label style={sty.label}>Foto Barang Ini</label>
-                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
                         <input type="file" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:12,color:C.muted}}/>
-                        {existingPhoto && <img src={existingPhoto.img} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:10}}/>}
+                        {existingPhoto && <img src={existingPhoto.img} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:10}}/>}
                       </div>
                     </div>
                   ); })()}
