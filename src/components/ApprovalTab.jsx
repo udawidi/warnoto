@@ -28,14 +28,19 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const [capPage, setCapPage] = useState(1);
   const [lokasiPage, setLokasiPage] = useState(1);
   const [reviewingTxn, setReviewingTxn] = useState(null);
-  useEffect(() => { setTugPage(1); setCapPage(1); setLokasiPage(1); }, [approvalTypeFilter, approvalPageSize]);
+  const [tugTypeFilter, setTugTypeFilter] = useState("ALL");
+  useEffect(() => { setTugPage(1); setCapPage(1); setLokasiPage(1); }, [approvalTypeFilter, approvalPageSize, tugTypeFilter]);
   const canApproveCap = hasRole(currentUser, "TL","ASMAN");
   const pendingCapacityImports = (gudangCapacityImports||[]).filter(i=>i.status==="PENDING_ASMAN");
   const pendingLokasiChanges = hasRole(currentUser, "TL") ? (lokasiList||[]).filter(l=>l.status==="PENDING") : [];
   const showTug = approvalTypeFilter==="ALL"||approvalTypeFilter==="TUG";
   const showCap = approvalTypeFilter==="ALL"||approvalTypeFilter==="KAPASITAS";
   const showLokasi = approvalTypeFilter==="ALL"||approvalTypeFilter==="LOKASI";
-  const pagedTxns = showTug ? pendingTxns.slice((tugPage-1)*approvalPageSize, tugPage*approvalPageSize) : [];
+  const sortedTxns = [...pendingTxns].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  const TUG_TYPE_ORDER = ["TUG3","TUG5","TUG7","TUG8","TUG9","TUG10"];
+  const tugTypeCounts = TUG_TYPE_ORDER.map(dt=>({ dt, count: sortedTxns.filter(t=>t.docType===dt).length })).filter(x=>x.count>0);
+  const visibleTxns = tugTypeFilter==="ALL" ? sortedTxns : sortedTxns.filter(t=>t.docType===tugTypeFilter);
+  const pagedTxns = showTug ? visibleTxns.slice((tugPage-1)*approvalPageSize, tugPage*approvalPageSize) : [];
   const pagedCapacityImports = showCap ? pendingCapacityImports.slice((capPage-1)*approvalPageSize, capPage*approvalPageSize) : [];
   const pagedLokasiChanges = showLokasi ? pendingLokasiChanges.slice((lokasiPage-1)*approvalPageSize, lokasiPage*approvalPageSize) : [];
   function renderPager(page, setPage, totalItems) {
@@ -131,6 +136,15 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
         </div>
       ) : !showTug ? null : <>
       {approvalTypeFilter==="ALL" && pendingTxns.length>0 && sectionHeading("📄","Transaksi TUG")}
+      {pendingTxns.length>0 && tugTypeCounts.length>1 && (
+        <div role="group" aria-label="Filter tipe TUG" style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
+          <button type="button" aria-pressed={tugTypeFilter==="ALL"} onClick={()=>setTugTypeFilter("ALL")} style={{padding:"6px 12px",minHeight:36,borderRadius: 14,border:`1px solid ${tugTypeFilter==="ALL"?C.accent:C.border}`,background:tugTypeFilter==="ALL"?C.accent:(C.surface||"white"),color:tugTypeFilter==="ALL"?"white":C.muted,fontSize:12,fontWeight:tugTypeFilter==="ALL"?700:500,cursor:"pointer"}}>Semua ({sortedTxns.length})</button>
+          {tugTypeCounts.map(({dt,count})=>{
+            const active = tugTypeFilter===dt;
+            return <button key={dt} type="button" aria-pressed={active} onClick={()=>setTugTypeFilter(dt)} style={{padding:"6px 12px",minHeight:36,borderRadius: 14,border:`1px solid ${active?C.accent:C.border}`,background:active?C.accent:(C.surface||"white"),color:active?"white":C.muted,fontSize:12,fontWeight:active?700:500,cursor:"pointer"}}>{dt.replace("TUG","TUG-")} ({count})</button>;
+          })}
+        </div>
+      )}
       {pagedTxns.map(t=>{
         const creator = users.find(u=>u.id===t.createdBy)||{};
         const isTUG8Draft = t.docType==="TUG8" && t.stage==="DRAFT_TUG8";
@@ -249,7 +263,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
         );
       })}
       </>}
-      {showTug && renderPager(tugPage, setTugPage, pendingTxns.length)}
+      {showTug && renderPager(tugPage, setTugPage, visibleTxns.length)}
 
       {/* Approval Import Kapasitas Gudang — TL/Asman saja */}
       {approvalTypeFilter==="ALL" && showCap && canApproveCap && pendingCapacityImports.length>0 && sectionHeading("📐","Kapasitas Gudang")}
