@@ -6,8 +6,13 @@ function hasAllowedGudang(user, gudangId) {
   return !Array.isArray(ids) || ids.length === 0 || ids.includes(gudangId);
 }
 
+// Tier nasional: SUPERADMIN (global) + ADMIN_LOG_PUSAT (PLN Pusat) — lihat semua gudang lintas UPT.
+function isNationalRole(user) {
+  return user?.role === "SUPERADMIN" || user?.role === "ADMIN_LOG_PUSAT";
+}
+
 export function getVisibleGudangForInspection({ currentUser, currentUserUptId, gudangList = [], uptList = [] }) {
-  if (currentUser?.role === "SUPERADMIN") return gudangList;
+  if (isNationalRole(currentUser)) return gudangList;
 
   const isUitScoped = !!currentUser?.uitId && !currentUser?.uptId && !currentUser?.ultgId;
   return gudangList.filter(gudang => {
@@ -31,14 +36,14 @@ export function getInspectionScope({
   const scopedGudangUptById = new Map(scopedGudangList.map(gudang => [gudang.id, gudang.uptId]));
   const scopedLokasiList = lokasiList.filter(lokasi => scopedGudangIds.has(lokasi.gudangId));
   const scopedLokasiIds = new Set(scopedLokasiList.map(lokasi => lokasi.id));
-  const isSuperadmin = currentUser?.role === "SUPERADMIN";
+  const isNational = isNationalRole(currentUser);
 
   return {
     gudangList: scopedGudangList,
     lokasiList: scopedLokasiList,
     stocks: stocks.filter(stock => scopedLokasiIds.has(stock.lokasiId)),
     materialInspectionBatches: materialInspectionBatches.filter(batch =>
-      isSuperadmin || scopedGudangUptById.get(batch?.gudangId) === batch?.uptId
+      isNational || scopedGudangUptById.get(batch?.gudangId) === batch?.uptId
     ),
   };
 }

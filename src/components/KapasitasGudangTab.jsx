@@ -284,11 +284,11 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
       {detailRecord && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20}} onClick={()=>setDetailRecord(null)}>
           <div className="capacity-detail-modal" style={{...sty.card,maxWidth:480,width:"100%",maxHeight:"90dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,gap:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8}}>
               <h3 style={{fontWeight:800}}>{detailRecord.subGudang}</h3>
-              <div style={{display:"flex",gap:6,flexShrink:0}}>
+              <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
                 {canEdit && <button style={sty.btn("ghost","sm")} onClick={()=>setEditRecord({...detailRecord})}>Edit</button>}
-                <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(null)} aria-label="Tutup">✕</button>
+                <button onClick={()=>setDetailRecord(null)} aria-label="Tutup" style={{width:36,height:36,minWidth:36,borderRadius:8,border:`1px solid ${C.border}`,background:C.surface||"white",color:C.text,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,fontWeight:800,fontSize:15}}>✕</button>
               </div>
             </div>
             {(() => {

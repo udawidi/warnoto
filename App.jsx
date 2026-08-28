@@ -3617,8 +3617,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const scopedOpnameList = dataScope === null ? opnameList : opnameList.filter(o => inScopeUpt(users.find(u => u.id === o.dibuatOleh)?.uptId || null, dataScope));
   const scopedStockCountList = dataScope === null ? stockCountList : stockCountList.filter(sc => inScopeUpt(users.find(u => u.id === sc.uploadedBy)?.uptId || null, dataScope));
   // UPT adalah pagar pertama; gudang_ids hanya mempersempit scope itu.
-  // SUPERADMIN tetap global, sedangkan akun UIT/ULTG mengikuti hierarki unitnya.
-  const gudangAccessLimited = currentUser?.role !== "SUPERADMIN";
+  // Tier nasional (SUPERADMIN global + ADMIN_LOG_PUSAT/PLN Pusat) = dataScope null →
+  // tidak dilimit (lihat semua gudang/kapasitas); UIT/UPT tetap mengikuti hierarki unitnya.
+  const gudangAccessLimited = dataScope !== null;
   const visibleGudangList = useMemo(() => getVisibleGudangForInspection({
     currentUser,
     currentUserUptId,
