@@ -144,7 +144,7 @@ export function useWarehouseConfig({
   const [capacityReviewCandidates, setCapacityReviewCandidates] = useState([]); // hasil previewCapacityGudangMatch untuk import di atas
   const [capacityReviewDecisions, setCapacityReviewDecisions] = useState({}); // key "UPT|GUDANG" -> {action:"NEW"} | {action:"MAP",mappedGudangId}
 
-  function openAddGudang() { setGudangForm({id:"GDG-"+uid().slice(-6), nama:"", kode:"", alamat:"", uptId:uptList[0]?.id||"", denahImageData:null, denahUploadedAt:null, createdAt:Date.now()}); setGudangModal("add"); setGudangWizardStep(1); setWizardBlokDraft(null); }
+  function openAddGudang() { setGudangForm({id:"GDG-"+uid().slice(-6), nama:"", kode:"", alamat:"", uptId:uptList[0]?.id||"", denahImageData:null, denahUploadedAt:null, fotoGudang:null, createdAt:Date.now()}); setGudangModal("add"); setGudangWizardStep(1); setWizardBlokDraft(null); }
   function openEditGudang(g) { setGudangForm({...g}); setGudangModal("edit"); }
   function closeGudangWizard() { setGudangModal(null); setGudangWizardStep(1); setWizardBlokDraft(null); }
   function syncGudang(ng) { return syncMasterTable("gudang", ng, g => ({ upt_id: g.uptId || null })); }

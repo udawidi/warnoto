@@ -144,7 +144,7 @@ export function LokasiModal({ lokasiModal, setLokasiModal, lokasiForm, setLokasi
   );
 }
 
-export function GudangEditModal({ gudangForm, setGudangForm, uptList, setGudangModal, saveGudang, sty, C }) {
+export function GudangEditModal({ gudangForm, setGudangForm, uptList, setGudangModal, saveGudang, handleGudangFoto, sty, C }) {
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -167,13 +167,28 @@ export function GudangEditModal({ gudangForm, setGudangForm, uptList, setGudangM
                 {uptList.map(u=><option key={u.id} value={u.id}>{u.kode} — {u.nama}</option>)}
               </select>
             </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Foto Gudang (opsional)</label>
+              <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                <div style={{width:96,height:96,borderRadius: 14,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {gudangForm.fotoGudang ? <img src={gudangForm.fotoGudang} alt="Foto gudang" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🏬</span>}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  <label style={{...sty.btn("ghost","sm"),textAlign:"center",cursor:"pointer"}}>
+                    📷 {gudangForm.fotoGudang?"Ganti Foto":"Upload Foto"}
+                    <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleGudangFoto}/>
+                  </label>
+                  {gudangForm.fotoGudang && <button style={sty.btn("danger","sm")} onClick={()=>setGudangForm(f=>({...f,fotoGudang:null}))}>Hapus Foto</button>}
+                </div>
+              </div>
+            </div>
             <div style={{display:"flex",gap:10}}><button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setGudangModal(null)}>Batal</button><button style={{...sty.btn("primary"),flex:2}} onClick={saveGudang}>💾 Simpan</button></div>
           </div>
         </div>
   );
 }
 
-export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangForm, setGudangForm, uptList, gudangList, lokasiList, closeGudangWizard, gudangWizardNext, uploadDenahGudang, denahLoading, suggestKodeFromOcr, wizardBlokDraft, setWizardBlokDraft, addWizardBlok, sty, C }) {
+export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangForm, setGudangForm, uptList, gudangList, lokasiList, closeGudangWizard, gudangWizardNext, uploadDenahGudang, denahLoading, suggestKodeFromOcr, wizardBlokDraft, setWizardBlokDraft, addWizardBlok, handleGudangFoto, sty, C }) {
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
           <div style={{...sty.card,width:540,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -205,6 +220,21 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                     <option value="">-- Pilih UPT --</option>
                     {uptList.map(u=><option key={u.id} value={u.id}>{u.kode} — {u.nama}</option>)}
                   </select>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <label style={sty.label}>Foto Gudang (opsional)</label>
+                  <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                    <div style={{width:96,height:96,borderRadius: 14,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {gudangForm.fotoGudang ? <img src={gudangForm.fotoGudang} alt="Foto gudang" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🏬</span>}
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      <label style={{...sty.btn("ghost","sm"),textAlign:"center",cursor:"pointer"}}>
+                        📷 {gudangForm.fotoGudang?"Ganti Foto":"Upload Foto"}
+                        <input type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleGudangFoto}/>
+                      </label>
+                      {gudangForm.fotoGudang && <button style={sty.btn("danger","sm")} onClick={()=>setGudangForm(f=>({...f,fotoGudang:null}))}>Hapus Foto</button>}
+                    </div>
+                  </div>
                 </div>
                 <div style={{display:"flex",gap:10}}>
                   <button style={{...sty.btn("ghost"),flex:1}} onClick={closeGudangWizard}>Batal</button>

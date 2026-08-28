@@ -7,16 +7,35 @@ import { hasRole, getScopeUptIds } from "../lib/roles.js";
 import { supabase } from "../supabaseClient.js";
 import { PetaGudangTab } from "./PetaGudangTab.jsx";
 
-export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[], gudangList, subGudangList, lokasiList, stocks, currentUser, uptList=[], sty, C, setTab, setStockSubTab, showToast, onSynced }) {
+// Threshold status kapasitas — sama dengan KapasitasGudangImportTab.jsx (revalidateRecord).
+function statusFromUtil(pct) {
+  if (pct >= 0.90) return "KRITIS";
+  if (pct >= 0.75) return "WASPADA";
+  return "AMAN";
+}
+
+export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[], gudangList, subGudangList, lokasiList, stocks, currentUser, uptList=[], sty, C, setTab, setStockSubTab, showToast, onSynced, onSaveCapacityRow }) {
   const [subTab, setSubTab] = useState("dashboard");
   const [filterUPT, setFilterUPT] = useState("ALL");
   const [petaUptFilter, setPetaUptFilter] = useState(""); // "" = semua; peta pakai uptId (gudang.uptId)
   const [filterStatus, setFilterStatus] = useState("ALL");
   const [detailRecord, setDetailRecord] = useState(null);
+  const [editRecord, setEditRecord] = useState(null);
   const [syncing, setSyncing] = useState(false);
 
-  const canEdit = hasRole(currentUser, "ADMIN","TL");
+  const canEdit = hasRole(currentUser, "ADMIN","TL","SUPERADMIN");
   const pendingImports = gudangCapacityImports.filter(item=>item.status==="PENDING_ASMAN").length;
+
+  function saveEditRecord() {
+    const luasLahanM2 = Number(editRecord.luasLahanM2)||0;
+    const luasTerpakaiM2 = Number(editRecord.luasTerpakaiM2)||0;
+    const sisaLuasM2 = luasLahanM2 - luasTerpakaiM2;
+    const persentaseTerpakai = luasLahanM2 > 0 ? luasTerpakaiM2/luasLahanM2 : 0;
+    const updated = { ...editRecord, luasLahanM2, luasTerpakaiM2, sisaLuasM2, persentaseTerpakai, statusKapasitas: statusFromUtil(persentaseTerpakai) };
+    onSaveCapacityRow?.(updated);
+    setEditRecord(null);
+    if (detailRecord?.id === updated.id) setDetailRecord(updated);
+  }
 
   async function syncFromSheet() {
     if (syncing) return;
@@ -230,7 +249,10 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
                     </td>
                     <td data-label="Update" style={{padding:"6px 10px",fontSize:12,color:C.muted}}>{r.waktuUpdate||"-"}</td>
                     <td data-label="Aksi" style={{padding:"6px 10px"}}>
-                      <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(r)}>Detail</button>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(r)}>Detail</button>
+                        {canEdit && <button style={sty.btn("ghost","sm")} onClick={()=>setEditRecord({...r})}>Edit</button>}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -262,10 +284,22 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
       {detailRecord && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20}} onClick={()=>setDetailRecord(null)}>
           <div className="capacity-detail-modal" style={{...sty.card,maxWidth:480,width:"100%",maxHeight:"90dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,gap:8}}>
               <h3 style={{fontWeight:800}}>{detailRecord.subGudang}</h3>
-              <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(null)} aria-label="Tutup">✕</button>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                {canEdit && <button style={sty.btn("ghost","sm")} onClick={()=>setEditRecord({...detailRecord})}>Edit</button>}
+                <button style={sty.btn("ghost","sm")} onClick={()=>setDetailRecord(null)} aria-label="Tutup">✕</button>
+              </div>
             </div>
+            {(() => {
+              const matchedGudang = gudangList.find(g=>g.id===detailRecord.matchedGudangId);
+              const fotoSrc = matchedGudang?.fotoGudang || matchedGudang?.denahImageData || null;
+              return fotoSrc ? (
+                <img src={fotoSrc} alt="Foto gudang" style={{width:"100%",maxHeight:220,objectFit:"cover",borderRadius: 14,marginBottom:12}}/>
+              ) : (
+                <div style={{...sty.card,padding:16,textAlign:"center",color:C.muted,fontSize:12,marginBottom:12,background:"#f9fafb"}}>Belum ada foto gudang.</div>
+              );
+            })()}
             <div className="capacity-detail-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12,marginBottom:12}}>
               {[["UPT",detailRecord.upt],["Gudang",detailRecord.gudang],["Tipe",detailRecord.typeGudang||"-"],["Alamat",detailRecord.alamat||"-"],
                 ["Luas Lahan",fmtNum(Math.round(detailRecord.luasLahanM2))+" m²"],["Terpakai",fmtNum(Math.round(detailRecord.luasTerpakaiM2))+" m²"],
@@ -281,6 +315,66 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
             </div>
             {detailRecord.keterangan && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>{detailRecord.keterangan}</div>}
             {detailRecord.linkGudang && <a href={detailRecord.linkGudang} target="_blank" rel="noreferrer" style={{fontSize:12,color:C.accent}}>Link Gudang</a>}
+          </div>
+        </div>
+      )}
+
+      {editRecord && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2100,padding:20}} onClick={()=>setEditRecord(null)}>
+          <div className="capacity-detail-modal" style={{...sty.card,maxWidth:480,width:"100%",maxHeight:"90dvh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+              <h3 style={{fontWeight:800}}>Edit Kapasitas — {editRecord.subGudang}</h3>
+              <button style={sty.btn("ghost","sm")} onClick={()=>setEditRecord(null)} aria-label="Tutup">✕</button>
+            </div>
+            <div className="capacity-detail-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,fontSize:12,marginBottom:12}}>
+              <div>
+                <label style={sty.label}>Luas Lahan (m²)</label>
+                <input style={sty.input} type="number" min={0} value={editRecord.luasLahanM2} onChange={e=>setEditRecord(r=>({...r,luasLahanM2:parseFloat(e.target.value)||0}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>Luas Terpakai (m²)</label>
+                <input style={sty.input} type="number" min={0} value={editRecord.luasTerpakaiM2} onChange={e=>setEditRecord(r=>({...r,luasTerpakaiM2:parseFloat(e.target.value)||0}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>Persediaan (%)</label>
+                <input style={sty.input} type="number" min={0} max={100} value={Math.round((editRecord.persediaanPct||0)*100)} onChange={e=>setEditRecord(r=>({...r,persediaanPct:(parseFloat(e.target.value)||0)/100}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>Cadang (%)</label>
+                <input style={sty.input} type="number" min={0} max={100} value={Math.round((editRecord.cadangPct||0)*100)} onChange={e=>setEditRecord(r=>({...r,cadangPct:(parseFloat(e.target.value)||0)/100}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>Pre-Memory (%)</label>
+                <input style={sty.input} type="number" min={0} max={100} value={Math.round((editRecord.preMemoryPct||0)*100)} onChange={e=>setEditRecord(r=>({...r,preMemoryPct:(parseFloat(e.target.value)||0)/100}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>ATTB (%)</label>
+                <input style={sty.input} type="number" min={0} max={100} value={Math.round((editRecord.attbPct||0)*100)} onChange={e=>setEditRecord(r=>({...r,attbPct:(parseFloat(e.target.value)||0)/100}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>Lainnya (%)</label>
+                <input style={sty.input} type="number" min={0} max={100} value={Math.round((editRecord.lainnyaPct||0)*100)} onChange={e=>setEditRecord(r=>({...r,lainnyaPct:(parseFloat(e.target.value)||0)/100}))}/>
+              </div>
+              <div>
+                <label style={sty.label}>Narahubung</label>
+                <input style={sty.input} value={editRecord.contactPerson||""} onChange={e=>setEditRecord(r=>({...r,contactPerson:e.target.value}))}/>
+              </div>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Link Gudang</label>
+              <input style={sty.input} value={editRecord.linkGudang||""} onChange={e=>setEditRecord(r=>({...r,linkGudang:e.target.value}))}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Keterangan</label>
+              <textarea style={{...sty.input,minHeight:60}} value={editRecord.keterangan||""} onChange={e=>setEditRecord(r=>({...r,keterangan:e.target.value}))}/>
+            </div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:12}}>
+              Utilisasi baru: <strong>{editRecord.luasLahanM2>0 ? ((editRecord.luasTerpakaiM2/editRecord.luasLahanM2)*100).toFixed(1) : "0.0"}%</strong> ({statusFromUtil(editRecord.luasLahanM2>0?editRecord.luasTerpakaiM2/editRecord.luasLahanM2:0)==="KRITIS"?"Penuh":statusFromUtil(editRecord.luasLahanM2>0?editRecord.luasTerpakaiM2/editRecord.luasLahanM2:0)==="WASPADA"?"Terbatas":"Cukup"})
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setEditRecord(null)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={saveEditRecord}>💾 Simpan</button>
+            </div>
           </div>
         </div>
       )}

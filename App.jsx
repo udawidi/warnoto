@@ -1821,6 +1821,20 @@ export default function PLNWarehouse() {
     }
   }
 
+  // Edit langsung (tanpa approval) data kapasitas gudang oleh ADMIN/TL/SUPERADMIN
+  // (Fase A3, Kapasitas Gudang). `updated` sudah dihitung ulang (sisaLuasM2/
+  // persentaseTerpakai/statusKapasitas) oleh KapasitasGudangTab sebelum dikirim ke sini.
+  async function saveCapacityRow(updated) {
+    if (!hasRole(currentUser, "ADMIN","TL","SUPERADMIN")) { showToast("Tidak punya akses edit kapasitas.","error"); return; }
+    const newList = gudangCapacityList.map(r => r.id===updated.id ? updated : r);
+    setGudangCapacityList(newList);
+    await saveToCloud({ gudangCapacityList: newList });
+    logAudit(currentUser, "UPDATE", "warehouse_capacity", updated.id, {
+      luasLahanM2: updated.luasLahanM2, luasTerpakaiM2: updated.luasTerpakaiM2, statusKapasitas: updated.statusKapasitas,
+    });
+    showToast("Data kapasitas berhasil diperbarui.","success");
+  }
+
   // Kelola Akun + ganti password mandiri → dipindah ke src/hooks/useAccountAdmin.js
 
   // Pulihkan sesi Supabase Auth yang tersimpan saat app dibuka (reload, buka
@@ -2516,6 +2530,13 @@ export default function PLNWarehouse() {
     const f = e.target.files[0]; e.target.value = ""; if (!f) return;
     if (!f.type.startsWith("image/")) { showToast("File harus berupa gambar.","error"); return; }
     try { const img = await compressImage(f, { maxDim:400, maxBytes:120_000 }); setSatpamForm(sf=>({...sf, foto:img})); }
+    catch { showToast("Gagal memproses foto.","error"); }
+  }
+  // Foto gudang (fotoGudang, master gudang.data jsonb) — pola sama dengan handleSatpamFoto.
+  async function handleGudangFoto(e) {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    if (!f.type.startsWith("image/")) { showToast("File harus berupa gambar.","error"); return; }
+    try { const img = await compressImage(f, { maxDim:600, maxBytes:200_000 }); setGudangForm(gf=>({...gf, fotoGudang:img})); }
     catch { showToast("Gagal memproses foto.","error"); }
   }
   // ATTB — lihat docs/ATTB_SPEC.md. Tahap1 (Usulan AE.1): createAttbItem (DRAFT) ->
@@ -4066,6 +4087,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             setStockSubTab={setStockSubTab}
             showToast={showToast}
             onSynced={reloadKapasitas}
+            onSaveCapacityRow={saveCapacityRow}
           />
         )}
 
@@ -4630,9 +4652,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {/* UIT MODAL */}
 
       {/* GUDANG MODAL — mode "edit" satu langkah; mode "add" wizard 3 langkah (Data → Denah → Blok) */}
-      {gudangModal==="edit" && <GudangEditModal gudangForm={gudangForm} setGudangForm={setGudangForm} uptList={uptList} setGudangModal={setGudangModal} saveGudang={saveGudang} sty={sty} C={C} />}
+      {gudangModal==="edit" && <GudangEditModal gudangForm={gudangForm} setGudangForm={setGudangForm} uptList={uptList} setGudangModal={setGudangModal} saveGudang={saveGudang} handleGudangFoto={handleGudangFoto} sty={sty} C={C} />}
 
-      {gudangModal==="add" && <GudangAddModal gudangWizardStep={gudangWizardStep} setGudangWizardStep={setGudangWizardStep} gudangForm={gudangForm} setGudangForm={setGudangForm} uptList={uptList} gudangList={gudangList} lokasiList={lokasiList} closeGudangWizard={closeGudangWizard} gudangWizardNext={gudangWizardNext} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} suggestKodeFromOcr={suggestKodeFromOcr} wizardBlokDraft={wizardBlokDraft} setWizardBlokDraft={setWizardBlokDraft} addWizardBlok={addWizardBlok} sty={sty} C={C} />}
+      {gudangModal==="add" && <GudangAddModal gudangWizardStep={gudangWizardStep} setGudangWizardStep={setGudangWizardStep} gudangForm={gudangForm} setGudangForm={setGudangForm} uptList={uptList} gudangList={gudangList} lokasiList={lokasiList} closeGudangWizard={closeGudangWizard} gudangWizardNext={gudangWizardNext} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} suggestKodeFromOcr={suggestKodeFromOcr} wizardBlokDraft={wizardBlokDraft} setWizardBlokDraft={setWizardBlokDraft} addWizardBlok={addWizardBlok} handleGudangFoto={handleGudangFoto} sty={sty} C={C} />}
 
       {/* KONFIRMASI GUDANG BARU DARI IMPORT KAPASITAS GUDANG — muncul saat "Setujui &
           Publish" di Approval mendeteksi baris yang bakal jadi Gudang baru (tidak cocok
