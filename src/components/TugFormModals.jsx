@@ -158,8 +158,10 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
   );
 }
 
-export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, satpamList, enrichedStocks, tug98Collapsed, setTug98Collapsed, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
+export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, visibleGudangList, satpamList, enrichedStocks, tug98Collapsed, setTug98Collapsed, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
   const isDerivedDraft = Boolean(editingDraftTxnId);
+  const gudSatpams = satpamList.filter(sp=>sp.gudangId && sp.gudangId===txnForm.gudangId);
+  const gudStocks = enrichedStocks.filter(s=>s.gudangId===txnForm.gudangId);
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div role="dialog" aria-modal="true" aria-label={`Formulir ${txnForm.docType.replace("TUG","TUG-")}`} style={{...sty.card,width:680,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -201,19 +203,22 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
             </div>
             <div style={{marginBottom:14}}>
               <label style={sty.label}>Satpam Bertugas (Mengetahui di Surat Jalan)</label>
-              <select style={sty.select} value={txnForm.satpamId||""} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
-                <option value="">-- Pilih Satpam --</option>
-                {gudangList.map(g=>{ const list=satpamList.filter(sp=>sp.gudangId===g.id); return list.length===0?null:(
-                  <optgroup key={g.id} label={g.nama}>{list.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
-                ); })}
-                {(() => { const list=satpamList.filter(sp=>!sp.gudangId); return list.length===0?null:(
-                  <optgroup label="Belum di-assign gudang">{list.map(sp=><option key={sp.id} value={sp.id}>{sp.name}</option>)}</optgroup>
-                ); })()}
+              <select style={sty.select} value={txnForm.satpamId||""} disabled={!txnForm.gudangId} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
+                <option value="">{txnForm.gudangId?"-- Pilih Satpam --":"Pilih gudang dulu"}</option>
+                {(gudSatpams.length>0?gudSatpams:(txnForm.gudangId?satpamList:[])).map(sp=><option key={sp.id} value={sp.id}>{sp.name}{gudSatpams.length===0?" (gudang lain)":""}</option>)}
               </select>
               {satpamList.length===0 && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Belum ada data Satpam. Tambahkan di menu Master Data → tab Satpam.</div>}
+              {txnForm.gudangId && gudSatpams.length===0 && satpamList.length>0 && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / MATERIAL</div>
+            <div style={{marginBottom:14}}>
+              <label style={sty.label}>Gudang Sumber Barang *</label>
+              <select style={sty.select} value={txnForm.gudangId||""} onChange={e=>{ const gid=e.target.value; setTxnForm(tf=>{ const cand=satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangId:gid, stockItems:[{stockId:"",qty:1}], satpamId: cand.length===1?cand[0].id:""}; }); setTug98Collapsed({}); }}>
+                <option value="">-- Pilih Gudang --</option>
+                {visibleGudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
+              </select>
+            </div>
             <div style={{fontSize:12,color:C.muted,marginBottom:8,fontStyle:"italic"}}>💡 Barang yang sama bisa ada di lokasi berbeda — pastikan pilih baris dengan lokasi yang benar.</div>
             {txnForm.stockItems.map((si,idx)=>{
               const stockOpt = enrichedStocks.find(s=>s.id===si.stockId);
@@ -232,28 +237,41 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                 <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8,alignItems:isMobile?"stretch":"flex-end"}}>
                   <div style={{flex:isMobile?undefined:3}}>
                     <label style={sty.label}>Barang {idx+1}</label>
-                    <SearchableSelect
-                      options={enrichedStocks}
-                      value={si.stockId}
-                      onChange={v=>updateItemRow(idx,"stockId",v)}
-                      getLabel={s=>`${s.name} [${s.katalog}] @ ${s.lokasi}`}
-                      getSearchText={s=>`${s.name} ${s.katalog} ${s.lokasi}`}
-                      renderOption={s=>(
-                        <div>
-                          <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
-                          <div style={{fontSize:12,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
-                        </div>
-                      )}
-                      placeholder="-- Cari & pilih barang --"
-                      sty={sty} C={C} isMobile={isMobile}
-                    />
+                    {txnForm.gudangId ? (
+                      <SearchableSelect
+                        options={gudStocks}
+                        value={si.stockId}
+                        onChange={v=>updateItemRow(idx,"stockId",v)}
+                        getLabel={s=>`${s.name} [${s.katalog}] @ ${s.lokasi}`}
+                        getSearchText={s=>`${s.name} ${s.katalog} ${s.lokasi}`}
+                        renderOption={s=>(
+                          <div>
+                            <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
+                            <div style={{fontSize:12,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
+                          </div>
+                        )}
+                        placeholder="-- Cari & pilih barang --"
+                        sty={sty} C={C} isMobile={isMobile}
+                      />
+                    ) : (
+                      <div style={{...sty.input,display:"flex",alignItems:"center",color:C.muted,background:"#f3f4f6"}}>Pilih gudang dulu</div>
+                    )}
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"flex-end"}}>
-                    <div style={{flex:1}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/></div>
+                    <div style={{flex:1}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty===0||si.qty===""?"":si.qty} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/></div>
                     <button type="button" title="Scan barcode" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>openScanner({txnIndex:idx})}>📷</button>
                     {complete && <button type="button" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>setTug98Collapsed(c=>({...c,[idx]:true}))}>▲ Ringkas</button>}
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus baris barang ini" style={{...sty.btn("danger","sm"),height:isMobile?44:36}} onClick={()=>removeItemRow(idx)}>✕</button>}
                   </div>
+                  {si.stockId && (()=>{ const existingPhoto = txnForm.fotoMaterial.find(fm=>fm.stockId===si.stockId); return (
+                    <div style={{flexBasis:"100%",marginTop:4}}>
+                      <label style={sty.label}>Foto Barang Ini</label>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <input type="file" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:12,color:C.muted}}/>
+                        {existingPhoto && <img src={existingPhoto.img} alt="" style={{width:60,height:60,objectFit:"cover",borderRadius:10}}/>}
+                      </div>
+                    </div>
+                  ); })()}
                 </div>
                 )}
                 </div>
@@ -268,23 +286,6 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
               <PhotoSlot label="Foto Kendaraan" value={txnForm.fotoKendaraan} onChange={img=>setTxnForm(tf=>({...tf,fotoKendaraan:img}))} onRemove={()=>setTxnForm(tf=>({...tf,fotoKendaraan:null}))} handleImg={handleImg} sty={sty} C={C}/>
               <PhotoSlot label="Foto SIM / KTP Pengemudi" value={txnForm.fotoSimKtp} onChange={img=>setTxnForm(tf=>({...tf,fotoSimKtp:img}))} onRemove={()=>setTxnForm(tf=>({...tf,fotoSimKtp:null}))} handleImg={handleImg} sty={sty} C={C}/>
               <PhotoSlot label="Surat Permintaan/Pengembalian" value={txnForm.fotoSuratPengembalian} onChange={img=>setTxnForm(tf=>({...tf,fotoSuratPengembalian:img}))} onRemove={()=>setTxnForm(tf=>({...tf,fotoSuratPengembalian:null}))} handleImg={handleImg} sty={sty} C={C}/>
-            </div>
-            <div style={{marginBottom:16}}>
-              <label style={sty.label}>Foto Tiap Material</label>
-              <div style={{display:"grid",gridTemplateColumns:isMobile?"repeat(auto-fill,minmax(96px,1fr))":"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginTop:6}}>
-                {txnForm.stockItems.filter(si=>si.stockId).map((si,idx)=>{
-                  const stock = enrichedStocks.find(s=>s.id===si.stockId);
-                  const existingPhoto = txnForm.fotoMaterial.find(fm=>fm.stockId===si.stockId);
-                  return (
-                    <div key={idx} style={{background:"#f9fafb",border:`1px solid ${C.border}`,borderRadius: 10,padding:8}}>
-                      <div style={{fontSize:12,fontWeight:600,marginBottom:4,whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{stock?.name||"-"}</div>
-                      <input type="file" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:12,color:C.muted,width:"100%"}}/>
-                      {existingPhoto && <img src={existingPhoto.img} alt={stock?.name} style={{width:"100%",height:60,objectFit:"cover",borderRadius: 10,marginTop:6}}/>}
-                    </div>
-                  );
-                })}
-                {txnForm.stockItems.filter(si=>si.stockId).length===0 && <div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Pilih barang terlebih dahulu untuk upload foto material</div>}
-              </div>
             </div>
 
             <div style={sty.stickyFooter}>
@@ -478,7 +479,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                 )}
 
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-                  <div><label style={sty.label}>Jumlah *</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty} onChange={e=>updateItemRow(idx,"qty",Number(e.target.value))}/>{!qtyOk && hint("Wajib: jumlah harus lebih dari 0.")}</div>
+                  <div><label style={sty.label}>Jumlah *</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty===0||si.qty===""?"":si.qty} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/>{!qtyOk && hint("Wajib: jumlah harus lebih dari 0.")}</div>
                   <div><label style={sty.label}>Nomor Asset</label><input style={sty.input} value={si.noAsset} onChange={e=>updateItemRow(idx,"noAsset",e.target.value)}/></div>
                 </div>
 

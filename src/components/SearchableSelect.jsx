@@ -21,7 +21,19 @@ export function SearchableSelect({ options, value, onChange, getLabel, getSearch
   // dulu cuma substring polos, sekarang pakai mesin sinonim PLN yang sama dengan
   // Data Stok/Master Katalog (matchesMaterialSearch), biar user yang ketik bahasa
   // awam ("pemutus", "penangkal petir") tetap nemu barangnya di sini juga.
-  const filtered = options.filter(o => matchesMaterialSearch([getSearchText?getSearchText(o):getLabel(o)], query));
+  const q = query.trim().toLowerCase();
+  const rankOf = o => {
+    if (!q) return 3;
+    const text = (getSearchText?getSearchText(o):getLabel(o)).toLowerCase();
+    const label = getLabel(o).toLowerCase();
+    if (text === q || label === q) return 0;
+    if (text.startsWith(q) || label.startsWith(q)) return 1;
+    if (text.includes(q) || label.includes(q)) return 2;
+    return 3;
+  };
+  const filtered = options
+    .filter(o => matchesMaterialSearch([getSearchText?getSearchText(o):getLabel(o)], query))
+    .sort((a,b) => rankOf(a)-rankOf(b)); // stable sort (native, ES2019+) → urutan asli dipertahankan dalam tier sama
 
   return (
     <div ref={wrapRef} style={{position:"relative"}}>
@@ -38,13 +50,13 @@ export function SearchableSelect({ options, value, onChange, getLabel, getSearch
             <div onClick={()=>{onChange("");setOpen(false);setQuery("");}} style={{padding:"8px 10px",fontSize:12,color:C.muted,cursor:"pointer",borderBottom:`1px solid ${C.border}`}}>✕ Kosongkan pilihan</div>
           )}
           {filtered.length===0 && <div style={{padding:"12px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>{emptyText}</div>}
-          {filtered.slice(0,50).map(o=>(
+          {filtered.slice(0,100).map(o=>(
             <div key={o.id} onClick={()=>{onChange(o.id);setOpen(false);setQuery("");}}
               style={{padding:isMobile?"12px 10px":"8px 10px",minHeight:isMobile?44:undefined,display:"flex",flexDirection:"column",justifyContent:"center",fontSize:isMobile?13:12,cursor:"pointer",background:o.id===value?"#eff6ff":"white",borderBottom:`1px solid #f1f5f9`}}>
               {renderOption?renderOption(o):getLabel(o)}
             </div>
           ))}
-          {filtered.length>50 && <div style={{padding:"6px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>+{filtered.length-50} lainnya — ketik lebih spesifik untuk menyaring</div>}
+          {filtered.length>100 && <div style={{padding:"6px 10px",fontSize:12,color:C.muted,textAlign:"center"}}>+{filtered.length-100} lainnya — ketik lebih spesifik untuk menyaring</div>}
         </div>
       )}
     </div>

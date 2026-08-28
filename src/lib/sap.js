@@ -192,18 +192,29 @@ function levenshteinAtMost1(a, b) {
   return prev[b.length] <= 1;
 }
 
+const stripLeadingZeros = s => s.replace(/^0+(?=\d)/, "");
+
 export function matchesMaterialSearch(fields, query) {
   if (!query || !query.trim()) return true;
   const haystackWords = expandHaystackSynonyms(normalizeSearchText(
     fields.filter(Boolean).join(" ")
   )).split(" ").filter(Boolean);
   const groups = queryTokenGroups(query);
-  return groups.every(alts => alts.some(t => haystackWords.some(w => {
-    if (t.length <= 2) return w === t;
-    if (w.startsWith(t)) return true;
-    // ponytail: Levenshtein <=1, kata >=4; upgrade ke trigram bila perlu ranking
-    return t.length >= 4 && levenshteinAtMost1(w, t);
-  })));
+  return groups.every(alts => alts.some(t => {
+    const isDigitToken = /^\d+$/.test(t);
+    const tStripped = isDigitToken ? stripLeadingZeros(t) : null;
+    return haystackWords.some(w => {
+      if (t.length <= 2) return w === t;
+      if (w.startsWith(t)) return true;
+      if (t.length >= 3 && w.includes(t)) return true; // substring tengah kata
+      if (isDigitToken) { // kode/katalog leading-zero-insensitive
+        const wStripped = stripLeadingZeros(w);
+        if (wStripped.includes(tStripped)) return true;
+      }
+      // ponytail: Levenshtein <=1, kata >=4; upgrade ke trigram bila perlu ranking
+      return t.length >= 4 && levenshteinAtMost1(w, t);
+    });
+  }));
 }
 
 export function matchesStockSearch(stock, query) {

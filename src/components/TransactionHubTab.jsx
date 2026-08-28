@@ -26,6 +26,7 @@ export function TransactionHubTab({
   editDraftTug3, submitDraftTug3, deleteDraftTug3,
   editDraftTug10, submitDraftTug10, deleteDraftTug10,
   editDraftTug9, submitDraftTug9, deleteDraftTug9,
+  openEditCanonicalTug,
   approveTUG5_Asman, rejectTUG5_Asman, approveTUG5_Manager, rejectTUG5_Manager,
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
@@ -177,6 +178,9 @@ export function TransactionHubTab({
                     {t.status==="APPROVED" && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}
                     {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
                     <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat & Pratinjau Dokumen {t.docType.replace("TUG","TUG-")}</button>
+                    {hasRole(currentUser,"TL","SUPERADMIN") && t.status==="PENDING" && ["TUG8","TUG9","TUG10"].includes(t.docType) && (
+                      <button style={{...sty.btn("ghost","sm"),marginTop:8}} onClick={()=>{ t.docType==="TUG10" ? editDraftTug10?.(t) : openEditCanonicalTug?.(t); }}>✏️ Perbaiki</button>
+                    )}
                     {t.docType==="TUG10" && t.status==="DRAFT" && t.createdBy===currentUser.id && (
                       <div style={{display:"flex",gap:8,marginTop:8}}>
                         <button style={sty.btn("ghost","sm")} onClick={()=>editDraftTug10(t)}>✏️ Edit</button>

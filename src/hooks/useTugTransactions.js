@@ -97,6 +97,7 @@ export function useTugTransactions({
       setTxnForm({
         ...base,
         uptId: canonicalUptId,
+        gudangId: "",
         noNodin: "", noPersetujuan: "",
         nopol: "", simKtp: "", namaPengemudi: "",
         penerimaNama: "", penerimaJabatan: "", penerimaUnit: "",
@@ -108,6 +109,7 @@ export function useTugTransactions({
       setTxnForm({
         ...base,
         uptId: canonicalUptId,
+        gudangId: "",
         unitTujuan: "",
         noNodin: "", noPersetujuan: "",
         nopol: "", simKtp: "", namaPengemudi: "",
@@ -707,7 +709,10 @@ export function useTugTransactions({
     setTxnModal(true);
   }
   function editCanonicalTug98(txn) {
-    setTxnForm({ ...txn });
+    // Data lama (sebelum #4 scope-gudang) belum punya gudangId — backfill dari barang
+    // pertama biar SearchableSelect material tak terkunci "pilih gudang dulu" saat edit.
+    const firstStock = stateRef.current.enrichedStocks.find(s=>s.id===txn.stockItems?.[0]?.stockId);
+    setTxnForm({ ...txn, gudangId: txn.gudangId || firstStock?.gudangId || "" });
     setEditingDraftTxnId(txn.id);
     editingTxnRef.current = txn;
     setTug98Collapsed({});

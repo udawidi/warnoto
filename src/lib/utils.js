@@ -345,6 +345,7 @@ export function enrichStock(stock, katalogList, lokasiList) {
     unit: kat.satuan || stock.unit || "unit",
     lokasi: lok.kode || stock.lokasi || "-",
     lokasiKeterangan: lok.keterangan || "",
+    gudangId: lok.gudangId ?? null,
     // jenisBarang: Master Katalog adalah sumber kebenaran.
     // Jika katalog tidak ditemukan, fallback ke nilai di Data Stok.
     jenisBarang: kat.jenisBarang || stock.jenisBarang || "Cadang",

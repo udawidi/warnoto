@@ -4134,6 +4134,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
             editDraftTug10={editDraftTug10} submitDraftTug10={submitDraftTug10} deleteDraftTug10={deleteDraftTug10}
             editDraftTug9={openDraftTug9} submitDraftTug9={submitDraftTug9} deleteDraftTug9={deleteDraftTug9}
+            openEditCanonicalTug={editCanonicalTug98}
             approveTUG5_Asman={approveTUG5_Asman} rejectTUG5_Asman={rejectTUG5_Asman} approveTUG5_Manager={approveTUG5_Manager} rejectTUG5_Manager={rejectTUG5_Manager}
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
@@ -4663,7 +4664,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} />}
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
-      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} visibleGudangList={visibleGudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SCAN PICKER MODAL — kode scan TUG cocok >1 stok, biarkan user pilih (jangan auto-pilih) */}
       <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
