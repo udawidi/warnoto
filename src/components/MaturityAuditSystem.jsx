@@ -158,9 +158,21 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
               draggable={false}
               style={{ width: `${zoom}%`, maxWidth: "none", userSelect: "none", touchAction: "pinch-zoom", display: "block", margin: "auto" }}
             />
+          ) : (isMobile ? (
+            // Browser HP tak bisa render blob PDF/dokumen di <iframe> (blank) —
+            // beri jalur Unduh / buka tab baru daripada layar kosong.
+            <div style={{ padding: 24, textAlign: "center", margin: "auto", maxWidth: 320 }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>📄</div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 4 }}>Pratinjau tak didukung di ponsel</div>
+              <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Untuk berkas PDF/dokumen, unduh atau buka di tab baru untuk melihatnya.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button type="button" onClick={() => downloadMaturityDriveEvidence(evidenceId)} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: C.accent, color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>⬇ Unduh berkas</button>
+                <button type="button" onClick={() => window.open(state.url, "_blank", "noopener")} style={{ padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.border}`, background: "white", color: C.text, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Buka di tab baru</button>
+              </div>
+            </div>
           ) : (
             <iframe src={state.url} title={fileName} style={{ width: "100%", height: "100%", border: "none" }} />
-          ))}
+          )))}
         </div>
       </div>
     </div>
