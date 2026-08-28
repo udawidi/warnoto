@@ -216,6 +216,42 @@ function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, 
   );
 }
 
+// Segmented 1-5 milik Pusat untuk menilai FINAL 1 ITEM evidence — pola sama
+// AspectReviewControls (state-aware, tap target ≥40px di HP).
+function PusatScoreControls({ C, aspectId, itemId, value, setAspectItemScore, disabled, isMobile }) {
+  const btnH = isMobile ? 40 : 32;
+  const colorFor = v => (v <= 2 ? "#dc2626" : v === 3 ? "#f59e0b" : C.green);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, width: isMobile ? "100%" : "auto" }}>
+      <span style={{ fontSize: 12, fontWeight: 700, color: C.muted }}>Nilai final item (Pusat){value ? ` — Nilai: ${value}/5` : ""}</span>
+      <div style={{ display: "flex", gap: 6, width: isMobile ? "100%" : "auto" }}>
+        {[1, 2, 3, 4, 5].map(v => (
+          <button
+            key={v}
+            type="button"
+            disabled={disabled}
+            aria-pressed={value === v}
+            aria-label={`Nilai ${v} dari 5`}
+            onClick={() => setAspectItemScore(aspectId, itemId, v)}
+            style={{
+              flex: isMobile ? 1 : "none",
+              width: isMobile ? "auto" : 40,
+              height: btnH,
+              borderRadius: 8,
+              border: `1.5px solid ${value === v ? colorFor(v) : C.border}`,
+              background: value === v ? colorFor(v) : "transparent",
+              color: value === v ? "#fff" : C.muted,
+              fontWeight: 800,
+              fontSize: 13,
+              cursor: disabled ? "not-allowed" : "pointer",
+            }}
+          >{v}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // =========================================================================
 // COMPONENT: MaturityAuditEditor
 // =========================================================================
@@ -234,6 +270,7 @@ export function MaturityAuditEditor({
   setMaturityAuditEvidence,
   maturityAspectReviews = {},
   setAspectReview,
+  setAspectItemScore,
   expandedAspek,
   setExpandedAspek,
   activeAspectId: propsActiveAspectId,
@@ -358,6 +395,12 @@ export function MaturityAuditEditor({
     const files = maturityAuditEvidence[a.id]?.filter(f => f.itemId === item.id) || [];
     if (files.length > 0 && files.every(f => f.auto === true)) return true; // auto-filled, skip
     return maturityAspectReviews[`${a.id}::${item.id}`]?.state === "CHECKED";
+  }));
+  // Gate "Finalisasi & Simpan" Pusat: SEMUA item evidence non-auto sudah dapat nilai final 1-5.
+  const allItemsScored = AUDIT_ASPECTS.every(a => a.requiredEvidence.every(item => {
+    const files = maturityAuditEvidence[a.id]?.filter(f => f.itemId === item.id) || [];
+    if (files.length > 0 && files.every(f => f.auto === true)) return true; // auto-filled, skip
+    return (maturityAspectReviews[`${a.id}::${item.id}`]?.finalScore ?? null) != null;
   }));
 
   const uitReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.uit || 0) > 0).length;
@@ -751,6 +794,12 @@ export function MaturityAuditEditor({
                           </div>
                         )}
 
+                        {canScorePusat && isUploaded && !isAutoFilled && (
+                          <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
+                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} value={itemReview?.finalScore ?? null} setAspectItemScore={setAspectItemScore} disabled={maturityAuditSaving} isMobile={isMobile} />
+                          </div>
+                        )}
+
                         <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
                           {isUploaded ? (
                             <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch" }}>
@@ -956,23 +1005,12 @@ export function MaturityAuditEditor({
                       </div>
 
                       <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Skor Pusat:</div>
-                        {canScorePusat ? (
-                          <div style={{ display: "flex", gap: 4 }}>
-                            {[1, 2, 3, 4, 5].map(v => (
-                              <button key={v} className="score-btn" style={scoreBtn(statusSkorPusat === v, "#1d4ed8")} onClick={() => {
-                                setMaturityAuditForm(f => ({
-                                  ...f,
-                                  aspekScores: { ...f.aspekScores, [activeAspect.id]: { ...(f.aspekScores[activeAspect.id] || {}), pusat: v } }
-                                }));
-                              }}>{v}</button>
-                            ))}
-                          </div>
-                        ) : (
-                          <span style={{ fontSize: 13, fontWeight: 700, color: statusSkorPusat > 0 ? "#1d4ed8" : C.muted }}>
-                            {statusSkorPusat > 0 ? `Level ${statusSkorPusat} — ${MATURITY_LEVELS[statusSkorPusat]}` : "Belum dinilai Pusat"}
-                          </span>
-                        )}
+                        {/* Nilai Pusat sekarang per-item evidence (lihat PusatScoreControls di
+                            tiap kartu item) — angka di sini turunan (mean), read-only. */}
+                        <div style={{ fontSize: 13, fontWeight: 600, color: C.muted, marginBottom: 6 }}>Rata-rata nilai item (Pusat):</div>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: statusSkorPusat > 0 ? "#1d4ed8" : C.muted }}>
+                          {statusSkorPusat > 0 ? `${statusSkorPusat} — ${MATURITY_LEVELS[statusSkorPusat]}` : "Belum semua item dinilai Pusat"}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -1234,47 +1272,51 @@ export function MaturityAuditEditor({
               {canScoreUPT && (
                 <button className="approval-btn--cancel" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
               )}
+              {canScoreUPT && (
+                <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => {
+                  if (!allItemsChecked) {
+                    askConfirmDelete?.({
+                      title: "Masih Ada Item Belum Di-Check",
+                      message: "Masih ada item bukti yang belum di-Check UIT.",
+                      confirmLabel: "Mengerti",
+                      variant: "warning",
+                    });
+                    return;
+                  }
+                  if (!evidenceComplete) {
+                    askConfirmDelete?.({
+                      title: "Evidence Belum Lengkap",
+                      message: `Masih ada ${incompleteAspectsCount} aspek yang bukti wajibnya belum lengkap diunggah.`,
+                      confirmLabel: "Mengerti",
+                      variant: "warning",
+                    });
+                    return;
+                  }
+                  if (!form5SSavedThisMonth) {
+                    askConfirmDelete?.({
+                      title: "Form 5S Belum Diisi",
+                      message: "Isi & simpan Form Pengisian 5S bulan ini dulu sebelum kirim hasil ke Pusat.",
+                      confirmLabel: "Mengerti",
+                      variant: "warning",
+                    });
+                    return;
+                  }
+                  saveMaturityAudit(audit, "REVIEW_PUSAT");
+                }}>📤 Ajukan Penilaian Final ke Pusat</button>
+              )}
               {canReviewUIT && (
-                <>
-                  {/* Lempar-balik keseluruhan ke UPT — review per-aspek tetap tersimpan di tabel terpisah. */}
-                  <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => {
-                    if (!allItemsChecked) {
-                      askConfirmDelete?.({
-                        title: "Masih Ada Item Belum Di-Check",
-                        message: "Masih ada item bukti yang belum di-Check UIT.",
-                        confirmLabel: "Mengerti",
-                        variant: "warning",
-                      });
-                      return;
-                    }
-                    if (!evidenceComplete) {
-                      askConfirmDelete?.({
-                        title: "Evidence Belum Lengkap",
-                        message: `Masih ada ${incompleteAspectsCount} aspek yang bukti wajibnya belum lengkap diunggah.`,
-                        confirmLabel: "Mengerti",
-                        variant: "warning",
-                      });
-                      return;
-                    }
-                    if (!form5SSavedThisMonth) {
-                      askConfirmDelete?.({
-                        title: "Form 5S Belum Diisi",
-                        message: "Isi & simpan Form Pengisian 5S bulan ini dulu sebelum kirim hasil ke Pusat.",
-                        confirmLabel: "Mengerti",
-                        variant: "warning",
-                      });
-                      return;
-                    }
-                    saveMaturityAudit(audit, "REVIEW_PUSAT");
-                  }}>Kirim Hasil ke Pusat</button>
-                </>
+                // Lempar-balik keseluruhan ke UPT — review per-item tetap tersimpan di tabel terpisah.
+                // Submit ke Pusat sekarang dipicu UPT (tombol di atas), bukan UIT.
+                <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
               )}
               {canScorePusat && (
                 <>
                   <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  <button className="approval-btn--approve" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
+                  <button className="approval-btn--approve" disabled={maturityAuditSaving || !allItemsScored} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
                 </>
+              )}
+              {canScorePusat && !allItemsScored && (
+                <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, alignSelf: "center" }}>Beri nilai semua item dulu sebelum Finalisasi.</span>
               )}
             </div>
           </div>

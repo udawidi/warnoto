@@ -258,6 +258,41 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setMaturityAspectReviews(current => ({ ...current, [`${aspectId}::${itemId}`]: saved }));
     logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${aspectId}:${itemId}`, { state });
   }
+  // Nilai final Pusat 1 ITEM evidence (1-5) — merge dengan review existing
+  // (state/note UIT tidak boleh terhapus oleh upsert ini). Setelah tersimpan,
+  // agregasi ke aspekScores[aspek].pusat = mean(finalScore item non-auto aspek
+  // itu), hanya kalau SEMUA item non-auto aspek sudah dinilai (else biarkan
+  // 0 → calcMaturityScore jatuh ke fallback uit/upt/rasio).
+  async function setAspectItemScore(aspectId, itemId, score) {
+    const audit = maturityAuditModal;
+    if (!audit?.id) return;
+    const key = `${aspectId}::${itemId}`;
+    const existing = maturityAspectReviews[key] || {};
+    const uptName = audit.upt || selectedMaturityUpt || "UPT Surabaya";
+    const uptId = audit.uptId || uptIdByNama(uptName) || null;
+    const reviewedBy = existing.reviewedBy || currentUser?.name || currentUser?.username || currentUser?.id || null;
+    const saved = await upsertAspectReview({ auditId: audit.id, aspectId, itemId, uptId, state: existing.state || "PENDING", note: existing.note || "", reviewedBy, finalScore: score });
+    if (!saved) {
+      showToast("Nilai item tidak tersimpan karena server tidak dapat dihubungi.", "error");
+      return;
+    }
+    const nextReviews = { ...maturityAspectReviews, [key]: saved };
+    setMaturityAspectReviews(nextReviews);
+    const aspect = AUDIT_ASPECTS.find(a => a.id === aspectId);
+    if (aspect) {
+      const evidence = maturityAuditEvidenceRef.current;
+      const scorable = aspect.requiredEvidence.filter(item => {
+        const files = (evidence[aspectId] || []).filter(f => f.itemId === item.id);
+        return !(files.length > 0 && files.every(f => f.auto === true)); // exclude item auto-filled Form 5S
+      });
+      const scores = scorable.map(item => nextReviews[`${aspectId}::${item.id}`]?.finalScore);
+      if (scorable.length > 0 && scores.every(s => s != null)) {
+        const mean = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+        setMaturityAuditForm(f => ({ ...f, aspekScores: { ...f.aspekScores, [aspectId]: { ...(f.aspekScores[aspectId] || {}), pusat: mean } } }));
+      }
+    }
+    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${aspectId}:${itemId}`, { finalScore: score });
+  }
   // Skor akhir: getScore pilih pusat>uit>upt(rasio bukti), rata 5 kategori,
   // A = avg(5 kategori)*0.75 + B = avg(sarana_prasarana,k3,teknologi)*0.25;
   // level dibucket dari threshold 1.5 / 2.5 / 3.5 / 4.5.
@@ -504,7 +539,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityDraftSavedAt,
     autosaveMaturityDraft,
     maturityAuditEvidence, setMaturityAuditEvidence,
-    maturityAspectReviews, setAspectReview,
+    maturityAspectReviews, setAspectReview, setAspectItemScore,
     expandedAspek, setExpandedAspek,
     activeAspectId, setActiveAspectId,
     aspectPage, setAspectPage,

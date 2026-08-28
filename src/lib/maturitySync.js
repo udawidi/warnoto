@@ -275,6 +275,7 @@ function aspectReviewRowToItem(row) {
     note: row.note || "",
     reviewedBy: row.reviewed_by ?? null,
     reviewedAt: asEpoch(row.reviewed_at),
+    finalScore: row.final_score ?? null,
   };
 }
 
@@ -288,7 +289,7 @@ export async function loadAspectReviews(auditId) {
   return (data || []).map(aspectReviewRowToItem);
 }
 
-export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, state, note, reviewedBy }) {
+export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, state, note, reviewedBy, finalScore }) {
   if (isDemoMode()) return true;
   if (!supabase) return null;
   const row = {
@@ -301,6 +302,9 @@ export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, sta
     reviewed_by: reviewedBy || null,
     reviewed_at: Date.now(),
   };
+  // finalScore hanya dikirim bila eksplisit di-pass, supaya setAspectReview
+  // (Check/Reject, tanpa skor) tak menimpa nilai final_score yang sudah ada.
+  if (finalScore !== undefined) row.final_score = finalScore;
   const { data, error } = await supabase.from("maturity_aspect_reviews").upsert(row, { onConflict: "audit_id,aspect_id,item_id" }).select().single();
   if (error) {
     console.error(`upsert maturity_aspect_reviews: ${error.message}`, error);
