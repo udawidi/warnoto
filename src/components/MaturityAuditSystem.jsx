@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRight, CaretLeft, Sparkle, CheckCircle, Info } from "@phosphor-icons/react";
+import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRight, CaretLeft, Sparkle, CheckCircle, Info, Trash } from "@phosphor-icons/react";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import {
   assignMaturityDriveEvidence,
@@ -35,7 +35,15 @@ const Icons = {
   Sparkles: (p) => <Sparkle size={16} weight="fill" {...p} />,
   AutoCheck: (p) => <CheckCircle size={13} weight="fill" {...p} />,
   Info: (p) => <Info size={16} weight="bold" {...p} />,
+  Trash: (p) => <Trash size={16} {...p} />,
 };
+
+function formatBytes(bytes) {
+  if (!bytes || Number.isNaN(bytes)) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 // Tier tablet (820/834/1024px) — breakpoint global App.jsx hanya punya isMobile,
 // jadi grid/tab desktop dipaksa muat di tablet. Hook lokal, presentation-only.
@@ -733,90 +741,122 @@ export function MaturityAuditEditor({
 
                         <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
                           {isUploaded ? (
-                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "stretch" }}>
                               {itemFiles.map((f, fi) => {
                                 const globalIdx = aspectFiles.indexOf(f);
                                 const fullFolderPath = f.folderPath || targetFolderPath;
+                                const canDelete = canScoreUPT && !f.auto && itemReviewState !== "CHECKED";
+                                const openFile = () => {
+                                  if (f.auto && f.url) window.location.hash = f.url.replace(/^#/, "");
+                                  else if (f.id) setViewerFile({ id: f.id, name: f.name });
+                                };
                                 return (
                                   <div key={fi} style={{
                                     display: "flex",
                                     alignItems: "center",
-                                    gap: 6,
-                                    background: isAutoFilled ? `${C.green}1f` : `${C.accent}14`,
-                                    border: `1.5px solid ${isAutoFilled ? `${C.green}55` : `${C.accent}44`}`,
-                                    padding: "4px 10px",
-                                    borderRadius: 10,
-                                    fontSize: 12
+                                    gap: 12,
+                                    background: C.surface,
+                                    border: `1px solid ${isAutoFilled ? `${C.green}55` : C.border}`,
+                                    borderRadius: 12,
+                                    padding: "10px 12px",
+                                    flexWrap: isMobile ? "wrap" : "nowrap",
+                                    transition: "box-shadow .15s ease"
                                   }}>
-                                    <span style={{ color: isAutoFilled ? C.green : C.accent }}>
-                                      <Icons.File />
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (f.auto && f.url) window.location.hash = f.url.replace(/^#/, "");
-                                        else if (f.id) setViewerFile({ id: f.id, name: f.name });
-                                      }}
-                                      style={{
-                                        color: C.text,
-                                        fontWeight: 700,
-                                        maxWidth: "min(240px, 45vw)",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                        textDecoration: "underline",
-                                        border: "none",
-                                        padding: 0,
-                                        background: "transparent",
-                                        cursor: "pointer"
-                                      }}
-                                      title={`File: ${f.name}\n📍 Sub-Bagian: ${fullFolderPath}`}
-                                    >
-                                      {f.name}
-                                    </button>
-                                    <span style={{
-                                       fontSize: 13,
-                                       color: f.isDrive ? "#0284c7" : "#b45309",
-                                       background: f.isDrive ? "#e0f2fe" : "#fef3c7",
-                                       padding: "1px 6px",
-                                       borderRadius: 10,
-                                       fontWeight: 700
-                                     }}>
-                                       {f.isDrive ? "✓ Google Drive" : "⚡ Berkas Lokal"}
-                                     </span>
-                                    {canScoreUPT && !f.auto && itemReviewState !== "CHECKED" && (
+                                    <div style={{
+                                      width: 38, height: 38, minWidth: 38, borderRadius: 10,
+                                      background: isAutoFilled ? `${C.green}1f` : `${C.accent}14`,
+                                      color: isAutoFilled ? C.green : C.accent,
+                                      display: "flex", alignItems: "center", justifyContent: "center"
+                                    }}>
+                                      <Icons.File size={18} aria-hidden="true" />
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
                                       <button
-                                        onClick={() => askConfirmDelete?.({
-                                          title: "Lepas & Hapus Evidence?",
-                                          message: `Berkas "${f.name}" akan dilepas dari audit DAN dipindahkan ke Trash Google Drive. Tindakan ini tidak otomatis bisa dibatalkan.`,
-                                          confirmLabel: "Ya, Hapus",
-                                          variant: "danger",
-                                          onConfirm: async () => {
-                                            try {
-                                              if (f.id) await unlinkMaturityDriveEvidence({ evidenceId: f.id });
-                                              setMaturityAuditEvidence(prev => {
-                                                const cur = prev[activeAspect.id] || [];
-                                                return { ...prev, [activeAspect.id]: cur.filter((_, ci) => ci !== globalIdx) };
-                                              });
-                                            } catch (error) { setUploadError(error?.message || "Evidence tidak dapat dilepas."); }
-                                          },
-                                        })}
-                                        style={{ background: "transparent", border: "none", color: C.red, cursor: "pointer", fontWeight: 800, padding: 0, marginLeft: 4, fontSize: 15 }}
-                                        title="Hapus file"
-                                      >×</button>
-                                    )}
+                                        type="button"
+                                        onClick={openFile}
+                                        title={`File: ${f.name}\n📍 Sub-Bagian: ${fullFolderPath}`}
+                                        style={{
+                                          display: "block",
+                                          width: "100%",
+                                          textAlign: "left",
+                                          color: C.text,
+                                          fontWeight: 700,
+                                          fontSize: 13,
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                          whiteSpace: "nowrap",
+                                          textDecoration: "underline",
+                                          border: "none",
+                                          padding: 0,
+                                          background: "transparent",
+                                          cursor: "pointer"
+                                        }}
+                                      >
+                                        {f.name}
+                                      </button>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2, flexWrap: "wrap" }}>
+                                        <span style={{
+                                          fontSize: 11,
+                                          color: f.isDrive ? "#0284c7" : "#b45309",
+                                          background: f.isDrive ? "#e0f2fe" : "#fef3c7",
+                                          padding: "1px 6px",
+                                          borderRadius: 10,
+                                          fontWeight: 700
+                                        }}>
+                                          {f.isDrive ? "Google Drive" : "Berkas Lokal"}
+                                        </span>
+                                        {!!formatBytes(f.size) && <span style={{ fontSize: 12, color: C.muted }}>{formatBytes(f.size)}</span>}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                      <button
+                                        type="button"
+                                        onClick={openFile}
+                                        title="Lihat berkas"
+                                        aria-label={`Lihat berkas ${f.name}`}
+                                        style={{ width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: C.accent, cursor: "pointer", borderRadius: 8 }}
+                                      >
+                                        <Icons.ChevronRight size={16} aria-hidden="true" />
+                                      </button>
+                                      {canDelete && (
+                                        <button
+                                          type="button"
+                                          onClick={() => askConfirmDelete?.({
+                                            title: "Lepas & Hapus Evidence?",
+                                            message: `Berkas "${f.name}" akan dilepas dari audit DAN dipindahkan ke Trash Google Drive. Tindakan ini tidak otomatis bisa dibatalkan.`,
+                                            confirmLabel: "Ya, Hapus",
+                                            variant: "danger",
+                                            onConfirm: async () => {
+                                              try {
+                                                if (f.id) await unlinkMaturityDriveEvidence({ evidenceId: f.id });
+                                                setMaturityAuditEvidence(prev => {
+                                                  const cur = prev[activeAspect.id] || [];
+                                                  return { ...prev, [activeAspect.id]: cur.filter((_, ci) => ci !== globalIdx) };
+                                                });
+                                              } catch (error) { setUploadError(error?.message || "Evidence tidak dapat dilepas."); }
+                                            },
+                                          })}
+                                          title="Hapus file"
+                                          aria-label={`Hapus berkas ${f.name}`}
+                                          style={{ width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", background: "transparent", border: "none", color: C.red, cursor: "pointer", borderRadius: 8 }}
+                                        >
+                                          <Icons.Trash size={16} aria-hidden="true" />
+                                        </button>
+                                      )}
+                                    </div>
                                   </div>
                                 );
                               })}
                               {isAutoFilled && itemFiles[0]?.meta && (
-                                <div style={{ fontSize: 13, color: C.green, marginTop: 2, width: "100%" }}>
+                                <div style={{ fontSize: 13, color: C.green }}>
                                   {itemFiles[0].meta}
                                 </div>
                               )}
                             </div>
                           ) : (
-                            <div style={{ fontSize: 13, color: C.muted, fontStyle: "italic" }}>
-                              Belum melampirkan berkas bukti fisik.
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderRadius: 12, border: `1px dashed ${C.border}`, color: C.muted }}>
+                              <Icons.File size={16} aria-hidden="true" />
+                              <span style={{ fontSize: 13, fontStyle: "italic" }}>Belum melampirkan berkas bukti fisik.</span>
                             </div>
                           )}
                         </div>

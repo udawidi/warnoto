@@ -120,7 +120,7 @@ test.describe("ATTB mobile details", () => {
     await openApp(page);
     await openRoute(page, {
       tab:"attb",
-      menuPath:["ATTB"],
+      menuPath:["MRWI"],
       readySelector:".attb-page",
     });
 

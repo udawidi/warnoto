@@ -119,7 +119,7 @@ test.describe("WARNOTO desktop preservation smoke", () => {
 
   test("material row opens read-only preview without hijacking actions", async ({ isolatedPage:page }) => {
     await openApp(page);
-    await openRoute(page, { tab:"attb", menuPath:["ATTB"], readySelector:".attb-page" });
+    await openRoute(page, { tab:"attb", menuPath:["MRWI"], readySelector:".attb-page" });
 
     const row = page.locator(".attb-table-wrap .attb-preview-trigger").first();
     await expect(row).toBeVisible();

@@ -16,7 +16,7 @@ export const PERM_MENUS = [
   { key: "menu.transaction", label: "TUG" },
   { key: "menu.approval", label: "Approval" },
   { key: "menu.heavyEquipment", label: "Alat Berat" },
-  { key: "menu.attb", label: "ATTB" },
+  { key: "menu.attb", label: "MRWI" },
   { key: "menu.opname", label: "Stock Opname & Count" },
   { key: "menu.maturity", label: "Penilaian Maturity" },
   { key: "menu.rencana", label: "Rencana Kedatangan" },
