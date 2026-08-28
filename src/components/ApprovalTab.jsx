@@ -8,7 +8,7 @@ import { statusMaterialBadgeStyle, resolveSapLabel } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
 
-export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, approveTUG3_TL, rejectTUG3_TL }) {
+export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, approveTUG3_TL, rejectTUG3_TL }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Form, setTug7Form] = useState({});
@@ -233,6 +233,15 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                 rejectingId===t.id
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG5_MgrULTG(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
                   : <><button className="approval-btn--approve" onClick={()=>approveTUG5_MgrULTG(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager ULTG)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
+              )}
+              {/* TL/SUPERADMIN bisa perbaiki file ajuan admin yang salah input, tanpa reject-recreate */}
+              {hasRole(currentUser, "TL","SUPERADMIN") && t.status==="PENDING" && rejectingId!==t.id && ["TUG3","TUG5","TUG8","TUG9","TUG10"].includes(t.docType) && (
+                <button className="approval-btn--cancel" onClick={()=>{
+                  if (t.docType==="TUG3") editDraftTug3?.(t);
+                  else if (t.docType==="TUG10") editTug10?.(t);
+                  else if (t.docType==="TUG5") editTug5?.(t);
+                  else if (["TUG8","TUG9"].includes(t.docType)) openEditCanonicalTug?.(t);
+                }}><span className="approval-btn__ic" aria-hidden="true">✏️</span>Perbaiki</button>
               )}
             </div>
           </div>

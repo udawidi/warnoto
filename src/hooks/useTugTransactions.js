@@ -5,7 +5,7 @@ import { isDemoMode } from "../lib/demo.js";
 import { logAudit } from "../lib/audit.js";
 import { generateDocNumbers, generateReservasiDocNo, uid } from "../lib/utils.js";
 import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
-import { createAndSubmitCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
+import { createAndSubmitCanonicalTug, amendCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
 import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js";
 import { upsertTug10Transaction, deleteTug10Transaction } from "../lib/tug10Sync.js";
 import { STATUS_SAP } from "../constants.js";
@@ -59,6 +59,7 @@ export function useTugTransactions({
   const [txnModal, setTxnModal] = useState(false);
   const [txnForm, setTxnForm] = useState(null);
   const [editingDraftTxnId, setEditingDraftTxnId] = useState(null); // non-null = sedang edit draft TUG-9 hasil adopt ULTG
+  const editingTxnRef = useRef(null); // txn asli yang sedang diedit (dipakai saveTxn cek .canonical utk routing amend)
   const [tugGroup, setTugGroup] = useState("penerimaan");
   const [tug5ExpandedIdx, setTug5ExpandedIdx] = useState(0); // index baris material TUG-5 yang sedang terbuka penuh (baris lain collapse)
   const [tug5MaterialPage, setTug5MaterialPage] = useState(0); // 5 item per halaman, max 10 (2 halaman)
@@ -253,7 +254,11 @@ export function useTugTransactions({
   async function saveTxn(targetStage) {
     if (savingTxn) { showToast("Sedang menyimpan, tunggu sebentar...","info"); return; }
     const canCreateULTG = hasRole(currentUser, "ADMIN_ULTG") && txnForm?.docType==="TUG5";
-    if (!can(currentUser, "aksi.buatTransaksi", rolePerms) && !canCreateULTG && !editingDraftTxnId) { showToast("Role kamu tidak dapat mengajukan transaksi!","error"); return; }
+    // Bypass "aksi.buatTransaksi" hanya utk edit yang sah: pembuat asli mengedit
+    // draftnya sendiri, ATAU TL/SUPERADMIN memperbaiki ajuan PENDING (amend).
+    const isOwnerEdit = !!editingDraftTxnId && editingTxnRef.current?.createdBy === currentUser.id;
+    const isTLAmendEdit = !!editingDraftTxnId && hasRole(currentUser, "TL", "SUPERADMIN");
+    if (!can(currentUser, "aksi.buatTransaksi", rolePerms) && !canCreateULTG && !isOwnerEdit && !isTLAmendEdit) { showToast("Role kamu tidak dapat mengajukan transaksi!","error"); return; }
     const docType = txnForm.docType;
 
     if (docType !== "TUG3" && docType !== "TUG10") {
@@ -287,6 +292,23 @@ export function useTugTransactions({
         if (stock && stock.jenisBarang !== "Non-Stock" && stock.qty < si.qty) {
           showToast(`Stok ${stock.name} di ${stock.lokasi} tidak cukup! Tersedia: ${stock.qty} ${stock.unit}`,"error"); return;
         }
+      }
+      if (editingDraftTxnId && editingTxnRef.current?.canonical) {
+        // TL amend: txn sudah PENDING di server canonical, bukan draft blob lokal —
+        // update in-place lewat RPC tug_amend, JANGAN commitNewTxn/submitDraftTug9
+        // (keduanya akan membuat ajuan baru / menganggap ini masih draft).
+        const res = await amendCanonicalTug({ txn: editingTxnRef.current, formData: { ...txnForm, stockItems: validItems }, currentUser });
+        if (res.unavailable) { showToast("Perbaikan TUG-8/9 belum tersedia di server ini.","error"); return; }
+        const docKey = docType === "TUG9" ? "tug9" : "tug8";
+        const docNo = editingTxnRef.current.docNumbers?.[docKey] || res.data.docNumber;
+        const editedId = editingDraftTxnId;
+        const newTxns = txns.map(t => t.id === editedId ? { ...t, ...txnForm, stockItems: validItems, canonicalVersion: res.data.version } : t);
+        setTxns(newTxns);
+        setTxnModal(false); setEditingDraftTxnId(null); editingTxnRef.current = null;
+        await saveToCloud({ txns: newTxns });
+        logAudit(currentUser, "UPDATE", "txns", docNo, { docType });
+        showToast(`✏️ ${docNo} diperbarui. Masih menunggu approval.`);
+        return;
       }
       if (editingDraftTxnId) { await stateRef.current.submitDraftTug9({ ...txnForm, stockItems: validItems }); return; }
       await commitNewTxn(docType, { ...txnForm, stockItems: validItems });
@@ -331,7 +353,7 @@ export function useTugTransactions({
       if (!txnForm.ultgId) { showToast("Unit ULTG kamu tidak terdeteksi. Hubungi Admin.","error"); return; }
       const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, keteranganUmum: txnForm.namaPekerjaan });
+      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, keteranganUmum: txnForm.namaPekerjaan }, { replaceDraftId: editingDraftTxnId });
       return;
     }
 
@@ -339,7 +361,7 @@ export function useTugTransactions({
       if (!txnForm.uitId) { showToast("Pilih UIT tujuan (Kepada)!","error"); return; }
       const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.keteranganUmum || "Permintaan Material", lokasiPekerjaan: "UPT Surabaya" });
+      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.keteranganUmum || "Permintaan Material", lokasiPekerjaan: "UPT Surabaya" }, { replaceDraftId: editingDraftTxnId });
       return;
     }
   }
@@ -420,53 +442,79 @@ export function useTugTransactions({
       // Setelah approve, jadi pengajuan yang bisa di-adopt Admin/TL UPT induk (bukan auto-chain TUG-7).
       const parentUptId = ultgList.find(u => u.id === formData.ultgId)?.parentUptId || currentUser?.uptId;
       const uptKode = uptList.find(u => u.id === parentUptId)?.kode || "UPT-SBY";
+      // TL amend: mengedit TUG-5 yang masih PENDING (belum final) di-update in-place —
+      // nomor dok/stage/approval progress dipertahankan, bukan bikin ajuan baru.
+      const replacedDraft5u = replaceDraftId ? txns.find(t => t.id === replaceDraftId) : null;
+      const isEditInPlace5u = replacedDraft5u?.status === "PENDING";
       docNumbers = { ...docNumbers, tug5: generateReservasiDocNo(seq, Date.now(), uptKode) };
       const nt5u = {
-        id: txnId,
-        docType, docSeq: seq, docNumbers,
+        id: replacedDraft5u?.id || txnId,
+        docType,
+        docSeq: isEditInPlace5u ? replacedDraft5u.docSeq : seq,
+        docNumbers: isEditInPlace5u ? replacedDraft5u.docNumbers : docNumbers,
         ...formData,
         uptId: formData.uptId || parentUptId,
-        stage: "PENDING_MGR_ULTG",
+        stage: isEditInPlace5u ? replacedDraft5u.stage : "PENDING_MGR_ULTG",
         status: "PENDING",
-        requiredApprover: "MGR_ULTG",
-        approvedByMgrUltg: null, approvedAtMgrUltg: null,
-        adoptedBy: null, adoptedAt: null, adoptedTug9Id: null,
+        requiredApprover: isEditInPlace5u ? replacedDraft5u.requiredApprover : "MGR_ULTG",
+        approvedByMgrUltg: isEditInPlace5u ? (replacedDraft5u.approvedByMgrUltg ?? null) : null,
+        approvedAtMgrUltg: isEditInPlace5u ? (replacedDraft5u.approvedAtMgrUltg ?? null) : null,
+        adoptedBy: isEditInPlace5u ? (replacedDraft5u.adoptedBy ?? null) : null,
+        adoptedAt: isEditInPlace5u ? (replacedDraft5u.adoptedAt ?? null) : null,
+        adoptedTug9Id: isEditInPlace5u ? (replacedDraft5u.adoptedTug9Id ?? null) : null,
         rejectedBy: null, rejectedAt: null, rejectReason: null,
-        createdBy: currentUser.id, createdAt: Date.now(),
+        createdBy: replacedDraft5u?.createdBy ?? currentUser.id, createdAt: replacedDraft5u?.createdAt ?? Date.now(),
       };
-      const newTxnsU = [...txns, nt5u];
-      const newSeqU = seq + 1;
-      setTxns(newTxnsU); setDocSeq(newSeqU); setTxnModal(false);
+      const newTxnsU = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5u : t) : [...txns, nt5u];
+      const newSeqU = isEditInPlace5u ? docSeq : seq + 1;
+      setTxns(newTxnsU); setDocSeq(newSeqU); setTxnModal(false); setEditingDraftTxnId(null);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
       await saveToCloud({txns: newTxnsU, docSeq: newSeqU});
-      logAudit(currentUser, "CREATE", "txns", nt5u.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
-      showToast(`${nt5u.docNumbers.tug5} dibuat! Menunggu approval Manager ULTG. ⏳`);
+      if (isEditInPlace5u) {
+        logAudit(currentUser, "UPDATE", "txns", nt5u.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
+        showToast(`✏️ ${nt5u.docNumbers.tug5} diperbarui. Masih menunggu approval.`);
+      } else {
+        logAudit(currentUser, "CREATE", "txns", nt5u.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
+        showToast(`${nt5u.docNumbers.tug5} dibuat! Menunggu approval Manager ULTG. ⏳`);
+      }
       return;
     }
 
     if (docType === "TUG5") {
       // TUG-5: 2-stage approval: Asman → Manager UPT
       // Then auto-generates: INTRACOMPANY → draft TUG-7, INTERCOMPANY → draft TUG-5 UIT
+      // TL amend (pola sama blok ULTG di atas): edit PENDING in-place, jangan bikin baru.
+      const replacedDraft5 = replaceDraftId ? txns.find(t => t.id === replaceDraftId) : null;
+      const isEditInPlace5 = replacedDraft5?.status === "PENDING";
       const nt5 = {
-        id: txnId,
-        docType, docSeq: seq, docNumbers,
+        id: replacedDraft5?.id || txnId,
+        docType,
+        docSeq: isEditInPlace5 ? replacedDraft5.docSeq : seq,
+        docNumbers: isEditInPlace5 ? replacedDraft5.docNumbers : docNumbers,
         ...formData,
-        stage: "PENDING_ASMAN",
+        stage: isEditInPlace5 ? replacedDraft5.stage : "PENDING_ASMAN",
         status: "PENDING",
-        requiredApprover: "ASMAN",
-        approvedByAsman: null, approvedAtAsman: null,
-        approvedByManager: null, approvedAtManager: null,
-        tug7Id: null, // will be set when TUG-7 is auto-generated
+        requiredApprover: isEditInPlace5 ? replacedDraft5.requiredApprover : "ASMAN",
+        approvedByAsman: isEditInPlace5 ? (replacedDraft5.approvedByAsman ?? null) : null,
+        approvedAtAsman: isEditInPlace5 ? (replacedDraft5.approvedAtAsman ?? null) : null,
+        approvedByManager: isEditInPlace5 ? (replacedDraft5.approvedByManager ?? null) : null,
+        approvedAtManager: isEditInPlace5 ? (replacedDraft5.approvedAtManager ?? null) : null,
+        tug7Id: isEditInPlace5 ? (replacedDraft5.tug7Id ?? null) : null, // will be set when TUG-7 is auto-generated
         rejectedBy: null, rejectedAt: null, rejectReason: null,
-        createdBy: currentUser.id, createdAt: Date.now(),
+        createdBy: replacedDraft5?.createdBy ?? currentUser.id, createdAt: replacedDraft5?.createdAt ?? Date.now(),
       };
-      const newTxns5 = [...txns, nt5];
-      const newSeq5 = seq + 1;
-      setTxns(newTxns5); setDocSeq(newSeq5); setTxnModal(false);
+      const newTxns5 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5 : t) : [...txns, nt5];
+      const newSeq5 = isEditInPlace5 ? docSeq : seq + 1;
+      setTxns(newTxns5); setDocSeq(newSeq5); setTxnModal(false); setEditingDraftTxnId(null);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
       await saveToCloud({txns: newTxns5, docSeq: newSeq5});
-      logAudit(currentUser, "CREATE", "txns", nt5.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
-      showToast(`${nt5.docNumbers.tug5} dibuat! Menunggu approval Asman Konstruksi. ⏳`);
+      if (isEditInPlace5) {
+        logAudit(currentUser, "UPDATE", "txns", nt5.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
+        showToast(`✏️ ${nt5.docNumbers.tug5} diperbarui. Masih menunggu approval.`);
+      } else {
+        logAudit(currentUser, "CREATE", "txns", nt5.docNumbers.tug5, { docType, jumlahBarang: (formData.stockItems||[]).length });
+        showToast(`${nt5.docNumbers.tug5} dibuat! Menunggu approval Asman Konstruksi. ⏳`);
+      }
       return;
     }
 
@@ -537,7 +585,10 @@ export function useTugTransactions({
     // dipertahankan kalau draft yang diedit sudah punya satu (pola sama TUG-3
     // keepExistingDocs) supaya tidak makan nomor urut tiap kali disimpan ulang.
     const isDraft10 = docType === "TUG10" && targetStage === "DRAFT";
-    const keepExistingDocs10 = isDraft10 && !!replacedDraft?.docNumbers?.[docKey];
+    // TL amend TUG-10: mengedit transaksi yang sudah PENDING (bukan DRAFT) adalah
+    // update in-place — pertahankan nomor dok & progress approval (pola sama TUG-3/5).
+    const isEditInPlace10 = docType === "TUG10" && replacedDraft?.status === "PENDING";
+    const keepExistingDocs10 = (isDraft10 || isEditInPlace10) && !!replacedDraft?.docNumbers?.[docKey];
     const nt = {
       ...draftBase,
       id: replacedDraft?.id || txnId,
@@ -550,10 +601,11 @@ export function useTugTransactions({
       canonicalId: canonicalSubmission?.id || null,
       canonicalVersion: canonicalSubmission?.version || null,
       identitySnapshot: canonicalSubmission?.identitySnapshot || null,
-      stage: isDraft10 ? "DRAFT" : (canonicalSubmission?.stage || undefined),
-      requiredApprover,
-      approvedBy: null, approvedAt: null,
-      asmanAutoApproved: false,
+      stage: isDraft10 ? "DRAFT" : (isEditInPlace10 ? replacedDraft?.stage : (canonicalSubmission?.stage || undefined)),
+      requiredApprover: isEditInPlace10 ? (replacedDraft?.requiredApprover ?? requiredApprover) : requiredApprover,
+      approvedBy: isEditInPlace10 ? (replacedDraft?.approvedBy ?? null) : null,
+      approvedAt: isEditInPlace10 ? (replacedDraft?.approvedAt ?? null) : null,
+      asmanAutoApproved: isEditInPlace10 ? !!replacedDraft?.asmanAutoApproved : false,
       rejectedBy: null, rejectedAt: null, rejectReason: null,
       createdBy: replacedDraft?.createdBy ?? currentUser.id, createdAt: replacedDraft?.createdAt ?? Date.now(),
     };
@@ -577,6 +629,9 @@ export function useTugTransactions({
     canonicalActionKeysRef.current = null;
     if (isDraft10) {
       showToast(`💾 Draft ${nt.docNumbers[docKey]} disimpan. Lengkapi lalu ajukan saat siap.`);
+    } else if (isEditInPlace10) {
+      logAudit(currentUser, "UPDATE", "txns", nt.docNumbers[docKey], { docType, jumlahBarang: (formData.stockItems||[]).length });
+      showToast(`✏️ ${nt.docNumbers[docKey]} diperbarui. Masih menunggu approval.`);
     } else {
       logAudit(currentUser, "CREATE", "txns", nt.docNumbers[docKey], { docType, jumlahBarang: (formData.stockItems||[]).length });
       showToast(`Transaksi ${nt.docNumbers[docKey]} dibuat! Menunggu approval ${ROLES[requiredApprover]}. ⏳`);
@@ -591,6 +646,7 @@ export function useTugTransactions({
   function editDraftTug3(txn) {
     setTxnForm({ ...txn });
     setEditingDraftTxnId(txn.id);
+    editingTxnRef.current = txn;
     setTug3ExpandedIdx(0);
     setTxnModal(true);
   }
@@ -620,6 +676,7 @@ export function useTugTransactions({
   function editDraftTug10(txn) {
     setTxnForm({ ...txn });
     setEditingDraftTxnId(txn.id);
+    editingTxnRef.current = txn;
     setTug10Collapsed({});
     setTxnModal(true);
   }
@@ -639,6 +696,24 @@ export function useTugTransactions({
     showToast("🗑️ TUG-10 dihapus.");
   }
 
+  // ── TL "Perbaiki" — edit in-place TUG-5 (belum punya konsep draft) & TUG-8/9
+  // canonical (buka form dari row server), pola sama editDraftTug3/editDraftTug10.
+  function editTug5(txn) {
+    setTxnForm({ ...txn });
+    setEditingDraftTxnId(txn.id);
+    editingTxnRef.current = txn;
+    setTug5ExpandedIdx(0);
+    setTug5MaterialPage(0);
+    setTxnModal(true);
+  }
+  function editCanonicalTug98(txn) {
+    setTxnForm({ ...txn });
+    setEditingDraftTxnId(txn.id);
+    editingTxnRef.current = txn;
+    setTug98Collapsed({});
+    setTxnModal(true);
+  }
+
   return {
     txnModal, setTxnModal, txnForm, setTxnForm,
     editingDraftTxnId, setEditingDraftTxnId,
@@ -654,5 +729,6 @@ export function useTugTransactions({
     saveTxn, commitNewTxn,
     editDraftTug3, submitDraftTug3, deleteDraftTug3,
     editDraftTug10, submitDraftTug10, deleteDraftTug10,
+    editTug10: editDraftTug10, editTug5, editCanonicalTug98,
   };
 }

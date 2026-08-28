@@ -1666,6 +1666,7 @@ export default function PLNWarehouse() {
     tug10Missing, flagTug10Invalid,
     saveTxn, commitNewTxn,
     editDraftTug3, submitDraftTug3, deleteDraftTug3,
+    editTug5, editTug10, editCanonicalTug98,
     editDraftTug10, submitDraftTug10, deleteDraftTug10,
   } = useTugTransactions({
     currentUser, showToast, rolePerms,
@@ -4263,6 +4264,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={approveStockCountItem} rejectStockCountItem={rejectStockCountItem}
             txns={txns} approvalHistoryList={approvalHistoryList} approvalHistoryPage={approvalHistoryPage} setApprovalHistoryPage={setApprovalHistoryPage}
             deleteDraftTug3={deleteDraftTug3}
+            editDraftTug3={editDraftTug3} editTug5={editTug5} editTug10={editTug10} openEditCanonicalTug={editCanonicalTug98}
             timMutuList={timMutuList}
             submitTUG4DanLampiran={submitTUG4DanLampiran}
             approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}

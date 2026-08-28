@@ -68,6 +68,19 @@ export async function createAndSubmitCanonicalTug({ docType, formData, currentUs
   return { unavailable: false, ...submitted.data, docSequence: created.data.docSequence, identitySnapshot: created.data.identitySnapshot, created: created.data };
 }
 
+/** TL amend of a still-PENDING canonical TUG-8/9 (fixing admin input errors in place). */
+export async function amendCanonicalTug({ txn, formData, currentUser, idempotencyKey }) {
+  const document = canonicalDocument(txn.docType, formData, currentUser);
+  const items = (formData.stockItems || []).map(canonicalItem);
+  return rpc("tug_amend", {
+    p_transaction_id: txn.canonicalId || txn.id,
+    p_expected_version: txn.canonicalVersion || txn.version,
+    p_document: document,
+    p_items: items,
+    p_idempotency_key: idempotencyKey || uuid(),
+  });
+}
+
 export async function prepareCanonicalTugReview(txn) {
   return rpc("tug_prepare_review", {
     p_transaction_id: txn.canonicalId || txn.id,
