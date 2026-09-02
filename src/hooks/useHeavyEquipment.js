@@ -42,7 +42,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     // Jangan menyebarkan properti yang tidak memiliki input (id, availabilityStatus,
     // metadata audit, dst.) ketika Admin membuka form lengkap. Untuk TL, payload
     // sengaja hanya dua field yang memang diizinkan.
-    const editableFields = ["upt","lokasi","nama","jenis","merkType","kapasitas","nomorSeri","tahun","kondisi","suratIzinAlat","statusAlat"];
+    const editableFields = ["upt","lokasi","nama","jenis","merkType","kapasitas","nomorSeri","tahun","kondisi","suratIzinAlat","statusAlat","kategori","tracked"];
     let upd = canEditAllHeavyEquipment
       ? Object.fromEntries(editableFields.map(key => [key, updates[key] ?? alat[key] ?? ""]))
       : { statusAlat: updates.statusAlat ?? alat.statusAlat };

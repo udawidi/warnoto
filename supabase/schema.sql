@@ -1704,3 +1704,80 @@ grant usage on schema public to authenticated, service_role;
 grant select on legacy_history_archive, legacy_history_documents to authenticated;
 grant select, insert, update on legacy_history_archive, legacy_history_documents to service_role;
 grant usage on sequence legacy_history_archive_id_seq, legacy_history_documents_id_seq to service_role;
+
+-- ────────────────────────────────────────────────────────────
+-- EQUIPMENT_LOCATION / EQUIPMENT_TRIP / OPERATOR_PROFILE — Live Location Alat
+-- Berat BATCH 1 (fondasi, migrations/20260903_equipment_tracking.sql). Role
+-- OPERATOR + UI/peta/realtime client BELUM ada (batch berikut); RLS di sini
+-- sengaja permisif-tapi-authenticated dulu (TODO scope UPT batch role).
+-- ────────────────────────────────────────────────────────────
+create table if not exists equipment_location (
+  equipment_id text primary key,
+  lat float8,
+  lng float8,
+  accuracy float8,
+  updated_at bigint,
+  updated_by uuid references profiles(id) on delete set null,
+  upt text,
+  status text check (status in ('MOVING','STOPPED'))
+);
+
+create table if not exists equipment_trip (
+  id text primary key,
+  equipment_id text,
+  operator_id uuid references profiles(id) on delete set null,
+  upt text,
+  started_at bigint,
+  ended_at bigint,
+  distance_m float8,
+  point_count int,
+  path jsonb
+);
+
+create table if not exists operator_profile (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  phone text,
+  sio_photo text,
+  sia_photo text,
+  updated_at bigint
+);
+
+alter table equipment_location enable row level security;
+alter table equipment_trip enable row level security;
+alter table operator_profile enable row level security;
+
+drop policy if exists "Authenticated read equipment_location" on equipment_location;
+drop policy if exists "Authenticated write equipment_location" on equipment_location;
+create policy "Authenticated read equipment_location" on equipment_location for select using (auth.role() = 'authenticated');
+create policy "Authenticated write equipment_location" on equipment_location for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read equipment_trip" on equipment_trip;
+drop policy if exists "Authenticated write equipment_trip" on equipment_trip;
+create policy "Authenticated read equipment_trip" on equipment_trip for select using (auth.role() = 'authenticated');
+create policy "Authenticated write equipment_trip" on equipment_trip for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+drop policy if exists "Authenticated read operator_profile" on operator_profile;
+drop policy if exists "Authenticated write operator_profile" on operator_profile;
+create policy "Authenticated read operator_profile" on operator_profile for select using (auth.role() = 'authenticated');
+create policy "Authenticated write operator_profile" on operator_profile for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+grant select, insert, update, delete on equipment_location to authenticated;
+grant all on equipment_location to service_role;
+grant select, insert, update, delete on equipment_trip to authenticated;
+grant all on equipment_trip to service_role;
+grant select, insert, update, delete on operator_profile to authenticated;
+grant all on operator_profile to service_role;
+
+-- Realtime hanya equipment_location (posisi live). Idempoten.
+do $$
+begin
+  if exists (select 1 from pg_publication where pubname = 'supabase_realtime')
+     and not exists (
+       select 1 from pg_publication_tables
+       where pubname = 'supabase_realtime'
+         and schemaname = 'public'
+         and tablename = 'equipment_location'
+     ) then
+    alter publication supabase_realtime add table public.equipment_location;
+  end if;
+end $$;

@@ -24,6 +24,8 @@ export const PERM_MENUS = [
   { key: "menu.inspeksiMaterial", label: "Inspeksi Material Cadang" },
   { key: "menu.ai", label: "Pak War (AI)" },
   { key: "menu.integrasiApi", label: "Integrasi API" },
+  { key: "menu.lacakAlat", label: "Lacak Alat" },
+  { key: "menu.profilOperator", label: "Profil Operator" },
 ];
 
 export const PERM_AKSI = [
@@ -40,7 +42,7 @@ export const PERM_AKSI = [
 export const MATRIX_ROLES = [
   "SUPERADMIN", "ADMIN", "TL", "ASMAN", "MANAGER",
   "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT", "ADMIN_LOG_PUSAT",
-  "PENGADAAN", "VIEWER", "ADMIN_ULTG", "MGR_ULTG",
+  "PENGADAAN", "VIEWER", "ADMIN_ULTG", "MGR_ULTG", "OPERATOR",
 ];
 
 // Helper: {menu.a:true, menu.b:true, ...} — hanya kunci true yang dicantumkan,
@@ -82,6 +84,9 @@ export const DEFAULT_PERMS = {
   ADMIN_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),
   MGR_ULTG: menus("dashboard", "stock", "kapasitasGudang", "transaction", "approval", "heavyEquipment", "rencana", "forecastStok", "ai"),
   SUPERADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true },
+  // OPERATOR (Live Location Alat Berat, batch 2): layar tunggal bersih di HP —
+  // HANYA Lacak Alat + Profil, nol menu lain, nol aksi.* (tak boleh sentuh master/stok).
+  OPERATOR: menus("lacakAlat", "profilOperator"),
 };
 
 // Cek izin efektif: SUPERADMIN selalu true; override role dari DB menang;

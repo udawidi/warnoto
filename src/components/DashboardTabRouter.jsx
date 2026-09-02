@@ -21,6 +21,7 @@ export function DashboardTabRouter(props) {
     heavyEquipmentList, heavyEquipmentLoans, attbList, attbBongkaranPool,
     materialCadangData, gudangList, petaWilayahDivRef, procurementSummary, petaUptLabel,
     showAlatBerat, setShowAlatBerat,
+    showLiveAlat, setShowLiveAlat,
   } = props;
   // Nama UPT untuk label dashboard — ikut UPT user login, bukan hardcoded Surabaya.
   const dashUptNama = (uptList||[]).find(u=>u.id===currentUser?.uptId)?.nama || "UPT Surabaya";
@@ -113,6 +114,7 @@ export function DashboardTabRouter(props) {
           C={C} currentUser={currentUser} gudangList={gudangList} uptList={uptList} uptNama={petaUptLabel}
           petaWilayahDivRef={petaWilayahDivRef} stockCountList={stockCountList}
           showAlatBerat={showAlatBerat} setShowAlatBerat={setShowAlatBerat}
+          showLiveAlat={showLiveAlat} setShowLiveAlat={setShowLiveAlat}
           setTab={setTab} setOpnameSubTab={setOpnameSubTab}
         />
       )}

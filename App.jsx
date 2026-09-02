@@ -52,6 +52,8 @@ import { AuditLogPage } from "./src/components/AuditLogPage.jsx";
 import { ImportLokasiModal, downloadLokasiTemplate } from "./src/components/ImportLokasiModal.jsx";
 import { PermMatrixPage } from "./src/components/PermMatrixPage.jsx";
 import { HeavyEquipmentTabV2 } from "./src/components/HeavyEquipmentTabV2.jsx";
+import { EquipmentLiveShare } from "./src/components/EquipmentLiveShare.jsx";
+import { OperatorProfile } from "./src/components/OperatorProfile.jsx";
 import { AttbTab } from "./src/components/AttbTab.jsx";
 import { DataStokTab } from "./src/components/DataStokTab.jsx";
 import { MasterDataTab } from "./src/components/MasterDataTab.jsx";
@@ -431,6 +433,11 @@ export default function PLNWarehouse() {
   const [tab, setTab] = useState(() => {
     try { return sessionStorage.getItem("warnoto_tab") || "dashboard"; } catch { return "dashboard"; }
   });
+  // Operator (Live Location Alat Berat, batch 2): layar tunggal bersih, dashboard
+  // bukan menunya — default tab begitu login adalah Lacak Alat.
+  useEffect(() => {
+    if (currentUser?.role === "OPERATOR" && tab !== "lacakAlat" && tab !== "profilOperator") setTab("lacakAlat");
+  }, [currentUser?.role]);
   const [dashTab, setDashTab] = useState("ringkasan"); // ringkasan terpadu | overview gudang
   const [search, setSearch] = useState("");
   const [filterJenis, setFilterJenis] = useState("ALL");
@@ -1391,6 +1398,34 @@ export default function PLNWarehouse() {
       void supabase.removeChannel(channel);
     };
   }, [authLoading, currentUser?.id, dataRefreshing]);
+
+  // Live Location Alat Berat (Batch 3a) — posisi live per unit: {equipment_id: row}.
+  // BEDA dari state master lain: tabel equipment_location pakai kolom typed (bukan pola
+  // jsonb `data`, lihat masterSync.js loadMasterTable), datanya ephemeral/live jadi tak
+  // lewat CLOUD cache — cukup 1x fetch awal + realtime, pola channel-nya tiru stocks
+  // (App.jsx:1379) tapi jauh lebih sederhana (upsert per-baris, tanpa resync/buffer/outage-toast).
+  const [equipmentPositions, setEquipmentPositions] = useState({});
+  useEffect(() => {
+    if (authLoading || !currentUser || !supabase) return;
+    let disposed = false;
+    supabase.from("equipment_location").select("*").then(({ data, error }) => {
+      if (disposed || error || !data) return;
+      setEquipmentPositions(Object.fromEntries(data.map(r => [r.equipment_id, r])));
+    });
+    const channel = supabase
+      .channel("warnoto-eqloc-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "equipment_location" }, payload => {
+        if (disposed) return;
+        if (payload.eventType === "DELETE") {
+          setEquipmentPositions(prev => { const next = { ...prev }; delete next[payload.old?.equipment_id]; return next; });
+        } else if (payload.new?.equipment_id) {
+          setEquipmentPositions(prev => ({ ...prev, [payload.new.equipment_id]: payload.new }));
+        }
+      })
+      .subscribe();
+    return () => { disposed = true; void supabase.removeChannel(channel); };
+  }, [authLoading, currentUser?.id]);
+
   // Debounce auto-sync warnoto_state + RAG (bot WA/Telegram) — dipicu tiap ada perubahan
   // stocks/txns lewat saveToCloud, tapi ditunda sampai 90 detik tidak ada perubahan baru
   // lagi (quiet period), supaya sesi edit beruntun (banyak saveToCloud berturut-turut)
@@ -1606,6 +1641,8 @@ export default function PLNWarehouse() {
   const petaGudangList = petaScopeUptIds === null ? gudangList : gudangList.filter(g => petaScopeUptIds.includes(g.uptId));
   // Overlay Alat Berat di peta — default OFF supaya tampilan peta lama tak berubah tanpa aksi user.
   const [showAlatBerat, setShowAlatBerat] = useState(false);
+  // Marker live per-unit (Batch 3a) — layer terpisah dari agregat showAlatBerat, default OFF.
+  const [showLiveAlat, setShowLiveAlat] = useState(false);
 
   // Peta Wilayah Gudang UPT Surabaya — render/refresh marker Leaflet tiap kali Dashboard dibuka atau data gudang berubah
   useEffect(() => {
@@ -1680,11 +1717,46 @@ export default function PLNWarehouse() {
           .bindPopup(`<b>🚜 Alat Berat ${uptNamaLabel}</b> (${list.length} unit)<br/>${katLines}<br/>Tersedia: <b>${list.length-dipinjam}</b> • Dipinjam: <b>${dipinjam}</b>`);
       });
     }
+    // Marker live per-unit (Batch 3a) — TERPISAH dari _alatLayerGroup agregat di atas (yang
+    // dibersihkan+dibangun ulang tiap render). Layer ini anti-flicker: marker di-upsert per
+    // unit via ref _byId (setLatLng), BUKAN clearLayers penuh, supaya posisi bergerak mulus
+    // saat event realtime datang alih-alih berkedip hilang-muncul.
+    if (!map._liveAlatLayer) { map._liveAlatLayer = window.L.layerGroup().addTo(map); map._liveAlatLayer._byId = {}; }
+    const liveLayer = map._liveAlatLayer;
+    const LIVE_ALAT_ICONS = { crane: "🏗️", truck: "🚚", manlift: "🛗" };
+    const LIVE_ALAT_STALE_MS = 5 * 60 * 1000; // MOVING tanpa update >5mnt = HP mati mendadak
+    const liveWantedIds = new Set();
+    if (showLiveAlat) {
+      heavyEquipmentList.forEach(e => {
+        const cat = getEquipmentCategory(e);
+        if (!e.tracked || !LIVE_ALAT_ICONS[cat]) return;
+        const pos = equipmentPositions[e.id];
+        if (!pos || pos.lat == null || pos.lng == null) return;
+        const uptId = uptList.find(u => stripUptPrefix(u.nama) === stripUptPrefix(e.upt))?.id;
+        if (petaScopeUptIds !== null && (!uptId || !petaScopeUptIds.includes(uptId))) return;
+        liveWantedIds.add(e.id);
+        // STOPPED = posisi terkunci valid, TIDAK dianggap stale. MOVING basi (HP mati) → redup.
+        const stale = pos.status === "MOVING" && pos.updated_at && (Date.now() - pos.updated_at > LIVE_ALAT_STALE_MS);
+        const minsAgo = pos.updated_at ? Math.round((Date.now() - pos.updated_at) / 60000) : null;
+        const statusLine = pos.status === "MOVING" ? "🟢 sedang jalan" : "⏸ berhenti di sini";
+        const popup = `<b>${LIVE_ALAT_ICONS[cat]} ${e.nama}</b><br/>Kategori: ${cat}<br/>Status alat: ${e.availabilityStatus || "-"}<br/>Kapasitas: ${e.kapasitas || "-"}<br/>${statusLine}${stale ? ` (offline ${minsAgo} mnt)` : ""}<br/>Diperbarui ${minsAgo != null ? `${minsAgo} mnt lalu` : "-"}`;
+        const icon = window.L.divIcon({
+          html: `<div style="width:28px;height:28px;border-radius:50%;background:${UPT_MAP_COLOR[uptId] || "#dc2626"};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:15px;opacity:${stale ? 0.5 : 1};">${LIVE_ALAT_ICONS[cat]}</div>`,
+          className: "", iconSize:[28,28], iconAnchor:[14,14], popupAnchor:[0,-14],
+        });
+        const existing = liveLayer._byId[e.id];
+        if (existing) { existing.setLatLng([pos.lat, pos.lng]); existing.setIcon(icon); existing.setPopupContent(popup); }
+        else { liveLayer._byId[e.id] = window.L.marker([pos.lat, pos.lng], { icon }).addTo(liveLayer).bindPopup(popup); }
+      });
+    }
+    Object.keys(liveLayer._byId).forEach(id => {
+      if (!liveWantedIds.has(id)) { liveLayer.removeLayer(liveLayer._byId[id]); delete liveLayer._byId[id]; }
+    });
     const pts = gudangWithCoord.map(x => [x.coord.lat, x.coord.lng]);
     if (pts.length === 1) map.setView(pts[0], 13);
     else if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 13 });
     setTimeout(()=>map.invalidateSize(), 100);
-  }, [tab, dashTab, petaGudangList, stocks, lokasiList, maturityAssessments, currentUser, showAlatBerat, heavyEquipmentList, uptList, petaScopeUptIds]);
+  }, [tab, dashTab, petaGudangList, stocks, lokasiList, maturityAssessments, currentUser, showAlatBerat, heavyEquipmentList, uptList, petaScopeUptIds, showLiveAlat, equipmentPositions]);
 
   // Toast error dibiarkan tampil lebih lama (5.5s) daripada sukses (3.5s) —
   // pesan error biasanya lebih panjang/penting untuk dibaca tuntas, terutama
@@ -3964,9 +4036,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const isPengadaan = currentUser?.role === "PENGADAAN";
   // Role ULTG (Admin/Manager ULTG): sidebar terbatas — semua view-only kecuali TUG-5 & Approval TUG-5
   const isUltgRole = ULTG_ROLES.includes(currentUser?.role);
+  // Role OPERATOR (Live Location Alat Berat, batch 2): layar tunggal bersih di HP.
+  const isOperatorRole = currentUser?.role === "OPERATOR";
   const tugUiForUser = isUltgRole ? { ...TUG_UI, TUG5: { title:"Slip Reservasi Material", code:"RSV", chip:"Reservasi", buat:"Buat Slip Reservasi", desc:"Ajukan slip reservasi material — Admin ULTG ajukan → Manager ULTG approve → diadopsi UPT jadi TUG-9." } } : TUG_UI;
   const tugGroupUiForUser = isUltgRole ? { ...TUG_GROUP_UI, permintaan: { icon:"📋", label:"Reservasi", hint:"Slip reservasi material dari ULTG ke UPT" } } : TUG_GROUP_UI;
-  const navItems = (isPengadaan ? [
+  const navItems = (isOperatorRole ? [
+    {id:"lacakAlat",icon:<SidebarIcon name="equipment"/>,label:"Lacak Alat"},
+    {id:"profilOperator",icon:<SidebarIcon name="user"/>,label:"Profil"},
+  ] : isPengadaan ? [
     {id:"dashboard",icon:<SidebarIcon name="dashboard"/>,label:"Dashboard"},
     {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
   ] : isUltgRole ? [
@@ -4017,6 +4094,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     inspeksiMaterial: {eyebrow:"Material Assurance",title:"Inspeksi Material Cadang"},
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
     integrasiApi: {eyebrow:"Third-Party Access",title:"Integrasi API"},
+    lacakAlat: {eyebrow:"Fleet Operations",title:"Lacak Alat"},
+    profilOperator: {eyebrow:"Fleet Operations",title:"Profil Operator"},
   }[tab] || {eyebrow:"WARNOTO",title:"Dashboard"};
   const tug5UptKode = txnForm?.docType === "TUG5" && txnForm?.sourceType === "ULTG"
     ? uptList.find(u => u.id === (ultgList.find(x => x.id === txnForm.ultgId)?.parentUptId || currentUser?.uptId))?.kode || "UPT-SBY"
@@ -4067,6 +4146,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans} attbList={scopedAttbList} attbBongkaranPool={attbBongkaranPool}
             materialCadangData={materialCadangData} gudangList={petaGudangList} petaWilayahDivRef={petaWilayahDivRef}
             showAlatBerat={showAlatBerat} setShowAlatBerat={setShowAlatBerat}
+            showLiveAlat={showLiveAlat} setShowLiveAlat={setShowLiveAlat}
             petaUptLabel={petaScopeUptIds === null ? "Semua UPT" : (petaScopeUptIds.length === 1 ? currentUptNama : "Wilayah UIT")}
             procurementSummary={procurementSummary}
           />
@@ -4212,6 +4292,21 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
             adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
           />
+        )}
+
+        {tab==="lacakAlat" && (
+          <EquipmentLiveShare
+            currentUser={currentUser}
+            uptList={uptList}
+            heavyEquipmentList={heavyEquipmentList}
+            sty={sty}
+            C={C}
+            showToast={showToast}
+          />
+        )}
+
+        {tab==="profilOperator" && (
+          <OperatorProfile currentUser={currentUser} sty={sty} C={C} />
         )}
 
         {tab==="heavyEquipment" && (

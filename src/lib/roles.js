@@ -5,7 +5,7 @@
 //   UIT   (lihat semua UPT)     : ADMIN_UIT, ASMAN_LOG_UIT, MGR_LOGISTIK_UIT
 //   Pusat (lihat semua UPT+UIT) : ADMIN_LOG_PUSAT
 // MANAGER terikat SATU UPT dan BUKAN Pusat.
-export const ROLES = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", ADMIN_UIT: "Admin UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat", PENGADAAN: "Tim Pengadaan", VIEWER: "Viewer", ADMIN_ULTG: "Admin ULTG", MGR_ULTG: "Manager ULTG", SUPERADMIN: "Super Admin" };
+export const ROLES = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", ADMIN_UIT: "Admin UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat", PENGADAAN: "Tim Pengadaan", VIEWER: "Viewer", ADMIN_ULTG: "Admin ULTG", MGR_ULTG: "Manager ULTG", SUPERADMIN: "Super Admin", OPERATOR: "Operator Alat" };
 
 export const CAN_CREATE = ["ADMIN", "TL"];
 

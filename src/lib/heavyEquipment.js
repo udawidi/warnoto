@@ -84,7 +84,7 @@ export function normalizeHeavyEquipmentRecord(eq) {
   if (statusAlat === "BUTUH_PERBAIKAN" || statusAlat === "BUTUH_PEREMAJAAN") statusAlat = "RUSAK";
   let availabilityStatus = eq.availabilityStatus;
   if (availabilityStatus === "MAINTENANCE") { statusAlat = "MAINTENANCE"; availabilityStatus = "TERSEDIA"; }
-  return { ...eq, statusAlat: statusAlat || "LAYAK", availabilityStatus: availabilityStatus || "TERSEDIA" };
+  return { ...eq, statusAlat: statusAlat || "LAYAK", availabilityStatus: availabilityStatus || "TERSEDIA", kategori: eq.kategori || "", tracked: !!eq.tracked };
 }
 
 export const DEFAULT_HEAVY_EQUIPMENT = HEAVY_EQUIPMENT_RAW.trim().split("\n").map(line => {
@@ -155,7 +155,12 @@ export function canApproveHeavyEquipmentLoan(user, loan, uptList) {
   return !!ownerUpt && userUpt === ownerUpt;
 }
 
+export const EQUIPMENT_CATEGORIES = ["Crane", "Truck", "Manlift", "Forklift", "Pendukung"];
+
 export function getEquipmentCategory(e) {
+  const explicit = String(e.kategori || "").toLowerCase().trim();
+  if (explicit) return explicit;
+  // Fallback tebak-nama untuk data lama tanpa field kategori eksplisit.
   const n = String(e.nama||"").toUpperCase().replace(/\s+/g," ").trim();
   if (n.includes("CRANE")) return "crane";
   if (n.includes("FORKLIFT")) return "forklift";

@@ -6,7 +6,7 @@ import { UPT_MAP_COLOR } from "../theme.js";
 
 export function DashboardRingkasanBlock({
   C, currentUser, gudangList, uptList, uptNama, petaWilayahDivRef, stockCountList,
-  setTab, setOpnameSubTab, showAlatBerat, setShowAlatBerat,
+  setTab, setOpnameSubTab, showAlatBerat, setShowAlatBerat, showLiveAlat, setShowLiveAlat,
 }){
   // Legenda warna per-UPT hanya relevan kalau peta memang menampilkan >1 UPT sekaligus
   // (viewer UIT/Pusat) — dicek langsung dari isi gudangList (sudah discope App.jsx),
@@ -24,9 +24,18 @@ export function DashboardRingkasanBlock({
                   <input type="checkbox" checked={!!showAlatBerat} onChange={e=>setShowAlatBerat(e.target.checked)}/>
                   Alat Berat
                 </label>
+                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.muted,fontWeight:600,cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!showLiveAlat} onChange={e=>setShowLiveAlat(e.target.checked)}/>
+                  Alat Live
+                </label>
                 <span className="dashboard-insight-card__badge">Peta operasional</span>
               </div>
               <div ref={petaWilayahDivRef} className="dashboard-map-canvas"/>
+              {showLiveAlat && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",padding:"10px 2px 2px",fontSize:12,color:C.muted,fontWeight:600}}>
+                  <span>🏗️ Crane</span><span>🚚 Truck</span><span>🛗 Manlift</span>
+                </div>
+              )}
               {mapUptIds.length>1 && (
                 <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",padding:"10px 2px 2px"}}>
                   {mapUptIds.map(uptId => (

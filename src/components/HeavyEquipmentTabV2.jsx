@@ -3,9 +3,10 @@ import { useState } from "react";
 import { UIT } from "../constants.js";
 import { hasRole, getUserUptScope, roleTier } from "../lib/roles.js";
 import { downloadHeavyEquipmentLoanHTML } from "../lib/docBuilders.js";
-import { canApproveHeavyEquipmentLoan, getEquipmentCategory, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
+import { canApproveHeavyEquipmentLoan, EQUIPMENT_CATEGORIES, getEquipmentCategory, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
+import { RiwayatPerjalananPanel } from "./RiwayatPerjalananPanel.jsx";
 
 const EQUIPMENT_FORM_FIELDS = [
   ["upt", "UPT"], ["lokasi", "Lokasi"], ["nama", "Nama"], ["jenis", "Jenis"],
@@ -18,6 +19,16 @@ function EquipmentFields({ form, setForm, sty }) {
     {EQUIPMENT_FORM_FIELDS.map(([key,label]) => <label key={key} style={sty.label}>{label}
       <input style={sty.input} value={form[key]||""} onChange={e=>setForm(current=>({...current,[key]:e.target.value}))}/>
     </label>)}
+    <label style={sty.label}>Kategori
+      <select style={sty.input} value={form.kategori||""} onChange={e=>setForm(current=>({...current,kategori:e.target.value}))}>
+        <option value="">Pilih kategori</option>
+        {EQUIPMENT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </label>
+    <label style={{...sty.label,display:"flex",alignItems:"center",gap:6}}>
+      <input type="checkbox" checked={!!form.tracked} onChange={e=>setForm(current=>({...current,tracked:e.target.checked}))}/>
+      Lacak lokasi
+    </label>
   </div>;
 }
 
@@ -97,6 +108,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   ].filter(Boolean))).sort();
   const canManage = hasRole(currentUser, "ADMIN","TL");
   const canEditAll = hasRole(currentUser, "ADMIN");
+  // Riwayat Perjalanan (Live Location BATCH 3a) — gate ADMIN/TL/UIT/PUSAT (sesuai plan Fase 3b).
+  const canSeeRiwayatPerjalanan = canManage || isMultiUptViewer;
   const [addingEquipment, setAddingEquipment] = useState(false);
   const blankEquipment = () => ({upt:myUpt||"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", foto:null});
   const [addForm, setAddForm] = useState(blankEquipment);
@@ -286,7 +299,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
           hanya di channel "Peminjaman & Histori" (blok overdue dipindah ke sana, 2026-08-10:
           dulu di atas mode-switch jadi bocor di atas Daftar Alat — keluhan super admin). */}
       <div className="dashboard-mode-switch" role="tablist" aria-label="Tampilan alat berat" style={{marginBottom:12}}>
-        {[{id:"armada",label:"Daftar Alat",caption:"Registry & kondisi armada"},{id:"peminjaman",label:"Peminjaman & Histori",caption:"Pengajuan, approval, dan riwayat"}].map(item=>(
+        {[{id:"armada",label:"Daftar Alat",caption:"Registry & kondisi armada"},{id:"peminjaman",label:"Peminjaman & Histori",caption:"Pengajuan, approval, dan riwayat"},
+          ...(canSeeRiwayatPerjalanan?[{id:"riwayat",label:"Riwayat Perjalanan",caption:"Rute & jarak Live Location"}]:[])].map(item=>(
           <button key={item.id} className={viewMode===item.id?"is-active":""} onClick={()=>setViewMode(item.id)} role="tab" aria-selected={viewMode===item.id}>
             <strong>{item.label}{item.id==="peminjaman"&&pendingCount>0&&<span style={{marginLeft:6,padding:"1px 7px",borderRadius: 14,fontSize:12,fontWeight:800,background:C.red,color:"#fff"}}>{pendingCount}</span>}</strong><span>{item.caption}</span>
           </button>
@@ -475,6 +489,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       </div>
 
       </>)}
+
+      {viewMode==="riwayat" && canSeeRiwayatPerjalanan && (
+        <RiwayatPerjalananPanel active={viewMode==="riwayat"} equipmentList={equipmentList} users={users} uptScopeFilter={effectiveUptFilter||myUpt||""} sty={sty} C={C}/>
+      )}
 
       {/* MODAL EDIT ALAT — status alat + upload foto sekaligus, Admin/TL saja */}
       {editingEquipment && (()=>{
