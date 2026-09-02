@@ -1188,12 +1188,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   );
 
   function downloadBeritaAcara(opn) {
+    const w = window.open("", "_blank");
     const html = buildBeritaAcaraHTML(opn, katalogList, users, uptList);
-    const blob = new Blob([html],{type:"text/html"});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href=url; a.download=`BA_Opname_${opn.semester}_${opn.jenisAlur}.html`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    setTimeout(()=>URL.revokeObjectURL(url),2000);
+    if (w) { w.document.write(html); w.document.close(); }
   }
 }

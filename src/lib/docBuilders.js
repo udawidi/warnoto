@@ -85,7 +85,7 @@ export function buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangLis
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
-@page{size:A4 portrait;margin:10mm}
+@page{size:A4 portrait;margin:0}
 .page{padding:20px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
 .page:last-child{page-break-after:auto;margin-bottom:0}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
@@ -402,7 +402,7 @@ export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
-@page{size:A4 portrait;margin:10mm}
+@page{size:A4 portrait;margin:0}
 .page{padding:20px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
 .page:last-child{page-break-after:auto;margin-bottom:0}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
@@ -605,17 +605,10 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
 }
 
 export function downloadTUG10HTML(txn, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast, uptList) {
+  const w = window.open("", "_blank"); // sinkron, sebelum apa pun lain — anti popup-block
   const html = buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList);
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `TUG10_${txn.docSeq}_${txn.namaPekerjaan.replace(/[^a-zA-Z0-9]/g,"_").slice(0,30)}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-  showToast && showToast("📄 File diunduh! Buka di browser HP/laptop, lalu Print > Save as PDF.", "success");
+  if (w) { w.document.write(html); w.document.close(); }
+  showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
 }
 
 // ─── TUG-3 / TUG-4 DOCUMENT HTML BUILDER ───────────────────────────────
@@ -660,7 +653,7 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
-@page{size:A4 portrait;margin:10mm}
+@page{size:A4 portrait;margin:0}
 .page{padding:20px;page-break-after:always;min-height:100vh;background:white;max-width:900px;margin:0 auto 16px;position:relative}
 .page:last-child{page-break-after:auto;margin-bottom:0}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:8px}
@@ -809,7 +802,7 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Slip Reservasi ULTG ${esc(txn.id)}</title>
-<style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto;box-shadow:none}}</style></head><body>
+<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto;box-shadow:none}}</style></head><body>
 <div class="print-bar">📄 Slip Reservasi siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
@@ -869,7 +862,7 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-7 ${esc(txn.id)}</title>
-<style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10.5px}table.meta td.label{width:100px}table.meta td.colon{width:10px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:10px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:flex-end;margin-top:20px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:55px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto}}</style></head><body>
+<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10.5px}table.meta td.label{width:100px}table.meta td.colon{width:10px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:10px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:flex-end;margin-top:20px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:55px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto}}</style></head><body>
 <div class="print-bar">📄 TUG-7 siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div style="display:flex;justify-content:space-between;margin-bottom:14px">
@@ -908,15 +901,10 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
 }
 
 export function downloadTUG5HTML(txn, katalogList, uitList, users, showToast, ultgList, uptList) {
+  const w = window.open("", "_blank");
   const html = buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptList);
-  const blob = new Blob([html], {type:"text/html"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  const downloadPrefix = txn.sourceType === "ULTG" ? "Reservasi" : "TUG5";
-  a.href = url; a.download = `${downloadPrefix}_${txn.docSeq}_${(txn.keteranganUmum||"").replace(/[^a-zA-Z0-9]/g,"_").slice(0,25)}.html`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
-  showToast && showToast("📄 File diunduh! Buka di browser lalu Print → Save as PDF.", "success");
+  if (w) { w.document.write(html); w.document.close(); }
+  showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
 }
 
 // ─── PEMINJAMAN ALAT BERAT DOCUMENT BUILDER ─────────────────────────────
@@ -1015,7 +1003,7 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   const belumTerdaftar = items.filter(i=>i.statusItem==="TIDAK_ADA_DI_SISTEM").length;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Opname ${esc(opn.id)}</title>
-<style>@page{size:A4 landscape;margin:8mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}.page{padding:20px;background:white;max-width:1120px;margin:0 auto 16px}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:12px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:12px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:3px 6px;font-size:9.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.kpi{display:flex;gap:8px;margin-bottom:10px}.kpi .box{flex:1;border:1px solid #ccc;border-radius:4px;padding:6px;text-align:center}.kpi .box .n{font-size:15px;font-weight:800;color:#00377a}.kpi .box .l{font-size:8.5px;color:#555;margin-top:2px}table.items{width:100%;border-collapse:collapse;margin-bottom:12px;table-layout:fixed}table.items th{background:#003087;color:white;padding:5px 4px;font-size:9px;text-align:center;border:1px solid #ccc}table.items td{padding:4px 4px;border:1px solid #ccc;font-size:9px;word-wrap:break-word}table.items col.c-no{width:32px}table.items col.c-nama{width:auto}table.items col.c-kat{width:90px}table.items col.c-stn{width:42px}table.items col.c-num{width:56px}table.items col.c-status{width:90px}.sig-row{display:flex;justify-content:space-around;margin-top:24px;text-align:center}.sig-col{width:200px;font-size:9.5px}.sig-space{height:50px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:0}table.items thead{display:table-header-group}table.items tr{page-break-inside:avoid}.sig-row{page-break-inside:avoid}}</style></head><body>
+<style>@page{size:A4 landscape;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}.page{padding:20px;background:white;max-width:1120px;margin:0 auto 16px}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:12px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:12px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:3px 6px;font-size:9.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.kpi{display:flex;gap:8px;margin-bottom:10px}.kpi .box{flex:1;border:1px solid #ccc;border-radius:4px;padding:6px;text-align:center}.kpi .box .n{font-size:15px;font-weight:800;color:#00377a}.kpi .box .l{font-size:8.5px;color:#555;margin-top:2px}table.items{width:100%;border-collapse:collapse;margin-bottom:12px;table-layout:fixed}table.items th{background:#003087;color:white;padding:5px 4px;font-size:9px;text-align:center;border:1px solid #ccc}table.items td{padding:4px 4px;border:1px solid #ccc;font-size:9px;word-wrap:break-word}table.items col.c-no{width:32px}table.items col.c-nama{width:auto}table.items col.c-kat{width:90px}table.items col.c-stn{width:42px}table.items col.c-num{width:56px}table.items col.c-status{width:90px}.sig-row{display:flex;justify-content:space-around;margin-top:24px;text-align:center}.sig-col{width:200px;font-size:9.5px}.sig-space{height:50px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:12mm}table.items thead{display:table-header-group}table.items tr{page-break-inside:avoid}.sig-row{page-break-inside:avoid}}</style></head><body>
 <div class="print-bar">📄 Berita Acara Stock Opname — A4 Landscape &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
@@ -1127,14 +1115,10 @@ export function downloadLembarHitungHTML(opn, opts) {
 }
 
 export function downloadTUG7HTML(txn, katalogList, uitList, uptList, users, showToast) {
+  const w = window.open("", "_blank");
   const html = buildTUG7HTML(txn, katalogList, uitList, uptList, users);
-  const blob = new Blob([html], {type:"text/html"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `TUG7_${txn.docSeq}_${txn.id}.html`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
-  showToast && showToast("📄 File diunduh! Buka di browser lalu Print → Save as PDF.", "success");
+  if (w) { w.document.write(html); w.document.close(); }
+  showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
 }
 
 export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, satpamList, uptList) {
@@ -1234,7 +1218,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
-@page{size:A4 portrait;margin:10mm}
+@page{size:A4 portrait;margin:0}
 .page{padding:20px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
 .page:last-child{page-break-after:auto;margin-bottom:0}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
@@ -1538,31 +1522,17 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
 }
 
 export function downloadTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, satpamList, showToast, uptList) {
+  const w = window.open("", "_blank");
   const html = buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, satpamList, uptList);
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `TUG3_${txn.docSeq}_${(txn.dariSupplier||"").replace(/[^a-zA-Z0-9]/g,"_").slice(0,30)}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-  showToast && showToast("📄 File diunduh! Buka di browser HP/laptop, lalu Print > Save as PDF.", "success");
+  if (w) { w.document.write(html); w.document.close(); }
+  showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
 }
 
 export function downloadTUG9HTML(txn, stocks, users, satpamList, showToast, uptList, gudangList) {
+  const w = window.open("", "_blank");
   const html = buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangList);
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${txn.docType}_${txn.docSeq}_${txn.namaPekerjaan.replace(/[^a-zA-Z0-9]/g,"_").slice(0,30)}.html`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  setTimeout(() => URL.revokeObjectURL(url), 2000);
-  showToast && showToast("📄 File diunduh! Buka di browser HP/laptop, lalu Print > Save as PDF.", "success");
+  if (w) { w.document.write(html); w.document.close(); }
+  showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
 }
 
 // Lembar barcode/QR kartu gantung (cetak massal) — dipindah dari App.jsx Fase 5e.
