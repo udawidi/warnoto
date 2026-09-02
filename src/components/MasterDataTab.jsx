@@ -13,6 +13,7 @@ import { GudangCoordConfigPanel } from "./GudangCoordConfigPanel.jsx";
 import { MigrasiDataTab } from "./MigrasiDataTab.jsx";
 import { AuditLogPage } from "./AuditLogPage.jsx";
 import { PermMatrixPage } from "./PermMatrixPage.jsx";
+import { NotifRecipientPanel } from "./NotifRecipientPanel.jsx";
 
 export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockSubTab, filteredKatalog, satpamList: rawSatpamList, supplierList, openAddSupplier, openEditSupplier, deleteSupplier, timMutuList: rawTimMutuList, uitList: rawUitList, uptList: rawUptList, ultgList: rawUltgList, users, gudangList: rawGudangList, lokasiList, subGudangList, visibleGudangList: rawVisibleGudangList, openAddKatalog, openAddSatpam, openAddUIT, openAddGudang, openAddAkun, importGudangOpen, setImportGudangOpen, showGudangMaintenance, setShowGudangMaintenance, importLokasiOpen, setImportLokasiOpen, gudangCapacityImports, setGudangCapacityImports, saveToCloud, showToast, backfillGudangCoordFromCapacity, dedupeGudangDanSubGudang, isKodeDuplicateInSubGudang, setLokasiList, syncLokasi, maraUploadProgress, maraUploadLoading, uploadMaraToDB, katalogList, katalogSearch, setKatalogSearch, katalogFilterBelumMara, setKatalogFilterBelumMara, pagedKatalog, stocks, openEditKatalog, deleteKatalog, katalogPageSize, setKatalogPageSize, katalogPageClamped, setKatalogPage, katalogTotalPages, openEditSatpam, deleteSatpam, openEditTimMutu, orgSearch, setOrgSearch, collapsedUitIds, setCollapsedUitIds, openAddUPT, openEditUIT, deleteUIT, openAddULTG, openEditUPT, deleteUPT, openEditULTG, deleteULTG, expandedGudangId, setExpandedGudangId, openEditGudang, deleteGudang, showGudangDenahTools, setShowGudangDenahTools, uploadDenahGudang, denahLoading, mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, manualAddMode, setManualAddMode, ocrSuggestGudangId, setOcrSuggestGudangId, ocrSuggestSubGudangId, setOcrSuggestSubGudangId, ocrSuggestions, setOcrSuggestions, assignLokasiKoordinat, suggestKodeFromOcr, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds, uploadDenahSubGudang, denahSubLoading, mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub, assignLokasiKoordinatSub, openEditLokasi, requestDeleteLokasi, selectedSubGudangId, setSelectedSubGudangId, openEditAkun, resetMfa, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, setStocks, setKatalogList, setTxns, reloadRolePerms }) {
   const [akunSearch, setAkunSearch] = useState("");
@@ -815,6 +816,10 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               </div>
               );
             })()}
+
+            {stockSubTab==="akun" && can(currentUser, "aksi.kelolaAkun", rolePerms) && (
+              <NotifRecipientPanel sty={sty} C={C} currentUser={currentUser} uptList={uptList} />
+            )}
 
             {/* ── SUB-TAB: MIGRASI DATA (ADMIN only) ── */}
             {stockSubTab==="migrasi" && can(currentUser, "aksi.migrasiData", rolePerms) && (
