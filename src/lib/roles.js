@@ -47,7 +47,7 @@ export function canAccessGudang(user, gudangId) {
 // (`"UPT Surabaya"` -> `"Surabaya"`) dan nilai itulah yang tersimpan di data existing
 // (attb_list.upt / heavy_equipment.upt diisi dari fungsi ini, App.jsx:3810). Tanpa pangkas,
 // perbandingan `getUserUptScope(user) === item.upt` gagal dan approval ATTB/Alat Berat mati.
-const stripUptPrefix = (s) => (s || "").replace(/^UPT\s+/i, "").trim();
+export const stripUptPrefix = (s) => (s || "").replace(/^UPT\s+/i, "").trim();
 
 export function getUserUptScope(user, uptList) {
   if (user?.upt || user?.uptName || user?.uptKode) return user.upt || user.uptName || user.uptKode;

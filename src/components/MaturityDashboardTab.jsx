@@ -57,6 +57,7 @@ export function MaturityDashboardTab({
   maturityAuditSaving,
   saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet,
   calculateItemLevel, calcMaturityScore,
+  saveMaturityTarget,
   gudangList, askConfirmDelete,
   MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, MATURITY_WORKFLOW_COLOR,
 }) {
@@ -369,8 +370,10 @@ export function MaturityDashboardTab({
                           <div style={{ display: "flex", justifyContent: "center", gap: 4, alignItems: "flex-end", height: 160, paddingBottom: 10, borderBottom: "1.5px solid #cbd5e1" }}>
                             {uptAuditHistory.map(bar => {
                               const heightPct = (bar.score / 5) * 100;
+                              // target nullable — garis cuma digambar kalau periode ini punya target.
+                              const targetPct = bar.target != null ? (bar.target / 5) * 100 : null;
                               return (
-                                <div key={bar.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: "1 1 0", minWidth: 0, maxWidth: 72, height: "100%", justifyContent: "flex-end" }}>
+                                <div key={bar.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: "1 1 0", minWidth: 0, maxWidth: 72, height: "100%", justifyContent: "flex-end", position: "relative" }}>
                                   <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>{bar.score.toFixed(2)}</span>
                                   <div style={{
                                     width: "100%",
@@ -379,6 +382,11 @@ export function MaturityDashboardTab({
                                     borderRadius: "4px 4px 0 0",
                                     transition: "height 0.5s ease-out"
                                   }} />
+                                  {targetPct != null && (
+                                    <div title={`Target: ${bar.target.toFixed(2)}`} style={{ position: "absolute", left: 0, right: 0, bottom: `${targetPct}%`, borderTop: "2px dashed #dc2626" }}>
+                                      <span style={{ position: "absolute", right: 0, top: -14, fontSize: 10, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap" }}>{bar.target.toFixed(1)}</span>
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -433,7 +441,24 @@ export function MaturityDashboardTab({
                                   textTransform: "uppercase"
                                 }}>{item.status}</span>
                               </div>
-                              <strong style={{ fontSize: 13, fontWeight: 950, color: "#0f172a" }}>{item.score.toFixed(2)}</strong>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <strong style={{ fontSize: 13, fontWeight: 950, color: "#0f172a" }}>{item.score.toFixed(2)}</strong>
+                                {canSwitchMaturityUpt && (
+                                  <input
+                                    type="number" min={0} max={5} step={0.01}
+                                    defaultValue={item.target ?? ""}
+                                    placeholder="Target"
+                                    title={`Set target ${item.upt} S${item.semester} ${item.tahun}`}
+                                    onBlur={e => {
+                                      const raw = e.target.value.trim();
+                                      const parsed = raw === "" ? null : Math.min(5, Math.max(0, Number(raw)));
+                                      if (raw !== "" && !Number.isFinite(Number(raw))) return;
+                                      if (parsed !== (item.target ?? null)) saveMaturityTarget(item, parsed);
+                                    }}
+                                    style={{ width: 56, fontSize: 12, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 8, color: "#dc2626", fontWeight: 700 }}
+                                  />
+                                )}
+                              </div>
                             </div>
                           })}
                         </div>

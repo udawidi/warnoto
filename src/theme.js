@@ -22,6 +22,18 @@ export const modalHeaderStyle = { display:"flex", alignItems:"center", justifyCo
 
 // C opsional (default terang) supaya pemakai lama `makeSty(isMobile)` tetap jalan;
 // App.jsx meneruskan palet theme-aware (C_LIGHT/C_DARK) sebagai argumen kedua.
+// Palet kategorikal per UPT (Peta Wilayah Gudang dashboard, viewer multi-UPT) —
+// keluarga warna sama dgn jenisBadge di atas, cuma keyed by uptId (lihat masterUpt.js).
+// uptId tak dikenal fallback ke merah lama di titik pakai (bukan di sini).
+export const UPT_MAP_COLOR = {
+  "UPT-SBY": "#1d4ed8",
+  "UPT-MLG": "#7c3aed",
+  "UPT-MDN": "#16a34a",
+  "UPT-PBG": "#ea580c",
+  "UPT-BLI": "#be185d",
+  "UPT-GRS": "#0891b2",
+};
+
 export function makeSty(isMobile, C=C_LIGHT) {
   return {
     btn:(v="primary",sz="md")=>({ padding:isMobile?(sz==="sm"?"10px 14px":"12px 18px"):(sz==="sm"?"5px 10px":"9px 18px"), minHeight:isMobile?44:undefined, borderRadius:10, border:"none", cursor:"pointer", fontWeight:700, fontSize:isMobile?(sz==="sm"?13:15):(sz==="sm"?12:13), background: v==="primary"?"linear-gradient(180deg,#2f6bf0,#1d4ed8)":v==="danger"?"linear-gradient(180deg,#ef4444,#dc2626)":v==="success"?"linear-gradient(180deg,#1db954,#16a34a)":v==="warn"?"linear-gradient(180deg,#fbb024,#f59e0b)":"#f3f4f6", color:v==="ghost"?C.text:"white", boxShadow:(v==="primary"||v==="danger"||v==="success"||v==="warn")?"0 1px 2px rgba(15,23,42,0.16), 0 1px 3px rgba(15,23,42,0.10)":"inset 0 0 0 1px rgba(15,23,42,0.07)" }),

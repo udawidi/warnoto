@@ -2,11 +2,16 @@
 // Murni relokasi blok dashboard/ringkasan (tab==="dashboard" && dashTab==="ringkasan"); JSX/logic tidak berubah.
 import { hasRole } from "../lib/roles.js";
 import { fmtDate } from "../lib/utils.js";
+import { UPT_MAP_COLOR } from "../theme.js";
 
 export function DashboardRingkasanBlock({
-  C, currentUser, gudangList, uptNama, petaWilayahDivRef, stockCountList,
-  setTab, setOpnameSubTab,
+  C, currentUser, gudangList, uptList, uptNama, petaWilayahDivRef, stockCountList,
+  setTab, setOpnameSubTab, showAlatBerat, setShowAlatBerat,
 }){
+  // Legenda warna per-UPT hanya relevan kalau peta memang menampilkan >1 UPT sekaligus
+  // (viewer UIT/Pusat) — dicek langsung dari isi gudangList (sudah discope App.jsx),
+  // bukan cek tier role terpisah, supaya otomatis benar kalau scoping berubah nanti.
+  const mapUptIds = [...new Set(gudangList.map(g=>g.uptId).filter(Boolean))];
   return (
           <div className="dashboard-insight-grid">
             <section className="dashboard-insight-card dashboard-map-card">
@@ -15,9 +20,23 @@ export function DashboardRingkasanBlock({
                   <strong>Peta Wilayah Gudang {uptNama}</strong>
                   <span>{gudangList.filter(g=>g.lat!=null&&g.lng!=null).length} dari {gudangList.length} gudang memiliki koordinat GPS</span>
                 </div>
+                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.muted,fontWeight:600,cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!showAlatBerat} onChange={e=>setShowAlatBerat(e.target.checked)}/>
+                  Alat Berat
+                </label>
                 <span className="dashboard-insight-card__badge">Peta operasional</span>
               </div>
               <div ref={petaWilayahDivRef} className="dashboard-map-canvas"/>
+              {mapUptIds.length>1 && (
+                <div style={{display:"flex",flexWrap:"wrap",gap:"6px 14px",padding:"10px 2px 2px"}}>
+                  {mapUptIds.map(uptId => (
+                    <span key={uptId} style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.muted,fontWeight:600}}>
+                      <span style={{width:10,height:10,borderRadius:"50%",background:UPT_MAP_COLOR[uptId]||"#dc2626",display:"inline-block"}}/>
+                      {uptList.find(u=>u.id===uptId)?.nama || uptId}
+                    </span>
+                  ))}
+                </div>
+              )}
               {gudangList.filter(g=>g.lat==null||g.lng==null).length>0 && hasRole(currentUser, "ADMIN") && (
                 <div className="dashboard-insight-card__notice">Ada gudang yang belum memiliki koordinat GPS. Lengkapi melalui Master Data.</div>
               )}

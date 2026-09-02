@@ -15,11 +15,11 @@ import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "./src/lib/normalizeKatalogCode.js";
 import { expandMonthlySeriesFromMap, tsbMonthlyForecast } from "./src/lib/tsbForecast.js";
 import { logAudit } from "./src/lib/audit.js";
-import { C as C_LIGHT, C_DARK, makeSty } from "./src/theme.js";
+import { C as C_LIGHT, C_DARK, makeSty, UPT_MAP_COLOR } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
 import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel } from "./src/lib/sap.js";
-import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog } from "./src/lib/roles.js";
+import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
 import { can } from "./src/lib/perms.js";
@@ -378,6 +378,7 @@ export default function PLNWarehouse() {
     calcMaturityScore,
     calcMaturityLevel,
     saveMaturityAudit,
+    saveMaturityTarget,
     autosaveMaturityDraft,
     maturityDraftSavedAt,
     deleteMaturityAudit,
@@ -1601,6 +1602,8 @@ export default function PLNWarehouse() {
   // Peta Wilayah Gudang: scope ke UPT login (null = nasional, lihat semua)
   const petaScopeUptIds = getScopeUptIds(currentUser, uptList); // null=nasional
   const petaGudangList = petaScopeUptIds === null ? gudangList : gudangList.filter(g => petaScopeUptIds.includes(g.uptId));
+  // Overlay Alat Berat di peta — default OFF supaya tampilan peta lama tak berubah tanpa aksi user.
+  const [showAlatBerat, setShowAlatBerat] = useState(false);
 
   // Peta Wilayah Gudang UPT Surabaya — render/refresh marker Leaflet tiap kali Dashboard dibuka atau data gudang berubah
   useEffect(() => {
@@ -1627,9 +1630,10 @@ export default function PLNWarehouse() {
     }
     const map = petaWilayahMapRef.current;
     map._markersLayer.clearLayers();
-    // Ikon gudang merah (divIcon — tidak butuh file gambar terpisah)
-    const gudangIcon = window.L.divIcon({
-      html: `<div style="width:30px;height:30px;border-radius:50%;background:#dc2626;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:16px;">🏭</div>`,
+    // Ikon gudang — warna per UPT (viewer multi-UPT lihat gudang lintas UPT sekaligus);
+    // fallback merah lama utk uptId tak dikenal (divIcon per-marker, tidak butuh file gambar).
+    const gudangIconFor = uptId => window.L.divIcon({
+      html: `<div style="width:30px;height:30px;border-radius:50%;background:${UPT_MAP_COLOR[uptId] || "#dc2626"};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:16px;">🏭</div>`,
       className: "", iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-15],
     });
     gudangWithCoord.forEach(({g, coord}) => {
@@ -1637,14 +1641,48 @@ export default function PLNWarehouse() {
       const itemCount = stockRows.length;
       const totalQty = stockRows.reduce((a,s)=>a+(s.qty||0),0);
       const lastMaturity = maturityAssessments[0];
-      window.L.marker([coord.lat, coord.lng], {icon:gudangIcon}).addTo(map._markersLayer)
+      window.L.marker([coord.lat, coord.lng], {icon:gudangIconFor(g.uptId)}).addTo(map._markersLayer)
         .bindPopup(`<b>🏭 ${g.nama}</b> (${g.kode})<br/>${g.alamat||"-"}<br/>${itemCount} baris stok • Total Qty: <b>${fmtNum(totalQty)}</b>${lastMaturity?`<br/>Maturity: Level ${lastMaturity.level} (${MATURITY_LEVELS[lastMaturity.level]})`:""}`);
     });
+    // Overlay Alat Berat (toggle) — layer terpisah dari marker gudang, dibersihkan &
+    // dibangun ulang tiap render supaya tak numpuk. ponytail: agregat per UPT (bukan
+    // titik per alat) karena field lokasi alat (eq.upt/eq.lokasi) masih teks bebas
+    // tanpa gudangId/koordinat sendiri; upgrade ke titik per alat kalau master alat
+    // nanti dapat field itu. Koordinat perwakilan UPT = gudang pertama UPT itu di
+    // gudangWithCoord (sumber SAMA dgn marker gudang, tak ada koordinat UPT terpisah).
+    if (!map._alatLayerGroup) map._alatLayerGroup = window.L.layerGroup().addTo(map);
+    map._alatLayerGroup.clearLayers();
+    if (showAlatBerat) {
+      const alatByUpt = new Map();
+      heavyEquipmentList.forEach(e => {
+        const uptId = uptList.find(u => stripUptPrefix(u.nama) === stripUptPrefix(e.upt))?.id;
+        if (!uptId) return;
+        if (petaScopeUptIds !== null && !petaScopeUptIds.includes(uptId)) return;
+        if (!alatByUpt.has(uptId)) alatByUpt.set(uptId, []);
+        alatByUpt.get(uptId).push(e);
+      });
+      alatByUpt.forEach((list, uptId) => {
+        const repCoord = gudangWithCoord.find(x => x.g.uptId === uptId)?.coord;
+        if (!repCoord) return; // UPT tanpa gudang berkoordinat: tak ada titik utk taruh agregat
+        const dipinjam = list.filter(e => e.availabilityStatus === "DIPINJAM").length;
+        const perKategori = {};
+        list.forEach(e => { const k = getEquipmentCategory(e); perKategori[k] = (perKategori[k]||0)+1; });
+        const katLines = Object.entries(perKategori).map(([k,n]) => `${k}: ${n}`).join("<br/>");
+        const uptNamaLabel = uptList.find(u=>u.id===uptId)?.nama || uptId;
+        const alatIcon = window.L.divIcon({
+          html: `<div style="width:26px;height:26px;border-radius:6px;background:${UPT_MAP_COLOR[uptId] || "#dc2626"};border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:white;">${list.length}</div>`,
+          className: "", iconSize:[26,26], iconAnchor:[13,13], popupAnchor:[0,-13],
+        });
+        // Offset kecil (~600m) dari marker gudang supaya dua layer tak numpuk persis di titik yang sama.
+        window.L.marker([Number(repCoord.lat) + 0.006, Number(repCoord.lng) + 0.006], {icon:alatIcon}).addTo(map._alatLayerGroup)
+          .bindPopup(`<b>🚜 Alat Berat ${uptNamaLabel}</b> (${list.length} unit)<br/>${katLines}<br/>Tersedia: <b>${list.length-dipinjam}</b> • Dipinjam: <b>${dipinjam}</b>`);
+      });
+    }
     const pts = gudangWithCoord.map(x => [x.coord.lat, x.coord.lng]);
     if (pts.length === 1) map.setView(pts[0], 13);
     else if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 13 });
     setTimeout(()=>map.invalidateSize(), 100);
-  }, [tab, dashTab, petaGudangList, stocks, lokasiList, maturityAssessments, currentUser]);
+  }, [tab, dashTab, petaGudangList, stocks, lokasiList, maturityAssessments, currentUser, showAlatBerat, heavyEquipmentList, uptList, petaScopeUptIds]);
 
   // Toast error dibiarkan tampil lebih lama (5.5s) daripada sukses (3.5s) —
   // pesan error biasanya lebih panjang/penting untuk dibaca tuntas, terutama
@@ -3732,7 +3770,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const stockUptFilterOptions = dataScope === null ? uptList
     : (Array.isArray(dataScope) && dataScope.length > 1 ? uptList.filter(u => dataScope.includes(u.id)) : []);
   const deferredSearch = useDeferredValue(search); // React 18+: input tetap responsif saat list besar difilter ulang
-  const filteredStocks = scopedEnrichedStocks.filter(s=>{
+  // Dua tahap: stocksBeforeQuick (semua filter KECUALI quickFilter kritis/tanpaLokasi) dipakai
+  // untuk hitung chip metrik supaya tetap sinkron dgn UPT/Jenis aktif tanpa ikut nol-kan diri
+  // sendiri saat chip lain sedang aktif (bug: chip dulu dihitung dari scopedEnrichedStocks penuh).
+  const stocksBeforeQuick = scopedEnrichedStocks.filter(s=>{
     const lokForSearch = lokasiList.find(l=>l.id===s.lokasiId);
     const gdgForSearch = (lokForSearch?.gudangId || s.gudangId)
       ? gudangList.find(g=>g.id===(lokForSearch?.gudangId || s.gudangId))
@@ -3754,11 +3795,13 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     const mu = !stockUptFilter || (stockUpt === stockUptFilter);
     const mgud = !stockGudangSelect || gid === stockGudangSelect;
     const mblok = !stockBlokSelect || s.lokasiId === stockBlokSelect;
-    const mq = stockQuickFilter==="kritis" ? (s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty)
-      : stockQuickFilter==="tanpaLokasi" ? !s.lokasiId
-      : true;
-    return ms && mj && msap && mg && mu && mgud && mblok && mq;
+    return ms && mj && msap && mg && mu && mgud && mblok;
   });
+  const filteredStocks = stocksBeforeQuick.filter(s => stockQuickFilter==="kritis" ? (s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty)
+    : stockQuickFilter==="tanpaLokasi" ? !s.lokasiId
+    : true);
+  const kritisCount = stocksBeforeQuick.filter(s => s.jenisBarang!=="Non-Stock" && s.qty<=s.minQty).length;
+  const tanpaLokasiCount = stocksBeforeQuick.filter(s => !s.lokasiId).length;
   // Opsi filter UPT generik dipakai TUG (identik pola stockUptFilterOptions).
   const multiUptFilterOptions = stockUptFilterOptions;
   // Mode "katalog" — group filteredStocks per barang (lintas lokasi) jadi baris sintetis
@@ -4020,6 +4063,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             topN={topN} setTopN={setTopN} pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode}
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans} attbList={scopedAttbList} attbBongkaranPool={attbBongkaranPool}
             materialCadangData={materialCadangData} gudangList={petaGudangList} petaWilayahDivRef={petaWilayahDivRef}
+            showAlatBerat={showAlatBerat} setShowAlatBerat={setShowAlatBerat}
             petaUptLabel={petaScopeUptIds === null ? "Semua UPT" : (petaScopeUptIds.length === 1 ? currentUptNama : "Wilayah UIT")}
             procurementSummary={procurementSummary}
           />
@@ -4123,6 +4167,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             photoSearchResults={photoSearchResults} setPhotoSearchResults={setPhotoSearchResults}
             photoSearchResultMode={photoSearchResultMode} photoSearchOcrText={photoSearchOcrText}
             enrichedStocks={scopedEnrichedStocks} pagedStocks={pagedStocks}
+            kritisCount={kritisCount} tanpaLokasiCount={tanpaLokasiCount}
             setStockDetailId={setStockDetailId}
             katalogList={katalogList} lokasiList={lokasiList} gudangList={gudangList} uptList={uptList}
             subGudangList={subGudangList} visibleGudangList={visibleGudangList}
@@ -4258,6 +4303,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               exportMaturityGoogleSheet={exportMaturityGoogleSheet}
               calculateItemLevel={calculateItemLevel}
               calcMaturityScore={calcMaturityScore}
+              saveMaturityTarget={saveMaturityTarget}
               gudangList={visibleGudangList}
               askConfirmDelete={askConfirmDelete}
               MATURITY_LEVELS={MATURITY_LEVELS}

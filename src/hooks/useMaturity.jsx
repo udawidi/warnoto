@@ -9,7 +9,7 @@ import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import {
   getDefaultMaturityAuditHistory, upsertMaturityAssessment, upsertMaturityAudit,
   insertMaturity5SAssessment, deleteMaturityAuditRow, loadMaturityAuditHistory,
-  loadAspectReviews, upsertAspectReview,
+  loadAspectReviews, upsertAspectReview, upsertMaturityAuditHistory,
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
 import { exportMaturitySheet } from "../lib/maturityDrive.js";
@@ -396,6 +396,21 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       showToast(`Audit ${entry.upt} disimpan — ${MATURITY_WORKFLOW_LABEL[newStatus]}${newStatus === "FINAL" ? " (Nilai Final)" : ""}`);
     } finally { setMaturityAuditSaving(false); }
   }
+  // Set target nilai maturity per baris riwayat (UPT/tahun/semester) — item harus
+  // sudah ada (row lahir dari trigger DB saat audit FINAL), jadi ini UPDATE murni,
+  // bukan CREATE. Gate role dicek di komponen (canSwitchMaturityUpt) sebelum tombol
+  // ini kepanggil; di sini tetap upsert row apa adanya (server RLS jadi pagar terakhir).
+  async function saveMaturityTarget(item, target) {
+    const entry = { ...item, target };
+    const saved = await upsertMaturityAuditHistory(entry);
+    if (!saved) {
+      showToast("Target tidak tersimpan karena server tidak dapat dihubungi.", "error");
+      return;
+    }
+    setMaturityAuditHistory(current => current.map(h => h.id === entry.id ? entry : h));
+    logAudit(currentUser, "UPDATE", "maturity_audit_history_target", entry.id, { target });
+    showToast(`Target ${entry.upt} S${entry.semester} ${entry.tahun} disimpan.`);
+  }
   // Autosave draft audit yang sedang dibuka (evidence/skor UPT) TANPA menutup
   // modal, TANPA toast, TANPA append history — beda dari saveMaturityAudit yang
   // dipicu tombol "Simpan Draft" manual. Gate izin (canScoreUPT) ada di sisi
@@ -556,6 +571,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     calcMaturityScore,
     calcMaturityLevel,
     saveMaturityAudit,
+    saveMaturityTarget,
     deleteMaturityAudit,
     exportMaturityAuditExcel,
     exportMaturityGoogleSheet,

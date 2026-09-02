@@ -28,7 +28,7 @@ export function DataStokTab({
   stockViewMode, setStockViewMode, stockViewCount,
   filteredStocks, stocks, setStocks,
   photoSearchResults, setPhotoSearchResults, photoSearchResultMode, photoSearchOcrText,
-  enrichedStocks, pagedStocks,
+  enrichedStocks, pagedStocks, kritisCount, tanpaLokasiCount,
   setStockDetailId,
   katalogList, lokasiList, gudangList, uptList, subGudangList, visibleGudangList,
   stockGudangFilter, setStockGudangFilter,
@@ -84,8 +84,6 @@ export function DataStokTab({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const kritisCount = enrichedStocks.filter(s => s.jenisBarang !== "Non-Stock" && s.qty <= s.minQty).length;
-  const tanpaLokasiCount = enrichedStocks.filter(s => !s.lokasiId).length;
   const blokSelectOptions = stockGudangSelect ? sortBlokOptions(lokasiList.filter(l => l.gudangId === stockGudangSelect)) : [];
   const anyFilterActive = !!(search || filterJenis!=="ALL" || filterStatusSAP!=="ALL" || stockUptFilter || stockGudangSelect || stockBlokSelect || stockQuickFilter);
   const resetAllFilters = () => { setSearch(""); setFilterJenis("ALL"); setFilterStatusSAP("ALL"); setStockUptFilter(""); setStockGudangSelect(""); setStockBlokSelect(""); setStockQuickFilter(""); };

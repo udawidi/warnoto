@@ -86,6 +86,18 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                   <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoKeseluruhan:img})))} style={{display:"none"}}/>
                 </label>
               </div>
+              {Array.isArray(stockForm.kontrakRefs) && stockForm.kontrakRefs.length > 0 && (
+                <div style={{gridColumn:"1/-1"}}>
+                  <label style={sty.label}>Sumber Kontrak (riwayat, read-only)</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {stockForm.kontrakRefs.map((r,i) => (
+                      <div key={i} style={{fontSize:12,color:C.muted,border:`1px solid ${C.border}`,borderRadius:8,padding:"6px 10px"}}>
+                        {r.supplier || "-"} — {r.noKontrak || "-"}{r.suratPesananNo ? ` · SP ${r.suratPesananNo}${r.suratPesananTgl ? ` (${r.suratPesananTgl})` : ""}` : ""} · masuk {new Date(r.tglMasuk).toLocaleDateString("id-ID")}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {stockForm.id?.startsWith("STK-SAP-") && (
                 <div tabIndex={0} className="info-note" style={{gridColumn:"1/-1",fontSize:12,color:C.muted}}>ℹ️ Data hasil import SAP (PEMAT) — foto Nameplate/Keseluruhan akan disinkronkan saat import data PEMAT berikutnya, tidak wajib diisi sekarang.</div>
               )}

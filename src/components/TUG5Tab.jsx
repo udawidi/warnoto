@@ -120,6 +120,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   <span style={{fontSize:12,color:C.muted,flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{ultg?.nama||t.ultgId} • {t.namaPekerjaan||t.keteranganUmum||"-"} • {fmtDate(t.createdAt)}</span>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     {stageBadge5(t)}
+                    {t.siapDiambil && <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#dcfce7",color:"#166534"}}>✅ Siap diambil</span>}
                     {canAdopt && <span style={{fontSize:12,fontWeight:700,color:"#0369a1"}}>👉 Siap Diadopsi</span>}
                   </div>
                 </div>
@@ -136,6 +137,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     {stageBadge5(t)}
+                    {t.siapDiambil && <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#dcfce7",color:"#166534"}}>✅ Siap diambil</span>}
                     <button type="button" style={{...sty.btn("ghost","sm"),padding:"3px 8px"}} onClick={()=>setUltgExpandedId(null)}>▲ Tutup</button>
                   </div>
                 </div>
