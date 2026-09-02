@@ -13,7 +13,7 @@ import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
-  saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname,
+  saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname, setOpnameFreeze,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms }) {
 
   const [activeOpname, setActiveOpname] = useState(null);
@@ -40,6 +40,22 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // di BAWAH modal Tambah Material (1000) supaya modal itu tetap bisa dibuka dari lapangan tanpa
   // duplikasi form (lihat renderPanel -> tambahModal).
   const [lapanganMode, setLapanganMode] = useState(false);
+
+  // Fase 3: gudang yang dicentang untuk di-freeze pada sesi yang sedang dibuka — direset
+  // tiap ganti sesi (bukan tiap edit item, activeOpname.id stabil per sesi).
+  const [freezeSel, setFreezeSel] = useState(new Set());
+  useEffect(() => {
+    if (!activeOpname) return;
+    setFreezeSel(new Set(activeOpname.freeze?.gudangIds || (activeOpname.gudangId ? [activeOpname.gudangId] : [])));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeOpname?.id]);
+  async function toggleFreeze(aktif) {
+    const gudangIds = [...freezeSel];
+    await setOpnameFreeze(activeOpname, { aktif, gudangIds });
+    setActiveOpname(prev => prev && prev.id===activeOpname.id
+      ? { ...prev, freeze: aktif ? { aktif:true, gudangIds, at:Date.now(), by:currentUser.id, unfrozenAt:null } : { ...(prev.freeze||{}), aktif:false, unfrozenAt:Date.now() } }
+      : prev);
+  }
 
   // Fase 2 (autosave lapangan): jaring recovery kalau tab/HP ketutup sebelum "Simpan Draft"
   // sempat ditekan. Sesi TIDAK punya field updatedAt yang di-bump tiap simpan (cuma dibuatAt
@@ -561,6 +577,37 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {!isReadOnly && <button style={sty.btn("ghost","sm")} onClick={handleBatal}>✕ Batal</button>}
           </div>
         </div>
+
+        {/* Fase 3: Freeze Gudang — konfirmasi peringatan (bukan blokir) di transaksi TUG. */}
+        {hasRole(currentUser, "ADMIN","TL","ASMAN") && activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK" && (
+          <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
+              🧊 Freeze Gudang (Peringatan Transaksi TUG)
+            </div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>
+              Gudang yang dicentang akan memunculkan peringatan konfirmasi (transaksi tetap bisa dilanjutkan) saat ada TUG dari/ke gudang itu selama sesi opname ini berjalan.
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
+              {(gudangList||[]).map(g=>{
+                const checked = freezeSel.has(g.id);
+                return (
+                  <label key={g.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:`1px solid ${checked?"#1d4ed8":C.border}`,background:checked?"#dbeafe":"white",fontSize:12,cursor:"pointer"}}>
+                    <input type="checkbox" checked={checked} onChange={()=>setFreezeSel(s=>{const n=new Set(s); checked?n.delete(g.id):n.add(g.id); return n;})}/>
+                    {g.kode||g.nama}
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              {activeOpname.freeze?.aktif ? (
+                <button style={sty.btn("danger","sm")} onClick={()=>toggleFreeze(false)}>❄️ Nonaktifkan Freeze</button>
+              ) : (
+                <button style={sty.btn("primary","sm")} disabled={!freezeSel.size} onClick={()=>toggleFreeze(true)}>🧊 Aktifkan Freeze</button>
+              )}
+              {activeOpname.freeze?.aktif && <span style={{fontSize:12,color:"#1d4ed8",fontWeight:700}}>🧊 Aktif sejak {fmtDate(activeOpname.freeze.at)}</span>}
+            </div>
+          </div>
+        )}
 
         {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP.
             Pola card biru + label sama persis dengan "Step 1: Upload File SAP" di bawah,
@@ -1161,9 +1208,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori}{opn.gudangId!==undefined?(opn.gudangKode?` • Gudang ${opn.gudangKode}`:" • Belum Beralamat"):""})</span></div>
                     <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
                   </div>
-                  <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",flexShrink:0,background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
-                    {statusLabel[opn.status]||opn.status}
-                  </span>
+                  <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
+                    {opn.freeze?.aktif && (
+                      <span style={{padding:"3px 10px",borderRadius:14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:"#dbeafe",color:"#1d4ed8"}}>🧊 FREEZE</span>
+                    )}
+                    <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
+                      {statusLabel[opn.status]||opn.status}
+                    </span>
+                  </div>
                 </div>
                 <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>

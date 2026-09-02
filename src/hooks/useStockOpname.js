@@ -181,7 +181,9 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       return s;
     });
 
-    const updated = {...opn, status:"SELESAI", approvedByManager:currentUser.id, approvedAtManager:Date.now(), catatanManager:catatan||""};
+    // Opname selesai = otomatis unfreeze (kalau masih freeze aktif) — tidak perlu langkah manual.
+    const freezeOnFinish = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
+    const updated = {...opn, status:"SELESAI", approvedByManager:currentUser.id, approvedAtManager:Date.now(), catatanManager:catatan||"", freeze: freezeOnFinish};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
     setOpnameList(nl); setStocks(newStocks); setKatalogList(newKatalogList);
     await stateRef.current.saveToCloud({opnameList: nl, stocks: newStocks, katalogList: newKatalogList});
@@ -194,6 +196,22 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     if (materialBaruKonflik.length) msg += ` ⚠️ ${materialBaruKonflik.length} material baru TIDAK ditambahkan (bentrok No. Katalog): ${materialBaruKonflik.slice(0,2).join("; ")}${materialBaruKonflik.length>2?"...":""}.`;
     if (konfirmasiNonStock) msg += ` ${konfirmasiNonStock} material Non-Stock hasil opname dikonfirmasi aktif.`;
     showToast(msg, materialBaruKonflik.length ? "error" : "success");
+  }
+  // Fase 3 — freeze/unfreeze gudang selama sesi opname berjalan. Mode PERINGATAN saja
+  // (lihat useTugTransactions.commitNewTxn): transaksi TUG dari/ke gudang yang di-freeze
+  // tetap boleh jalan, cuma dikonfirmasi dulu. Disimpan di jsonb (field opname), TANPA
+  // migration/skema baru. Sesi lama (freeze:null) aman lewat optional chaining di semua pembaca.
+  async function setOpnameFreeze(opn, { aktif, gudangIds }) {
+    if (!hasRole(currentUser, "ADMIN", "TL", "ASMAN")) { showToast("Role kamu tidak bisa mengubah status freeze.","error"); return; }
+    const now = Date.now();
+    const freeze = aktif
+      ? { aktif: true, gudangIds: gudangIds||[], at: now, by: currentUser.id, unfrozenAt: null }
+      : { ...(opn.freeze||{}), aktif: false, unfrozenAt: now };
+    const updated = { ...opn, freeze };
+    const nl = opnameList.map(o=>o.id===opn.id?updated:o);
+    setOpnameList(nl);
+    await stateRef.current.saveToCloud({ opnameList: nl });
+    showToast(aktif ? "🧊 Gudang di-freeze untuk sesi opname ini." : "Freeze gudang dinonaktifkan.");
   }
   async function rejectOpname(opn, reason) {
     const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
@@ -364,6 +382,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
     saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname,
+    setOpnameFreeze,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, rejectStockCountItem, deleteStockCountSession,

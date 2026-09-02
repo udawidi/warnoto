@@ -1206,6 +1206,7 @@ export default function PLNWarehouse() {
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
     saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname,
+    setOpnameFreeze,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, rejectStockCountItem, deleteStockCountSession,
@@ -1714,6 +1715,7 @@ export default function PLNWarehouse() {
     saveToCloud,
     canonicalActionKeysRef,
     stateRef,
+    lokasiList, gudangList, opnameList,
   });
 
   async function handleLogin() {
@@ -4091,6 +4093,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 approveOpname_Manager={approveOpname_Manager}
                 rejectOpname={rejectOpname}
                 deleteOpname={deleteOpname}
+                setOpnameFreeze={setOpnameFreeze}
                 openScanner={openScanner}
                 showToast={showToast}
                 uptList={uptList}
