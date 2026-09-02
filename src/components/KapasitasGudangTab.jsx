@@ -22,6 +22,7 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
   const [detailRecord, setDetailRecord] = useState(null);
   const [editRecord, setEditRecord] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [pushing, setPushing] = useState(false);
 
   const canEdit = hasRole(currentUser, "ADMIN","TL","SUPERADMIN");
   const pendingImports = gudangCapacityImports.filter(item=>item.status==="PENDING_ASMAN").length;
@@ -54,6 +55,40 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
       showToast("Gagal sinkron: " + e.message, "error");
     } finally {
       setSyncing(false);
+    }
+  }
+
+  // Bentuk snake_case sesuai kontrak EF push-kapasitas (warehouse_capacity row).
+  function toPushRow(r) {
+    return {
+      upt: r.upt, gudang: r.gudang, sub_gudang: r.subGudang,
+      type_gudang: r.typeGudang, alamat: r.alamat, latitude: r.latitude, longitude: r.longitude,
+      luas_lahan_m2: r.luasLahanM2, luas_terpakai_m2: r.luasTerpakaiM2, sisa_luas_m2: r.sisaLuasM2,
+      persentase_terpakai: r.persentaseTerpakai, persediaan_pct: r.persediaanPct, cadang_pct: r.cadangPct,
+      pre_memory_pct: r.preMemoryPct, attb_pct: r.attbPct, lainnya_pct: r.lainnyaPct,
+      contact_person: r.contactPerson, keterangan: r.keterangan, link_gudang: r.linkGudang,
+    };
+  }
+
+  // Push kapasitas app -> Google Sheet operasional: preview dulu (dryRun) supaya user
+  // tahu berapa sel di-update vs baris baru ditambah sebelum menimpa sheet operasional.
+  async function pushToSheet() {
+    if (pushing || gudangCapacityList.length === 0) return;
+    setPushing(true);
+    try {
+      const rows = gudangCapacityList.map(toPushRow);
+      const { data: preview, error: pErr } = await supabase.functions.invoke("push-kapasitas", { body: { rows, dryRun: true } });
+      const previewErr = pErr || preview?.error;
+      if (previewErr) { showToast("Gagal cek preview: " + (preview?.error || pErr?.message || String(previewErr)), "error"); return; }
+      if (!confirm(`Push ke Google Sheet?\n${preview.toUpdate} sel update, ${preview.toInsert} baris BARU akan ditambah.`)) return;
+      const { data, error } = await supabase.functions.invoke("push-kapasitas", { body: { rows } });
+      const err = error || data?.error;
+      if (err) { showToast("Gagal push: " + (data?.error || error?.message || String(err)), "error"); return; }
+      showToast(`Push berhasil: ${data.updated} sel diperbarui, ${data.inserted} baris baru ditambah.`, "success");
+    } catch (e) {
+      showToast("Gagal push: " + e.message, "error");
+    } finally {
+      setPushing(false);
     }
   }
 
@@ -104,12 +139,20 @@ export function KapasitasGudangTab({ gudangCapacityList, gudangCapacityImports=[
         <div className="capacity-summary-banner__header">
           <div><span>Warehouse capacity</span><strong>Data Kapasitas Gudang</strong></div>
           <small>Laporan utilisasi luas gudang berbasis m² — UIT JBM</small>
-          {hasRole(currentUser, "ADMIN") && (
-            <button style={sty.btn("ghost","sm")} disabled={syncing} onClick={syncFromSheet} aria-label="Sinkron dari Sheet">
-              <ArrowsClockwise size={14} weight="fill" aria-hidden style={{verticalAlign:"-0.15em",marginRight:6}} className={syncing?"capacity-spin":""}/>
-              {syncing ? "Menyinkron…" : "Sinkron dari Sheet"}
-            </button>
-          )}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {hasRole(currentUser, "ADMIN") && (
+              <button style={sty.btn("ghost","sm")} disabled={syncing} onClick={syncFromSheet} aria-label="Sinkron dari Sheet">
+                <ArrowsClockwise size={14} weight="fill" aria-hidden style={{verticalAlign:"-0.15em",marginRight:6}} className={syncing?"capacity-spin":""}/>
+                {syncing ? "Menyinkron…" : "Sinkron dari Sheet"}
+              </button>
+            )}
+            {canEdit && (
+              <button style={sty.btn("ghost","sm")} disabled={pushing} onClick={pushToSheet} aria-label="Push ke Google Sheet">
+                <ArrowsClockwise size={14} weight="fill" aria-hidden style={{verticalAlign:"-0.15em",marginRight:6,transform:"scaleX(-1)"}} className={pushing?"capacity-spin":""}/>
+                {pushing ? "Mengirim…" : "⬆️ Push ke Google Sheet"}
+              </button>
+            )}
+          </div>
         </div>
         {gudangCapacityList.length > 0 && (
           <div className="capacity-summary-banner__metrics">
