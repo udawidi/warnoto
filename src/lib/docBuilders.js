@@ -1807,4 +1807,131 @@ export async function buildTUG2HTML(katalog, stocks, txns, lokasiList, subGudang
   return buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList);
 }
 
+// ─── FORM 5S LAPORAN HTML BUILDER (Checklist 5S siap TTD Asman UPT) ──────────
+// ponytail: samplePhotos.preview adalah blob object-url sesi ini (byte lokal,
+// tak perlu preload base64). Cetak-ulang dari History (foto Drive privat)
+// butuh EF blob-proxy driveFileId — ditunda, pola sudah ada di maturityDrive.js
+// evidence viewer kalau nanti dibutuhkan.
+export function buildForm5SHTML(record, users, uptList) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  const uptNama = record.upt || resolveUptNama(record.uptId, uptList);
+  const bulanLabel = months[(record.bulan || 1) - 1] || "-";
+  const asmanUser = (users || []).find(u => u.role === "ASMAN" && u.uptId === record.uptId) || {};
+
+  const checklist = record.checklist || [];
+  const catRowsTable = checklist.map(cat => {
+    const total = (cat.indicators || []).length;
+    const checked = (cat.indicators || []).filter(i => i.checked).length;
+    const pct = total > 0 ? ((checked / total) * 100).toFixed(1) : "0.0";
+    const headerRow = `<tr><td colspan="2" style="background:#d1d5db;font-weight:bold">${esc((cat.label || "").replace("\n", " "))} — ${checked}/${total} (${pct}%)</td></tr>`;
+    const indicatorRows = (cat.indicators || []).map(ind => `
+      <tr>
+        <td>${esc(ind.label)}</td>
+        <td style="text-align:center;font-weight:bold">${ind.checked ? "✓" : "–"}</td>
+      </tr>`).join("");
+    return headerRow + indicatorRows;
+  }).join("");
+
+  const photoGrid = (record.samplePhotos || []).length > 0
+    ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">${(record.samplePhotos || []).map(photo => {
+        const src = photo.preview || photo.url;
+        return `<div style="border:1px solid #000;padding:4px;text-align:center"><img src="${esc(src)}" style="max-width:100%;max-height:160px;object-fit:contain" alt="${esc(photo.name || "Foto sampling")}" title="${esc(photo.name || "")}"/></div>`;
+      }).join("")}</div>`
+    : `<div class="photo-empty">&lt;&lt;[Belum ada foto sampling]&gt;&gt;</div>`;
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan 5S ${esc(uptNama)} ${esc(bulanLabel)} ${esc(record.tahun)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
+@page{size:A4 portrait;margin:0}
+.page{padding:20px;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
+.top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
+.bottom-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-top:16px}
+.header-kop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
+.pln-info{text-align:right}
+.pln-logo{height:28px;width:auto;display:block;margin-left:auto;margin-bottom:2px}
+.kop-text{font-size:8.5px;font-weight:bold;line-height:1.2;color:#000}
+.kop-sub{font-size:8px;font-weight:bold;line-height:1.2;color:#333}
+.doctitle{text-align:center;font-size:13px;font-weight:bold;letter-spacing:0.5px;margin-bottom:10px;text-transform:uppercase}
+table.meta-tbl{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:9.5px}
+table.meta-tbl td{padding:2px 4px;vertical-align:top}
+table.meta-tbl td.lbl{width:140px;color:#111}
+table.items-tbl{width:100%;border-collapse:collapse;margin-top:6px;margin-bottom:4px;border:1px solid #000}
+table.items-tbl th{background:#d1d5db;color:#000;border:1px solid #000;padding:5px 4px;font-size:9.5px;font-weight:bold;text-align:center}
+table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
+.total-row{display:flex;justify-content:flex-end;gap:10px;font-size:11px;font-weight:bold;margin-bottom:12px;padding:6px 4px}
+.section-title{font-size:10.5px;font-weight:bold;margin:10px 0 4px;text-transform:uppercase}
+.note-box{border:1px solid #000;padding:8px;font-size:9.5px;white-space:pre-wrap;min-height:40px;margin-bottom:10px}
+.photo-empty{color:#9ca3af;font-style:italic;font-size:10px;text-align:center;padding:16px}
+.sig-row-2{display:flex;justify-content:space-around;margin-top:16px;text-align:center}
+.sig-col{flex:1;font-size:9.5px;padding:0 8px}
+.sig-role{font-weight:bold;margin-top:2px;white-space:pre-line}
+.sig-space{height:45px}
+.sig-name{font-weight:bold;text-transform:uppercase}
+.print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:100}
+.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
+@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
+</style></head><body>
+
+<div class="print-bar">📄 Laporan 5S siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+
+<div class="page">
+  <div class="top-accent"></div>
+  <div class="header-kop">
+    <div></div>
+    <div class="pln-info">
+      <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
+      <div class="kop-text">UNIT INDUK JAWA BAGIAN TIMUR &amp; BALI</div>
+      <div class="kop-sub">UNIT PELAKSANA TRANSMISI ${esc(uptNama.toUpperCase())}</div>
+    </div>
+  </div>
+
+  <div class="doctitle">Laporan Penilaian 5S</div>
+
+  <table class="meta-tbl">
+    <tr>
+      <td class="lbl">UPT</td><td style="width:10px">:</td><td>${esc(uptNama)}</td>
+      <td class="lbl" style="width:140px">Gudang</td><td style="width:10px">:</td><td>${esc(record.gudangNama || "-")}</td>
+    </tr>
+    <tr>
+      <td class="lbl">Bulan / Tahun</td><td>:</td><td>${esc(bulanLabel)} ${esc(record.tahun)}</td>
+      <td class="lbl">Auditor</td><td>:</td><td>${esc(record.auditor || "-")}</td>
+    </tr>
+  </table>
+
+  <table class="items-tbl">
+    <thead>
+      <tr><th style="width:80%">Indikator</th><th style="width:20%">Status</th></tr>
+    </thead>
+    <tbody>${catRowsTable}</tbody>
+  </table>
+  <div class="total-row"><span>TOTAL</span><span>${record.totalChecked ?? 0}/${record.totalItems ?? 0}</span><span>${esc(record.scorePercent ?? 0)}%</span></div>
+
+  <div class="section-title">Catatan / Temuan / Tindak Lanjut</div>
+  <div class="note-box">${esc(record.catatan || "-")}</div>
+
+  <div class="section-title">Sampling Foto</div>
+  ${photoGrid}
+
+  <div class="sig-row-2">
+    <div class="sig-col">
+      <div><i>Diperiksa oleh,</i></div>
+      <div class="sig-role">Auditor Pelaksana</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">${esc(record.auditor || ".....................")}</div>
+    </div>
+    <div class="sig-col">
+      <div><i>Menyetujui,</i></div>
+      <div class="sig-role">ASMAN ${esc(uptNama.toUpperCase())}</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">${esc(asmanUser.name || ".....................")}</div>
+    </div>
+  </div>
+
+  <div class="bottom-accent"></div>
+</div>
+</body></html>`;
+}
+
 

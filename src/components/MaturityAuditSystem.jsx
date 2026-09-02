@@ -10,6 +10,7 @@ import {
   uploadForm5SPhoto,
   uploadMaturityDriveEvidence,
 } from "../lib/maturityDrive.js";
+import { buildForm5SHTML } from "../lib/docBuilders.js";
 
 // =========================================================================
 // CONSTANTS & ICONS
@@ -1509,7 +1510,7 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
   );
 }
 
-export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAssessments = [], saveMaturity5SAssessment, setMaturityAuditEvidence, onBack, isMobile, selectedUpt, askConfirmDelete }) {
+export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAssessments = [], saveMaturity5SAssessment, setMaturityAuditEvidence, onBack, isMobile, selectedUpt, uptId, askConfirmDelete, users = [], uptList = [] }) {
   const isTablet = useIsTablet();
   const compact = isMobile || isTablet;
   const now = new Date();
@@ -1666,7 +1667,25 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       return;
     }
     setSaveError("");
-    window.print();
+    const w = window.open("", "_blank"); // sinkron paling awal (anti popup-block/CSP)
+    const selectedGudang = gudangList.find(item => item.id === gudang);
+    const record = {
+      upt: selectedUpt || "UPT Surabaya",
+      uptId,
+      gudangId: selectedGudang ? selectedGudang.id : null,
+      gudangNama: selectedGudang ? selectedGudang.nama : gudang.trim(),
+      bulan: bulan + 1,
+      tahun,
+      auditor: auditor.trim(),
+      checklist: build5SChecklistSnapshot(checks),
+      samplePhotos,
+      totalItems,
+      totalChecked,
+      scorePercent: Number(scorePct.toFixed(2)),
+      catatan: catatan.trim(),
+    };
+    const html = buildForm5SHTML(record, users, uptList);
+    if (w) { w.document.write(html); w.document.close(); }
   };
 
   const tdBase = {

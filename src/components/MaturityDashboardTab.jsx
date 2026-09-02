@@ -60,6 +60,7 @@ export function MaturityDashboardTab({
   saveMaturityTarget,
   gudangList, askConfirmDelete,
   MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, MATURITY_WORKFLOW_COLOR,
+  users = [], uptList = [],
 }) {
             const [exportingSheetId, setExportingSheetId] = useState(null); // id audit yang lagi export ke Google Sheet
             const canExportSheet = hasRole(currentUser, "ADMIN", "TL") || canSwitchMaturityUpt;
@@ -358,42 +359,94 @@ export function MaturityDashboardTab({
                       ) : (<div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1.2fr", gap: 24 }}>
                         {/* Bar Chart Container */}
                         <div style={{
-                          border: "1px solid #e2e8f0",
+                          border: `1px solid ${C.border}`,
                           borderRadius: 14,
                           padding: "20px 16px 16px 16px",
-                          background: "#f8fafc",
+                          background: C.surface,
                           display: "flex",
                           flexDirection: "column",
                           justifyContent: "space-between",
-                          minHeight: 220
+                          minHeight: 240
                         }}>
-                          <div style={{ display: "flex", justifyContent: "center", gap: 4, alignItems: "flex-end", height: 160, paddingBottom: 10, borderBottom: "1.5px solid #cbd5e1" }}>
+                          {/* Legenda mini */}
+                          <div style={{ display: "flex", justifyContent: "center", gap: 24, marginBottom: 12, fontSize: 12, fontWeight: 600 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.muted }}>
+                              <div style={{ width: 14, height: 0, borderTop: "2px dashed #94a3b8" }}></div>
+                              <span>Target</span>
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, color: C.muted }}>
+                              <div style={{ width: 11, height: 11, background: C.accent, borderRadius: 3 }}></div>
+                              <span>Pencapaian</span>
+                            </div>
+                          </div>
+
+                          {/* Grafik bar dengan gridline */}
+                          <div style={{
+                            display: "flex",
+                            justifyContent: "center",
+                            gap: 4,
+                            alignItems: "flex-end",
+                            height: 160,
+                            paddingBottom: 10,
+                            borderBottom: `1.5px solid ${C.border}`,
+                            position: "relative",
+                            background: `repeating-linear-gradient(0deg, ${C.border}, ${C.border} 1px, transparent 1px, transparent 20%)`
+                          }}>
+                            {/* Garis target nyambung antar semester (trend line halus) — SVG overlay */}
+                            {(() => {
+                              const n = uptAuditHistory.length;
+                              const pts = uptAuditHistory
+                                .map((b, i) => (b.target != null ? { x: ((i + 0.5) / n) * 100, y: 100 - (b.target / 5) * 100 } : null))
+                                .filter(Boolean);
+                              if (pts.length < 2) return null; // ponytail: butuh ≥2 titik utk garis; 1 titik cukup label per-bar
+                              let d = `M ${pts[0].x.toFixed(2)} ${pts[0].y.toFixed(2)}`;
+                              for (let i = 1; i < pts.length; i++) {
+                                const mx = (pts[i - 1].x + pts[i].x) / 2, my = (pts[i - 1].y + pts[i].y) / 2;
+                                d += ` Q ${pts[i - 1].x.toFixed(2)} ${pts[i - 1].y.toFixed(2)} ${mx.toFixed(2)} ${my.toFixed(2)}`;
+                              }
+                              d += ` L ${pts[pts.length - 1].x.toFixed(2)} ${pts[pts.length - 1].y.toFixed(2)}`;
+                              return (
+                                <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none", overflow: "visible", zIndex: 3 }}>
+                                  <path d={d} fill="none" stroke="#94a3b8" strokeWidth={1.5} strokeDasharray="4 3" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                                </svg>
+                              );
+                            })()}
                             {uptAuditHistory.map(bar => {
                               const heightPct = (bar.score / 5) * 100;
-                              // target nullable — garis cuma digambar kalau periode ini punya target.
                               const targetPct = bar.target != null ? (bar.target / 5) * 100 : null;
+                              // Warna bar berdasarkan status tercapai/belum
+                              const isAchieved = targetPct != null && bar.score >= bar.target;
+                              const isMissed = targetPct != null && bar.score < bar.target;
+                              let barColor = C.accent; // default
+                              if (isAchieved) barColor = C.green;
+                              else if (isMissed) barColor = bar.score >= bar.target * 0.8 ? C.yellow : C.red;
+
                               return (
                                 <div key={bar.id} style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: "1 1 0", minWidth: 0, maxWidth: 72, height: "100%", justifyContent: "flex-end", position: "relative" }}>
-                                  <span style={{ fontSize: 12, fontWeight: 900, color: "#0f172a", marginBottom: 6 }}>{bar.score.toFixed(2)}</span>
+                                  <span style={{ fontSize: 12, fontWeight: 800, color: C.text, marginBottom: 6, letterSpacing: "-0.02em" }}>{bar.score.toFixed(2)}</span>
                                   <div style={{
-                                    width: "100%",
+                                    width: "72%",
+                                    maxWidth: 44,
                                     height: `${heightPct}%`,
-                                    background: "linear-gradient(to top, #1e3a8a, #3b82f6)",
-                                    borderRadius: "4px 4px 0 0",
-                                    transition: "height 0.5s ease-out"
+                                    background: barColor,
+                                    borderRadius: "8px 8px 3px 3px",
+                                    transition: "height 0.45s cubic-bezier(0.16, 1, 0.3, 1)",
+                                    boxShadow: `0 1px 2px ${barColor}33`
                                   }} />
                                   {targetPct != null && (
-                                    <div title={`Target: ${bar.target.toFixed(2)}`} style={{ position: "absolute", left: 0, right: 0, bottom: `${targetPct}%`, borderTop: "2px dashed #dc2626" }}>
-                                      <span style={{ position: "absolute", right: 0, top: -14, fontSize: 10, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap" }}>{bar.target.toFixed(1)}</span>
+                                    <div title={`Target: ${bar.target.toFixed(2)}`} style={{ position: "absolute", left: 0, right: 0, bottom: `${targetPct}%`, display: "flex", justifyContent: "center", zIndex: 4 }}>
+                                      <span style={{ position: "absolute", top: -15, fontSize: 10, fontWeight: 700, color: "#475569", whiteSpace: "nowrap", background: C.surface, border: `1px solid ${C.border}`, borderRadius: 999, padding: "1px 6px" }}>{bar.target.toFixed(1)}</span>
                                     </div>
                                   )}
                                 </div>
                               );
                             })}
                           </div>
-                          <div style={{ display: "flex", justifyContent: "center", gap: 4, paddingTop: 8 }}>
+
+                          {/* X-axis labels */}
+                          <div style={{ display: "flex", justifyContent: "center", gap: 4, paddingTop: 12 }}>
                             {uptAuditHistory.map(item => (
-                              <div key={item.id} style={{ flex: "1 1 0", minWidth: 0, maxWidth: 72, textAlign: "center", fontSize: 12, fontWeight: 800, color: "#64748b", lineHeight: 1.15 }}>S{item.semester} {item.tahun}</div>
+                              <div key={item.id} style={{ flex: "1 1 0", minWidth: 0, maxWidth: 72, textAlign: "center", fontSize: 12, fontWeight: 700, color: C.muted, lineHeight: 1.15 }}>S{item.semester} {item.tahun}</div>
                             ))}
                           </div>
                         </div>
@@ -455,7 +508,7 @@ export function MaturityDashboardTab({
                                       if (raw !== "" && !Number.isFinite(Number(raw))) return;
                                       if (parsed !== (item.target ?? null)) saveMaturityTarget(item, parsed);
                                     }}
-                                    style={{ width: 56, fontSize: 12, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 8, color: "#dc2626", fontWeight: 700 }}
+                                    style={{ width: 56, fontSize: 12, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 8, color: "#475569", fontWeight: 700 }}
                                   />
                                 )}
                               </div>
@@ -783,6 +836,7 @@ export function MaturityDashboardTab({
                 <Form5STab C={C} sty={sty} currentUser={currentUser} gudangList={gudangList}
                   maturity5SAssessments={maturity5SAssessments} saveMaturity5SAssessment={saveMaturity5SAssessment}
                   setMaturityAuditEvidence={setMaturityAuditEvidence} isMobile={isMobile} selectedUpt={selectedMaturityUpt}
+                  uptId={selectedMaturityUptId} users={users} uptList={uptList}
                   askConfirmDelete={askConfirmDelete} />
               )}
             </div>

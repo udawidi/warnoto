@@ -4309,6 +4309,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               MATURITY_LEVELS={MATURITY_LEVELS}
               MATURITY_WORKFLOW_LABEL={MATURITY_WORKFLOW_LABEL}
               MATURITY_WORKFLOW_COLOR={MATURITY_WORKFLOW_COLOR}
+              users={users}
+              uptList={uptList}
             />
           )}
 
