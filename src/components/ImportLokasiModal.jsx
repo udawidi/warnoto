@@ -6,6 +6,7 @@ import { useState } from "react";
 import { uid } from "../lib/utils.js";
 import { logAudit } from "../lib/audit.js";
 import * as XLSX from "xlsx";
+import { readWorkbookSafe, sanitizeRows } from "../lib/xlsxImport.js";
 
 const TEMPLATE_HEADERS = ["Gudang", "Sub Gudang", "Kode Blok", "Keterangan"];
 
@@ -40,10 +41,9 @@ export function ImportLokasiModal({ onClose, lokasiList, gudangList, subGudangLi
     e.target.value = "";
     if (!file) return;
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
+      const wb = await readWorkbookSafe(file);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const raw = sanitizeRows(XLSX.utils.sheet_to_json(ws, { defval: "" }));
       if (raw.length === 0) { showToast("File kosong atau tidak ada baris data.", "error"); return; }
       const hasCols = TEMPLATE_HEADERS.slice(0,1).concat(["Kode Blok"]).every(h => Object.prototype.hasOwnProperty.call(raw[0], h));
       if (!hasCols) { showToast('Kolom wajib "Gudang" / "Kode Blok" tidak ditemukan. Gunakan template.', "error"); return; }

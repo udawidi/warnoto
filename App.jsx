@@ -99,6 +99,7 @@ import { DEFAULT_KATALOG } from "./src/data/masterKatalog.js";
 import { DEFAULT_LOKASI } from "./src/data/masterLokasi.js";
 import { DEFAULT_STOCKS } from "./src/data/stokSapDefault.js";
 import * as XLSX from "xlsx";
+import { readXlsxArrayBufferSafe, sanitizeRows } from "./src/lib/xlsxImport.js";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
@@ -2102,11 +2103,11 @@ export default function PLNWarehouse() {
     setMaraUploadLoading(true);
     setMaraUploadProgress("Membaca file...");
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(file);
       const wb = XLSX.read(buf, {type:"array"});
       const ws = wb.Sheets[wb.SheetNames[0]];
       // pakai object mode agar mapping kolom by name, bukan index
-      const rows = XLSX.utils.sheet_to_json(ws, {defval:""});
+      const rows = sanitizeRows(XLSX.utils.sheet_to_json(ws, {defval:""}));
       const total = rows.length;
       const CHUNK = 500;
       let done = 0;

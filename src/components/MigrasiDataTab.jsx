@@ -10,6 +10,7 @@ import { keepRemoteStockPhoto } from "../lib/stockCache.js";
 import { SAP_PLANT_TO_UPT } from "../data/masterUpt.js";
 import { supabase } from "../supabaseClient.js";
 import * as XLSX from "xlsx";
+import { readXlsxArrayBufferSafe, readWorkbookSafe, sanitizeRows } from "../lib/xlsxImport.js";
 
 // Jenis Barang enum persis dipakai template migrasi stok (lihat scripts/gen_template_migrasi_stok.mjs).
 const TPL_JENIS_ENUM = new Set(["Persediaan", "Persediaan Bursa", "Pre Memory", "Cadang", "Non-Stock"]);
@@ -129,7 +130,7 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
     if (!file) return;
     setSapLangsungBusy(true);
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(file);
       const wb = XLSX.read(buf);
       const parsed = parseSapLangsung(wb);
       if (parsed.length === 0) { showToast("Tidak ada baris SAP-Persediaan/SAP-Cadang yang terbaca dari file ini.", "error"); setSapLangsungBusy(false); return; }
@@ -350,10 +351,9 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
     e.target.value = "";
     if (!file) return;
     try {
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: "array" });
+      const wb = await readWorkbookSafe(file);
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const raw = sanitizeRows(XLSX.utils.sheet_to_json(ws, { defval: "" }));
       if (raw.length === 0) { showToast("File kosong atau tidak ada baris data.", "error"); return; }
       if (!Object.prototype.hasOwnProperty.call(raw[0], "No Dokumen") || !Object.prototype.hasOwnProperty.call(raw[0], "Kode Katalog")) {
         showToast('Kolom wajib "No Dokumen" / "Kode Katalog" tidak ditemukan. Gunakan template.', "error"); return;
@@ -460,10 +460,10 @@ export function MigrasiDataTab({ stocks, katalogList, lokasiList, uptList, gudan
     if (!file) return;
     setTplBusy(true);
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(file);
       const wb = XLSX.read(buf);
       const ws = wb.Sheets["Data Stok"] || wb.Sheets[wb.SheetNames.find(n => n !== "Petunjuk")] || wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { defval: "" });
+      const raw = sanitizeRows(XLSX.utils.sheet_to_json(ws, { defval: "" }));
       if (raw.length === 0) { showToast("File kosong atau tidak ada baris data.", "error"); setTplBusy(false); return; }
       const required = ["UPT","No Katalog","Nama Material","Satuan","Jenis Barang","Qty"];
       if (!required.every(h => Object.prototype.hasOwnProperty.call(raw[0], h))) {

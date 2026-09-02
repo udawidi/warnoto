@@ -11,6 +11,7 @@ import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalog
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
+import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname, setOpnameFreeze,
@@ -106,7 +107,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const f = e.target.files[0]; if (!f) return;
     setQueueUploadBusy(true);
     try {
-      const buf = await f.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(f);
       const rows = parseUsulanPencocokanXLSX(buf);
       if (!rows.length) { showToast("File tidak punya baris yang bisa dibaca (cek sheet 'usulan_pencocokan').","error"); }
       else { setTambahQueue(rows); showToast(`✅ ${rows.length} baris usulan dimuat — proses satu per satu lewat daftar di bawah.`); }

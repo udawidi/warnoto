@@ -5,6 +5,7 @@ import { parseIndoNumber } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
 import { logAudit } from "../lib/audit.js";
 import * as XLSX from "xlsx";
+import { readXlsxArrayBufferSafe, sanitizeRows } from "../lib/xlsxImport.js";
 
 // Convert Excel serial date → string YYYY-MM-DD
 function excelSerialToDate(serial) {
@@ -208,7 +209,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
     if (!file) return;
     setImporting(true);
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(file);
       const wb = XLSX.read(buf);
       const sheetName = wb.SheetNames.find(s=>s.toUpperCase().includes("KAPASITAS GUDANG")) || wb.SheetNames[0];
       const ws = wb.Sheets[sheetName];
@@ -218,7 +219,7 @@ export function KapasitasGudangImportTab({ gudangCapacityImports, setGudangCapac
         const hasUpt = rawRows[i].some(cell => String(cell||"").trim().toUpperCase()==="UPT");
         if (hasUpt) { headerRowIdx = i; break; }
       }
-      const rows = XLSX.utils.sheet_to_json(ws, { defval:"", range: headerRowIdx });
+      const rows = sanitizeRows(XLSX.utils.sheet_to_json(ws, { defval:"", range: headerRowIdx }));
       const parsed = parseKapasitasGudangSheet(rows);
       if (parsed.length === 0) {
         showToast("File terbaca tapi 0 baris data ditemukan. Cek apakah baris header (UPT, GUDANG, dst) ada di file.", "error");

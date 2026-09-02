@@ -3,6 +3,9 @@
 import * as XLSX from "xlsx";
 import { fmtNum } from "./ragShared.mjs";
 import { ROMAN } from "../constants.js";
+import { sanitizeRows } from "./xlsxImport.js";
+
+const MAX_XLSX_BYTES = 15 * 1024 * 1024; // 15MB, samakan dgn lib/xlsxImport.js
 
 // ─── DOC NUMBER GENERATOR ─────────────────────────────────────────────
 export function generateDocNumbers(seq, date, docCode) {
@@ -133,7 +136,7 @@ export function parseSAPRowsFromCSV(text) {
 export function parseUsulanPencocokanXLSX(arrayBuffer) {
   const wb = XLSX.read(arrayBuffer, { type: "array" });
   const sheetName = wb.SheetNames.find(n => n.toLowerCase().includes("usulan") || n.toLowerCase().includes("pencocokan")) || wb.SheetNames.find(n => n.toLowerCase() !== "readme") || wb.SheetNames[0];
-  const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+  const raw = sanitizeRows(XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" }));
   return raw.map((r, i) => {
     const nama = String(r["Nama Material"] || "").trim();
     if (!nama) return null;
@@ -299,10 +302,14 @@ export async function parseSAPFile(file) {
   return new Promise((resolve, reject) => {
     const ext = file.name.split(".").pop().toLowerCase();
     if (ext === "xlsx" || ext === "xls") {
+      if (file.size > MAX_XLSX_BYTES) {
+        reject(new Error("File terlalu besar (maks 15MB). Pecah atau ringkas dulu."));
+        return;
+      }
       const reader = new FileReader();
       reader.onload = ev => {
         try {
-          const rows = parseSAPRowsFromXLSX(ev.target.result);
+          const rows = sanitizeRows(parseSAPRowsFromXLSX(ev.target.result));
           resolve(rows);
         } catch(e) { reject(e); }
       };

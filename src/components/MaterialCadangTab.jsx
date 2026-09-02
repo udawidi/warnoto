@@ -7,6 +7,7 @@ import { normalizeKatalog } from "../lib/sap.js";
 import { CLOUD } from "../lib/cloud.js";
 import { parseMaterialCadangRows, hitungMaterialCadang, enrichMaterialCadangHealthResults, generateMaterialCadangAiInsights } from "../lib/materialCadang.js";
 import * as XLSX from "xlsx";
+import { readXlsxArrayBufferSafe, sanitizeRows } from "../lib/xlsxImport.js";
 
 export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, materialCadangHealthData, setMaterialCadangHealthData, materialCadangAiInsights, setMaterialCadangAiInsights, maraReference, setMaraReference, catalogMasterRef, setCatalogMasterRef, katalogList, setKatalogList, stocks, allStocks, setStocks, gudangList, lokasiList, txns, currentUser, sty, C, saveToCloud, showToast, users, uptList }) {
   const [subTab, setSubTab] = useState("hasil");
@@ -127,7 +128,7 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
           return obj;
         });
       } else {
-        const buf = await file.arrayBuffer();
+        const buf = await readXlsxArrayBufferSafe(file);
         const wb = XLSX.read(buf);
         // Cari sheet Import Material Cadang, atau sheet pertama
         const sheetName = wb.SheetNames.find(s => s.toLowerCase().includes("import material cadang")) || wb.SheetNames[0];
@@ -136,11 +137,11 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
         const raw = XLSX.utils.sheet_to_json(ws, { header:1 });
         const hRowIdx = raw.findIndex((row,i) => i>=1 && Array.isArray(row) && row.some(c => String(c||"").toLowerCase().includes("no katalog")));
         const hRow = raw[hRowIdx >= 0 ? hRowIdx : 0];
-        rows = raw.slice((hRowIdx >= 0 ? hRowIdx : 0) + 1).filter(r => r.some(Boolean)).map(r => {
+        rows = sanitizeRows(raw.slice((hRowIdx >= 0 ? hRowIdx : 0) + 1).filter(r => r.some(Boolean)).map(r => {
           const obj = {};
           hRow.forEach((h,i) => { obj[String(h||"").trim()] = r[i] !== undefined ? r[i] : ""; });
           return obj;
-        });
+        }));
       }
       const parsed = parseMaterialCadangRows(rows, katalogList);
       const stats = {
@@ -468,10 +469,10 @@ export function MaterialCadangTab({ materialCadangData, setMaterialCadangData, m
     if (!file) return;
     setMaraLoading(true);
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(file);
       const wb = XLSX.read(buf);
       const sheet1 = wb.Sheets["Sheet1"] || wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet1, { defval:"" });
+      const rows = sanitizeRows(XLSX.utils.sheet_to_json(sheet1, { defval:"" }));
       const unblockSheet = wb.Sheets["Katalog Unblock"];
       const unblockSet = new Set();
       if (unblockSheet) {

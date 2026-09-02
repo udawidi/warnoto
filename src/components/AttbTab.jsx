@@ -5,6 +5,7 @@ import { hasRole, getUserUptScope, roleTier, getScopeUptIds } from "../lib/roles
 import { getLokasiPetaInfo, subGudangKodeMap } from "../lib/masterSync.js";
 import { ATTB_CORE_FIELDS, ATTB_FIELDS_BY_JENIS, ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "../lib/attb.js";
 import * as XLSX from "xlsx";
+import { readXlsxArrayBufferSafe, sanitizeRows } from "../lib/xlsxImport.js";
 import { ArrowsClockwise, Camera, CaretRight, Check, CheckCircle, FileText, FloppyDisk, Info, MapPin, Package, PencilSimple, Plus, Trash, UploadSimple, Warning, X } from "@phosphor-icons/react";
 import { OperationsHero } from "./OperationsHero.jsx";
 
@@ -120,7 +121,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
     if (!file) return;
     setImporting(true);
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await readXlsxArrayBufferSafe(file);
       // File 4 bisa ~200MB (banyak sheet dokumentasi foto) — parse metadata dulu
       // (bookSheets: cepat, cuma daftar nama sheet), cari sheet target, baru parse
       // HANYA sheet itu (opsi `sheets`). Tanpa ini browser bisa freeze/crash karena
@@ -130,7 +131,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
       const sheetName = wbMeta.SheetNames.find(s=>s.toUpperCase().includes("AE.3.1F")) || wbMeta.SheetNames.find(s=>s.toUpperCase().includes("AT OP")) || wbMeta.SheetNames[0];
       const wb = XLSX.read(buf, { type:"array", cellDates:true, cellStyles:true, sheets:[sheetName] });
       const ws = wb.Sheets[sheetName];
-      const rawRows = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:"" });
+      const rawRows = sanitizeRows(XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:"" }));
       const rowsMeta = ws["!rows"] || [];
       setImportRaw({ rawRows, rowsMeta, sheetName, fileName: file.name });
     } catch(err) {
