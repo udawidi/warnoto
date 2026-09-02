@@ -1319,6 +1319,7 @@ create table if not exists maturity_audit_history (
   tahun smallint not null check (tahun between 2000 and 2100),
   semester smallint not null check (semester in (1, 2)),
   score numeric(4,2) not null check (score between 0 and 5),
+  target numeric(4,2) check (target is null or (target between 0 and 5)), -- migration 20260902_maturity_target.sql
   status text not null check (status in ('ARSIP', 'FINAL', 'BERJALAN')),
   source text not null default 'HISTORIS_TERVERIFIKASI',
   notes text not null default '',
