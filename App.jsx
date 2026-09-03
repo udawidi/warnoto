@@ -53,6 +53,7 @@ import { ImportLokasiModal, downloadLokasiTemplate } from "./src/components/Impo
 import { PermMatrixPage } from "./src/components/PermMatrixPage.jsx";
 import { HeavyEquipmentTabV2 } from "./src/components/HeavyEquipmentTabV2.jsx";
 import { EquipmentLiveShare } from "./src/components/EquipmentLiveShare.jsx";
+import { RiwayatPerjalananPanel } from "./src/components/RiwayatPerjalananPanel.jsx";
 import { OperatorProfile } from "./src/components/OperatorProfile.jsx";
 import { AttbTab } from "./src/components/AttbTab.jsx";
 import { DataStokTab } from "./src/components/DataStokTab.jsx";
@@ -436,7 +437,7 @@ export default function PLNWarehouse() {
   // Operator (Live Location Alat Berat, batch 2): layar tunggal bersih, dashboard
   // bukan menunya — default tab begitu login adalah Sesi Kerja (dulu "Lacak Alat").
   useEffect(() => {
-    if (currentUser?.role === "OPERATOR" && tab !== "lacakAlat" && tab !== "profilOperator") setTab("lacakAlat");
+    if (currentUser?.role === "OPERATOR" && tab !== "lacakAlat" && tab !== "riwayatOperator" && tab !== "profilOperator") setTab("lacakAlat");
   }, [currentUser?.role]);
   const [dashTab, setDashTab] = useState("ringkasan"); // ringkasan terpadu | overview gudang
   const [search, setSearch] = useState("");
@@ -4055,6 +4056,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const tugGroupUiForUser = isUltgRole ? { ...TUG_GROUP_UI, permintaan: { icon:"📋", label:"Reservasi", hint:"Slip reservasi material dari ULTG ke UPT" } } : TUG_GROUP_UI;
   const navItems = (isOperatorRole ? [
     {id:"lacakAlat",icon:<SidebarIcon name="equipment"/>,label:"Sesi Kerja"},
+    {id:"riwayatOperator",icon:<SidebarIcon name="report"/>,label:"Riwayat"},
     {id:"profilOperator",icon:<SidebarIcon name="user"/>,label:"Profil"},
   ] : isPengadaan ? [
     {id:"dashboard",icon:<SidebarIcon name="dashboard"/>,label:"Dashboard"},
@@ -4108,6 +4110,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
     integrasiApi: {eyebrow:"Third-Party Access",title:"Integrasi API"},
     lacakAlat: {eyebrow:"Fleet Operations",title:"Sesi Kerja"},
+    riwayatOperator: {eyebrow:"Fleet Operations",title:"Riwayat Perjalanan"},
     profilOperator: {eyebrow:"Fleet Operations",title:"Profil Operator"},
   }[tab] || {eyebrow:"WARNOTO",title:"Dashboard"};
   const tug5UptKode = txnForm?.docType === "TUG5" && txnForm?.sourceType === "ULTG"
@@ -4316,6 +4319,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             C={C}
             showToast={showToast}
           />
+        )}
+
+        {tab==="riwayatOperator" && (
+          <RiwayatPerjalananPanel operatorFilter={currentUser?.id} equipmentList={heavyEquipmentList} users={[currentUser]} active sty={sty} C={C} />
         )}
 
         {tab==="profilOperator" && (

@@ -42,7 +42,7 @@ function TripRouteMap({ trip, onClose }) {
   );
 }
 
-export function RiwayatPerjalananPanel({ active, equipmentList, users, uptScopeFilter, sty, C }) {
+export function RiwayatPerjalananPanel({ active, equipmentList, users, uptScopeFilter, operatorFilter, sty, C }) {
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedTrip, setSelectedTrip] = useState(null);
@@ -57,7 +57,7 @@ export function RiwayatPerjalananPanel({ active, equipmentList, users, uptScopeF
       .finally(() => setLoading(false));
   }, [active]);
 
-  const scopedTrips = uptScopeFilter ? trips.filter(t => t.upt === uptScopeFilter) : trips;
+  const scopedTrips = trips.filter(t => (!uptScopeFilter || t.upt === uptScopeFilter) && (!operatorFilter || t.operator_id === operatorFilter));
 
   return (
     <div>

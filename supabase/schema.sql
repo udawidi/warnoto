@@ -1733,6 +1733,7 @@ create table if not exists equipment_trip (
   point_count int,
   path jsonb
 );
+alter table equipment_trip add column if not exists inspection jsonb;
 
 create table if not exists operator_profile (
   user_id uuid primary key references profiles(id) on delete cascade,

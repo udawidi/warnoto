@@ -25,6 +25,7 @@ export const PERM_MENUS = [
   { key: "menu.ai", label: "Pak War (AI)" },
   { key: "menu.integrasiApi", label: "Integrasi API" },
   { key: "menu.lacakAlat", label: "Lacak Alat" },
+  { key: "menu.riwayatOperator", label: "Riwayat Operator" },
   { key: "menu.profilOperator", label: "Profil Operator" },
 ];
 
@@ -86,7 +87,7 @@ export const DEFAULT_PERMS = {
   SUPERADMIN: { ...FULL_MENUS, "aksi.buatTransaksi": true, "aksi.kelolaMaster": true, "aksi.import": true, "aksi.kelolaAkun": true },
   // OPERATOR (Live Location Alat Berat, batch 2): layar tunggal bersih di HP —
   // HANYA Lacak Alat + Profil, nol menu lain, nol aksi.* (tak boleh sentuh master/stok).
-  OPERATOR: menus("lacakAlat", "profilOperator"),
+  OPERATOR: menus("lacakAlat", "riwayatOperator", "profilOperator"),
 };
 
 // Cek izin efektif: SUPERADMIN selalu true; override role dari DB menang;

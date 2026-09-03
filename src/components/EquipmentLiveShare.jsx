@@ -14,6 +14,14 @@ const SEND_THROTTLE_MS = 25000; // ponytail: fix 25s, per-akun jika perlu upgrad
 const MIN_MOVE_M = 25; // distance-filter — skip kirim kalau geser <25m
 const GEO_OPTS = { enableHighAccuracy: false, maximumAge: 15000, timeout: 20000 };
 
+// Checklist inspeksi pra-kerja — satu daftar generik sama utk semua kategori alat.
+// ponytail: item draft, user boleh revisi nanti; longgarin "semua wajib" kalau perlu.
+const INSPEKSI_ALAT = [
+  "Rem berfungsi", "Ban & tekanan baik", "Lampu & sein normal", "Oli/pelumas cukup",
+  "Air radiator cukup", "Kaca spion lengkap", "Sabuk pengaman", "Klakson berfungsi",
+  "Bahan bakar cukup", "Tidak ada kebocoran", "APAR tersedia", "Dokumen & SIM lengkap",
+];
+
 export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, sty, C, showToast }) {
   const upt = getUserUptScope(currentUser, uptList);
   // Cocokkan UPT dgn normalisasi stripUptPrefix (pola overlay agregat App.jsx) — e.upt
@@ -28,14 +36,54 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
   const [pointCount, setPointCount] = useState(0);
   const [summary, setSummary] = useState(null); // ringkasan sesi setelah Stop
   const [geoError, setGeoError] = useState("");
+  const [checks, setChecks] = useState(() => Array(INSPEKSI_ALAT.length).fill(false));
 
   const watchIdRef = useRef(null);
   const lastSentPointRef = useRef(null); // {lat,lng,sentAt}
   const pathRef = useRef([]); // [[lat,lng,ts]]
   const startedAtRef = useRef(null);
   const activeEquipmentIdRef = useRef(""); // unit yang sedang MOVING (untuk finalize saat ganti/unmount)
+  const inspectionRef = useRef(null); // snapshot checklist saat Berangkat
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const mapDivRef = useRef(null);
+  const wakeLockRef = useRef(null);
 
   useEffect(() => () => stopWatch(), []); // cleanup wajib saat unmount — jangan bocor GPS
+
+  const allChecked = checks.every(Boolean);
+  const toggleCheck = (i) => setChecks(prev => prev.map((v, idx) => idx === i ? !v : v));
+
+  // Wake Lock — layar HP jangan sleep selama sesi MOVING (browser lepas otomatis
+  // saat tab background, jadi re-acquire on visibilitychange).
+  async function requestWakeLock() {
+    if (!("wakeLock" in navigator)) return; // ponytail: skip diam kalau tak didukung
+    try { wakeLockRef.current = await navigator.wakeLock.request("screen"); } catch { /* bisa reject, abaikan */ }
+  }
+  useEffect(() => {
+    if (!moving) return;
+    requestWakeLock();
+    const onVisible = () => { if (document.visibilityState === "visible") requestWakeLock(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      wakeLockRef.current?.release?.().catch(() => {});
+      wakeLockRef.current = null;
+    };
+  }, [moving]);
+
+  // Peta live posisi terkini — tiru pola TripRouteMap (RiwayatPerjalananPanel.jsx).
+  useEffect(() => {
+    if (!moving || !mapDivRef.current || typeof window.L === "undefined") return;
+    const map = window.L.map(mapDivRef.current, { scrollWheelZoom: false });
+    mapRef.current = map;
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors", maxZoom: 19 }).addTo(map);
+    const start = pathRef.current[pathRef.current.length - 1] || [-7.2945, 112.7321];
+    map.setView([start[0], start[1]], 16);
+    markerRef.current = window.L.marker([start[0], start[1]]).addTo(map);
+    setTimeout(() => map.invalidateSize(), 100);
+    return () => { map.remove(); mapRef.current = null; markerRef.current = null; };
+  }, [moving]);
 
   function stopWatch() {
     if (watchIdRef.current != null && navigator.geolocation) {
@@ -57,6 +105,7 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
       await supabase.from("equipment_trip").insert({
         id: uid(), equipment_id: eqId, operator_id: currentUser?.id, upt,
         started_at: startedAt, ended_at: endedAt, distance_m: distanceM, point_count: path.length, path,
+        inspection: inspectionRef.current,
       });
     } catch (e) {
       showToast?.("Gagal menyimpan riwayat perjalanan: " + (e?.message || e), "error");
@@ -78,6 +127,8 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
     setLastSentAt(now);
     pathRef.current.push([lat, lng, now]);
     setPointCount(pathRef.current.length);
+    markerRef.current?.setLatLng([lat, lng]);
+    mapRef.current?.setView([lat, lng]);
     supabase.from("equipment_location").upsert({
       equipment_id: activeEquipmentIdRef.current, lat, lng, accuracy: acc,
       updated_at: now, updated_by: currentUser?.id, upt, status: "MOVING",
@@ -92,6 +143,7 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
 
   async function startTracking() {
     if (!equipmentId) { showToast?.("Pilih unit dulu.", "error"); return; }
+    if (!allChecked) { showToast?.("Selesaikan checklist inspeksi dulu.", "error"); return; }
     if (!navigator.geolocation) { setGeoError("Perangkat tak dukung lokasi."); return; }
     if (moving) await stopTracking(); // guard: ganti unit saat MOVING → auto-Stop dulu
 
@@ -102,6 +154,7 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
     setPointCount(0);
     startedAtRef.current = Date.now();
     activeEquipmentIdRef.current = equipmentId;
+    inspectionRef.current = { at: Date.now(), items: INSPEKSI_ALAT.map((label, i) => ({ label, checked: checks[i] })) };
     watchIdRef.current = navigator.geolocation.watchPosition(handlePosition, handleGeoError, GEO_OPTS);
     setMoving(true);
   }
@@ -113,9 +166,8 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
     const result = await finalizeTrip(eqId);
     if (result) setSummary(result);
     activeEquipmentIdRef.current = "";
+    setChecks(Array(INSPEKSI_ALAT.length).fill(false)); // wajib isi ulang checklist tiap sesi baru
   }
-
-  const secsAgo = lastSentAt ? Math.round((Date.now() - lastSentAt) / 1000) : null;
 
   return (
     <div style={{ ...sty.card, maxWidth: 480, margin: "0 auto", padding: 18 }}>
@@ -172,16 +224,40 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
 
           {geoError && <div style={{ margin: "8px 0", padding: 10, borderRadius: 12, background: "#fee2e2", color: "#991b1b", fontSize: 13 }}>{geoError}</div>}
 
+          {!moving && (
+            <>
+              <div style={sty.label}>Checklist inspeksi pra-kerja</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
+                {INSPEKSI_ALAT.map((label, i) => (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => toggleCheck(i)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                      padding: "10px 12px", borderRadius: 12, cursor: "pointer", minHeight: 44,
+                      background: checks[i] ? "#dcfce7" : C.surface,
+                      border: `1.5px solid ${checks[i] ? "#16a34a" : C.border}`,
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>{checks[i] ? "✓" : "○"}</span>
+                    <span style={{ fontSize: 13, color: C.text }}>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {!moving ? (
-            <button style={{ ...sty.btn("primary"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15 }} onClick={startTracking}>▶ Mulai Kerja</button>
+            <button disabled={!allChecked} style={{ ...sty.btn("primary"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15, opacity: allChecked ? 1 : 0.5, cursor: allChecked ? "pointer" : "not-allowed" }} onClick={startTracking}>▶ Berangkat</button>
           ) : (
             <>
-              <div style={{ margin: "12px 0", padding: 14, borderRadius: 14, background: "#dcfce7", color: "#166534", fontSize: 13, lineHeight: 1.7 }}>
-                🟢 Sesi berjalan…<br />
-                Akurasi: {accuracy != null ? `${Math.round(accuracy)} m` : "-"}<br />
-                Terkirim: {secsAgo != null ? `${secsAgo} dtk lalu` : "belum ada"}<br />
-                Titik terekam: {pointCount}
-              </div>
+              <div style={{ margin: "12px 0", padding: 10, borderRadius: 12, background: "#dcfce7", color: "#166534", fontSize: 13 }}>🟢 Aktif</div>
+              <div ref={mapDivRef} style={{ height: 260, borderRadius: 14, overflow: "hidden", marginBottom: 12 }} />
+              <p style={{ margin: "0 0 12px", fontSize: 12, color: C.muted }}>
+                {/* ponytail: batasan web — background beneran = native app, ditunda */}
+                Biarkan layar &amp; app tetap terbuka selama bekerja.
+              </p>
               <button style={{ ...sty.btn("danger"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15 }} onClick={stopTracking}>⏹ Stop</button>
             </>
           )}
