@@ -787,14 +787,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </div>
                 ) : <div/>}
                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <select style={{...sty.select,fontSize:12,padding:"4px 8px",width:"auto"}} value={filterGudangId}
+                  <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterGudangId}
                     onChange={e=>{setFilterGudangId(e.target.value);setFilterLokasiId("");setPage(0);}}>
                     <option value="">Semua Gudang</option>
                     {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                     <option value="__NONE__">Tanpa Lokasi</option>
                   </select>
                   {filterGudangId && filterGudangId!=="__NONE__" && (
-                    <select style={{...sty.select,fontSize:12,padding:"4px 8px",width:"auto"}} value={filterLokasiId}
+                    <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterLokasiId}
                       onChange={e=>{setFilterLokasiId(e.target.value);setPage(0);}}>
                       <option value="">Semua Blok</option>
                       {(lokasiList||[]).filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
@@ -924,7 +924,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             <div style={{marginTop:4}}>
                               <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:2}}>Pindah ke SAP:</label>
                               <select value={item.pindahJenis||""} onChange={e=>updateItem(realIdx,"pindahJenis",e.target.value)}
-                                style={{...sty.select,width:130,padding:"3px 4px",fontSize:12}}>
+                                style={{...sty.select,width:130,paddingTop:3,paddingBottom:3,paddingLeft:6,paddingRight:6,minHeight:"unset",fontSize:12}}>
                                 <option value="">-- pindahkan? --</option>
                                 <option value="Cadang">Cadang</option>
                                 <option value="Persediaan">Persediaan</option>
