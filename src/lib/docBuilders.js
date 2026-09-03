@@ -1956,4 +1956,196 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 </body></html>`;
 }
 
+// ─── FASE F: Berita Acara + TUG-15 FORMAT RESMI PLN ───────────────────────
+// Dua dokumen cetak resmi, dipakai lewat dialog input (StockOpnameTab) yang
+// mengumpulkan tim pemeriksa/mengetahui/No.PID/tanggal (tidak disimpan ke
+// opn — murni input cetak). Meniru kop+@page dari buildTUG2FrontHTML.
+function fmtTglResmi(tanggalStr) {
+  const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const d = tanggalStr ? new Date(tanggalStr + "T00:00:00") : new Date();
+  const hari = ["Minggu","Senin","Selasa","Rabu","Kamis","Jumat","Sabtu"][d.getDay()];
+  return { hari, tgl: `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}` };
+}
+
+export function buildBeritaAcaraResmiHTML(opn, meta, { uptList } = {}) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const uptNama = resolveUptNama(opn.uptId, uptList);
+  const gudangNama = opn.gudangKode || "-";
+  const { hari, tgl } = fmtTglResmi(meta.tanggal);
+  const tim = (meta.tim || []).slice(0, 3);
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Stock Opname ${esc(opn.id)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#111;background:#e5e7eb}
+@page{size:A4 portrait;margin:12mm}
+.page{padding:20px;background:white;max-width:794px;margin:0 auto 16px}
+.bar{position:sticky;top:0;background:#003087;color:#fff;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}
+.bar button{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}
+.header-tbl{width:100%;border-collapse:collapse;margin-bottom:14px}
+.header-tbl td{vertical-align:top}
+.kop-box{border:1.5px solid #111;font-size:10px}
+.kop-box td{border:1px solid #111;padding:3px 6px}
+.kop-box td.lbl{width:60px;font-weight:bold}
+.doctitle{text-align:center;font-size:13px;font-weight:800;text-decoration:underline;text-transform:uppercase;margin-bottom:14px;line-height:1.4}
+p{margin-bottom:10px;text-align:justify}
+table.tim{width:100%;border-collapse:collapse;margin-bottom:14px}
+table.tim th,table.tim td{border:1px solid #111;padding:6px 8px;font-size:10.5px}
+table.tim th{background:#f1f5f9;font-weight:700}
+.sig-block{text-align:center;margin-top:20px}
+.sig-space{height:60px}
+.sig-name{font-weight:800;text-decoration:underline}
+@media print{.bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:0}}
+</style></head><body>
+<div class="bar">📄 Berita Acara Stock Opname siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="page">
+  <table class="header-tbl">
+    <tr>
+      <td style="width:56px"><img src="${PLN_LOGO_DATA_URI}" style="height:42px;width:auto" alt="PLN Logo"/></td>
+      <td style="padding-left:8px"><div style="font-size:12px;font-weight:800">PT PLN (PERSERO)</div></td>
+      <td style="width:220px">
+        <table class="kop-box">
+          <tr><td class="lbl">PLN</td><td>TRANSMISI JAWA BAGIAN TIMUR DAN BALI</td></tr>
+          <tr><td class="lbl">Unit</td><td>${esc(uptNama)}</td></tr>
+          <tr><td class="lbl">Gudang</td><td>${esc(gudangNama)}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+
+  <div class="doctitle">BERITA ACARA STOCK OPNAME BARANG - BARANG SPARE PART CADANG, PERSEDIAAN DAN PRE - MEMORY</div>
+
+  <p>Pada hari ini ${esc(hari)} tanggal ${esc(tgl)}, kami yang bertanda tangan di bawah ini :</p>
+
+  <table class="tim">
+    <thead><tr><th style="width:32px">No</th><th>Nama / Nipeg</th><th>Jabatan</th><th style="width:120px">Tanda Tangan</th></tr></thead>
+    <tbody>${tim.map((t, i) => `<tr><td style="text-align:center">${i + 1}</td><td>${esc(t.nama)}</td><td>${esc(t.jabatan)}</td><td></td></tr>`).join("")}</tbody>
+  </table>
+
+  <p>Telah melaksanakan Stock Opname atas barang-barang/Spare Part milik PT PLN (Persero) Unit Induk Transmisi Jawa Timur dan Bali yang berada di PT PLN (Persero) Unit Induk Transmisi Jawa Timur dan Bali Gudang ${esc(uptNama)} dengan Physical Inventory Documents (PID) No ${esc(meta.pid || "-")} hasil seperti tertuang dalam TUG-15 Daftar Pemeriksaan Barang-Barang / Spare Part (Material Cadang, Material Persediaan, dan Material Pre - Memory) terlampir.</p>
+
+  <p>Demikian Berita Acara ini dibuat untuk dipergunakan sebagai mana mestinya.</p>
+
+  <div class="sig-block">
+    <div>Mengetahui,</div>
+    <div style="font-weight:700">MSB DALKONS LOG</div>
+    <div class="sig-space"></div>
+    <div class="sig-name">${esc(meta.mengetahui || ".....................")}</div>
+  </div>
+</div>
+</body></html>`;
+}
+
+export function buildTUG15HTML(opn, meta, { katalogList, uptList } = {}) {
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const { tgl } = fmtTglResmi(meta.tanggal);
+  const isNonSap = opn.jenisAlur === "NON_SAP";
+  const uptNama = resolveUptNama(opn.uptId, uptList);
+  const tim = (meta.tim || []).slice(0, 3);
+
+  const groupOrder = ["Cadang", "Persediaan", "Pre Memory"];
+  const groups = new Map();
+  (opn.items || []).forEach(it => {
+    const jenis = katalogList?.find(k => k.id === it.katalogId)?.jenisBarang || "Lainnya";
+    if (!groups.has(jenis)) groups.set(jenis, []);
+    groups.get(jenis).push(it);
+  });
+  const jenisKeys = [...groups.keys()].sort((a, b) => {
+    const ia = groupOrder.indexOf(a), ib = groupOrder.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  const groupsHtml = jenisKeys.map(jenis => {
+    const items = groups.get(jenis);
+    const rows = items.map((it, i) => {
+      const lebih = it.selisih > 0 ? it.selisih : 0;
+      const kurang = it.selisih < 0 ? -it.selisih : 0;
+      return `<tr>
+        <td style="text-align:center">${i + 1}</td>
+        <td>${esc(it.namaBarang)}</td>
+        <td style="text-align:center">${esc(it.noKatalog)}</td>
+        <td style="text-align:center">${esc(it.satuan)}</td>
+        <td style="text-align:center">${isNonSap ? "" : (it.qtySAP ?? "")}</td>
+        <td style="text-align:center">${it.qtsFisik ?? ""}</td>
+        <td style="text-align:center">${lebih || ""}</td>
+        <td style="text-align:center">${kurang || ""}</td>
+        <td>${esc(it.keterangan)}</td>
+      </tr>`;
+    }).join("");
+
+    return `<div style="page-break-inside:avoid;margin-bottom:18px">
+      <div style="font-weight:800;font-size:11px;margin-bottom:4px">KELOMPOK: ${esc(jenis).toUpperCase()}</div>
+      <table class="items">
+        <thead>
+          <tr><th rowspan="2">NO URUT</th><th rowspan="2">KELOMPOK MATERIAL</th><th rowspan="2">No. Katalok Material</th><th rowspan="2">Satuan</th>
+            <th colspan="2">Banyaknya</th><th colspan="2">Perbedaan</th><th rowspan="2">KETERANGAN</th></tr>
+          <tr><th>SAP</th><th>Kenyataan</th><th>Lebih</th><th>Kurang</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div class="sig-tug15">
+        <div class="sig-left">
+          <div>Mengetahui</div>
+          <div style="font-weight:700">MAN DAL KONS LOG</div>
+          <div class="sig-space"></div>
+          <div class="sig-name">${esc(meta.mengetahui || ".....................")}</div>
+        </div>
+        <div class="sig-right">
+          <div>Tanda Tangan Pemeriksa:</div>
+          ${tim.map((t, i) => `<div style="margin-top:6px">${i + 1}. ${esc(t.nama)} .....................</div>`).join("")}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-15 ${esc(opn.id)}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}
+@page{size:A4 portrait;margin:10mm}
+.page{padding:16px;background:white;max-width:794px;margin:0 auto 16px}
+.bar{position:sticky;top:0;background:#003087;color:#fff;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}
+.bar button{background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}
+.header-tbl{width:100%;border-collapse:collapse;margin-bottom:12px}
+.header-tbl td{vertical-align:top}
+.kop-box{border:1.5px solid #111;font-size:9px}
+.kop-box td{border:1px solid #111;padding:2px 5px}
+.kop-box td.lbl{width:44px;font-weight:bold}
+table.items{width:100%;border-collapse:collapse}
+table.items th,table.items td{border:1px solid #111;padding:3px 4px;font-size:9px}
+table.items th{background:#f1f5f9;font-weight:700;text-align:center}
+.sig-tug15{display:flex;justify-content:space-between;margin-top:10px;font-size:9.5px}
+.sig-left{width:220px;text-align:center}
+.sig-right{width:220px}
+.sig-space{height:40px}
+.sig-name{font-weight:800;text-decoration:underline}
+@media print{.bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:0}table.items{page-break-inside:auto}table.items tr{page-break-inside:avoid}}
+</style></head><body>
+<div class="bar">📄 TUG-15 siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="page">
+  <table class="header-tbl">
+    <tr>
+      <td style="width:48px"><img src="${PLN_LOGO_DATA_URI}" style="height:36px;width:auto" alt="PLN Logo"/></td>
+      <td style="padding-left:6px">
+        <div style="font-size:10.5px;font-weight:800">PT PLN (PERSERO)</div>
+        <div style="font-size:9px;font-weight:700">UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
+        <div style="font-size:9px;font-weight:700;margin-top:2px">DAFTAR PEMERIKSAAN BARANG-BARANG/SPARE PART ( ${isNonSap ? "NON-SAP" : "SAP"} )</div>
+        <div style="font-size:9px">TANGGAL : ${esc(tgl)}</div>
+        <div style="font-size:9px">GUDANG : ${esc(uptNama)}</div>
+      </td>
+      <td style="width:150px;text-align:right">
+        <div style="font-size:13px;font-weight:900">TUG 15</div>
+        <div style="font-size:8.5px;margin-bottom:4px">3. Fungsi Gudang</div>
+        <table class="kop-box" style="text-align:left;margin-left:auto">
+          <tr><td class="lbl">PLN</td><td>UIT JBM</td></tr>
+          <tr><td class="lbl">Unit</td><td>${esc(uptNama)}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  ${groupsHtml}
+</div>
+</body></html>`;
+}
+
 

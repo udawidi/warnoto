@@ -6,7 +6,7 @@ import { fmtDate, parseSAPFile, parseUsulanPencocokanXLSX, scanUrlFor } from "..
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
-import { buildBeritaAcaraHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
+import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
 import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
@@ -45,6 +45,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Fase 3: gudang yang dicentang untuk di-freeze pada sesi yang sedang dibuka — direset
   // tiap ganti sesi (bukan tiap edit item, activeOpname.id stabil per sesi).
   const [freezeSel, setFreezeSel] = useState(new Set());
+  // Fase F: dialog input meta cetak Berita Acara + TUG-15 (tim pemeriksa/mengetahui/PID/tanggal —
+  // murni input cetak, tidak disimpan ke opn). Prefill tim+mengetahui dari localStorage biar tak
+  // isi ulang tiap cetak.
+  const [baPrintOpn, setBaPrintOpn] = useState(null);
+  const [baForm, setBaForm] = useState(null);
   useEffect(() => {
     if (!activeOpname) return;
     setFreezeSel(new Set(activeOpname.freeze?.gudangIds || (activeOpname.gudangId ? [activeOpname.gudangId] : [])));
@@ -581,7 +586,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               </label>
             )}
             {isReadOnly && activeOpname.status==="SELESAI" && (
-              <button style={sty.btn("ghost","sm")} onClick={()=>downloadBeritaAcara(activeOpname)}>📄 Download Berita Acara</button>
+              <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(activeOpname)}>📄 Cetak BA + TUG-15</button>
             )}
             {items.length>0 && (
               <button style={sty.btn("ghost","sm")} onClick={()=>downloadLembarHitungHTML(activeOpname, {lokasiList, gudangList,
@@ -1233,6 +1238,40 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       )}
 
+      {/* Fase F: dialog input meta cetak Berita Acara + TUG-15 format resmi PLN */}
+      {baPrintOpn && baForm && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:12}}>
+          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+            <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>📄 Cetak Berita Acara + TUG-15</h3>
+            <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Gudang {baPrintOpn.gudangKode || "-"} • {baPrintOpn.semester}</p>
+
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Tanggal</label>
+            <input type="date" style={{...sty.input,marginBottom:10}} value={baForm.tanggal} onChange={e=>setBaForm(f=>({...f,tanggal:e.target.value}))}/>
+
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>No. PID</label>
+            <input style={{...sty.input,marginBottom:10}} value={baForm.pid} onChange={e=>setBaForm(f=>({...f,pid:e.target.value}))}/>
+
+            <label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Tim Pemeriksa</label>
+            {baForm.tim.map((t,i)=>(
+              <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
+                <input style={{...sty.input,flex:1}} placeholder={`Nama ${i+1}`} value={t.nama}
+                  onChange={e=>setBaForm(f=>({...f,tim:f.tim.map((x,xi)=>xi===i?{...x,nama:e.target.value}:x)}))}/>
+                <input style={{...sty.input,flex:1}} placeholder="Jabatan" value={t.jabatan}
+                  onChange={e=>setBaForm(f=>({...f,tim:f.tim.map((x,xi)=>xi===i?{...x,jabatan:e.target.value}:x)}))}/>
+              </div>
+            ))}
+
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Mengetahui (MSB Dalkons Log)</label>
+            <input style={{...sty.input,marginBottom:16}} value={baForm.mengetahui} onChange={e=>setBaForm(f=>({...f,mengetahui:e.target.value}))}/>
+
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setBaPrintOpn(null);setBaForm(null);}}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={cetakBaTug15}>🖨️ Cetak</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Panel analisa — muncul di halaman yang sama, di bawah dropzone (bukan pindah layar) */}
       {renderPanel()}
 
@@ -1308,7 +1347,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>
                     🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
                   </button>
-                  {opn.status==="SELESAI" && <button style={sty.btn("ghost","sm")} onClick={()=>downloadBeritaAcara(opn)}>📄 Berita Acara</button>}
+                  {opn.status==="SELESAI" && <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(opn)}>📄 Cetak BA + TUG-15</button>}
                   {opn.status==="DRAFT" && hasRole(currentUser, "ADMIN","TL") && <button title="Hapus sesi opname" style={sty.btn("danger","sm")} onClick={()=>deleteOpname(opn.id)}>🗑️</button>}
                 </div>
               </div>
@@ -1326,9 +1365,25 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     </div>
   );
 
-  function downloadBeritaAcara(opn) {
+  function openBaPrintDialog(opn) {
+    const saved = JSON.parse(localStorage.getItem("pln_ba_meta") || "null");
+    const tglSrc = opn.approvedAtAsman || opn.dibuatAt || Date.now();
+    setBaPrintOpn(opn);
+    setBaForm({
+      tim: saved?.tim || [{nama:"",jabatan:""},{nama:"",jabatan:""},{nama:"",jabatan:""}],
+      mengetahui: saved?.mengetahui || "",
+      pid: "",
+      tanggal: new Date(tglSrc).toISOString().slice(0,10),
+    });
+  }
+
+  function cetakBaTug15() {
+    localStorage.setItem("pln_ba_meta", JSON.stringify({tim: baForm.tim, mengetahui: baForm.mengetahui}));
     const w = window.open("", "_blank");
-    const html = buildBeritaAcaraHTML(opn, katalogList, users, uptList);
-    if (w) { w.document.write(html); w.document.close(); }
+    const ba = buildBeritaAcaraResmiHTML(baPrintOpn, baForm, {uptList});
+    const tug15 = buildTUG15HTML(baPrintOpn, baForm, {katalogList, uptList});
+    if (w) { w.document.write(ba + '<div style="page-break-before:always"></div>' + tug15); w.document.close(); }
+    setBaPrintOpn(null);
+    setBaForm(null);
   }
 }
