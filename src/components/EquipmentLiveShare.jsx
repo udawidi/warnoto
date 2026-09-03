@@ -145,6 +145,7 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
     if (!equipmentId) { showToast?.("Pilih unit dulu.", "error"); return; }
     if (!allChecked) { showToast?.("Selesaikan checklist inspeksi dulu.", "error"); return; }
     if (!navigator.geolocation) { setGeoError("Perangkat tak dukung lokasi."); return; }
+    if (!confirm("Sudah yakin ingin berangkat? Pastikan inspeksi sudah benar.")) return;
     if (moving) await stopTracking(); // guard: ganti unit saat MOVING → auto-Stop dulu
 
     setGeoError("");
@@ -169,6 +170,15 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
     setChecks(Array(INSPEKSI_ALAT.length).fill(false)); // wajib isi ulang checklist tiap sesi baru
   }
 
+  // Stop dari tombol user → konfirmasi dulu. stopTracking() sendiri TIDAK konfirmasi
+  // (dipakai juga oleh auto-Stop ganti-unit & cleanup unmount).
+  function handleStopClick() {
+    if (!confirm("Sudah yakin ingin berhenti bekerja? Lokasi terakhir akan dikunci.")) return;
+    stopTracking();
+  }
+  // Kembali ke menu awal (pilih unit) setelah lihat ringkasan sesi.
+  function mulaiLagi() { setSummary(null); setEquipmentId(""); }
+
   return (
     <div style={{ ...sty.card, maxWidth: 480, margin: "0 auto", padding: 18 }}>
       <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: C.text }}>Sesi Kerja</h2>
@@ -182,11 +192,16 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
         </div>
       )}
 
-      {!!units.length && (
+      {!!units.length && !summary && (
         <>
-          <div style={sty.label}>Pilih unit</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+            <div style={sty.label}>{equipmentId ? "Unit dipilih" : "Pilih unit"}</div>
+            {equipmentId && !moving && (
+              <button type="button" onClick={() => setEquipmentId("")} style={{ background: "none", border: "none", color: C.accent, fontSize: 12, fontWeight: 700, cursor: "pointer", padding: 4 }}>Ganti unit</button>
+            )}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-            {units.map(u => {
+            {(equipmentId && !moving ? units.filter(u => u.id === equipmentId) : units).map(u => {
               const selected = u.id === equipmentId;
               const icon = CATEGORY_ICON[getEquipmentCategory(u)] || "🔧";
               return (
@@ -224,7 +239,7 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
 
           {geoError && <div style={{ margin: "8px 0", padding: 10, borderRadius: 12, background: "#fee2e2", color: "#991b1b", fontSize: 13 }}>{geoError}</div>}
 
-          {!moving && (
+          {!moving && equipmentId && (
             <>
               <div style={sty.label}>Checklist inspeksi pra-kerja</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 }}>
@@ -248,9 +263,9 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
             </>
           )}
 
-          {!moving ? (
+          {!moving ? (equipmentId && (
             <button disabled={!allChecked} style={{ ...sty.btn("primary"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15, opacity: allChecked ? 1 : 0.5, cursor: allChecked ? "pointer" : "not-allowed" }} onClick={startTracking}>▶ Berangkat</button>
-          ) : (
+          )) : (
             <>
               <div style={{ margin: "12px 0", padding: 10, borderRadius: 12, background: "#dcfce7", color: "#166534", fontSize: 13 }}>🟢 Aktif</div>
               <div ref={mapDivRef} style={{ height: 260, borderRadius: 14, overflow: "hidden", marginBottom: 12 }} />
@@ -258,19 +273,25 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
                 {/* ponytail: batasan web — background beneran = native app, ditunda */}
                 Biarkan layar &amp; app tetap terbuka selama bekerja.
               </p>
-              <button style={{ ...sty.btn("danger"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15 }} onClick={stopTracking}>⏹ Stop</button>
+              <button style={{ ...sty.btn("danger"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15 }} onClick={handleStopClick}>⏹ Stop</button>
             </>
           )}
         </>
       )}
 
       {summary && (
-        <div style={{ marginTop: 16, padding: 14, borderRadius: 14, background: "#eff6ff", color: "#1e3a8a", fontSize: 13, lineHeight: 1.7 }}>
-          <strong>Ringkasan sesi</strong><br />
-          Durasi: {Math.round(summary.durationMs / 60000)} menit<br />
-          Jarak: {summary.distanceKm.toFixed(2)} km<br />
-          Jumlah titik: {summary.pointCount}
-        </div>
+        <>
+          <div style={{ padding: 16, borderRadius: 14, background: "#eff6ff", color: "#1e3a8a", fontSize: 14, lineHeight: 1.9, textAlign: "center" }}>
+            <div style={{ fontSize: 22 }}>✅</div>
+            <strong style={{ fontSize: 16 }}>Sesi selesai</strong>
+            <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.8 }}>
+              Durasi: <b>{Math.round(summary.durationMs / 60000)} menit</b><br />
+              Jarak tempuh: <b>{summary.distanceKm.toFixed(2)} km</b><br />
+              Titik terekam: <b>{summary.pointCount}</b>
+            </div>
+          </div>
+          <button style={{ ...sty.btn("primary"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15, marginTop: 12 }} onClick={mulaiLagi}>Mulai Pekerjaan Lagi</button>
+        </>
       )}
     </div>
   );
