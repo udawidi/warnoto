@@ -2996,7 +2996,9 @@ export default function PLNWarehouse() {
             touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            // Retur TUG-10 masuk sbg Non-SAP dulu (belum terdaftar SAP Persediaan/Cadang) —
+            // admin reklasifikasi ke SAP kemudian. Baris existing yang cuma di-bump qty TIDAK diubah sapStatus-nya.
+            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
             touchedStockIds.add(newId);
           }
         } else {
@@ -3016,7 +3018,7 @@ export default function PLNWarehouse() {
             touchedStockIds.add(existingRow2.id);
           } else {
             const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
             touchedStockIds.add(newStkId);
           }
         }
