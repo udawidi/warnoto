@@ -608,18 +608,26 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           }
           if (!bloks.length) return null;
           return (
-            <div style={{...sty.card,marginBottom:14,background:"#f8fafc",border:`1px solid ${C.border}`}}>
-              <div style={{fontSize:12,fontWeight:800,color:C.text,marginBottom:8}}>📊 Progres Per Blok</div>
-              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            <div style={{marginBottom:14,background:"#fff",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 12px"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                <span style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:.2}}>Progres per blok</span>
+                <span style={{fontSize:12,color:C.muted}}>{bloks.filter(b=>blokProgress(activeOpname,b.lokasiId,lokasiList,gudangList).selesai).length}/{bloks.length} blok</span>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,rowGap:6,lineHeight:1.5}}>
                 {bloks.map((b,bi)=>{
                   const { total, counted, selesai } = blokProgress(activeOpname, b.lokasiId, lokasiList, gudangList);
-                  const bg = selesai ? "#dcfce7" : counted>0 ? "#fef3c7" : "#f1f5f9";
-                  const fg = selesai ? "#166534" : counted>0 ? "#92400e" : "#6b7280";
+                  const dot = selesai ? "#22c55e" : counted>0 ? "#f59e0b" : "#cbd5e1";
                   const active = (filterGudangId===(b.gudangId||"__NONE__")) && filterLokasiId===(b.lokasiId||"");
                   return (
                     <button key={bi} onClick={()=>{ setFilterGudangId(b.gudangId||"__NONE__"); setFilterLokasiId(b.lokasiId||""); setPage(0); }}
-                      style={{padding:"5px 10px",borderRadius: 10,border:`1px solid ${active?C.accent:bg}`,background:bg,color:fg,fontSize:12,fontWeight:700,cursor:"pointer",outline:active?`2px solid ${C.accent}`:"none"}}>
-                      {selesai?"✓ ":""}{b.gudangKode||"?"} — {b.lokasiKode||"Tanpa Lokasi"} ({counted}/{total})
+                      title={`${counted}/${total} item dihitung`}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 10px",borderRadius:999,whiteSpace:"nowrap",cursor:"pointer",
+                        fontSize:12,fontWeight:500,color:C.text,
+                        border:`1px solid ${active?C.accent:"#e5e7eb"}`,background:active?"#eff6ff":"#fafafa"}}>
+                      <span style={{width:7,height:7,borderRadius:999,background:dot,flexShrink:0}}/>
+                      {selesai && <span style={{color:"#22c55e",fontWeight:700}}>✓</span>}
+                      {b.lokasiKode||"Tanpa Lokasi"}
+                      <span style={{color:C.muted}}>{counted}/{total}</span>
                     </button>
                   );
                 })}
