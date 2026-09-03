@@ -2924,10 +2924,10 @@ export default function PLNWarehouse() {
           // yang trigger SQL tidak punya. Trigger di-drop lewat migration proposal
           // 20260903d (belum di-apply); dobel-kirim dicegah dedup by target di enqueueTugNotif.
           if (txn.docType === "TUG8" || txn.docType === "TUG9") {
-            enqueueTugNotif({ eventType: "COMPLETION", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR" });
+            enqueueTugNotif({ eventType: "COMPLETION", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR", penerima: { nama: txn.penerimaNama || "", unit: txn.penerimaUnit || "", jabatan: txn.penerimaJabatan || "" }, pekerjaan: txn.namaPekerjaan || "" });
           }
         } else if (txn.docType === "TUG8" || txn.docType === "TUG9") {
-          enqueueTugNotif({ eventType: "PENDING", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR" });
+          enqueueTugNotif({ eventType: "PENDING", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR", penerima: { nama: txn.penerimaNama || "", unit: txn.penerimaUnit || "", jabatan: txn.penerimaJabatan || "" }, pekerjaan: txn.namaPekerjaan || "" });
         }
         setTxns(prev => prev.map(t => t.id === txn.id ? { ...t, status:isFinal ? "APPROVED" : "PENDING", stage:result.data.stage, requiredApprover:isFinal ? null : "ASMAN", canonicalVersion:result.data.version, ...(isFinal ? {approvedBy:currentUser.id,approvedAt:Date.now()} : {approvedByTL:currentUser.id,approvedAtTL:Date.now()}), asmanAutoApproved:false } : t));
         delete canonicalDecisionKeysRef.current[txn.id];
@@ -3076,6 +3076,20 @@ export default function PLNWarehouse() {
       upsertTug10Transaction(approvedTxn).catch(err => console.warn("upsertTug10Transaction (approve) gagal:", err));
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah. (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah.`);
+      // Notif WA/Telegram — TUG-10 blob, tidak punya trigger DB (sama pola TUG-3).
+      enqueueTugNotif({
+        eventType: "COMPLETION", docType: "TUG10",
+        docNumber: txn.docNumbers?.tug10 || "",
+        uptId: txn.uptId, txnId: txn.id, arah: "MASUK",
+        items: (txn.stockItems||[]).map(si => ({
+          kode: (si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.katalog : si.katalogBaru) || "",
+          nama: (si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.name : si.namaBaru) || "",
+          qty: si.qty,
+          satuan: (si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.satuan : si.satuanBaru) || "",
+        })),
+        asal: { vendor: txn.menyerahkanUnit||"", pic: txn.menyerahkanNama||"" },
+        pekerjaan: txn.namaPekerjaan||"",
+      });
       return true;
     }
   }

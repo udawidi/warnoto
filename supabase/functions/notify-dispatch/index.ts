@@ -33,6 +33,31 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
 
+// Baris opsional (kontrak/penerima/pekerjaan/asal) — semua field sudah ada di payload
+// client (lihat useTugApprovals.js/App.jsx enqueue), sisipkan ke pesan COMPLETION saja
+// kalau terisi. Plain text, TANPA karakter Markdown (* _ [ ]).
+function extraLines(p: Record<string, any>): string[] {
+  const lines: string[] = [];
+  if (p.kontrak) {
+    const parts = [];
+    if (p.kontrak.nama) parts.push(`Kontrak: ${p.kontrak.nama}`);
+    if (p.kontrak.noSP) parts.push(`No. SP: ${p.kontrak.noSP}`);
+    if (p.kontrak.pt) parts.push(`PT: ${p.kontrak.pt}`);
+    if (parts.length) lines.push(parts.join(" | "));
+  }
+  if (p.penerima?.nama) {
+    lines.push(`Diambil: ${p.penerima.nama}${p.penerima.unit ? " (" + p.penerima.unit + ")" : ""}`);
+  }
+  if (p.pekerjaan) lines.push(`Pekerjaan: ${p.pekerjaan}`);
+  if (p.asal) {
+    const parts = [];
+    if (p.asal.vendor) parts.push(`Asal/Vendor: ${p.asal.vendor}`);
+    if (p.asal.pic) parts.push(`PIC pembawa: ${p.asal.pic}`);
+    if (parts.length) lines.push(parts.join(" | "));
+  }
+  return lines;
+}
+
 // stocks/katalog disimpan sebagai {id, data jsonb} (lihat masterSync.js loadMasterTable),
 // bukan kolom relasional — jadi 3 query berantai (items -> stocks -> katalog) untuk nama/kode.
 async function buildMessage(row: { doc_type: string; payload: Record<string, any> }) {
@@ -45,11 +70,13 @@ async function buildMessage(row: { doc_type: string; payload: Record<string, any
   if (p.eventType === "PENDING") {
     const judul = `⏳ ${row.doc_type} ${p.docNumber || ""} — MENUNGGU PERSETUJUAN ASMAN`;
     const sub = `UPT ${p.uptId || "-"}. Mohon segera diproses di aplikasi.`;
+    const extraP = extraLines(p);
+    const extraBlock = extraP.length ? `\n${extraP.join("\n")}` : "";
     if (Array.isArray(p.items) && p.items.length) {
       const lines = p.items.map((i: any) => `- ${i.kode || "-"} ${i.nama || "-"}: ${i.qty} ${i.satuan || ""}`.trim());
-      return `${judul}\n${sub}\nMaterial:\n${lines.join("\n")}`;
+      return `${judul}\n${sub}${extraBlock}\nMaterial:\n${lines.join("\n")}`;
     }
-    return `${judul}\n${sub}`;
+    return `${judul}\n${sub}${extraBlock}`;
   }
 
   const fallback = arahMasuk
@@ -65,7 +92,9 @@ async function buildMessage(row: { doc_type: string; payload: Record<string, any
       ? `📥 ${row.doc_type} ${p.docNumber || ""} — PENERIMAAN BARANG DISETUJUI`
       : `📦 ${row.doc_type} ${p.docNumber || ""} — DISETUJUI FINAL`;
     const sub = arahMasuk ? `Barang masuk gudang UPT ${p.uptId || "-"}` : `UPT: ${p.uptId || "-"}`;
-    return `${judul}\n${sub}\nMaterial:\n${lines.join("\n")}`;
+    const extra = extraLines(p);
+    const extraBlock = extra.length ? `\n${extra.join("\n")}` : "";
+    return `${judul}\n${sub}${extraBlock}\nMaterial:\n${lines.join("\n")}`;
   }
 
   const txnId = p.txnId;
@@ -94,7 +123,9 @@ async function buildMessage(row: { doc_type: string; payload: Record<string, any
       return `- ${kode} ${nama}: ${i.qty} ${i.unit || kat.satuan || ""}`.trim();
     });
 
-    return `📦 ${row.doc_type} ${p.docNumber || ""} — DISETUJUI FINAL\nUPT: ${p.uptId || "-"} | Tgl: ${tanggal}\nMaterial:\n${lines.join("\n")}`;
+    const extra = extraLines(p);
+    const extraBlock = extra.length ? `\n${extra.join("\n")}` : "";
+    return `📦 ${row.doc_type} ${p.docNumber || ""} — DISETUJUI FINAL\nUPT: ${p.uptId || "-"} | Tgl: ${tanggal}${extraBlock}\nMaterial:\n${lines.join("\n")}`;
   } catch (_e) {
     return fallback;
   }

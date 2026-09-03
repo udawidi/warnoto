@@ -285,6 +285,7 @@ export function useTugApprovals({
         qty: si.qty,
         satuan: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.satuan : si.satuanBaru) || "",
       })),
+      kontrak: { nama: txn.judulKontrak || "", noSP: txn.suratPesananNo || "", pt: txn.dariSupplier || "" },
     });
     siapDiambilNow.forEach(t => {
       logAudit(currentUser, "UPDATE", "txns", t.docNumbers?.tug5 || t.id, {siapDiambil:true});
