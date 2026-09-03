@@ -151,8 +151,11 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
         const isTUG7Draft = t.docType==="TUG7" && t.stage==="DRAFT_UIT";
         const isTUG10 = t.docType==="TUG10";
         const stageColor = isTUG7Draft||isTUG8Draft?"#7c3aed":C.yellow;
+        // Strip atas per jenis TUG untuk beda cepat: MASUK (TUG-3 terima, TUG-10 retur) hijau,
+        // KELUAR (TUG-8/9 pengeluaran) merah, TUG-5 reservasi biru, TUG-7 ungu.
+        const tugStripColor = ({TUG3:"#16a34a",TUG10:"#10b981",TUG8:"#dc2626",TUG9:"#ef4444",TUG5:"#2563eb",TUG7:"#7c3aed"})[t.docType] || "#94a3b8";
         return (
-          <div key={t.id} className="approval-card" style={{...sty.card,marginBottom:12,borderLeft:`4px solid ${stageColor}`}}>
+          <div key={t.id} className="approval-card" style={{...sty.card,marginBottom:12,borderTop:`4px solid ${tugStripColor}`,borderLeft:`4px solid ${stageColor}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div>
                 <div style={{fontSize:12,color:stageColor,fontWeight:800,textTransform:"uppercase"}}>{t.docType==="TUG5" && t.sourceType==="ULTG" ? "Slip Reservasi" : t.docType.replace("TUG","TUG-")} — {stageLabelOf(t)}</div>
