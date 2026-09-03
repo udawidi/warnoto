@@ -88,6 +88,10 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "No. WA harus format 08... (10-15 digit)." });
     }
     const officialPhone = officialPhoneRaw || null;
+    const NOTIF_EVENTS = ["COMPLETION", "PENDING"];
+    const notifEvents = Array.isArray(body.notifEvents)
+      ? body.notifEvents.filter((x: unknown) => NOTIF_EVENTS.includes(String(x)))
+      : [];
     // Batasan akses per gudang (RBAC tingkat 2): null/undefined = semua gudang;
     // selain itu WAJIB array of string (id gudang).
     const gudangIdsRaw = body.gudangIds;
@@ -159,7 +163,7 @@ Deno.serve(async (req) => {
 
     // ── 3. Update profil ──
     const { error: profErr } = await admin.from("profiles").update({
-      name, role, jabatan, official_phone: officialPhone,
+      name, role, jabatan, official_phone: officialPhone, notif_events: notifEvents,
       upt_id: (isNational || isUitScoped) ? null : uptId,
       ultg_id: ultgId,
       uit_id: isUitScoped ? uitId : null,

@@ -47,6 +47,19 @@ export function AkunModal({ akunModal, setAkunModal, akunForm, setAkunForm, akun
                   <input style={sty.input} value={akunForm.officialPhone||""} onChange={e=>setAkunForm(f=>({...f,officialPhone:e.target.value}))} placeholder="08xxxxxxxxxx"/>
                   <div style={{fontSize:12,marginTop:4,color:C.muted}}>Format 08... (untuk notif WhatsApp)</div>
                 </div>
+                <div style={{marginBottom:12}}>
+                  <label style={sty.label}>Terima Notif WA</label>
+                  <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                    <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13}}>
+                      <input type="checkbox" checked={(akunForm.notifEvents||[]).includes("COMPLETION")} onChange={e=>setAkunForm(f=>({...f,notifEvents:e.target.checked?[...(f.notifEvents||[]),"COMPLETION"]:(f.notifEvents||[]).filter(x=>x!=="COMPLETION")}))}/>
+                      Selesai (keluar/masuk)
+                    </label>
+                    <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13}}>
+                      <input type="checkbox" checked={(akunForm.notifEvents||[]).includes("PENDING")} onChange={e=>setAkunForm(f=>({...f,notifEvents:e.target.checked?[...(f.notifEvents||[]),"PENDING"]:(f.notifEvents||[]).filter(x=>x!=="PENDING")}))}/>
+                      Pending (nunggu approval)
+                    </label>
+                  </div>
+                </div>
                 {akunForm.role==="PENGADAAN" && (
                   <div style={{marginBottom:12}}>
                     <label style={sty.label}>Scope Pengadaan</label>

@@ -97,6 +97,10 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: "No. WA harus format 08... (10-15 digit)." });
     }
     const officialPhone = officialPhoneRaw || null;
+    const NOTIF_EVENTS = ["COMPLETION", "PENDING"];
+    const notifEvents = Array.isArray(body.notifEvents)
+      ? body.notifEvents.filter((x: unknown) => NOTIF_EVENTS.includes(String(x)))
+      : [];
     const uptId = body.uptId ? String(body.uptId).trim() : null;
     const ultgId = body.ultgId ? String(body.ultgId).trim() : null;
     const uitId = body.uitId ? String(body.uitId).trim() : null;
@@ -190,7 +194,7 @@ Deno.serve(async (req) => {
     // ── 4. Trigger on_auth_user_created sudah bikin stub profile (role VIEWER) —
     //        timpa dengan data asli dari form ──
     const { error: profErr } = await admin.from("profiles").update({
-      username, name, role, jabatan, official_phone: officialPhone,
+      username, name, role, jabatan, official_phone: officialPhone, notif_events: notifEvents,
       upt_id: (isNational || isUitScoped) ? null : uptId,
       ultg_id: ultgId,
       uit_id: isUitScoped ? uitId : null,

@@ -261,6 +261,7 @@ create table if not exists profiles (
   uit_id text,                  -- diisi untuk role scoped ke 1 UIT (ADMIN_UIT / ASMAN_LOG_UIT / MGR_LOGISTIK_UIT / PENGADAAN mode UIT); ADMIN_LOG_PUSAT nasional, tidak terikat UIT
   gudang_ids jsonb,
   official_phone text,          -- format 0xxx (10-15 digit), nomor WA resmi untuk notif role-based (TL/Asman/UIT)
+  notif_events text[] default '{}', -- opt-in penerima notif WA: 'COMPLETION' (selesai) / 'PENDING' (nunggu approval)
   created_at timestamptz default now()
 );
 -- upt_id/ultg_id/uit_id SENGAJA tanpa foreign key ke tabel upt/uit di sini —
@@ -273,6 +274,7 @@ alter table profiles add column if not exists ultg_id text;
 alter table profiles add column if not exists uit_id text;
 alter table profiles add column if not exists gudang_ids jsonb;
 alter table profiles add column if not exists official_phone text;
+alter table profiles add column if not exists notif_events text[] default '{}';
 do $$ begin
   if not exists (select 1 from pg_constraint where conname='profiles_official_phone_format' and conrelid='profiles'::regclass) then
     alter table profiles add constraint profiles_official_phone_format

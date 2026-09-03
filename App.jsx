@@ -1924,7 +1924,7 @@ export default function PLNWarehouse() {
   async function reloadUsers() {
     if (!supabase) return;
     const { data: allProfiles } = await supabase.from("profiles").select("*");
-    setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, officialPhone: p.official_phone, avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
+    setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, officialPhone: p.official_phone, notifEvents: p.notif_events || [], avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
   }
 
   // Muat override izin per role (RBAC) dari Supabase. Latar belakang, tidak
@@ -2022,7 +2022,7 @@ export default function PLNWarehouse() {
             // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
             // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
             supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
-              setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, officialPhone: p.official_phone, avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
+              setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, officialPhone: p.official_phone, notifEvents: p.notif_events || [], avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
             });
             reloadRolePerms();
           } else if (aal?.nextLevel === "aal2" && aal?.currentLevel === "aal1") {

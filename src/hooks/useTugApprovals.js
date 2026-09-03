@@ -7,6 +7,7 @@ import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKata
 import { resolveSapLabel } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
+import { roleTier } from "../lib/roles.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -20,30 +21,35 @@ function toWaNumber(raw) {
   return "62" + digits;
 }
 
-// Fondasi + generalisasi notif WA/Telegram role-based (BATCH 2, 2026-09-03). Dua
-// event: COMPLETION (approval final — akuntansi + TL + UIT) dan PENDING (masuk
-// antrean Asman — Asman saja). Penerima role-based diresolve dari `users`/`uptList`
-// (dioper hook ini), nomor via toWaNumber(officialPhone); akuntansi tetap dari
-// notif_recipients (pola lama). Dedup by nomor/target final supaya 1 orang 2 sumber
-// (mis. akuntansi manual + TL) tidak dobel kirim. try/catch — notif gagal TIDAK
-// BOLEH menggagalkan approval.
+// Fondasi + generalisasi notif WA/Telegram (BATCH 2, 2026-09-03; opt-in per-user
+// 2026-09-03). Dua event: COMPLETION (approval final) dan PENDING (masuk antrean
+// Asman). Penerima diresolve FRESH dari `profiles.notif_events` (opt-in, bukan
+// role-based hardcoded, bukan `users` state basi) via toWaNumber(official_phone),
+// discope pakai roleTier: UIT lihat 1 uit_id, PUSAT/GLOBAL semua, sisanya (UPT)
+// per upt_id. COMPLETION masih + akuntansi manual dari notif_recipients (pola
+// lama). Dedup by nomor/target final supaya 1 orang 2 sumber tidak dobel kirim.
+// try/catch — notif gagal TIDAK BOLEH menggagalkan approval.
 async function enqueueTugNotif({ eventType, docType, docNumber, uptId, txnId, items, arah, users, uptList }) {
   try {
     const targets = []; // {channel, target}
-    const pushWa = (u) => { const n = toWaNumber(u?.officialPhone); if (n) targets.push({ channel: "WA", target: n }); };
+    const pushWa = (u) => { const n = toWaNumber(u?.official_phone); if (n) targets.push({ channel: "WA", target: n }); };
 
     if (eventType === "COMPLETION") {
       const { data: recipients } = await supabase.from("notif_recipients").select("*").eq("active", true);
       (recipients || []).filter(r => r.upt_id == null || r.upt_id === uptId)
         .forEach(r => targets.push({ channel: r.channel, target: r.target }));
-      (users || []).filter(u => u.role === "TL" && u.uptId === uptId).forEach(pushWa);
-      const uitId = (uptList || []).find(x => x.id === uptId)?.uitId;
-      if (uitId) {
-        (users || []).filter(u => ["ADMIN_UIT", "ASMAN_LOG_UIT"].includes(u.role) && u.uitId === uitId).forEach(pushWa);
-      }
-    } else if (eventType === "PENDING") {
-      (users || []).filter(u => u.role === "ASMAN" && u.uptId === uptId).forEach(pushWa);
     }
+
+    const uitId = (uptList || []).find(x => x.id === uptId)?.uitId;
+    const { data: profs } = await supabase.from("profiles")
+      .select("role,upt_id,uit_id,official_phone,notif_events")
+      .contains("notif_events", [eventType]);
+    (profs || []).filter(p => {
+      const tier = roleTier(p.role);
+      if (tier === "UIT") return p.uit_id === uitId;
+      if (tier === "PUSAT" || tier === "GLOBAL") return true;
+      return p.upt_id === uptId;
+    }).forEach(pushWa);
 
     // Dedup by target final (nomor WA / chat_id Telegram) — 1 penerima, 1 pesan.
     const seen = new Set();
