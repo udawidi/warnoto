@@ -15,11 +15,13 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const [tug7Modal, setTug7Modal] = useState(null);
   const [tug4Form, setTug4Form] = useState({});
   const [tug4Modal, setTug4Modal] = useState(null);
+  const [tug3ReviewTxn, setTug3ReviewTxn] = useState(null);
+  const [tug3Previewed, setTug3Previewed] = useState(false);
   function openTug4Modal(txn) {
     // Sama seperti TUG3Tab.jsx openTug4Modal — status SAP/Non-SAP per barang diputuskan
     // di sini (TL, tahap TUG-4), default dibawa dari pilihan form TUG-3.
     const itemSapStatus = txn.stockItems.map(si => si.sapStatus==="Non-SAP" ? "Non-SAP" : "SAP");
-    setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
+    setTug4Form({ timMutuId:"", lokasiPenyerahan: uptList.find(u=>u.id===txn.uptId)?.nama || "", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
     setTug4Modal(txn);
   }
   const [rejectingCapId, setRejectingCapId] = useState(null);
@@ -37,6 +39,12 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const showCap = approvalTypeFilter==="ALL"||approvalTypeFilter==="KAPASITAS";
   const showLokasi = approvalTypeFilter==="ALL"||approvalTypeFilter==="LOKASI";
   const sortedTxns = [...pendingTxns].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  // Guard: TUG-3 penerimaan menambah stok, tapi qty item negatif (typo) bisa bikin
+  // proyeksi stok minus — Asman tidak boleh approve dalam kondisi itu.
+  const tug3Minus = tug3ReviewTxn ? tug3ReviewTxn.stockItems.some(si => {
+    const stok = stocks.find(s=>s.katalogId===si.katalogId && s.lokasiId===si.lokasiTujuanId);
+    return (stok ? stok.qty + si.qty : si.qty) < 0;
+  }) : false;
   const TUG_TYPE_ORDER = ["TUG3","TUG5","TUG7","TUG8","TUG9","TUG10"];
   const tugTypeCounts = TUG_TYPE_ORDER.map(dt=>({ dt, count: sortedTxns.filter(t=>t.docType===dt).length })).filter(x=>x.count>0);
   const visibleTxns = tugTypeFilter==="ALL" ? sortedTxns : sortedTxns.filter(t=>t.docType===tugTypeFilter);
@@ -243,7 +251,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               {t.docType==="TUG3" && t.stage==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN") && (
                 rejectingId===t.id
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG3Final_Asman(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
-                  : <><button className="approval-btn--approve" onClick={()=>approveTUG3Final_Asman(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui — Stok Masuk</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
+                  : <><button className="approval-btn--primary" onClick={()=>{setTug3Previewed(false);setTug3ReviewTxn(t);}}>📋 Periksa & Setujui</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
               {/* TUG-5 dari ULTG — approval Manager ULTG */}
               {t.docType==="TUG5" && t.sourceType==="ULTG" && t.stage==="PENDING_MGR_ULTG" && hasRole(currentUser, "MGR_ULTG") && (
@@ -430,8 +438,53 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{submitTUG4DanLampiran(tug4Modal, tug4Form); setTug4Modal(null);}}>📋 Submit TUG-4</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{ const ok = await submitTUG4DanLampiran(tug4Modal, tug4Form); if (ok !== false) setTug4Modal(null); }}>📋 Submit TUG-4</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TUG-3 review final Asman — wajib buka preview dokumen sebelum boleh approve, stok bertambah */}
+      {tug3ReviewTxn && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
+          <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM APPROVAL FINAL</div>
+            <h3 style={{fontSize:17,fontWeight:800,margin:"4px 0 10px"}}>Penerimaan TUG-3 / {tug3ReviewTxn.docNumbers?.tug3}</h3>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,fontSize:12,marginBottom:14}}>
+              <div><b>Nomor</b><br/>{tug3ReviewTxn.docNumbers?.tug3 || "-"}</div>
+              <div><b>UPT</b><br/>{uptList.find(u=>u.id===tug3ReviewTxn.uptId)?.nama || "-"}</div>
+              <div><b>Pekerjaan</b><br/>{tug3ReviewTxn.namaPekerjaan || tug3ReviewTxn.pekerjaan || "-"}</div>
+              <div><b>Supplier/Penerima</b><br/>{tug3ReviewTxn.dariSupplier || "-"}</div>
+            </div>
+            <details style={{border:`1px solid ${C.border}`,borderRadius:10,padding:8,marginBottom:14}} onToggle={e=>{if(e.currentTarget.open)setTug3Previewed(true);}}>
+              <summary style={{cursor:"pointer",fontWeight:700}}>Buka preview dokumen — barang yang akan diterima</summary>
+              <div className="mobile-card-table" style={{overflowX:"auto",marginTop:8}}>
+                <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                  <thead><tr style={{background:"#f8fafc"}}><th style={{padding:6,textAlign:"left"}}>Material</th><th style={{padding:6,textAlign:"right"}}>Qty</th><th style={{padding:6,textAlign:"right"}}>Stok saat ini</th><th style={{padding:6,textAlign:"right"}}>Proyeksi</th></tr></thead>
+                  <tbody>
+                    {tug3ReviewTxn.stockItems.map((si, idx) => {
+                      const nama = si.namaBaru || katalogList.find(k=>k.id===si.katalogId)?.name || `Barang ${idx+1}`;
+                      const satuan = si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.satuan : si.satuanBaru;
+                      const stok = stocks.find(s=>s.katalogId===si.katalogId && s.lokasiId===si.lokasiTujuanId);
+                      return (
+                        <tr key={idx} style={{borderTop:`1px solid ${C.border}`}}>
+                          <td style={{padding:6}}>{nama}</td>
+                          <td style={{padding:6,textAlign:"right"}}>{fmtNum(si.qty)} {satuan||""}</td>
+                          <td style={{padding:6,textAlign:"right"}}>{stok ? fmtNum(stok.qty) : "baru"}</td>
+                          <td style={{padding:6,textAlign:"right",fontWeight:700,color:(stok ? stok.qty + si.qty : si.qty) < 0 ? "#b91c1c" : undefined}}>{stok ? fmtNum(stok.qty + si.qty) : `+${fmtNum(si.qty)}`}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug3ReviewTxn(null)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} disabled={!tug3Previewed || tug3Minus} onClick={()=>{approveTUG3Final_Asman(tug3ReviewTxn);setTug3ReviewTxn(null);}}>✓ Setujui — Stok Masuk</button>
+            </div>
+            {tug3Minus && <div style={{fontSize:12,color:"#b91c1c",fontWeight:700,marginTop:7}}>Proyeksi stok minus — approval diblokir. Periksa qty barang (tidak boleh negatif).</div>}
+            {!tug3Previewed && !tug3Minus && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
           </div>
         </div>
       )}

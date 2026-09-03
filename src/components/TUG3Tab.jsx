@@ -6,7 +6,7 @@ import { hasRole } from "../lib/roles.js";
 import { resolveSapLabel } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 
-export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview }) {
+export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, uptList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug4Modal, setTug4Modal] = useState(null); // txn being filled (TUG-4 + lampiran final)
@@ -31,7 +31,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
     // Status SAP/Non-SAP diputuskan di sini (TL, TUG-4) — default dibawa dari pilihan
     // di form TUG-3, TL boleh menimpanya per barang sebelum submit ke Asman.
     const itemSapStatus = txn.stockItems.map(si => si.sapStatus==="Non-SAP" ? "Non-SAP" : "SAP");
-    setTug4Form({ timMutuId:"", lokasiPenyerahan:"", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
+    setTug4Form({ timMutuId:"", lokasiPenyerahan: uptList.find(u=>u.id===txn.uptId)?.nama || "", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
     setTug4Modal(txn);
   }
 
@@ -187,7 +187,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={()=>{submitTUG4DanLampiran(tug4Modal, tug4Form); setTug4Modal(null);}}>📋 Submit TUG-4</button>
+              <button style={{...sty.btn("primary"),flex:2}} onClick={async()=>{ const ok = await submitTUG4DanLampiran(tug4Modal, tug4Form); if (ok !== false) setTug4Modal(null); }}>📋 Submit TUG-4</button>
             </div>
           </div>
         </div>

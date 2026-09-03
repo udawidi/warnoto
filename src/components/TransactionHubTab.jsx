@@ -105,7 +105,7 @@ export function TransactionHubTab({
                 txns={uptFilteredTxns.filter(t=>t.docType==="TUG3")}
                 filterStatus={filterStatus}
                 users={users} sty={sty} C={C} currentUser={currentUser}
-                katalogList={katalogList} lokasiList={lokasiList} timMutuList={timMutuList}
+                katalogList={katalogList} lokasiList={lokasiList} uptList={uptList} timMutuList={timMutuList}
                 approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
                 submitTUG4DanLampiran={submitTUG4DanLampiran}
                 approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}

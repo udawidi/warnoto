@@ -128,8 +128,8 @@ export function useTugApprovals({
   // pemeriksaan) + lampiran final (foto kendaraan, SIM/KTP, surat jalan, kontrak) SEKALIGUS
   // dalam satu langkah — langsung ke antrean Asman (Manager dihapus dari approval).
   async function submitTUG4DanLampiran(txn, data) {
-    if (!data.timMutuId) { showToast("Pilih paket Tim Mutu!","error"); return; }
-    if (!data.lokasiPenyerahan?.trim()) { showToast("Lokasi Penyerahan wajib diisi!","error"); return; }
+    if (!data.timMutuId) { showToast("Pilih paket Tim Mutu!","error"); return false; }
+    if (!data.lokasiPenyerahan?.trim()) { showToast("Lokasi Penyerahan wajib diisi!","error"); return false; }
     // Foto lampiran (fotoKendaraan/fotoSimKtp/fotoSuratJalanImg/fotoKontrak) masuk sebagai
     // base64 dari PhotoSlot — upload ke Storage dulu (jalur sama commitNewTxn) supaya baris
     // DB tidak menyimpan blob base64. Gagal upload → tetap base64 + toast.
@@ -161,6 +161,7 @@ export function useTugApprovals({
         satuan: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.satuan : si.satuanBaru) || "",
       })),
     });
+    return true;
   }
   // Stage 3: Asman Konstruksi approves the final receipt — THIS is when stock actually increases
   async function approveTUG3Final_Asman(txn) {
