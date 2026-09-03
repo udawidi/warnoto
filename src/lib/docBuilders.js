@@ -1691,6 +1691,14 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
   // "Lokasi :" di header kartu = gabungan Gudang + Sub Gudang + Blok Gudang.
   const lokasiStr = resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList);
   const kategoriMaterial = (stocks||[]).find(s=>s.katalogId===katalog.id)?.jenisBarang || "-";
+  const opnameHistory = [...((stocks||[]).find(s=>s.katalogId===katalog.id)?.opnameHistory || [])].sort((a,b)=>b.tanggal-a.tanggal);
+  const opnameHistoryHTML = opnameHistory.length ? `
+  <div style="margin-bottom:10px">
+    <div style="font-weight:800;font-size:11px;margin-bottom:4px;color:#002b66">🗓️ RIWAYAT STOCK OPNAME</div>
+    <div style="font-size:10px;color:#334155">
+      ${opnameHistory.map(h => `<div>${fmtDateOnly(h.tanggal)} · Sem ${esc(h.semester || "-")}</div>`).join("")}
+    </div>
+  </div>` : "";
 
   const filledHistoryRows = history.map((h) => `
     <tr>
@@ -1781,6 +1789,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
     </tr>
   </table>
 
+  ${opnameHistoryHTML}
   <div style="font-weight:800;font-size:11px;margin-bottom:6px;color:#002b66">RIWAYAT KELUAR - MASUK BARANG</div>
   <table class="items-tbl">
     <thead>

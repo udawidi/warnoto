@@ -2,7 +2,7 @@ import { useState } from "react";
 import { UPT } from "../constants.js";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
-import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi } from "../lib/sap.js";
+import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
 
 function readCachedList(key) {
@@ -171,6 +171,38 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     newStocks = newStocks.map(s => {
       if (s.pendingOpnameId === opn.id) { konfirmasiNonStock++; return { ...s, pendingOpnameId: null }; }
       return s;
+    });
+
+    // Fase D — riwayat Stock Opname per katalog (Kartu Gantung) + foto opname auto-update
+    // ke Data Stok kalau ADA foto baru (base64 → Storage; kalau tak ada, foto lama dipertahankan).
+    const nowHist = Date.now();
+    const histEntry = { opnameId: opn.id, tanggal: nowHist, tahun: new Date(nowHist).getFullYear(), semester: opn.semester || "" };
+    const countedKatalogIds = new Set();
+    const fotoByKatalog = {};
+    for (const item of (opn.items||[])) {
+      if (!itemCounted(item) || !item.katalogId) continue;
+      countedKatalogIds.add(item.katalogId);
+      for (const field of ["fotoKeseluruhan","fotoNameplate"]) {
+        const val = item[field];
+        if (typeof val === "string" && val.startsWith("data:")) {
+          try {
+            const url = await uploadStockFoto(item.katalogId, field, val, currentUser?.uptId);
+            fotoByKatalog[item.katalogId] = { ...(fotoByKatalog[item.katalogId]||{}), [field]: url };
+          } catch (e) { console.warn("Upload foto opname gagal", item.katalogId, field, e?.message||e); }
+        }
+      }
+    }
+    newStocks = newStocks.map(s => {
+      if (!countedKatalogIds.has(s.katalogId)) return s;
+      const hist = Array.isArray(s.opnameHistory) ? s.opnameHistory : [];
+      const already = hist.some(h => h.opnameId === opn.id);
+      const foto = fotoByKatalog[s.katalogId] || {};
+      return { ...s,
+        opnameHistory: already ? hist : [...hist, histEntry],
+        ...(foto.fotoKeseluruhan ? { fotoKeseluruhan: foto.fotoKeseluruhan } : {}),
+        ...(foto.fotoNameplate ? { fotoNameplate: foto.fotoNameplate } : {}),
+        updatedAt: nowHist,
+      };
     });
 
     // Opname selesai = otomatis unfreeze (kalau masih freeze aktif) — tidak perlu langkah manual.

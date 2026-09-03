@@ -14,22 +14,33 @@ const ENV = import.meta.env || {};
 const E2E_MODE = ENV.DEV && (ENV.MODE === "e2e" || ENV.VITE_E2E === "true");
 export const SUPABASE_URL = E2E_MODE ? undefined : ENV.VITE_SUPABASE_URL;
 export const SUPABASE_KEY = E2E_MODE ? undefined : ENV.VITE_SUPABASE_PUBLISHABLE_KEY;
-const EXPECTED_SUPABASE_HOST = "warnoto.com";
+// Allowlist eksplisit (literal string, BUKAN wildcard/regex/endsWith — endsWith akan
+// meloloskan domain jahat seperti "evilwarnoto.com"). Staging pakai backend self-host
+// terpisah (api-staging.warnoto.com), production tetap warnoto.com.
+const ALLOWED_SUPABASE_HOSTS = ["warnoto.com", "api-staging.warnoto.com"];
+const STAGING_SUPABASE_HOST = "api-staging.warnoto.com";
 const CANONICAL_SUPABASE_ORIGIN = "https://warnoto.com";
 
-// Semua build non-E2E harus menolak endpoint selain backend self-host canonical.
-// Ini mencegah artefak production salah konfigurasi mengirim sesi/data ke project lain.
+// Semua build non-E2E harus menolak endpoint selain backend self-host yang dikenal.
+// Ini mencegah artefak production/staging salah konfigurasi mengirim sesi/data ke project lain.
+let configuredHost = "";
 if (!E2E_MODE && SUPABASE_URL) {
-  let configuredHost = "";
   try { configuredHost = new URL(SUPABASE_URL).hostname.toLowerCase(); } catch {}
-  if (configuredHost !== EXPECTED_SUPABASE_HOST) {
-    throw new Error("VITE_SUPABASE_URL harus menunjuk ke warnoto.com (backend self-host). Periksa konfigurasi environment.");
+  if (!ALLOWED_SUPABASE_HOSTS.includes(configuredHost)) {
+    throw new Error("VITE_SUPABASE_URL harus menunjuk ke warnoto.com atau api-staging.warnoto.com (backend self-host). Periksa konfigurasi environment.");
   }
 }
 
 // Jangan menerima token dari endpoint/project lain. Nama ini eksplisit agar cache
 // profil dan sesi browser selalu terikat ke satu backend self-host yang disepakati.
-export const SUPABASE_AUTH_STORAGE_KEY = E2E_MODE ? "sb-e2e-auth-token" : "sb-warnoto-auth-token";
+// Staging pakai key berbeda dari production: JWT_SECRET beda antar environment, kalau
+// berbagi key localStorage token production akan terbawa ke tab staging dan memicu
+// banjir 401 "sesi login berakhir".
+export const SUPABASE_AUTH_STORAGE_KEY = E2E_MODE
+  ? "sb-e2e-auth-token"
+  : configuredHost === STAGING_SUPABASE_HOST
+  ? "sb-warnoto-staging-auth-token"
+  : "sb-warnoto-auth-token";
 const devSupabaseFetch = ENV.DEV && !E2E_MODE
   ? (input, init) => {
       const requestUrl = input instanceof Request ? input.url : input instanceof URL ? input.href : input;

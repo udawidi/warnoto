@@ -16,6 +16,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const sampleStock = stocks.find(s=>s.katalogId===katalog.id && s.fotoKeseluruhan);
   const sampleFoto = sampleStock ? resolveStockPhotoUrl(sampleStock.fotoKeseluruhan) : null;
   const kategoriMaterial = stocks.find(s=>s.katalogId===katalog.id)?.jenisBarang || "-";
+  const opnameHistory = [...(stocks.find(s=>s.katalogId===katalog.id)?.opnameHistory || [])].sort((a,b)=>b.tanggal-a.tanggal);
 
   const scanUrl = scanUrlFor(katalog.id);
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
@@ -202,6 +203,17 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   </tr>
                 </tbody>
               </table>
+
+              {opnameHistory.length > 0 && (
+                <div style={{marginBottom:10}}>
+                  <div style={{fontWeight:800,fontSize:11,marginBottom:4,color:"#0f172a"}}>🗓️ RIWAYAT STOCK OPNAME</div>
+                  <div style={{fontSize:10,color:"#334155"}}>
+                    {opnameHistory.map((h,idx)=>(
+                      <div key={idx}>{fmtDateOnly(h.tanggal)} · Sem {h.semester||"-"}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Header Tabel Riwayat Keluar-Masuk */}
               <div style={{fontWeight:800,fontSize:11,marginBottom:6,color:"#0f172a"}}>
