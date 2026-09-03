@@ -122,6 +122,7 @@ export function useTugTransactions({
     } else if (docType === "TUG10") {
       setTxnForm({
         ...base,
+        uptId: canonicalUptId,
         stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null }],
         noBAPenggantian: "",
         // For TUG10 the flow is reversed: external party hands back to PLN
@@ -624,6 +625,9 @@ export function useTugTransactions({
       docSeq: keepExistingDocs10 ? (replacedDraft?.docSeq ?? null) : seq,
       docNumbers: keepExistingDocs10 ? (replacedDraft?.docNumbers || {}) : docNumbers,
       ...formData,
+      // Fallback data-loss (pola sama TUG-3 nt3): draft lama/formData tanpa uptId → isi
+      // dari user saat ini supaya upsert tug10_transactions tak ditolak (upt_id NOT NULL).
+      uptId: formData.uptId || currentUser?.uptId || currentUserUptId || "",
       status: isDraft10 ? "DRAFT" : "PENDING",
       canonical: !!canonicalSubmission && !canonicalSubmission.unavailable,
       canonicalId: canonicalSubmission?.id || null,
@@ -652,7 +656,9 @@ export function useTugTransactions({
     setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
     await saveToCloud({txns: newTxns, docSeq: newSeq});
     if (docType === "TUG10") {
-      upsertTug10Transaction(nt).catch(err => console.warn("upsertTug10Transaction (create) gagal:", err));
+      if (!(await upsertTug10Transaction(nt))) {
+        showToast("⚠️ Gagal simpan TUG-10 ke database (transaksi belum tersimpan permanen) — cek koneksi & coba lagi.", "error");
+      }
     }
     canonicalActionKeysRef.current = null;
     if (isDraft10) {
