@@ -173,6 +173,17 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       return s;
     });
 
+    // Fase E — Non-SAP diusulkan pindah kategori stok (Cadang/Persediaan/Pre Memory), dicatat
+    // sebagai notulen Berita Acara. sapStatus TIDAK diubah (integrasi SAP eksternal ditunda).
+    const notulenList = [];
+    (opn.items||[]).filter(item => item.pindahJenis && item.katalogId).forEach(item => {
+      const stockBefore = newStocks.find(s=>s.katalogId===item.katalogId);
+      const dari = stockBefore?.jenisBarang || "Non-Stock";
+      newStocks = newStocks.map(s => s.katalogId===item.katalogId ? { ...s, jenisBarang: item.pindahJenis } : s);
+      newKatalogList = newKatalogList.map(k => k.id===item.katalogId ? { ...k, jenisBarang: item.pindahJenis } : k);
+      notulenList.push({ katalog: item.noKatalog, nama: item.namaBarang, dari, ke: item.pindahJenis, catatan: "Diusulkan masuk SAP" });
+    });
+
     // Fase D — riwayat Stock Opname per katalog (Kartu Gantung) + foto opname auto-update
     // ke Data Stok kalau ADA foto baru (base64 → Storage; kalau tak ada, foto lama dipertahankan).
     const nowHist = Date.now();
@@ -207,7 +218,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
 
     // Opname selesai = otomatis unfreeze (kalau masih freeze aktif) — tidak perlu langkah manual.
     const freezeOnFinish = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
-    const updated = {...opn, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish};
+    const updated = {...opn, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish, notulen: notulenList.length ? notulenList : (opn.notulen||[])};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
     setOpnameList(nl); setStocks(newStocks); setKatalogList(newKatalogList);
     await stateRef.current.saveToCloud({opnameList: nl, stocks: newStocks, katalogList: newKatalogList});
@@ -219,6 +230,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     if (materialBaruDibuat.length) msg += ` ${materialBaruDibuat.length} material baru ditambahkan ke Master Katalog.`;
     if (materialBaruKonflik.length) msg += ` ⚠️ ${materialBaruKonflik.length} material baru TIDAK ditambahkan (bentrok No. Katalog): ${materialBaruKonflik.slice(0,2).join("; ")}${materialBaruKonflik.length>2?"...":""}.`;
     if (konfirmasiNonStock) msg += ` ${konfirmasiNonStock} material Non-Stock hasil opname dikonfirmasi aktif.`;
+    if (notulenList.length) msg += ` + ${notulenList.length} material Non-SAP diusulkan pindah kategori.`;
     showToast(msg, materialBaruKonflik.length ? "error" : "success");
   }
   // Fase 3 — freeze/unfreeze gudang selama sesi opname berjalan. Mode PERINGATAN saja

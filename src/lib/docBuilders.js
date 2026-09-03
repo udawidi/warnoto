@@ -1033,6 +1033,19 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
   <thead><tr><th>No.</th><th>Nama Barang</th><th>No. Katalog</th><th>Stn.</th><th>Qty Sistem</th><th>Qty SAP</th><th>Qty Fisik</th><th>Selisih</th><th>Status</th><th>Keterangan</th></tr></thead>
   <tbody>${itemRows}</tbody>
 </table>
+${(opn.notulen||[]).length ? `
+<p style="font-size:10.5px;font-weight:800;margin-bottom:4px">NOTULEN — Material Non-SAP Diusulkan Masuk SAP</p>
+<table class="items" style="margin-bottom:12px">
+  <thead><tr><th>No. Katalog</th><th>Nama</th><th>Dari</th><th>Ke</th><th>Catatan</th></tr></thead>
+  <tbody>${opn.notulen.map(n => `
+    <tr>
+      <td style="text-align:center">${fmtE(n.katalog)}</td>
+      <td>${fmtE(n.nama)}</td>
+      <td style="text-align:center">${fmtE(n.dari)}</td>
+      <td style="text-align:center">${fmtE(n.ke)}</td>
+      <td>${fmtE(n.catatan)}</td>
+    </tr>`).join("")}</tbody>
+</table>` : ""}
 <p style="font-size:10px;margin-bottom:20px">Demikian berita acara ini dibuat dengan sebenar-benarnya, menjadi bukti hasil pencatatan fisik yang telah disetujui pada tingkat Asman dan Manager.</p>
 <div class="sig-row">
   <div class="sig-col">

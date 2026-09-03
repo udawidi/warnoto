@@ -907,6 +907,18 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                                 placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
                                 style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:12}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
+                          {(!isSAP || item.statusItem==="MATERIAL_BARU_NONSAP") && activeOpname.stage==="REKONSILIASI" && !isReadOnly && (
+                            <div style={{marginTop:4}}>
+                              <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:2}}>Pindah ke SAP:</label>
+                              <select value={item.pindahJenis||""} onChange={e=>updateItem(realIdx,"pindahJenis",e.target.value)}
+                                style={{...sty.select,width:130,padding:"3px 4px",fontSize:12}}>
+                                <option value="">-- pindahkan? --</option>
+                                <option value="Cadang">Cadang</option>
+                                <option value="Persediaan">Persediaan</option>
+                                <option value="Pre Memory">Pre Memory</option>
+                              </select>
+                            </div>
+                          )}
                         </td>
                         <td data-label="📷 Foto" className="is-key" style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
