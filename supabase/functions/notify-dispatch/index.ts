@@ -38,6 +38,20 @@ function json(body: unknown, status = 200) {
 async function buildMessage(row: { doc_type: string; payload: Record<string, any> }) {
   const p = row.payload || {};
   const arahMasuk = p.arah === "MASUK";
+
+  // PENDING (BATCH 2, 2026-09-03): masuk antrean Asman, belum ada barang bergerak —
+  // pesan singkat berbeda dari COMPLETION di bawah, reuse payload.items kalau ada
+  // (TUG-3 legacy), else join tug_items sama seperti cabang COMPLETION.
+  if (p.eventType === "PENDING") {
+    const judul = `⏳ ${row.doc_type} ${p.docNumber || ""} — MENUNGGU PERSETUJUAN ASMAN`;
+    const sub = `UPT ${p.uptId || "-"}. Mohon segera diproses di aplikasi.`;
+    if (Array.isArray(p.items) && p.items.length) {
+      const lines = p.items.map((i: any) => `- ${i.kode || "-"} ${i.nama || "-"}: ${i.qty} ${i.satuan || ""}`.trim());
+      return `${judul}\n${sub}\nMaterial:\n${lines.join("\n")}`;
+    }
+    return `${judul}\n${sub}`;
+  }
+
   const fallback = arahMasuk
     ? `📥 ${row.doc_type} ${p.docNumber || ""} — PENERIMAAN BARANG DISETUJUI\nUPT ${p.uptId || "-"}. Barang masuk gudang.`
     : `📦 ${row.doc_type} ${p.docNumber || ""} FINAL APPROVED — UPT ${p.uptId || "-"}. Material siap dikeluarkan dari gudang.`;

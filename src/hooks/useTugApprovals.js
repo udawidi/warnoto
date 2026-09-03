@@ -8,23 +8,55 @@ import { resolveSapLabel } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
 
-// Fondasi notif WA/Telegram untuk TUG-3/4 (legacy blob, TIDAK punya row di
-// tug_transactions -> trigger DB 20260902_notif_outbox.sql tidak bisa nangkap).
-// Jadi enqueue outbox dari CLIENT saat approve final, mirror kondisi trigger
-// (penerima aktif & upt_id null-atau-cocok). items disisipkan di payload supaya
-// EF tidak perlu join tug_items (yang tidak ada untuk legacy).
-async function enqueueLegacyTugNotif({ docType, docNumber, uptId, txnId, items }) {
+// Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
+// bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
+// adalah parser angka desimal, bukan nomor telepon) — jadi ditulis di sini, lokal ke
+// pemakaian notif. Return null kalau kosong/terlalu pendek (skip diam-diam).
+function toWaNumber(raw) {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (digits.length < 8) return null;
+  if (digits.startsWith("0")) return "62" + digits.slice(1);
+  if (digits.startsWith("62")) return digits;
+  return "62" + digits;
+}
+
+// Fondasi + generalisasi notif WA/Telegram role-based (BATCH 2, 2026-09-03). Dua
+// event: COMPLETION (approval final — akuntansi + TL + UIT) dan PENDING (masuk
+// antrean Asman — Asman saja). Penerima role-based diresolve dari `users`/`uptList`
+// (dioper hook ini), nomor via toWaNumber(officialPhone); akuntansi tetap dari
+// notif_recipients (pola lama). Dedup by nomor/target final supaya 1 orang 2 sumber
+// (mis. akuntansi manual + TL) tidak dobel kirim. try/catch — notif gagal TIDAK
+// BOLEH menggagalkan approval.
+async function enqueueTugNotif({ eventType, docType, docNumber, uptId, txnId, items, arah, users, uptList }) {
   try {
-    const { data: recipients } = await supabase.from("notif_recipients").select("*").eq("active", true);
-    const targets = (recipients || []).filter(r => r.upt_id == null || r.upt_id === uptId);
-    if (!targets.length) return;
-    const rows = targets.map(r => ({
+    const targets = []; // {channel, target}
+    const pushWa = (u) => { const n = toWaNumber(u?.officialPhone); if (n) targets.push({ channel: "WA", target: n }); };
+
+    if (eventType === "COMPLETION") {
+      const { data: recipients } = await supabase.from("notif_recipients").select("*").eq("active", true);
+      (recipients || []).filter(r => r.upt_id == null || r.upt_id === uptId)
+        .forEach(r => targets.push({ channel: r.channel, target: r.target }));
+      (users || []).filter(u => u.role === "TL" && u.uptId === uptId).forEach(pushWa);
+      const uitId = (uptList || []).find(x => x.id === uptId)?.uitId;
+      if (uitId) {
+        (users || []).filter(u => ["ADMIN_UIT", "ASMAN_LOG_UIT"].includes(u.role) && u.uitId === uitId).forEach(pushWa);
+      }
+    } else if (eventType === "PENDING") {
+      (users || []).filter(u => u.role === "ASMAN" && u.uptId === uptId).forEach(pushWa);
+    }
+
+    // Dedup by target final (nomor WA / chat_id Telegram) — 1 penerima, 1 pesan.
+    const seen = new Set();
+    const dedup = targets.filter(t => (seen.has(t.target) ? false : (seen.add(t.target), true)));
+    if (!dedup.length) return;
+
+    const rows = dedup.map(t => ({
       id: uid(),
       tug_txn_id: txnId,
       doc_type: docType,
-      channel: r.channel,
-      recipient: r.target,
-      payload: { docNumber, docType, uptId, txnId, items, arah: "MASUK" },
+      channel: t.channel,
+      recipient: t.target,
+      payload: { docNumber, docType, uptId, txnId, items, arah, eventType },
       status: "PENDING",
       attempts: 0,
       created_at: Date.now(),
@@ -45,11 +77,14 @@ export function useTugApprovals({
   txns, setTxns, saveToCloud,
   stocks, setStocks, katalogList, setKatalogList,
   docSeq, setDocSeq,
-  uptList, ultgList, currentUserUptId,
+  uptList, ultgList, currentUserUptId, users,
   canonicalActionKeysRef,
   setTxnForm, setEditingDraftTxnId, setTxnModal, editingDraftTxnId,
   commitNewTxn, stateRef,
 }) {
+  // Wrapper lokal — semua titik enqueue di hook ini otomatis dapat users/uptList
+  // tanpa mengulang di tiap pemanggilan.
+  const notify = (args) => enqueueTugNotif({ ...args, users, uptList });
   // ══════════════════════════════════════════════════════════════════
   // TUG-3 / TUG-4 — 2-stage approval chain on a single transaction:
   //   Stage 1: PENDING_TL    -> TL Logistik approves                -> MENUNGGU_TUG4
@@ -106,6 +141,20 @@ export function useTugApprovals({
     await saveToCloud({txns: newTxns});
     await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     showToast(`📋 TUG-4 & lampiran dilengkapi! Menunggu approval Asman Konstruksi.`);
+    notify({
+      eventType: "PENDING",
+      docType: "TUG3",
+      docNumber: txn.docNumbers?.tug3 || "",
+      uptId: txn.uptId,
+      txnId: txn.id,
+      arah: "MASUK",
+      items: stockItems.map(si => ({
+        kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
+        nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",
+        qty: si.qty,
+        satuan: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.satuan : si.satuanBaru) || "",
+      })),
+    });
   }
   // Stage 3: Asman Konstruksi approves the final receipt — THIS is when stock actually increases
   async function approveTUG3Final_Asman(txn) {
@@ -221,13 +270,15 @@ export function useTugApprovals({
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"APPROVED"});
     await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     showToast(`✅ ${txn.docNumbers.tug3} DISETUJUI FINAL! Stok bertambah ke gudang.`);
-    // Fondasi notif WA/Telegram — legacy blob, jadi enqueue dari client (lihat komentar
-    // enqueueLegacyTugNotif di atas). Fire-and-forget, tidak menggagalkan approval.
-    enqueueLegacyTugNotif({
+    // Notif WA/Telegram — TUG-3 legacy blob, tidak punya row di tug_transactions
+    // (trigger DB tidak nangkap) jadi enqueue dari client. Fire-and-forget.
+    notify({
+      eventType: "COMPLETION",
       docType: "TUG3",
       docNumber: txn.docNumbers?.tug3 || "",
       uptId: txn.uptId,
       txnId: txn.id,
+      arah: "MASUK",
       items: txn.stockItems.map(si => ({
         kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
         nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",
@@ -531,5 +582,6 @@ export function useTugApprovals({
     openDraftTug9, submitDraftTug9, deleteDraftTug9,
     submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
     konfirmasiDraftTUG8,
+    enqueueTugNotif: notify,
   };
 }

@@ -2919,12 +2919,15 @@ export default function PLNWarehouse() {
         if (isFinal) {
           const freshStocks = await loadMasterTable("stocks");
           if (freshStocks !== null) setStocks(freshStocks);
-          // Fire-and-forget: trigger DB sudah antre notif_outbox saat status resolve
-          // FINAL_APPROVED (20260902_notif_outbox.sql), EF ini yang benar-benar kirim.
-          // Hanya TUG-8/9 (sesuai scope trigger); jangan blokir/gagalkan approval kalau notif error.
+          // Client enqueue (BATCH 2) menggantikan trigger DB notif_outbox_on_tug_final
+          // (20260902_notif_outbox.sql) — role-based (TL/UIT/Asman) butuh users/uptList
+          // yang trigger SQL tidak punya. Trigger di-drop lewat migration proposal
+          // 20260903d (belum di-apply); dobel-kirim dicegah dedup by target di enqueueTugNotif.
           if (txn.docType === "TUG8" || txn.docType === "TUG9") {
-            supabase.functions.invoke("notify-dispatch").catch(() => {});
+            enqueueTugNotif({ eventType: "COMPLETION", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR" });
           }
+        } else if (txn.docType === "TUG8" || txn.docType === "TUG9") {
+          enqueueTugNotif({ eventType: "PENDING", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR" });
         }
         setTxns(prev => prev.map(t => t.id === txn.id ? { ...t, status:isFinal ? "APPROVED" : "PENDING", stage:result.data.stage, requiredApprover:isFinal ? null : "ASMAN", canonicalVersion:result.data.version, ...(isFinal ? {approvedBy:currentUser.id,approvedAt:Date.now()} : {approvedByTL:currentUser.id,approvedAtTL:Date.now()}), asmanAutoApproved:false } : t));
         delete canonicalDecisionKeysRef.current[txn.id];
@@ -3112,12 +3115,13 @@ export default function PLNWarehouse() {
     openDraftTug9, submitDraftTug9, deleteDraftTug9,
     submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
     konfirmasiDraftTUG8,
+    enqueueTugNotif,
   } = useTugApprovals({
     currentUser, showToast,
     txns, setTxns, saveToCloud,
     stocks, setStocks, katalogList, setKatalogList,
     docSeq, setDocSeq,
-    uptList, ultgList, currentUserUptId,
+    uptList, ultgList, currentUserUptId, users,
     canonicalActionKeysRef,
     setTxnForm, setEditingDraftTxnId, setTxnModal, editingDraftTxnId,
     commitNewTxn, stateRef,
