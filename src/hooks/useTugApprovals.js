@@ -6,6 +6,35 @@ import { upsertTug3Transaction } from "../lib/tug3Sync.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { resolveSapLabel } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
+import { supabase } from "../supabaseClient.js";
+
+// Fondasi notif WA/Telegram untuk TUG-3/4 (legacy blob, TIDAK punya row di
+// tug_transactions -> trigger DB 20260902_notif_outbox.sql tidak bisa nangkap).
+// Jadi enqueue outbox dari CLIENT saat approve final, mirror kondisi trigger
+// (penerima aktif & upt_id null-atau-cocok). items disisipkan di payload supaya
+// EF tidak perlu join tug_items (yang tidak ada untuk legacy).
+async function enqueueLegacyTugNotif({ docType, docNumber, uptId, txnId, items }) {
+  try {
+    const { data: recipients } = await supabase.from("notif_recipients").select("*").eq("active", true);
+    const targets = (recipients || []).filter(r => r.upt_id == null || r.upt_id === uptId);
+    if (!targets.length) return;
+    const rows = targets.map(r => ({
+      id: uid(),
+      tug_txn_id: txnId,
+      doc_type: docType,
+      channel: r.channel,
+      recipient: r.target,
+      payload: { docNumber, docType, uptId, txnId, items, arah: "MASUK" },
+      status: "PENDING",
+      attempts: 0,
+      created_at: Date.now(),
+    }));
+    await supabase.from("notif_outbox").insert(rows);
+    supabase.functions.invoke("notify-dispatch").catch(() => {});
+  } catch (_e) {
+    // Notif gagal TIDAK BOLEH menggagalkan approval — diam saja.
+  }
+}
 
 // Domain: mesin approval transisi TUG-3/4/5/5-ULTG/7 (dan turunan draft TUG-8/9).
 // Murni relokasi — semua state (txns/stocks/katalogList/docSeq/dst.) tetap dimiliki
@@ -192,6 +221,20 @@ export function useTugApprovals({
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"APPROVED"});
     await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     showToast(`✅ ${txn.docNumbers.tug3} DISETUJUI FINAL! Stok bertambah ke gudang.`);
+    // Fondasi notif WA/Telegram — legacy blob, jadi enqueue dari client (lihat komentar
+    // enqueueLegacyTugNotif di atas). Fire-and-forget, tidak menggagalkan approval.
+    enqueueLegacyTugNotif({
+      docType: "TUG3",
+      docNumber: txn.docNumbers?.tug3 || "",
+      uptId: txn.uptId,
+      txnId: txn.id,
+      items: txn.stockItems.map(si => ({
+        kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
+        nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",
+        qty: si.qty,
+        satuan: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.satuan : si.satuanBaru) || "",
+      })),
+    });
     siapDiambilNow.forEach(t => {
       logAudit(currentUser, "UPDATE", "txns", t.docNumbers?.tug5 || t.id, {siapDiambil:true});
       showToast(`📦 Material reservasi ${t.docNumbers?.tug5 || t.id} sudah tiba, siap diambil.`);

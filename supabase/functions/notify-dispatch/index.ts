@@ -37,7 +37,23 @@ function json(body: unknown, status = 200) {
 // bukan kolom relasional — jadi 3 query berantai (items -> stocks -> katalog) untuk nama/kode.
 async function buildMessage(row: { doc_type: string; payload: Record<string, any> }) {
   const p = row.payload || {};
-  const fallback = `📦 ${row.doc_type} ${p.docNumber || ""} FINAL APPROVED — UPT ${p.uptId || "-"}. Material siap dikeluarkan dari gudang.`;
+  const arahMasuk = p.arah === "MASUK";
+  const fallback = arahMasuk
+    ? `📥 ${row.doc_type} ${p.docNumber || ""} — PENERIMAAN BARANG DISETUJUI\nUPT ${p.uptId || "-"}. Barang masuk gudang.`
+    : `📦 ${row.doc_type} ${p.docNumber || ""} FINAL APPROVED — UPT ${p.uptId || "-"}. Material siap dikeluarkan dari gudang.`;
+
+  // TUG-3/4 (legacy, tidak punya row tug_items) sudah bawa daftar material sendiri
+  // di payload.items (lihat enqueueLegacyTugNotif di useTugApprovals.js) — pakai
+  // langsung, skip query tug_items/stocks/katalog di bawah.
+  if (Array.isArray(p.items) && p.items.length) {
+    const lines = p.items.map((i: any) => `- ${i.kode || "-"} ${i.nama || "-"}: ${i.qty} ${i.satuan || ""}`.trim());
+    const judul = arahMasuk
+      ? `📥 ${row.doc_type} ${p.docNumber || ""} — PENERIMAAN BARANG DISETUJUI`
+      : `📦 ${row.doc_type} ${p.docNumber || ""} — DISETUJUI FINAL`;
+    const sub = arahMasuk ? `Barang masuk gudang UPT ${p.uptId || "-"}` : `UPT: ${p.uptId || "-"}`;
+    return `${judul}\n${sub}\nMaterial:\n${lines.join("\n")}`;
+  }
+
   const txnId = p.txnId;
   if (!txnId) return fallback;
   // ponytail: gagal ambil detail (tabel/kolom beda, network) -> jangan gagalkan kirim, pakai fallback ringkas.
