@@ -60,6 +60,14 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Notif WA — opt-in per-user + resolve fresh + pesan lengkap + TUG-10 (2026-09-03, `651887e`→`cd127c1`, LIVE).**
+  - **Penerima = opt-in per-user** (`profiles.notif_events` text[] COMPLETION/PENDING, seed default per role: TL/ADMIN_UIT/ASMAN_LOG_UIT=COMPLETION, ASMAN=PENDING; migration `20260903f` applied). Atur di **Kelola Akun > Edit** checkbox "Terima Notif WA" (EF admin-create/update-user set notif_events, deployed). TAK ada panel setting terpisah (keputusan user).
+  - **Resolve FRESH dari `profiles` saat approve** (`enqueueTugNotif` `useTugApprovals.js`, `.contains(notif_events,[event])` + scope `roleTier`: UPT-tier TL/ASMAN match `upt_id`, UIT-tier match `uit_id`, PUSAT/GLOBAL semua) — BUKAN `users` state basi (fix Ody/Raudy tak kebagian). Semua UPT berlaku (bukan cuma SBY). COMPLETION + akuntansi `notif_recipients`. Dedup by nomor.
+  - **Pesan lengkap** (`notify-dispatch buildMessage extraLines`, payload): TUG-3 +Kontrak/No.SP/PT; TUG-8/9 +Diambil(penerima)+Pekerjaan; TUG-10 +Asal/Vendor+PIC. Daftar material: TUG-3/10 payload.items, TUG-8/9 join tug_items.
+  - **Fix `aa7fa7c`**: grant service_role SELECT `tug_items`+`tug_transactions` (list material TUG-8/9 kena permission denied → fallback tanpa list). Migration `20260903e`.
+  - **TUG-10 masuk notif** (`651887e`, approveTxn cabang TUG10) COMPLETION MASUK.
+  - **SISA (user):** isi No. WA Asman/TL UPT selain SBY (masih KOSONG: Melinda-BLI, Asep-GRS, Galih-MDN, Rizqi-MLG, Philips-PBG + 5 TL) via Kelola Akun. Fonnte gateway (env `FONNTE_TOKEN` di box). Semua tes WA (varian pesan) LULUS.
+
 - **Notif WA (Fonnte) + role-based + pending + fix TUG — SELESAI + LIVE + terverifikasi WA (2026-09-03).** Commits `4512e33`→`a71f20f` di main.
   - **Provider Fonnte**: `sendWhatsApp()` (`notify-dispatch/index.ts`, POST api.fonnte.com/send + `FONNTE_TOKEN` env di box `.env`+compose passthrough `docker-compose.yml.bak_fonnte`), EF deployed. Tes WA E2E LULUS.
   - **Enqueue `enqueueTugNotif`** (`useTugApprovals.js`, client — **trigger DB `20260902` di-DROP** via `20260903d`): COMPLETION (TUG-8/9 keluar `App.jsx approveTxn` isFinal + TUG-3 masuk `approveTUG3Final_Asman`) → akuntansi(`notif_recipients`) + **TL**(role TL, uptId) + **UIT**(ADMIN_UIT/ASMAN_LOG_UIT, uitId dari `uptList`); PENDING (nunggu Asman: TUG-3 `submitTUG4DanLampiran`, TUG-8/9 `approveTxn` !isFinal) → **ASMAN**(uptId). Nomor role dari `profiles.official_phone` via `toWaNumber()` (0xxx→62xxx), **dedup by nomor**. `buildMessage` EF: varian MASUK/keluar/PENDING + daftar material (payload.items TUG-3/4, else join tug_items TUG-8/9).
