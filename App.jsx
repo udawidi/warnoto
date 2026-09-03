@@ -434,7 +434,7 @@ export default function PLNWarehouse() {
     try { return sessionStorage.getItem("warnoto_tab") || "dashboard"; } catch { return "dashboard"; }
   });
   // Operator (Live Location Alat Berat, batch 2): layar tunggal bersih, dashboard
-  // bukan menunya — default tab begitu login adalah Lacak Alat.
+  // bukan menunya — default tab begitu login adalah Sesi Kerja (dulu "Lacak Alat").
   useEffect(() => {
     if (currentUser?.role === "OPERATOR" && tab !== "lacakAlat" && tab !== "profilOperator") setTab("lacakAlat");
   }, [currentUser?.role]);
@@ -684,6 +684,19 @@ export default function PLNWarehouse() {
     async function loadCloud() {
       stocksBootstrapUserIdRef.current = null;
       setDataRefreshing(true);
+      if (currentUser?.role === "OPERATOR") {
+        // OPERATOR cuma pakai layar live-location alat berat (EquipmentLiveShare/OperatorProfile):
+        // butuh uptList (scope + filter unit) dan heavyEquipmentList (dropdown unit). Bootstrap
+        // penuh (stocks/katalog/txns/maturity dkk, bisa ribuan baris) di-skip sepenuhnya —
+        // stocksBootstrapUserIdRef TIDAK di-set di sini sehingga effect realtime stocks (yang
+        // menunggu ref itu) juga otomatis tidak pernah menyala untuk role ini.
+        const [cupt, che] = await Promise.all([loadMasterTable("upt"), loadMasterTable("heavy_equipment")]);
+        if (cupt !== null) setUptList(cupt);
+        if (che !== null) setHeavyEquipmentList(che.map(normalizeHeavyEquipmentRecord));
+        setLoading(false);
+        setDataRefreshing(false);
+        return;
+      }
       // Cache-first: JANGAN setLoading(true) di sini. `loading` sudah diinisialisasi
       // true HANYA saat tidak ada cache first-screen-critical (device baru); memaksa
       // true di sini akan memunculkan lagi layar blocking padahal cache sudah tampil.
@@ -4041,7 +4054,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const tugUiForUser = isUltgRole ? { ...TUG_UI, TUG5: { title:"Slip Reservasi Material", code:"RSV", chip:"Reservasi", buat:"Buat Slip Reservasi", desc:"Ajukan slip reservasi material — Admin ULTG ajukan → Manager ULTG approve → diadopsi UPT jadi TUG-9." } } : TUG_UI;
   const tugGroupUiForUser = isUltgRole ? { ...TUG_GROUP_UI, permintaan: { icon:"📋", label:"Reservasi", hint:"Slip reservasi material dari ULTG ke UPT" } } : TUG_GROUP_UI;
   const navItems = (isOperatorRole ? [
-    {id:"lacakAlat",icon:<SidebarIcon name="equipment"/>,label:"Lacak Alat"},
+    {id:"lacakAlat",icon:<SidebarIcon name="equipment"/>,label:"Sesi Kerja"},
     {id:"profilOperator",icon:<SidebarIcon name="user"/>,label:"Profil"},
   ] : isPengadaan ? [
     {id:"dashboard",icon:<SidebarIcon name="dashboard"/>,label:"Dashboard"},
@@ -4094,7 +4107,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     inspeksiMaterial: {eyebrow:"Material Assurance",title:"Inspeksi Material Cadang"},
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
     integrasiApi: {eyebrow:"Third-Party Access",title:"Integrasi API"},
-    lacakAlat: {eyebrow:"Fleet Operations",title:"Lacak Alat"},
+    lacakAlat: {eyebrow:"Fleet Operations",title:"Sesi Kerja"},
     profilOperator: {eyebrow:"Fleet Operations",title:"Profil Operator"},
   }[tab] || {eyebrow:"WARNOTO",title:"Dashboard"};
   const tug5UptKode = txnForm?.docType === "TUG5" && txnForm?.sourceType === "ULTG"

@@ -1741,6 +1741,7 @@ create table if not exists operator_profile (
   sia_photo text,
   updated_at bigint
 );
+alter table operator_profile add column if not exists profile_photo text;
 
 alter table equipment_location enable row level security;
 alter table equipment_trip enable row level security;

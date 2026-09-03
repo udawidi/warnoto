@@ -29,7 +29,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const AUTH_EMAIL_DOMAIN = "@warnoto.pln.local"; // harus SAMA PERSIS dengan App.jsx
 
-const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT","ADMIN_ULTG","MGR_ULTG","PENGADAAN","VIEWER","SUPERADMIN"];
+const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT","ADMIN_ULTG","MGR_ULTG","PENGADAAN","OPERATOR","VIEWER","SUPERADMIN"];
 
 // Kuota role per UPT — 1 unit UPT hanya boleh punya 1 orang di posisi kunci
 // ini sekaligus, supaya tidak ada rangkap jabatan struktural. Hard limit:
@@ -40,7 +40,7 @@ const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
 // scope independen (UPT vs UIT), dibedakan lewat upt_id vs uit_id yang terisi
 // (lihat pengecekan di bawah), bukan role value yang berbeda.
 const UIT_ROLE_QUOTA = { ADMIN_UIT: 5, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 }; // ADMIN_LOG_PUSAT nasional, tidak terikat 1 UIT
-const ROLE_LABELS = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", PENGADAAN: "Tim Pengadaan", ADMIN_UIT: "Admin UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat" };
+const ROLE_LABELS = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", PENGADAAN: "Tim Pengadaan", ADMIN_UIT: "Admin UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat", OPERATOR: "Operator Alat" };
 const UIT_SCOPED_ROLES = ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT"]; // PENGADAAN scope UIT ditentukan lewat body.pengadaanScope, bukan role tetap
 // Peran nasional (Pusat): lingkupnya seluruh UPT dan UIT, jadi TIDAK terikat
 // upt_id maupun uit_id. Tanpa cabang ini akun Pusat dipaksa memilih satu UPT

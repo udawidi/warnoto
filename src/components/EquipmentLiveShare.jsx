@@ -1,10 +1,14 @@
-// Layar operator "Lacak Alat" (Live Location Alat Berat — BATCH 2). Satu kartu
-// bersih TANPA peta/tile (hemat baterai) — peta live ada di sisi internal (Batch 3).
+// Layar operator "Sesi Kerja" (Live Location Alat Berat — BATCH 2, dulu "Lacak Alat"
+// — rename framing 2026-09-03, key tab/perm "lacakAlat" sengaja TIDAK diubah). Satu
+// kartu bersih TANPA peta/tile (hemat baterai) — peta live ada di sisi internal (Batch 3).
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient.js";
-import { getUserUptScope } from "../lib/roles.js";
+import { getUserUptScope, stripUptPrefix } from "../lib/roles.js";
 import { uid } from "../lib/utils.js";
 import { haversineMeters, pathDistance } from "../lib/geo.js";
+import { getEquipmentCategory } from "../lib/heavyEquipment.js";
+
+const CATEGORY_ICON = { crane: "🏗️", truck: "🚚", manlift: "🛗", forklift: "🚜", pendukung: "🔧" };
 
 const SEND_THROTTLE_MS = 25000; // ponytail: fix 25s, per-akun jika perlu upgrade
 const MIN_MOVE_M = 25; // distance-filter — skip kirim kalau geser <25m
@@ -12,7 +16,10 @@ const GEO_OPTS = { enableHighAccuracy: false, maximumAge: 15000, timeout: 20000 
 
 export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, sty, C, showToast }) {
   const upt = getUserUptScope(currentUser, uptList);
-  const units = (heavyEquipmentList || []).filter(e => e.tracked && e.upt === upt);
+  // Cocokkan UPT dgn normalisasi stripUptPrefix (pola overlay agregat App.jsx) — e.upt
+  // bisa ber-prefix "UPT " sedangkan getUserUptScope balik nama ter-strip; exact-match gagal.
+  const uptKey = stripUptPrefix(upt);
+  const units = (heavyEquipmentList || []).filter(e => e.tracked && stripUptPrefix(e.upt) === uptKey);
 
   const [equipmentId, setEquipmentId] = useState("");
   const [moving, setMoving] = useState(false);
@@ -111,45 +118,78 @@ export function EquipmentLiveShare({ currentUser, uptList, heavyEquipmentList, s
   const secsAgo = lastSentAt ? Math.round((Date.now() - lastSentAt) / 1000) : null;
 
   return (
-    <div style={{ ...sty.card, maxWidth: 480, margin: "0 auto" }}>
-      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: C.text }}>Lacak Alat</h2>
-      <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted }}>Bagikan lokasi unit yang sedang Anda operasikan.</p>
+    <div style={{ ...sty.card, maxWidth: 480, margin: "0 auto", padding: 18 }}>
+      <h2 style={{ margin: "0 0 4px", fontSize: 20, fontWeight: 800, color: C.text }}>Sesi Kerja</h2>
+      <p style={{ margin: "0 0 18px", fontSize: 13, color: C.muted, lineHeight: 1.5 }}>
+        Mulai sesi saat mengoperasikan unit — rute &amp; jarak tempuh tercatat otomatis.
+      </p>
 
       {!units.length && (
-        <div style={{ padding: 12, borderRadius: 10, background: "#fef3c7", color: "#92400e", fontSize: 13 }}>
-          Belum ada unit alat berat berstatus "Lacak lokasi" di UPT Anda.
+        <div style={{ padding: 14, borderRadius: 14, background: "#fef3c7", color: "#92400e", fontSize: 13 }}>
+          Belum ada unit alat berat yang diaktifkan untuk sesi kerja di UPT Anda.
         </div>
       )}
 
       {!!units.length && (
         <>
-          <label style={sty.label}>Unit yang dipakai
-            <select style={sty.select} value={equipmentId} disabled={moving} onChange={e => setEquipmentId(e.target.value)}>
-              <option value="">Pilih unit…</option>
-              {units.map(u => <option key={u.id} value={u.id}>{u.nama} {u.merkType ? `(${u.merkType})` : ""}</option>)}
-            </select>
-          </label>
+          <div style={sty.label}>Pilih unit</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
+            {units.map(u => {
+              const selected = u.id === equipmentId;
+              const icon = CATEGORY_ICON[getEquipmentCategory(u)] || "🔧";
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  disabled={moving && !selected}
+                  onClick={() => setEquipmentId(u.id)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 12, textAlign: "left",
+                    padding: 12, borderRadius: 14, cursor: moving && !selected ? "not-allowed" : "pointer",
+                    background: selected ? `${C.accent}14` : C.surface,
+                    border: `2px solid ${selected ? C.accent : C.border}`,
+                    opacity: moving && !selected ? 0.5 : 1,
+                    minHeight: 44,
+                  }}
+                >
+                  <div style={{ width: 52, height: 52, flexShrink: 0, borderRadius: 12, overflow: "hidden", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
+                    {u.foto ? <img src={u.foto} alt={u.nama} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : icon}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{u.nama}</span>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 8px", borderRadius: 999, background: `${C.accent}1a`, color: C.accent, textTransform: "capitalize" }}>{getEquipmentCategory(u)}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                      {[u.merkType, u.kapasitas, u.nomorSeri].filter(Boolean).join(" · ") || "—"}
+                    </div>
+                  </div>
+                  {selected && <span style={{ fontSize: 18, color: C.accent }}>✓</span>}
+                </button>
+              );
+            })}
+          </div>
 
-          {geoError && <div style={{ margin: "8px 0", padding: 10, borderRadius: 10, background: "#fee2e2", color: "#991b1b", fontSize: 13 }}>{geoError}</div>}
+          {geoError && <div style={{ margin: "8px 0", padding: 10, borderRadius: 12, background: "#fee2e2", color: "#991b1b", fontSize: 13 }}>{geoError}</div>}
 
           {!moving ? (
-            <button style={{ ...sty.btn("primary"), width: "100%", marginTop: 12 }} onClick={startTracking}>▶ Mulai Kerja</button>
+            <button style={{ ...sty.btn("primary"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15 }} onClick={startTracking}>▶ Mulai Kerja</button>
           ) : (
             <>
-              <div style={{ margin: "12px 0", padding: 12, borderRadius: 10, background: "#dcfce7", color: "#166534", fontSize: 13, lineHeight: 1.7 }}>
-                🟢 Sedang melacak…<br />
+              <div style={{ margin: "12px 0", padding: 14, borderRadius: 14, background: "#dcfce7", color: "#166534", fontSize: 13, lineHeight: 1.7 }}>
+                🟢 Sesi berjalan…<br />
                 Akurasi: {accuracy != null ? `${Math.round(accuracy)} m` : "-"}<br />
                 Terkirim: {secsAgo != null ? `${secsAgo} dtk lalu` : "belum ada"}<br />
                 Titik terekam: {pointCount}
               </div>
-              <button style={{ ...sty.btn("danger"), width: "100%" }} onClick={stopTracking}>⏹ Stop</button>
+              <button style={{ ...sty.btn("danger"), width: "100%", minHeight: 48, borderRadius: 14, fontSize: 15 }} onClick={stopTracking}>⏹ Stop</button>
             </>
           )}
         </>
       )}
 
       {summary && (
-        <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: "#eff6ff", color: "#1e3a8a", fontSize: 13, lineHeight: 1.7 }}>
+        <div style={{ marginTop: 16, padding: 14, borderRadius: 14, background: "#eff6ff", color: "#1e3a8a", fontSize: 13, lineHeight: 1.7 }}>
           <strong>Ringkasan sesi</strong><br />
           Durasi: {Math.round(summary.durationMs / 60000)} menit<br />
           Jarak: {summary.distanceKm.toFixed(2)} km<br />
