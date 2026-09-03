@@ -7,7 +7,7 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai } from "../lib/sap.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
@@ -594,14 +594,48 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           </div>
         </div>
 
-        {/* Fase 3: Freeze Gudang — konfirmasi peringatan (bukan blokir) di transaksi TUG. */}
+        {/* Fase C: Dashboard progres per blok — klik chip untuk filter tabel ke blok itu. */}
+        {!isReadOnly && (() => {
+          const seen = new Set();
+          const bloks = [];
+          for (const it of items) {
+            for (const b of getItemBlocks(it, lokasiList, gudangList)) {
+              const key = blokKeyOf(b.lokasiId);
+              if (seen.has(key)) continue;
+              seen.add(key);
+              bloks.push(b);
+            }
+          }
+          if (!bloks.length) return null;
+          return (
+            <div style={{...sty.card,marginBottom:14,background:"#f8fafc",border:`1px solid ${C.border}`}}>
+              <div style={{fontSize:12,fontWeight:800,color:C.text,marginBottom:8}}>📊 Progres Per Blok</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                {bloks.map((b,bi)=>{
+                  const { total, counted, selesai } = blokProgress(activeOpname, b.lokasiId, lokasiList, gudangList);
+                  const bg = selesai ? "#dcfce7" : counted>0 ? "#fef3c7" : "#f1f5f9";
+                  const fg = selesai ? "#166534" : counted>0 ? "#92400e" : "#6b7280";
+                  const active = (filterGudangId===(b.gudangId||"__NONE__")) && filterLokasiId===(b.lokasiId||"");
+                  return (
+                    <button key={bi} onClick={()=>{ setFilterGudangId(b.gudangId||"__NONE__"); setFilterLokasiId(b.lokasiId||""); setPage(0); }}
+                      style={{padding:"5px 10px",borderRadius: 10,border:`1px solid ${active?C.accent:bg}`,background:bg,color:fg,fontSize:12,fontWeight:700,cursor:"pointer",outline:active?`2px solid ${C.accent}`:"none"}}>
+                      {selesai?"✓ ":""}{b.gudangKode||"?"} — {b.lokasiKode||"Tanpa Lokasi"} ({counted}/{total})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Freeze Gudang — Fase A: BLOKIR KERAS transaksi TUG (bukan lagi peringatan). */}
         {hasRole(currentUser, "ADMIN","TL","ASMAN") && activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK" && (
           <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
             <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
-              🧊 Freeze Gudang (Peringatan Transaksi TUG)
+              🧊 Freeze Gudang (Blokir Transaksi TUG saat Opname)
             </div>
             <div style={{fontSize:12,color:C.muted,marginBottom:8}}>
-              Gudang yang dicentang akan memunculkan peringatan konfirmasi (transaksi tetap bisa dilanjutkan) saat ada TUG dari/ke gudang itu selama sesi opname ini berjalan.
+              Gudang yang dicentang akan DIBLOKIR — transaksi TUG masuk/keluar dari/ke gudang itu ditolak selama sesi opname ini berjalan (otomatis aktif saat mulai hitung, lepas saat opname selesai/ditolak).
             </div>
             <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
               {(gudangList||[]).map(g=>{
@@ -834,6 +868,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {item.qtsFisik==null?"—":item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
                         </td>
                         <td data-label="Status" className="is-key" style={{padding:"6px 8px"}}>
+                          <span title={itemCounted(item)?"Sudah dihitung":"Belum dihitung"} style={{marginRight:4,fontSize:12,fontWeight:700,color:itemCounted(item)?"#16a34a":"#9ca3af"}}>
+                            {itemCounted(item)?"✓":"•"}
+                          </span>
                           {item.qtsFisik==null ? (
                             <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>—</span>
                           ) : (

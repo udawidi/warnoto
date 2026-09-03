@@ -444,6 +444,27 @@ export function allBloksSelesai(opn) {
   return (opn?.items||[]).length > 0 && (opn.items).every(itemCounted);
 }
 
+export function blokKeyOf(lokasiId) { return lokasiId || "_TANPA_LOKASI"; }
+
+// Blok yang "dimiliki" satu item — dari lokasiBreakdown (SAP, bisa >1 blok per item) atau
+// lokasiId tunggal (Non-SAP). Sejajar cara StockOpnameTab.buildLokasiBreakdown membentuknya.
+export function getItemBlocks(item, lokasiList, gudangList) {
+  if (item.lokasiBreakdown?.length) return item.lokasiBreakdown;
+  const lokasiId = item.lokasiId || null;
+  const lok = (lokasiList || []).find(l => l.id === lokasiId);
+  const gud = (gudangList || []).find(g => g.id === lok?.gudangId);
+  return [{ lokasiId, lokasiKode: lok?.kode || null, gudangId: lok?.gudangId || null, gudangKode: gud?.kode || gud?.nama || null, qty: item.qtySistem || 0 }];
+}
+
+// Fase C: progress hitung untuk satu blok (lokasiId) di sesi opname — dipakai dashboard blok.
+// Item multi-blok dihitung penuh (itemCounted seluruh item), bukan per-lokasi granular.
+export function blokProgress(opn, lokasiId, lokasiList, gudangList) {
+  const items = (opn?.items || []).filter(it => getItemBlocks(it, lokasiList, gudangList).some(b => b.lokasiId === lokasiId));
+  const total = items.length;
+  const counted = items.filter(itemCounted).length;
+  return { total, counted, selesai: total > 0 && counted === total };
+}
+
 // QR di label Kartu Gantung TUG-2 (lihat KartuGantungModal "Label QR Print") berisi URL lengkap
 // "?scan=<katalogId>", bukan sekadar nomor katalog. Ekstrak katalogId-nya supaya scan QR fisik di
 // rak langsung match ke material yang benar, baik via URL utuh maupun fallback regex kalau kamera

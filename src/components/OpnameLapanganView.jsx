@@ -4,19 +4,7 @@
 import { useState } from "react";
 import { BarcodeScanner } from "./BarcodeScanner.jsx";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
-import { extractKatalogIdFromScan, extractLokasiIdFromScan, normalizeKatalog } from "../lib/sap.js";
-
-function blokKeyOf(lokasiId) { return lokasiId || "_TANPA_LOKASI"; }
-
-// Blok yang "dimiliki" satu item — dari lokasiBreakdown (SAP, bisa >1 blok per item) atau
-// lokasiId tunggal (Non-SAP). Sejajar cara StockOpnameTab.buildLokasiBreakdown membentuknya.
-function getItemBlocks(item, lokasiList, gudangList) {
-  if (item.lokasiBreakdown?.length) return item.lokasiBreakdown;
-  const lokasiId = item.lokasiId || null;
-  const lok = (lokasiList || []).find(l => l.id === lokasiId);
-  const gud = (gudangList || []).find(g => g.id === lok?.gudangId);
-  return [{ lokasiId, lokasiKode: lok?.kode || null, gudangId: lok?.gudangId || null, gudangKode: gud?.kode || gud?.nama || null, qty: item.qtySistem || 0 }];
-}
+import { extractKatalogIdFromScan, extractLokasiIdFromScan, normalizeKatalog, blokKeyOf, getItemBlocks } from "../lib/sap.js";
 
 export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount, lokasiList, gudangList,
   currentUser, sty, C, showToast, onClose, onOpenTambahMaterial, onSimpanDraft }) {
