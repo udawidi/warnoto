@@ -36,6 +36,10 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
     setDraftItems(items => items.map(it => it.id===id ? {...it, included: !it.included} : it));
   }
 
+  function updateDraftItem(id, field, value) {
+    setDraftItems(items => items.map(it => it.id===id ? {...it, [field]:value} : it));
+  }
+
   async function confirmSaveDraft() {
     const included = draftItems.filter(it => it.included).map(({included, ...it}) => it);
     setSaving(true);
@@ -48,7 +52,13 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
   const REKOMENDASI_LABEL = {
     TAMBAH_STOK: "➕ Disarankan: tambah stok baru di Data Stok (selisih kurang dari SAP)",
     BUAT_TUG_KELUAR: "📤 Disarankan: buat TUG-9/8 (kemungkinan ada pemakaian belum tercatat)",
+    TIDAK_ADA_TINDAKAN: "⏸️ SAP belum diproses / tidak ada tindakan",
   };
+  const REKOMENDASI_OPTS = [
+    ["TAMBAH_STOK", "➕ Tambah stok di Aplikasi"],
+    ["BUAT_TUG_KELUAR", "📤 Buat TUG Keluar"],
+    ["TIDAK_ADA_TINDAKAN", "⏸️ Tidak ada tindakan (SAP belum diproses)"],
+  ];
 
   return (
     <div>
@@ -151,7 +161,14 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
                           ? <span style={{fontSize:12,fontWeight:700,color:C.green}}>✓ Akurat</span>
                           : <span style={{fontSize:12,fontWeight:700,color:item.status==="APP_KURANG"?"#b45309":"#dc2626"}}>{item.status==="APP_KURANG"?"App Kurang":"App Lebih"}</span>}
                       </td>
-                      <td data-label="Rekomendasi" style={{padding:"6px 8px",fontSize:12,color:"#1d4ed8"}}>{item.rekomendasi ? REKOMENDASI_LABEL[item.rekomendasi] : "-"}</td>
+                      <td data-label="Rekomendasi" style={{padding:"6px 8px",fontSize:12,color:"#1d4ed8"}}>
+                        {item.status==="AKURAT" ? "—" : (
+                          <select style={sty.select} value={item.rekomendasi||""} onChange={e=>updateDraftItem(item.id,"rekomendasi",e.target.value)}>
+                            <option value="">-- pilih --</option>
+                            {REKOMENDASI_OPTS.map(([val,label])=><option key={val} value={val}>{label}</option>)}
+                          </select>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
