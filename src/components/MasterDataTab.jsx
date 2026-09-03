@@ -818,7 +818,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
             })()}
 
             {stockSubTab==="akun" && can(currentUser, "aksi.kelolaAkun", rolePerms) && (
-              <NotifRecipientPanel sty={sty} C={C} currentUser={currentUser} uptList={uptList} />
+              <NotifRecipientPanel sty={sty} C={C} currentUser={currentUser} uptList={uptList} showToast={showToast} />
             )}
 
             {/* ── SUB-TAB: MIGRASI DATA (ADMIN only) ── */}

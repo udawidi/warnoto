@@ -2919,6 +2919,12 @@ export default function PLNWarehouse() {
         if (isFinal) {
           const freshStocks = await loadMasterTable("stocks");
           if (freshStocks !== null) setStocks(freshStocks);
+          // Fire-and-forget: trigger DB sudah antre notif_outbox saat status resolve
+          // FINAL_APPROVED (20260902_notif_outbox.sql), EF ini yang benar-benar kirim.
+          // Hanya TUG-8/9 (sesuai scope trigger); jangan blokir/gagalkan approval kalau notif error.
+          if (txn.docType === "TUG8" || txn.docType === "TUG9") {
+            supabase.functions.invoke("notify-dispatch").catch(() => {});
+          }
         }
         setTxns(prev => prev.map(t => t.id === txn.id ? { ...t, status:isFinal ? "APPROVED" : "PENDING", stage:result.data.stage, requiredApprover:isFinal ? null : "ASMAN", canonicalVersion:result.data.version, ...(isFinal ? {approvedBy:currentUser.id,approvedAt:Date.now()} : {approvedByTL:currentUser.id,approvedAtTL:Date.now()}), asmanAutoApproved:false } : t));
         delete canonicalDecisionKeysRef.current[txn.id];

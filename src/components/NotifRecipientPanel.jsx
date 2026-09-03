@@ -9,11 +9,25 @@ import { supabase } from "../supabaseClient.js";
 import { isDemoMode } from "../lib/demo.js";
 import { hasRole } from "../lib/roles.js";
 
-export function NotifRecipientPanel({ sty, C, currentUser, uptList }) {
+export function NotifRecipientPanel({ sty, C, currentUser, uptList, showToast }) {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [draining, setDraining] = useState(false);
   const [form, setForm] = useState({ channel:"TELEGRAM", target:"", label:"", upt_id:"" });
+
+  async function drainOutbox() {
+    if (!supabase) return;
+    setDraining(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("notify-dispatch");
+      if (error) throw error;
+      showToast?.(`${data?.sent ?? 0} terkirim, ${data?.failed ?? 0} gagal`, data?.failed ? "error" : "success");
+    } catch (e) {
+      showToast?.("Gagal jalankan pengiriman: " + e.message, "error");
+    }
+    setDraining(false);
+  }
 
   async function loadItems() {
     if (!supabase) { setItems([]); setLoading(false); return; }
@@ -74,7 +88,10 @@ export function NotifRecipientPanel({ sty, C, currentUser, uptList }) {
 
   return (
     <div style={{...sty.card, marginBottom:16}}>
-      <div style={{fontWeight:800,fontSize:13,marginBottom:4}}>🔔 Kelola Penerima Notifikasi TUG-8/9</div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:4}}>
+        <div style={{fontWeight:800,fontSize:13}}>🔔 Kelola Penerima Notifikasi TUG-8/9</div>
+        <button style={sty.btn("ghost","sm")} disabled={draining} onClick={drainOutbox}>{draining?"Mengirim...":"Kirim notif tertunda"}</button>
+      </div>
       <p tabIndex={0} className="info-note" style={{fontSize:12,color:C.muted,marginBottom:12}}>
         Penerima aktif di daftar ini akan diantrekan notifikasi otomatis (via <code>notif_outbox</code>) saat TUG-8/TUG-9 disetujui final. Pengiriman WA masih menunggu keputusan provider — baris WA akan tercatat FAILED sementara.
       </p>
