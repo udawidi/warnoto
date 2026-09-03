@@ -60,7 +60,12 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Live Location Alat Berat (crane/truck/manlift) via GPS HP operator — KODE SELESAI (3 batch) + COMMIT `4512e33`, build hijau, BELUM push + BELUM apply migration + belum verify browser (2026-09-03).** Plan `C:\Users\PLN\.claude\plans\lanjut-2-perbaikan-cheerful-stonebraker.md`.
+- **Live Location Alat Berat (crane/truck/manlift) via GPS HP operator — SELESAI + PUSHED (`4512e33`→`e0b9a02`, 2026-09-03), semua migration APPLIED, integrasi terverifikasi API-layer. Sisa: smoke-test browser device nyata.** Plan `C:\Users\PLN\.claude\plans\lanjut-2-perbaikan-cheerful-stonebraker.md`.
+  - **Migrations APPLIED self-host:** `20260903` (equipment_location realtime + equipment_trip + operator_profile), `20260903b` (operator_profile.profile_photo), `20260903c` (equipment_trip.inspection). RLS masih permisif-authenticated (TODO ketatkan per-UPT). EF `admin-create-user`/`admin-update-user` +OPERATOR di VALID_ROLES (deployed).
+  - **Alur operator final:** login OPERATOR (bootstrap RINGAN — cuma upt+heavy_equipment) → 3 menu (Sesi Kerja / Profil / Riwayat). Sesi Kerja: pilih unit (kartu, lain auto-hide + "Ganti unit") → checklist inspeksi 12 item (`INSPEKSI_ALAT`, wajib semua centang) → konfirmasi Berangkat → peta live titik + Wake Lock (layar nyala) → konfirmasi Stop → ringkasan sesi + "Mulai Pekerjaan Lagi". Trip+inspeksi tersimpan `equipment_trip`. Profil: nama+HP+foto avatar/SIO/SIA. Riwayat: trip operator sendiri + rute polyline.
+  - **Peta dashboard internal:** toggle "Alat Live" marker per-unit realtime (MOVING/STOPPED/stale). Panel Riwayat Perjalanan (admin/TL) semua trip UPT.
+  - **DITUNDA:** background GPS sungguhan (app ditutup) = fase native Capacitor (web = wake-lock best-effort, jeda saat pindah app). Item inspeksi = draft (user boleh revisi). RLS per-UPT hardening.
+  - **SISA:** smoke-test di device HP nyata (GPS gerak, wake-lock, peta) — di localhost pakai DevTools→Sensors→Location.
   - **Role OPERATOR** (`roles.js`/`perms.js`): 2 menu (Lacak Alat + Profil), scope UPT, nol aksi tulis. Nav `App.jsx` cabang operator. Akun dibuat via Kelola Akun (dropdown role generik).
   - **Alat**: field `kategori` (eksplisit, incl Truck) + `tracked` (jsonb); `getEquipmentCategory` prefer `e.kategori` else tebak-nama.
   - **Operator app** `EquipmentLiveShare.jsx`: pilih unit tracked UPT-nya → Mulai → `watchPosition` hemat baterai (highAccuracy off, throttle 25s + distance-filter 25m) upsert `equipment_location` MOVING → Stop = kunci STOPPED + insert `equipment_trip` + ringkasan (durasi/km/titik). Auto-Stop ganti unit, cleanup clearWatch. `OperatorProfile.jsx`: nama+HP+foto SIO/SIA (apple-like, tabel `operator_profile`).
