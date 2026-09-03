@@ -1,17 +1,4 @@
-// Mirrors collectTxnGudangIds() + findActiveFreezeSession() in
-// src/hooks/useTugTransactions.js (keep in sync on change).
-function collectTxnGudangIds(docType, formData, lokasiList) {
-  if (docType === "TUG8" || docType === "TUG9") return formData.gudangId ? [formData.gudangId] : [];
-  if (docType === "TUG3" || docType === "TUG10") {
-    const lokasiIds = [formData.lokasiTujuanId, ...(formData.stockItems||[]).map(si=>si.lokasiTujuanId)].filter(Boolean);
-    return lokasiIds.map(lid => (lokasiList||[]).find(l=>l.id===lid)?.gudangId).filter(Boolean);
-  }
-  return [];
-}
-function findActiveFreezeSession(gudangIds, opnameList) {
-  if (!gudangIds.length) return null;
-  return (opnameList||[]).find(o => o.freeze?.aktif && (o.freeze.gudangIds||[]).some(gid=>gudangIds.includes(gid)));
-}
+import { collectTxnGudangIds, findActiveFreezeSession } from "../src/lib/opnameFreeze.js";
 
 function assertEqual(actual, expected, label) {
   const a = JSON.stringify(actual), e = JSON.stringify(expected);

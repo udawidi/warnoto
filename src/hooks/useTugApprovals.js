@@ -8,6 +8,7 @@ import { resolveSapLabel } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
 import { roleTier } from "../lib/roles.js";
+import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -87,6 +88,7 @@ export function useTugApprovals({
   canonicalActionKeysRef,
   setTxnForm, setEditingDraftTxnId, setTxnModal, editingDraftTxnId,
   commitNewTxn, stateRef,
+  opnameList, lokasiList, gudangList,
 }) {
   // Wrapper lokal — semua titik enqueue di hook ini otomatis dapat users/uptList
   // tanpa mengulang di tiap pemanggilan.
@@ -167,6 +169,10 @@ export function useTugApprovals({
   async function approveTUG3Final_Asman(txn) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menyetujui TUG-3 Final.","error"); return; }
     if (txn.stage !== "PENDING_ASMAN") { showToast("Transaksi ini tidak dalam tahap menunggu Asman.","error"); return; }
+    // Fase A — gudang tujuan lagi di-opname: tunda approve (blokir keras, sama seperti
+    // commitNewTxn) supaya stok tak berubah di tengah hitung fisik.
+    const frozen = findActiveFreezeSession(collectTxnGudangIds("TUG3", txn, lokasiList), opnameList);
+    if (frozen) { showToast("🧊 DITOLAK — gudang tujuan sedang Stock Opname. Approve TUG-3 ditunda sampai opname selesai.","error"); return; }
 
     // Same incoming-material logic as TUG-10 approval: bump existing Data Stok
     // row or auto-create new Master Katalog + Data Stok entry.

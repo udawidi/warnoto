@@ -10,6 +10,7 @@ import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js
 import { upsertTug10Transaction, deleteTug10Transaction } from "../lib/tug10Sync.js";
 import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
+import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -370,32 +371,15 @@ export function useTugTransactions({
     }
   }
 
-  // Fase 3 — gudang mana yang tersentuh transaksi ini, dipakai buat cek freeze opname.
-  // TUG8/TUG9 sudah punya gudangId langsung di form (scope-gudang #4); TUG3/TUG10 baru
-  // pilih lokasi (blok) tujuan, jadi diturunkan lewat lokasiList (pola warehouseNameForLokasi
-  // di supabaseSync.js). TUG5 sengaja tidak diikutkan — permintaan level UPT, tidak terikat
-  // gudang/blok spesifik.
-  function collectTxnGudangIds(docType, formData) {
-    if (docType === "TUG8" || docType === "TUG9") return formData.gudangId ? [formData.gudangId] : [];
-    if (docType === "TUG3" || docType === "TUG10") {
-      const lokasiIds = [formData.lokasiTujuanId, ...(formData.stockItems||[]).map(si=>si.lokasiTujuanId)].filter(Boolean);
-      return lokasiIds.map(lid => (lokasiList||[]).find(l=>l.id===lid)?.gudangId).filter(Boolean);
-    }
-    return [];
-  }
-  function findActiveFreezeSession(gudangIds) {
-    if (!gudangIds.length) return null;
-    return (opnameList||[]).find(o => o.freeze?.aktif && (o.freeze.gudangIds||[]).some(gid=>gudangIds.includes(gid)));
-  }
-
   async function commitNewTxn(docType, formData, { replaceDraftId = null, targetStage = null } = {}) {
     if (savingTxnRef.current) return;       // cegah double-submit saat upload foto berjalan
-    const frozenSession = findActiveFreezeSession(collectTxnGudangIds(docType, formData));
+    // Fase A — freeze opname sekarang BLOKIR KERAS (bukan lagi peringatan window.confirm):
+    // gudang sedang di-opname, transaksi masuk/keluar ke situ ditolak total sampai selesai.
+    const frozenSession = findActiveFreezeSession(collectTxnGudangIds(docType, formData, lokasiList), opnameList);
     if (frozenSession) {
       const namaGudang = frozenSession.freeze.gudangIds.map(gid=>(gudangList||[]).find(g=>g.id===gid)?.nama).filter(Boolean).join(", ") || "gudang ini";
-      const lanjut = window.confirm(`⚠️ ${namaGudang} sedang di-FREEZE untuk Stock Opname "${frozenSession.semester||""} (${frozenSession.jenisAlur||""})".\n\nTransaksi tetap bisa dilanjutkan, tapi bisa memengaruhi selisih hitung opname. Lanjutkan simpan?`);
-      if (!lanjut) return;
-      formData = { ...formData, freezeWarnOpnameId: frozenSession.id };
+      showToast(`🧊 DITOLAK — ${namaGudang} sedang Stock Opname. Transaksi masuk/keluar tidak bisa diproses sampai opname selesai.`, "error");
+      return;
     }
     savingTxnRef.current = true;
     setSavingTxn(true);

@@ -90,14 +90,6 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
   }
   async function approveOpname_Asman(opn, catatan) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman yang bisa approve.","error"); return; }
-    const updated = {...opn, status:"PENDING_MANAGER", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||""};
-    const nl = opnameList.map(o=>o.id===opn.id?updated:o);
-    setOpnameList(nl);
-    await stateRef.current.saveToCloud({opnameList: nl});
-    showToast("✅ Disetujui Asman! Menunggu Manager.");
-  }
-  async function approveOpname_Manager(opn, catatan) {
-    if (!hasRole(currentUser, "MANAGER")) { showToast("Hanya Manager yang bisa approve.","error"); return; }
     let newStocks = [...stocks];
     // Material baru dari SAP (item.katalogId null — belum ada di Master Katalog saat upload)
     // sekarang IKUT approval sesi ini (Asman->Manager), TIDAK ada approval TL terpisah (keputusan
@@ -183,7 +175,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
 
     // Opname selesai = otomatis unfreeze (kalau masih freeze aktif) — tidak perlu langkah manual.
     const freezeOnFinish = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
-    const updated = {...opn, status:"SELESAI", approvedByManager:currentUser.id, approvedAtManager:Date.now(), catatanManager:catatan||"", freeze: freezeOnFinish};
+    const updated = {...opn, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
     setOpnameList(nl); setStocks(newStocks); setKatalogList(newKatalogList);
     await stateRef.current.saveToCloud({opnameList: nl, stocks: newStocks, katalogList: newKatalogList});
@@ -214,7 +206,10 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     showToast(aktif ? "🧊 Gudang di-freeze untuk sesi opname ini." : "Freeze gudang dinonaktifkan.");
   }
   async function rejectOpname(opn, reason) {
-    const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    // Fase A — sesi ditolak = lepas freeze juga (kalau masih aktif), sama seperti selesai
+    // di approveOpname_Asman: gudang tidak boleh nyangkut freeze dari sesi yang sudah mati.
+    const freezeOnReject = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
+    const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason, freeze: freezeOnReject};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
     setOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
     await logApprovalHistory({type:"OPNAME", decision:"REJECTED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
@@ -381,7 +376,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     stockCountList, setStockCountList,
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
-    saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname,
+    saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname,
     setOpnameFreeze,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,

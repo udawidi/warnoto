@@ -432,6 +432,18 @@ export function applyQtyToItem(item, lokasiKey, qty, userId, { markRecount = fal
   return next;
 }
 
+// Fase B: item dianggap "sudah dihitung" kalau SEMUA entri hitungPerLokasi-nya punya at != null
+// (seed awal pakai at:null, applyQtyToItem set at:Date.now() saat hitung nyata). Dipakai buat
+// progress + gate transisi HITUNG->REKONSILIASI (angka buku sendiri SELALU tampil, tidak blind).
+export function itemCounted(item) {
+  const h = item?.hitungPerLokasi; if (!h) return false;
+  const keys = Object.keys(h); if (!keys.length) return false;
+  return keys.every(k => h[k]?.at != null);
+}
+export function allBloksSelesai(opn) {
+  return (opn?.items||[]).length > 0 && (opn.items).every(itemCounted);
+}
+
 // QR di label Kartu Gantung TUG-2 (lihat KartuGantungModal "Label QR Print") berisi URL lengkap
 // "?scan=<katalogId>", bukan sekadar nomor katalog. Ekstrak katalogId-nya supaya scan QR fisik di
 // rak langsung match ke material yang benar, baik via URL utuh maupun fallback regex kalau kamera

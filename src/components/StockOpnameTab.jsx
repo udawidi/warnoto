@@ -7,14 +7,14 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem } from "../lib/sap.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
-  saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname, setOpnameFreeze,
+  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms }) {
 
   const [activeOpname, setActiveOpname] = useState(null);
@@ -245,7 +245,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       items.push({
         katalogId: kid, namaBarang: kat.name, noKatalog: kat.katalog||"-", satuan: kat.satuan||"-",
         qtySistem, qtySAP: sapRow?.qty??null,
-        qtsFisik: qtySistem, selisih: 0,
+        qtsFisik: null, selisih: 0,
         statusItem: sapRow==null?"TIDAK_ADA_DI_SAP":"SESUAI",
         keterangan: "", lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown),
       });
@@ -275,7 +275,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         const qtySistem = katRows.reduce((a,s)=>a+(s.qty||0),0);
         const lokasiBreakdown = buildLokasiBreakdown(katRows);
         return { katalogId:kid, namaBarang:kat.name, noKatalog:kat.katalog||"-", satuan:kat.satuan||"-",
-          qtySistem, qtsFisik:qtySistem, selisih:0, statusItem:"SESUAI", keterangan:"",
+          qtySistem, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
           lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown) };
       }).filter(Boolean);
   }
@@ -379,7 +379,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Ganti File PID (header panel, sesi SAP DRAFT) — reuse handleCSVUpload, cuma tambah
   // konfirmasi kalau sudah ada qty yang diisi (biar tidak hilang diam-diam).
   async function handleReplaceCSV(e) {
-    const hasProgress = (activeOpname.items||[]).some(i=>i.qtsFisik!==i.qtySistem);
+    const hasProgress = (activeOpname.items||[]).some(itemCounted);
     if (hasProgress && !window.confirm("Ganti file PID menyusun ulang daftar item. Qty yang sudah diisi bisa hilang. Lanjutkan?")) {
       e.target.value=""; return;
     }
@@ -417,6 +417,16 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     return "_TANPA_LOKASI";
   }
 
+  // Fase A — auto-freeze begitu hitung fisik pertama masuk (bukan lagi manual-only). Idempoten:
+  // sekali freeze.aktif true, tidak ditulis ulang. gudangId sesi (SAP split per gudang) dipakai
+  // langsung; kalau kosong (mis. Non-SAP), union gudangId dari lokasiBreakdown item ini.
+  function ensureAutoFreeze(opn, item) {
+    if (opn.freeze?.aktif) return opn.freeze;
+    const gudangIds = opn.gudangId ? [opn.gudangId] : [...new Set((item.lokasiBreakdown||[]).map(b=>b.gudangId).filter(Boolean))];
+    if (!gudangIds.length) return opn.freeze;
+    return { aktif:true, gudangIds, at:Date.now(), by:currentUser?.id, unfrozenAt:null };
+  }
+
   function updateItem(realIdx, field, value) {
     setActiveOpname(prev=>{
       const items = [...prev.items];
@@ -434,6 +444,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         items[realIdx] = applyQtyToItem(items[realIdx], key, value, currentUser?.id);
         if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
         touchedRef.current[prev.id].add(key);
+        return {...prev, items, freeze: ensureAutoFreeze(prev, items[realIdx])};
       } else if (field==="lokasiId") {
         // Non-SAP: kalau qty sudah sempat diisi sebelum lokasi dipilih/diganti, pindahkan entri
         // hitungPerLokasi ke kunci lokasi yang baru supaya tidak nyangkut di "_TANPA_LOKASI".
@@ -462,7 +473,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       items[realIdx] = { ...applyQtyToItem(items[realIdx], lokasiKey, qty, currentUser?.id, { markRecount: true }), ...(extra||{}) };
       if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
       touchedRef.current[prev.id].add(lokasiKey);
-      return {...prev, items};
+      return {...prev, items, freeze: ensureAutoFreeze(prev, items[realIdx])};
     });
   }
 
@@ -491,6 +502,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   function validate() {
     const errors = [];
+    if (activeOpname.stage !== "REKONSILIASI") {
+      showToast("Buka Rekonsiliasi dulu sebelum submit.", "error");
+      return false;
+    }
     const isNonSapSession = activeOpname?.jenisAlur === "NON_SAP";
     (activeOpname.items||[]).forEach((item,i)=>{
       if(item.qtsFisik==null||item.qtsFisik==="") errors.push(`Baris ${i+1}: qty fisik belum diisi`);
@@ -522,7 +537,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   function getProgress() {
     if(!activeOpname?.items?.length) return {filled:0, total:0, pct:0};
     const total = activeOpname.items.length;
-    const filled = activeOpname.items.filter(i=>i.qtsFisik!=null&&i.qtsFisik!=="").length;
+    const filled = activeOpname.items.filter(itemCounted).length;
     return {filled, total, pct:Math.round(filled/total*100)};
   }
 
@@ -807,19 +822,25 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         {isSAP && <td data-label="Qty SAP" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:item.qtySAP!=null?C.text:"#9ca3af",whiteSpace:"nowrap"}}>{item.qtySAP!=null?fmtNum(item.qtySAP):"—"}</td>}
                         <td data-label="Qty Fisik" className="is-key" style={{padding:"4px 6px",textAlign:"center"}}>
                           {!isReadOnly
-                            ? <input type="number" inputMode="decimal" min="0" value={item.qtsFisik} ref={el=>{qtyInputRefs.current[realIdx]=el;}}
+                            ? <input type="number" inputMode="decimal" min="0" placeholder="hitung…"
+                                value={itemCounted(item) ? item.qtsFisik : ""}
+                                ref={el=>{qtyInputRefs.current[realIdx]=el;}}
                                 onChange={e=>updateItem(realIdx,"qtsFisik",Number(e.target.value))}
                                 style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,textAlign:"center"}}/>
                             : <span style={{fontWeight:700}}>{fmtNum(item.qtsFisik)}</span>}
                         </td>
                         <td data-label="Selisih" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",
                           color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
-                          {item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
+                          {item.qtsFisik==null?"—":item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
                         </td>
                         <td data-label="Status" className="is-key" style={{padding:"6px 8px"}}>
-                          <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:statusBadge.bg,color:statusBadge.fg}}>
-                            {statusBadge.label}
-                          </span>
+                          {item.qtsFisik==null ? (
+                            <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>—</span>
+                          ) : (
+                            <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:statusBadge.bg,color:statusBadge.fg}}>
+                              {statusBadge.label}
+                            </span>
+                          )}
                         </td>
                         {!isSAP && (
                           <td data-label="📍 Lokasi" className="is-key" style={{padding:"4px 6px"}}>
@@ -905,7 +926,16 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <div className="approval-actions" style={{marginBottom:16}}>
                 <button className="approval-btn--cancel" onClick={handleBatal}>✕ Batal</button>
                 <button className="approval-btn--cancel" onClick={async ()=>{ const ok = await saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]); if (ok) { try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {} } }}>💾 Simpan Draft</button>
-                {prog.pct===100 ? (
+                {allBloksSelesai(activeOpname) && activeOpname.stage!=="REKONSILIASI" ? (
+                  <button className="approval-btn--primary"
+                    onClick={async ()=>{
+                      const next = {...activeOpname, stage:"REKONSILIASI"};
+                      setActiveOpname(next);
+                      await saveOpname(next, [...(touchedRef.current[activeOpname.id]||[])]);
+                    }}>
+                    ✅ Semua item terhitung → Buka Rekonsiliasi
+                  </button>
+                ) : activeOpname.stage==="REKONSILIASI" && allBloksSelesai(activeOpname) ? (
                   <button className="approval-btn--primary"
                     onClick={async ()=>{
                       // BUG KRITIS (ditemukan 2026-07-07): dulu saveOpname(activeOpname) dan
@@ -1072,8 +1102,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   // ── LIST VIEW (Fase 0: satu layar — dropzone, panel analisa, riwayat) ─────
   const pendingForMe = opnameList.filter(o=>
-    (o.status==="PENDING_ASMAN"&&hasRole(currentUser, "ASMAN"))||
-    (o.status==="PENDING_MANAGER"&&hasRole(currentUser, "MANAGER"))
+    o.status==="PENDING_ASMAN"&&hasRole(currentUser, "ASMAN")
   );
   const draftSessions = opnameList.filter(o=>o.status==="DRAFT" && o.id!==activeOpname?.id);
   const canCreate = can(currentUser, "aksi.import", rolePerms);
@@ -1172,7 +1201,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             : <div style={{display:"flex",gap:8}}>
                 <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>🔍 Review Detail</button>
                 <div className="approval-actions">
-                  <button className="approval-btn--approve" onClick={()=>{opn.status==="PENDING_ASMAN"?approveOpname_Asman(opn,catatanApproval):approveOpname_Manager(opn,catatanApproval);setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button>
+                  <button className="approval-btn--approve" onClick={()=>{approveOpname_Asman(opn,catatanApproval);setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (final)</button>
                   <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                 </div>
               </div>}
@@ -1186,7 +1215,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
       {/* Filter status — chip compact (Apple-like) */}
       <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
-        {["semua","DRAFT","PENDING_ASMAN","PENDING_MANAGER","SELESAI","DITOLAK"].map(s=>(
+        {["semua","DRAFT","PENDING_ASMAN","SELESAI","DITOLAK"].map(s=>(
           <button key={s} style={{padding:"4px 10px",borderRadius:999,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"transparent",color:filterStatus===s?"white":C.muted,fontSize:12,fontWeight:filterStatus===s?600:400,cursor:"pointer"}}
             onClick={()=>setFilterStatus(s)}>
             {s==="semua"?"Semua":statusLabel[s]||s}

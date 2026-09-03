@@ -27,7 +27,7 @@ export function ApprovalHubTab({
   approvalHapusStokPage, setApprovalHapusStokPage, approveStockDelete, rejectStockDelete,
   heavyEquipmentLoans, approvalAlatBeratPage, setApprovalAlatBeratPage, heavyEquipmentList,
   approveHeavyEquipmentLoan, rejectHeavyEquipmentLoan,
-  approvalOpnamePage, setApprovalOpnamePage, approveOpname_Asman, approveOpname_Manager, rejectOpname,
+  approvalOpnamePage, setApprovalOpnamePage, approveOpname_Asman, rejectOpname,
   stockCountList, approvalStockCountPage, setApprovalStockCountPage, approveStockCountItem, rejectStockCountItem,
   txns, approvalHistoryList, approvalHistoryPage, setApprovalHistoryPage,
   deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman,
@@ -47,8 +47,7 @@ export function ApprovalHubTab({
     ? stocks.filter(s=>(s.lokasiMovePending&&s.lokasiMoveApprover==="TL")||s.editPending||s.deletePending).length
     : hasRole(currentUser, "ASMAN") ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0;
   const alatBeratCount = hasRole(currentUser, "ASMAN") ? heavyEquipmentPendingCount : 0;
-  const opnameCount = hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length
-    : hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0;
+  const opnameCount = hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0;
   const stockCountCount = hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0;
   const total = tugCount+capCount+lokasiCount+stokCount+alatBeratCount+opnameCount+stockCountCount;
   const chips = [
@@ -121,7 +120,7 @@ export function ApprovalHubTab({
         adoptTUG5ULTG={adoptTUG5ULTG}
         openDraftTug9={openDraftTug9}
         heavyEquipmentPendingCount={hasRole(currentUser, "ASMAN") ? heavyEquipmentPendingCount : 0}
-        opnamePendingCount={hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0}
+        opnamePendingCount={hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0}
         stockCountPendingCount={hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0}
         approvalTypeFilter={approvalTypeFilter}
         approvalPageSize={approvalPageSize}
@@ -285,9 +284,9 @@ export function ApprovalHubTab({
       {/* ── BAGIAN: Stock Opname — Asman/Manager (dulu cuma muncul di menu Stock Opname
           sendiri, tidak pernah tampil di halaman Approval terpusat ini — keluhan user
           2026-07-07 "tidak masuk ke approval asman"). ── */}
-      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="OPNAME") && hasRole(currentUser, "ASMAN","MANAGER") &&
-        opnameList.some(o=>(hasRole(currentUser, "ASMAN")&&o.status==="PENDING_ASMAN")||(hasRole(currentUser, "MANAGER")&&o.status==="PENDING_MANAGER")) && (()=>{
-        const list = opnameList.filter(o=>(hasRole(currentUser, "ASMAN")&&o.status==="PENDING_ASMAN")||(hasRole(currentUser, "MANAGER")&&o.status==="PENDING_MANAGER"));
+      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="OPNAME") && hasRole(currentUser, "ASMAN") &&
+        opnameList.some(o=>o.status==="PENDING_ASMAN") && (()=>{
+        const list = opnameList.filter(o=>o.status==="PENDING_ASMAN");
         const paged = list.slice((approvalOpnamePage-1)*approvalPageSize, approvalOpnamePage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
@@ -302,7 +301,7 @@ export function ApprovalHubTab({
                     <div style={{fontSize:12,color:C.muted}}>{opn.items?.length||0} item • Selisih: {selisihCount} item • Diajukan oleh {pengaju?.name||"?"} • {fmtDate(opn.submittedAt)}</div>
                   </div>
                   <div className="approval-actions approval-actions--compact" style={{flexShrink:0}}>
-                    <button className="approval-btn--approve" onClick={()=>hasRole(currentUser, "ASMAN")?approveOpname_Asman(opn,""):approveOpname_Manager(opn,"")}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                    <button className="approval-btn--approve" onClick={()=>approveOpname_Asman(opn,"")}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
                     <button className="approval-btn--reject" onClick={()=>{
                       const reason = window.prompt("Alasan penolakan Stock Opname ini?");
                       if (reason) rejectOpname(opn, reason);

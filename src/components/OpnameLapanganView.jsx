@@ -49,7 +49,10 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
 
   function openHitung(idx, fromCamera) {
     const item = items[idx];
-    const existing = item.hitungPerLokasi?.[lokasiAktif]?.qty;
+    // Fase B (blind count): entri seeded (belum benar-benar dihitung, at==null) tidak boleh
+    // prefill angka buku — cuma prefill kalau memang sudah dihitung nyata sebelumnya.
+    const entry = item.hitungPerLokasi?.[lokasiAktif];
+    const existing = entry?.at != null ? entry.qty : null;
     setItemAktifIdx(idx);
     setQtyInput(existing != null ? String(existing) : "");
     setViaCamera(!!fromCamera);
@@ -113,7 +116,9 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
     setScreen("hitung-usul"); // varian hitung: simpan juga menandai usulPindahLokasi
   }
 
-  const filled = blokAktif ? blokAktif.entries.filter(e => e.item.hitungPerLokasi?.[lokasiAktif] != null).length : 0;
+  // Fase B: "sudah dihitung" = entri punya at!=null (bukan sekadar ada, karena seed awal sudah
+  // punya qty=qtySistem dengan at:null — cek presence saja bikin progress lompat 100% instan).
+  const filled = blokAktif ? blokAktif.entries.filter(e => e.item.hitungPerLokasi?.[lokasiAktif]?.at != null).length : 0;
   const total = blokAktif ? blokAktif.entries.length : 0;
   const selisihCount = blokAktif ? blokAktif.entries.filter(e => e.item.selisih !== 0).length : 0;
 
@@ -152,7 +157,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
             </button>
             <div style={{ fontSize: 12, fontWeight: 700, color: C.muted, marginBottom: 8 }}>Atau pilih manual:</div>
             {blockList.map(b => {
-              const f = b.entries.filter(e => e.item.hitungPerLokasi?.[b.key] != null).length;
+              const f = b.entries.filter(e => e.item.hitungPerLokasi?.[b.key]?.at != null).length;
               return (
                 <div key={b.key} tabIndex={0} onClick={() => { setLokasiAktif(b.key); setScreen("items"); }}
                   style={{ ...sty.card, marginBottom: 10, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -180,8 +185,9 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
           </div>
           <div style={body}>
             {blokAktif.entries.map(({ item, realIdx }) => {
-              const terhitung = item.hitungPerLokasi?.[lokasiAktif]?.qty;
-              const done = terhitung != null;
+              const entryAktif = item.hitungPerLokasi?.[lokasiAktif];
+              const done = entryAktif?.at != null;
+              const terhitung = done ? entryAktif.qty : null;
               return (
                 <div key={realIdx} tabIndex={0} onClick={() => openHitung(realIdx, false)}
                   style={{ ...sty.card, marginBottom: 10, borderLeft: `4px solid ${done ? (item.selisih !== 0 ? "#f59e0b" : C.green) : C.border}`, cursor: "pointer" }}>

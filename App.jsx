@@ -3141,6 +3141,7 @@ export default function PLNWarehouse() {
     canonicalActionKeysRef,
     setTxnForm, setEditingDraftTxnId, setTxnModal, editingDraftTxnId,
     commitNewTxn, stateRef,
+    opnameList, lokasiList, gudangList,
   });
   stateRef.current.submitDraftTug9 = submitDraftTug9;
 
