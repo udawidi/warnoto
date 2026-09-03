@@ -1457,7 +1457,8 @@
   .exec-attention__header { min-height: 44px; }
   .exec-attention__item > button { min-height: 46px; }
   .dashboard-insight-card { padding: 12px; }
-  .dashboard-insight-card__header { gap: 8px; }
+  .dashboard-insight-card__header { gap: 8px; flex-wrap: wrap; }
+  .dashboard-insight-card__header > div { flex: 1 1 100%; }
   .dashboard-map-canvas { height: 180px; }
 
   .dashboard-manager__hero { margin-bottom: 12px; border-radius: 14px; }
