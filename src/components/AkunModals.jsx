@@ -42,6 +42,11 @@ export function AkunModal({ akunModal, setAkunModal, akunForm, setAkunForm, akun
                   </select>
                 </div>
                 <div style={{marginBottom:12}}><label style={sty.label}>Jabatan *</label><input style={sty.input} value={akunForm.jabatan||""} onChange={e=>setAkunForm(f=>({...f,jabatan:e.target.value}))}/></div>
+                <div style={{marginBottom:12}}>
+                  <label style={sty.label}>No. WA</label>
+                  <input style={sty.input} value={akunForm.officialPhone||""} onChange={e=>setAkunForm(f=>({...f,officialPhone:e.target.value}))} placeholder="08xxxxxxxxxx"/>
+                  <div style={{fontSize:12,marginTop:4,color:C.muted}}>Format 08... (untuk notif WhatsApp)</div>
+                </div>
                 {akunForm.role==="PENGADAAN" && (
                   <div style={{marginBottom:12}}>
                     <label style={sty.label}>Scope Pengadaan</label>

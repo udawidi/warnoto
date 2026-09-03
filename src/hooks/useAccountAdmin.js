@@ -22,12 +22,12 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
   // login tidak ketimpa jadi sesi user baru seperti kalau pakai signUp() biasa
   // langsung dari browser).
   function openAddAkun() {
-    setAkunForm({username:"", password:"", name:"", role:"VIEWER", jabatan:"", uptId:"", ultgId:"", uitId:"", pengadaanScope:"UPT", gudangIds:[]});
+    setAkunForm({username:"", password:"", name:"", role:"VIEWER", jabatan:"", officialPhone:"", uptId:"", ultgId:"", uitId:"", pengadaanScope:"UPT", gudangIds:[]});
     setAkunResult(null);
     setAkunModal("add");
   }
   function openEditAkun(u) {
-    setAkunForm({id:u.id, username:u.username, password:"", name:u.name||"", role:u.role||"VIEWER", jabatan:u.jabatan||"", uptId:u.uptId||"", ultgId:u.ultgId||"", uitId:u.uitId||"", pengadaanScope:u.uitId?"UIT":"UPT", gudangIds:Array.isArray(u.gudangIds)?u.gudangIds:[]});
+    setAkunForm({id:u.id, username:u.username, password:"", name:u.name||"", role:u.role||"VIEWER", jabatan:u.jabatan||"", officialPhone:u.officialPhone||"", uptId:u.uptId||"", ultgId:u.ultgId||"", uitId:u.uitId||"", pengadaanScope:u.uitId?"UIT":"UPT", gudangIds:Array.isArray(u.gudangIds)?u.gudangIds:[]});
     setAkunResult(null);
     setAkunModal("edit");
   }
@@ -55,7 +55,7 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
     if (f.password && f.password.length < 6) { showToast("Password baru minimal 6 karakter.","error"); return; }
     setAkunBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-update-user", { body: {
-      userId: f.id, name: f.name.trim(), role: f.role, jabatan: f.jabatan||"",
+      userId: f.id, name: f.name.trim(), role: f.role, jabatan: f.jabatan||"", officialPhone: f.officialPhone||"",
       uptId: (national || uitScoped) ? "" : (f.uptId||""), ultgId: f.ultgId||"", uitId: uitScoped ? (f.uitId||"") : "",
       pengadaanScope: f.pengadaanScope||"UPT", newPassword: f.password||"",
       gudangIds: (Array.isArray(f.gudangIds) && f.gudangIds.length) ? f.gudangIds : null, // null = semua gudang
@@ -83,7 +83,7 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
     setAkunBusy(true);
     const { data, error } = await supabase.functions.invoke("admin-create-user", { body: {
       username: f.username.trim().toLowerCase(), password: f.password, name: f.name.trim(),
-      role: f.role, jabatan: f.jabatan||"", uptId: (national || uitScoped) ? "" : (f.uptId||""), ultgId: f.ultgId||"",
+      role: f.role, jabatan: f.jabatan||"", officialPhone: f.officialPhone||"", uptId: (national || uitScoped) ? "" : (f.uptId||""), ultgId: f.ultgId||"",
       uitId: uitScoped ? (f.uitId||"") : "", pengadaanScope: f.pengadaanScope||"UPT",
       gudangIds: (Array.isArray(f.gudangIds) && f.gudangIds.length) ? f.gudangIds : null, // null = semua gudang
     }});

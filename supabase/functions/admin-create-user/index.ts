@@ -92,6 +92,11 @@ Deno.serve(async (req) => {
     const name = String(body.name || "").trim();
     const role = String(body.role || "").trim().toUpperCase();
     const jabatan = body.jabatan ? String(body.jabatan).trim() : null;
+    const officialPhoneRaw = String(body.officialPhone || body.official_phone || "").trim();
+    if (officialPhoneRaw && !/^0[0-9]{9,14}$/.test(officialPhoneRaw)) {
+      return json({ ok: false, error: "No. WA harus format 08... (10-15 digit)." });
+    }
+    const officialPhone = officialPhoneRaw || null;
     const uptId = body.uptId ? String(body.uptId).trim() : null;
     const ultgId = body.ultgId ? String(body.ultgId).trim() : null;
     const uitId = body.uitId ? String(body.uitId).trim() : null;
@@ -185,7 +190,7 @@ Deno.serve(async (req) => {
     // ── 4. Trigger on_auth_user_created sudah bikin stub profile (role VIEWER) —
     //        timpa dengan data asli dari form ──
     const { error: profErr } = await admin.from("profiles").update({
-      username, name, role, jabatan,
+      username, name, role, jabatan, official_phone: officialPhone,
       upt_id: (isNational || isUitScoped) ? null : uptId,
       ultg_id: ultgId,
       uit_id: isUitScoped ? uitId : null,

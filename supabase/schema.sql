@@ -260,6 +260,7 @@ create table if not exists profiles (
   ultg_id text,                 -- WAJIB diisi untuk role ADMIN_ULTG / MGR_ULTG — unit ULTG yang dia wakili
   uit_id text,                  -- diisi untuk role scoped ke 1 UIT (ADMIN_UIT / ASMAN_LOG_UIT / MGR_LOGISTIK_UIT / PENGADAAN mode UIT); ADMIN_LOG_PUSAT nasional, tidak terikat UIT
   gudang_ids jsonb,
+  official_phone text,          -- format 0xxx (10-15 digit), nomor WA resmi untuk notif role-based (TL/Asman/UIT)
   created_at timestamptz default now()
 );
 -- upt_id/ultg_id/uit_id SENGAJA tanpa foreign key ke tabel upt/uit di sini —
@@ -271,6 +272,13 @@ alter table profiles add column if not exists upt_id text;
 alter table profiles add column if not exists ultg_id text;
 alter table profiles add column if not exists uit_id text;
 alter table profiles add column if not exists gudang_ids jsonb;
+alter table profiles add column if not exists official_phone text;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname='profiles_official_phone_format' and conrelid='profiles'::regclass) then
+    alter table profiles add constraint profiles_official_phone_format
+      check (official_phone is null or official_phone ~ '^0[0-9]{9,14}$');
+  end if;
+end $$;
 
 alter table profiles enable row level security;
 drop policy if exists "Authenticated read profiles" on profiles;

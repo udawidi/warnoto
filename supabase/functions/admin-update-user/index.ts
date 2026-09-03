@@ -83,6 +83,11 @@ Deno.serve(async (req) => {
     const uitId = body.uitId ? String(body.uitId).trim() : null;
     const pengadaanScope = String(body.pengadaanScope || "UPT").trim().toUpperCase();
     const newPassword = body.newPassword ? String(body.newPassword) : "";
+    const officialPhoneRaw = String(body.officialPhone || body.official_phone || "").trim();
+    if (officialPhoneRaw && !/^0[0-9]{9,14}$/.test(officialPhoneRaw)) {
+      return json({ ok: false, error: "No. WA harus format 08... (10-15 digit)." });
+    }
+    const officialPhone = officialPhoneRaw || null;
     // Batasan akses per gudang (RBAC tingkat 2): null/undefined = semua gudang;
     // selain itu WAJIB array of string (id gudang).
     const gudangIdsRaw = body.gudangIds;
@@ -154,7 +159,7 @@ Deno.serve(async (req) => {
 
     // ── 3. Update profil ──
     const { error: profErr } = await admin.from("profiles").update({
-      name, role, jabatan,
+      name, role, jabatan, official_phone: officialPhone,
       upt_id: (isNational || isUitScoped) ? null : uptId,
       ultg_id: ultgId,
       uit_id: isUitScoped ? uitId : null,
