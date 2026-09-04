@@ -42,9 +42,11 @@ async function enqueueTugNotif({ eventType, docType, docNumber, uptId, txnId, it
     }
 
     const uitId = (uptList || []).find(x => x.id === uptId)?.uitId;
-    const { data: profs } = await supabase.from("profiles")
-      .select("role,upt_id,uit_id,official_phone,notif_events")
-      .contains("notif_events", [eventType]);
+    // Penerima diresolve lewat RPC SECURITY DEFINER (notif_candidate_profiles) — query langsung
+    // `from("profiles")` jalan sebagai approver & tunduk RLS can_read_profile, sehingga profil UIT
+    // (dan lintas-scope) TAK terbaca → tak pernah di-enqueue (bug UIT tak dapat WA). RPC bypass RLS,
+    // filter tier/scope tetap di client di bawah.
+    const { data: profs } = await supabase.rpc("notif_candidate_profiles", { p_event: eventType });
     (profs || []).filter(p => {
       const tier = roleTier(p.role);
       if (tier === "UIT") return p.uit_id === uitId;
