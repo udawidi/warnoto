@@ -1,6 +1,6 @@
 {
   "name": "warnoto-pln",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "WARNOTO - Warehouse Intelligent Control for Transmission Operation - PT PLN UPT Surabaya",
   "private": true,
   "dependencies": {
@@ -15,7 +15,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tesseract.js": "^7.0.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
