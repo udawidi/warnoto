@@ -10,12 +10,14 @@ import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } f
 import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
+import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
-  openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms }) {
+  openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
+  setStocks, saveToCloud, visibleGudangList, stockGudangFilter, setStockGudangFilter }) {
 
   const [activeOpname, setActiveOpname] = useState(null);
   const [page, setPage] = useState(0);
@@ -37,6 +39,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const touchedRef = useRef({});
   // Fase 1e: dialog pilih gudang setelah PID di-parse & ternyata memuat >1 gudang.
   const [gudangSplitDialog, setGudangSplitDialog] = useState(null);
+  const [moveStock, setMoveStock] = useState(null); // {st, lok, gdg} — trigger modal Pindah Blok dari chip
+
+  function handleCloseMove() {
+    const kid = moveStock?.st?.katalogId;
+    if (kid) setActiveOpname(prev => prev ? { ...prev, items: prev.items.map(it =>
+      it.katalogId===kid ? { ...it, lokasiBreakdown: buildLokasiBreakdown(stocks.filter(s=>s.katalogId===kid)) } : it) } : prev);
+    setMoveStock(null);
+  }
   // Fase 2d: layar hitung lapangan satu-tangan (HP/tablet) — overlay di atas panel ini, z-index
   // di BAWAH modal Tambah Material (1000) supaya modal itu tetap bisa dibuka dari lapangan tanpa
   // duplikasi form (lihat renderPanel -> tambahModal).
@@ -891,9 +901,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {/* Fase 1f: chip blok — item bisa tersebar di beberapa lokasi dalam gudang ini */}
                           {item.lokasiBreakdown && item.lokasiBreakdown.length>0 && (
                             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
-                              {item.lokasiBreakdown.slice(0,3).map((b,bi)=>(
-                                <span key={bi} style={{fontSize:12,padding:"1px 6px",borderRadius:999,background:"#f1f5f9",color:C.muted,fontWeight:600}}>{b.lokasiKode||"?"} ({b.qty})</span>
-                              ))}
+                              {item.lokasiBreakdown.slice(0,3).map((b,bi)=>{
+                                const st = !isReadOnly && b.lokasiId ? stocks.find(s=>s.katalogId===item.katalogId && s.lokasiId===b.lokasiId) : null;
+                                return (
+                                  <span key={bi} onClick={st ? ()=>setMoveStock({ st, lok: lokasiList.find(l=>l.id===st.lokasiId)||null, gdg: gudangList.find(g=>g.id===st.gudangId)||null }) : undefined}
+                                    title={st ? "Ubah lokasi" : undefined}
+                                    style={{fontSize:12,padding:"1px 6px",borderRadius:999,background:"#f1f5f9",color:C.muted,fontWeight:600,cursor:st?"pointer":"default"}}>{b.lokasiKode||"?"} ({b.qty})</span>
+                                );
+                              })}
                               {item.lokasiBreakdown.length>3 && <span style={{fontSize:12,color:C.muted}}>+{item.lokasiBreakdown.length-3} lagi</span>}
                             </div>
                           )}
@@ -1244,6 +1259,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           </div>
           <button style={{...sty.btn("ghost","sm"),marginTop:10}} onClick={()=>startOpname("NON_SAP")}>Opname Non-SAP →</button>
         </div>
+      )}
+
+      {moveStock && (
+        <PindahBlokModal C={C} sty={sty} currentUser={currentUser}
+          st={moveStock.st} lok={moveStock.lok} gdg={moveStock.gdg}
+          stocks={stocks} setStocks={setStocks} lokasiList={lokasiList}
+          visibleGudangList={visibleGudangList} stockGudangFilter={stockGudangFilter}
+          setStockGudangFilter={setStockGudangFilter} saveToCloud={saveToCloud}
+          showToast={showToast} onClose={handleCloseMove} />
       )}
 
       {/* Fase 1e: dialog pilih gudang — muncul kalau file PID memuat item dari >1 gudang */}

@@ -4226,6 +4226,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 addNonStockFoundItem={addNonStockFoundItem}
                 isMobile={isMobile}
                 rolePerms={rolePerms}
+                setStocks={setStocks}
+                saveToCloud={saveToCloud}
+                visibleGudangList={visibleGudangList}
+                stockGudangFilter={stockGudangFilter}
+                setStockGudangFilter={setStockGudangFilter}
               />
             ) : (
               <StockCountTab

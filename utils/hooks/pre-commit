@@ -1,4 +1,4 @@
 #!/bin/sh
 # Auto-bump patch versi WARNOTO tiap commit.
 npm version patch --no-git-tag-version >/dev/null
-git add package.json
+git add package.json package-lock.json
