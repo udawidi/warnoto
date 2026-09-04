@@ -7,7 +7,7 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress } from "../lib/sap.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, katalogSapLabel, sapBadgeStyleForLabel } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
@@ -87,6 +87,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Fase 1f: filter Gudang/Blok di toolbar tabel item.
   const [filterGudangId, setFilterGudangId] = useState("");
   const [filterLokasiId, setFilterLokasiId] = useState("");
+  const [filterJenis, setFilterJenis] = useState("");
 
   // "Tambah Material Ditemukan" (Opname Non-SAP) — form untuk barang fisik yang belum
   // tercatat sama sekali di sistem, ditemukan sambil opname jalan.
@@ -399,15 +400,39 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     setActiveOpname(null); setValidationErrors([]); setHighlightIdx(null);
   }
 
-  // "Mulai Hitung" / "Lanjut Hitung" (Fase 0, sebelum scanner Fase 1 ada): scroll+fokus ke
-  // baris qty kosong pertama.
-  function scrollToFirstEmptyQty() {
+  // hormati override manual sapStatus lewat katalogList; fallback ke kode saat katalogId null
+  function itemSapLabel(item) {
+    const kat = item.katalogId ? katalogList.find(k=>k.id===item.katalogId) : null;
+    return kat ? katalogSapLabel(kat) : resolveSapLabel(item.noKatalog);
+  }
+
+  // Fase 1f: filter Gudang/Blok + Jenis SAP di toolbar tabel item — dikerjakan di atas indeks
+  // ASLI (bukan array baru) supaya updateItem(realIdx,...) tetap menunjuk baris yang benar.
+  function getFilteredIndexed() {
     const items = activeOpname?.items || [];
-    const idx = items.findIndex(i=>i.qtsFisik==null||i.qtsFisik==="");
-    if (idx < 0) return;
-    setPage(Math.floor(idx / pageSize));
+    return items.map((it,idx)=>({it,idx})).filter(({it})=>{
+      if (filterJenis) {
+        const bin = itemSapLabel(it).startsWith("SAP") ? "SAP" : "Non-SAP";
+        if (bin !== filterJenis) return false;
+      }
+      if (!filterGudangId) return true;
+      const bd = it.lokasiBreakdown||[];
+      if (filterGudangId==="__NONE__") return !bd.length;
+      if (filterLokasiId) return bd.some(b=>b.lokasiId===filterLokasiId);
+      return bd.some(b=>b.gudangId===filterGudangId);
+    });
+  }
+
+  // "Mulai Hitung" / "Lanjut Hitung" (Fase 0, sebelum scanner Fase 1 ada): scroll+fokus ke
+  // baris qty kosong pertama (di antara yang lolos filter aktif).
+  function scrollToFirstEmptyQty() {
+    const fi = getFilteredIndexed();
+    const pos = fi.findIndex(({it})=>!itemCounted(it));
+    if (pos < 0) return;
+    const realIdx = fi[pos].idx;
+    setPage(Math.floor(pos / pageSize));
     setTimeout(() => {
-      const el = qtyInputRefs.current[idx];
+      const el = qtyInputRefs.current[realIdx];
       if (el) { el.focus(); el.scrollIntoView({behavior:"smooth", block:"center"}); }
     }, 50);
   }
@@ -555,15 +580,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const isSAP = activeOpname.jenisAlur==="SAP";
     const isReadOnly = activeOpname.status!=="DRAFT";
     const items = activeOpname.items||[];
-    // Fase 1f: filter Gudang/Blok — dikerjakan di atas indeks ASLI (bukan array baru) supaya
-    // updateItem(realIdx,...) tetap menunjuk baris yang benar di activeOpname.items.
-    const filteredIndexed = items.map((it,idx)=>({it,idx})).filter(({it})=>{
-      if (!filterGudangId) return true;
-      const bd = it.lokasiBreakdown||[];
-      if (filterGudangId==="__NONE__") return !bd.length;
-      if (filterLokasiId) return bd.some(b=>b.lokasiId===filterLokasiId);
-      return bd.some(b=>b.gudangId===filterGudangId);
-    });
+    const filteredIndexed = getFilteredIndexed();
     const totalPages = Math.ceil(filteredIndexed.length/pageSize);
     const pageEntries = filteredIndexed.slice(page*pageSize, (page+1)*pageSize);
     const prog = getProgress();
@@ -800,6 +817,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       {(lokasiList||[]).filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                     </select>
                   )}
+                  <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterJenis}
+                    onChange={e=>{setFilterJenis(e.target.value);setPage(0);}}>
+                    <option value="">Semua Jenis</option>
+                    <option value="SAP">SAP</option>
+                    <option value="Non-SAP">Non-SAP</option>
+                  </select>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}>
                   Tampilkan:
@@ -847,6 +870,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         {!isMobile && <td data-label="No" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
                         <td data-label="Nama Barang" className="mobile-card-table__title" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
                           {item.namaBarang}
+                          {(() => { const lbl = itemSapLabel(item); const bs = sapBadgeStyleForLabel(lbl); return (
+                            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:12,color:C.muted,marginTop:2}}>
+                              <span style={{width:6,height:6,borderRadius:"50%",background:bs.fg,flexShrink:0}}/> {lbl}
+                            </span>
+                          ); })()}
                           {item.statusItem==="TIDAK_ADA_DI_SISTEM" && (
                             <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
                           )}
