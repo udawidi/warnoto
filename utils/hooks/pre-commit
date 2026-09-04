@@ -1,0 +1,5 @@
+#!/bin/sh
+# Auto-bump patch versi WARNOTO hanya di branch staging (titik lahir commit rilis).
+[ "$(git rev-parse --abbrev-ref HEAD)" = "staging" ] || exit 0
+npm version patch --no-git-tag-version >/dev/null
+git add package.json

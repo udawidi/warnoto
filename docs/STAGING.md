@@ -50,11 +50,20 @@ Container Supabase memakai `restart: unless-stopped`, jadi ikut hidup setelah re
 
 ## 3. Alur kerja harian
 
+**Urutan wajib: staging dulu, baru main.** Semua perubahan mendarat di `staging` untuk diuji;
+`main` (production) hanya menerima yang sudah lolos, lewat fast-forward. Jangan commit langsung ke
+`main` lagi.
+
 ```bash
 git checkout staging
 git merge main          # atau kerjakan langsung di staging
 git push origin staging
 ```
+
+**Versi otomatis:** tiap commit di branch `staging` menaikkan patch `package.json` otomatis (git
+hook `pre-commit`, lihat §11). Karena main hanya fast-forward dari staging, angka yang lolos staging
+itulah yang tampil di production. Baseline `V2.0.0`; minor/major dinaikkan manual di `package.json`
+saat fitur besar.
 
 Vercel otomatis membangun preview. Ambil URL-nya:
 
@@ -259,3 +268,26 @@ disediakan di dokumen ini untuk dijalankan manual oleh manusia.
     refresh-staging.sh            kosongkan public lalu restore ulang
     *.dump                        dump production terakhir yang disalin
 ```
+
+---
+
+## 11. Versi aplikasi (auto-bump)
+
+Label versi tampil di sidebar, di bawah nama WARNOTO (`AppSidebar.jsx`). Sumber tunggal =
+`package.json` `version`, diinjeksi ke bundle saat build lewat `define: { __APP_VERSION__ }` di
+`vite.config.js` (dibaca dari `package.json` yang di-commit, jadi andal di Vercel walau shallow
+clone). Di environment staging label bertambah `· staging` (deteksi dari `VITE_SUPABASE_URL` yang
+memuat `api-staging`).
+
+**Auto-bump patch** oleh git hook `pre-commit` — hanya menyala di branch `staging` (titik lahir
+commit rilis). Sumbernya di-commit di `utils/hooks/pre-commit`; `.git/hooks` sendiri tidak ikut
+ter-commit, jadi pasang sekali per mesin:
+
+```bash
+sh utils/install-hooks.sh
+```
+
+Sesudah itu tiap `git commit` di `staging` menaikkan patch (`2.0.0` → `2.0.1` → …) dan ikut
+men-stage `package.json`. Minor/major dinaikkan manual (`npm version minor --no-git-tag-version`
+atau edit `package.json`) saat fitur besar. Hook lokal per-mesin; kalau butuh otomatis lintas-mesin,
+`git config core.hooksPath utils/hooks` (satu perintah).
