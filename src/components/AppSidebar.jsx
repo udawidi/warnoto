@@ -9,7 +9,7 @@ export function AppSidebar({
   mobileMenuOpen, setMobileMenuOpen,
   sidebarCompact, setSidebarCollapsed,
   navItems, tab, setTab,
-  tugExpanded, setTugExpanded, tugGroup, setTugGroup, setTugSubTab, isUltgRole,
+  tugExpanded, setTugExpanded, tugGroup, setTugGroup, setTugSubTab, isUltgRole, reservasiOnly,
   masterExpanded, setMasterExpanded, stockSubTab, setStockSubTab,
   opnameExpanded, setOpnameExpanded, opnameSubTab, setOpnameSubTab, stockCountPendingCount,
   currentUser, rolePerms, uptNama,
@@ -78,7 +78,7 @@ export function AppSidebar({
                   </button>
                   {tugExpanded && !sidebarCompact && (
                     <div className="sidebar-subnav" style={{marginBottom:4}}>
-                      {(isUltgRole ? [
+                      {(reservasiOnly ? [
                         {id:"permintaan",icon:<SidebarIcon name="request" size={16}/>,label:"Reservasi",defaultSub:"TUG5"},
                       ] : [
                         {id:"penerimaan",icon:<SidebarIcon name="inbound" size={16}/>,label:"Barang Masuk",defaultSub:"TUG3"},

@@ -134,6 +134,7 @@ const STATUS_MATERIAL_RETUR = ["Material Sisa Baru", "Bongkaran", "Bongkaran ATT
 const CATEGORIES = ["Transformator", "Kabel", "Panel", "Meter", "Tools", "Safety", "Consumable", "Spare Part", "Struktur", "Isolator", "Lainnya"];
 
 const ULTG_ROLES = ["ADMIN_ULTG","MGR_ULTG"]; // role dengan sidebar terbatas (view-only + TUG-5 saja)
+const RESERVASI_ONLY_ROLES = [...ULTG_ROLES, "RENEV"]; // + RENEV: sub-tab TUG di-clamp ke TUG5 (reservasi saja)
 // Kuota role per UPT untuk indikator di form Kelola Akun — validasi sebenarnya
 // (hard limit) ditegakkan server-side di admin-create-user/admin-update-user.
 const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
@@ -2067,7 +2068,7 @@ export default function PLNWarehouse() {
   // Role ULTG cuma punya subnav Reservasi (TUG5). Default state app = penerimaan/TUG3
   // → refresh di tab TUG menampilkan TUG-3/10 yang tidak relevan. Clamp ke permintaan/TUG5.
   useEffect(() => {
-    if (!currentUser || !ULTG_ROLES.includes(currentUser.role)) return;
+    if (!currentUser || !RESERVASI_ONLY_ROLES.includes(currentUser.role)) return;
     if (tugGroup !== "permintaan") setTugGroup("permintaan");
     if (tugSubTab !== "TUG5") setTugSubTab("TUG5");
   }, [currentUser, tugGroup, tugSubTab]);
@@ -4158,6 +4159,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         sidebarCompact={sidebarCompact} setSidebarCollapsed={setSidebarCollapsed}
         navItems={navItems} tab={tab} setTab={setTab}
         tugExpanded={tugExpanded} setTugExpanded={setTugExpanded} tugGroup={tugGroup} setTugGroup={setTugGroup} setTugSubTab={setTugSubTab} isUltgRole={isUltgRole}
+        reservasiOnly={RESERVASI_ONLY_ROLES.includes(currentUser?.role)}
         masterExpanded={masterExpanded} setMasterExpanded={setMasterExpanded} stockSubTab={stockSubTab} setStockSubTab={setStockSubTab}
         opnameExpanded={opnameExpanded} setOpnameExpanded={setOpnameExpanded} opnameSubTab={opnameSubTab} setOpnameSubTab={setOpnameSubTab} stockCountPendingCount={stockCountPendingCount}
         currentUser={currentUser} rolePerms={rolePerms} uptNama={currentUptNama}

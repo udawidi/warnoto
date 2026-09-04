@@ -43,7 +43,7 @@ export const PERM_AKSI = [
 export const MATRIX_ROLES = [
   "SUPERADMIN", "ADMIN", "TL", "ASMAN", "MANAGER",
   "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT", "ADMIN_LOG_PUSAT",
-  "PENGADAAN", "VIEWER", "ADMIN_ULTG", "MGR_ULTG", "OPERATOR",
+  "PENGADAAN", "VIEWER", "ADMIN_ULTG", "MGR_ULTG", "OPERATOR", "RENEV",
 ];
 
 // Helper: {menu.a:true, menu.b:true, ...} — hanya kunci true yang dicantumkan,
@@ -88,6 +88,9 @@ export const DEFAULT_PERMS = {
   // OPERATOR (Live Location Alat Berat, batch 2): layar tunggal bersih di HP —
   // HANYA Lacak Alat + Profil, nol menu lain, nol aksi.* (tak boleh sentuh master/stok).
   OPERATOR: menus("lacakAlat", "riwayatOperator", "profilOperator"),
+  // RENEV (Perencanaan): reservasi material (TUG-5) saja, plus menu baca dasar —
+  // sub-tab TUG di-clamp ke TUG5 di App.jsx via RESERVASI_ONLY_ROLES.
+  RENEV: { ...menus("dashboard", "stock", "kapasitasGudang", "transaction", "rencana", "forecastStok", "ai"), "aksi.buatTransaksi": true },
 };
 
 // Cek izin efektif: SUPERADMIN selalu true; override role dari DB menang;
