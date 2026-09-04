@@ -1,6 +1,6 @@
 {
   "name": "warnoto-pln",
-  "version": "2.0.7",
+  "version": "2.0.8",
   "description": "WARNOTO - Warehouse Intelligent Control for Transmission Operation - PT PLN UPT Surabaya",
   "private": true,
   "dependencies": {
@@ -23,6 +23,9 @@
     "@vitejs/plugin-react": "^4.0.0",
     "tailwindcss": "^4.3.2",
     "vite": "^4.4.0"
+  },
+  "overrides": {
+    "dompurify": "3.4.14"
   },
   "scripts": {
     "dev": "node --use-system-ca node_modules/vite/bin/vite.js",
