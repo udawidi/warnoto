@@ -7,7 +7,7 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, katalogSapLabel, sapBadgeStyleForLabel } from "../lib/sap.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import * as XLSX from "xlsx";
@@ -401,9 +401,16 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   }
 
   // hormati override manual sapStatus lewat katalogList; fallback ke kode saat katalogId null
+  // Label SAP/Non-SAP item opname — turunkan dari BARIS STOK (sama seperti Data Stok:
+  // stockSapLabel hormati Status Material per-baris + heuristik STK-PREMEM-*). Pakai katalog
+  // saja (katalogSapLabel) salah cap material Non-SAP buatan app yang kodenya numerik → filter
+  // Non-SAP kosong. Fallback kode katalog untuk item SAP-only tanpa baris stok.
   function itemSapLabel(item) {
-    const kat = item.katalogId ? katalogList.find(k=>k.id===item.katalogId) : null;
-    return kat ? katalogSapLabel(kat) : resolveSapLabel(item.noKatalog);
+    if (item.katalogId) {
+      const s = (stocks||[]).find(s=>s.katalogId===item.katalogId);
+      if (s) return stockSapLabel(s);
+    }
+    return resolveSapLabel(item.noKatalog);
   }
 
   // Fase 1f: filter Gudang/Blok + Jenis SAP di toolbar tabel item — dikerjakan di atas indeks
