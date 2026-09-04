@@ -560,6 +560,12 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 **VERIFIKASI BROWSER modal review TUG-3 Asman** (`b7454b0`): butuh TUG-3 PENDING_ASMAN + login ASMAN → tombol "Periksa & Setujui" → preview + gate + guard minus.
 
 **STOCK OPNAME — lanjutan (sesi berikutnya):**
+0. **Fix keluhan user (2026-09-04, `StockOpnameTab.jsx`, PUSHED, build hijau, BELUM verify browser):**
+   (a) baris item tampilkan dot jenis SAP/Non-SAP + sub-tipe (reuse `resolveSapLabel`/`katalogSapLabel`+
+   `sapBadgeStyleForLabel`, pola Data Stok); (b) dropdown filter "Jenis" (Semua/SAP/Non-SAP) di toolbar utk
+   prioritaskan hitung SAP dulu; (c) tombol "Mulai/Lanjut Hitung" no-op di desktop diperbaiki —
+   `scrollToFirstEmptyQty` dulu pakai index array penuh utk setPage/ref padahal pagination di array terfilter →
+   ref undefined; kini `getFilteredIndexed()`+`itemCounted`, page dari posisi terfilter, fokus via `realIdx`.
 1. **Verifikasi browser Fase 1 & 2** (belum dilakukan; di-push atas instruksi user). `npm run dev` :3001
    (GOTCHA: dev server sesi lalu berkali ke-kill watchdog — user jalankan `! npm run dev` sendiri). **Fase 1:**
    upload PID CSV/XLSX → dialog pilih gudang; zero-padding beda cocok; chip BLOK(qty)+filter; Lembar Hitung A4;
