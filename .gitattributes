@@ -1,0 +1,4 @@
+# Shell scripts & git hooks harus LF — kalau ter-checkout CRLF di Windows,
+# shebang jadi `/bin/sh^M` dan hook/skrip gagal jalan.
+*.sh text eol=lf
+utils/hooks/* text eol=lf
