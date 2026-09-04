@@ -8,9 +8,13 @@ const source = fs.readFileSync(
 );
 
 test("Telegram retries malformed Markdown once as plain text", () => {
+  // Batasi tepat ke sendTelegramMessage: editTelegramMessage (fitur baru, sama
+  // pola retry) sekarang duduk di antara sendTelegramMessage dan
+  // sendTypingAction, jadi slice sampai sendTypingAction ikut menghitung
+  // parse_mode miliknya juga.
   const sendMessage = source.slice(
     source.indexOf("async function sendTelegramMessage"),
-    source.indexOf("async function sendTypingAction"),
+    source.indexOf("async function editTelegramMessage"),
   );
 
   assert.match(sendMessage, /parse_mode:\s*"Markdown"/);

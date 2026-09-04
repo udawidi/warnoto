@@ -71,10 +71,15 @@ test("jenjang UPT → UIT → Pusat lengkap dan tidak ada tahap yang dilompati",
       assert.match(line, /REVIEW_PUSAT/, `${konst} harus mengenal REVIEW_PUSAT`);
     });
   });
-  // Transisi submit: UPT → REVIEW_UIT, UIT → REVIEW_PUSAT, Pusat → FINAL.
-  assert.match(editorSource, /saveMaturityAudit\(audit, "REVIEW_UIT"\)/);
-  assert.match(editorSource, /saveMaturityAudit\(audit, "REVIEW_PUSAT"\)[\s\S]{0,60}Kirim Hasil ke Pusat/);
+  // Transisi submit sekarang: UPT (DRAFT/SELF_ASSESSMENT/REVISION) → REVIEW_PUSAT
+  // langsung. UIT tidak lagi punya transisi status terpisah (REVIEW_UIT tak
+  // pernah di-set oleh saveMaturityAudit) — review UIT jadi paralel per-aspek
+  // (canReviewUIT, di bawah), digerbang sebelum submit lewat allItemsChecked.
+  assert.doesNotMatch(editorSource, /saveMaturityAudit\(audit, "REVIEW_UIT"\)/);
+  assert.match(editorSource, /if \(!allItemsChecked\)/);
+  assert.match(editorSource, /saveMaturityAudit\(audit, "REVIEW_PUSAT"\)[\s\S]{0,60}Ajukan Penilaian Final ke Pusat/);
   assert.doesNotMatch(editorSource, /saveMaturityAudit\(audit, "SELF_ASSESSMENT"\)/);
+  assert.match(editorSource, /const canReviewUIT = isUIT && \["DRAFT", "SELF_ASSESSMENT", "REVISION", "REVIEW_UIT"\]\.includes\(status\)/);
   // Matriks pelaku: ASMAN/MANAGER read-only, Pusat = SUPERADMIN saja.
   assert.match(editorSource, /const isUPT = hasRole\(currentUser, "ADMIN", "TL"\);/);
   assert.match(editorSource, /const isUIT = hasRole\(currentUser, "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT"\)/);
@@ -106,7 +111,9 @@ test("role baru terdaftar utuh, tidak setengah jalan", () => {
   [accountHookSource, akunSource].forEach(src => {
     assert.match(src, /\["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT"\]/);
   });
-  assert.match(appSource, /UIT_ROLE_QUOTA = \{ ADMIN_UIT: 1, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 \}/);
+  // ADMIN_UIT dinaikkan 1 -> 5 per commit 77f8896 (keputusan bisnis eksplisit,
+  // disinkron ke 2 Edge Function admin-create-user/admin-update-user).
+  assert.match(appSource, /UIT_ROLE_QUOTA = \{ ADMIN_UIT: 5, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 \}/);
   assert.doesNotMatch(appSource.split("\n").find(l => l.includes("UIT_ROLE_QUOTA = ")), /ADMIN_LOG_PUSAT: \d/);
 });
 

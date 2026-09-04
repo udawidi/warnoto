@@ -14,6 +14,10 @@ const docs = read("src/lib/docBuilders.js");
 const tugForm = read("src/components/TugFormModals.jsx");
 const approvalTab = read("src/components/ApprovalTab.jsx");
 const tug5Tab = read("src/components/TUG5Tab.jsx");
+// Handler TUG-8/9 draft & commit dipindah dari App.jsx ke hook ini (refactor
+// ekstraksi logic pasca Tranche split-App.jsx).
+const tugApprovals = read("src/hooks/useTugApprovals.js");
+const tugTransactions = read("src/hooks/useTugTransactions.js");
 
 test("canonical TUG migration has one atomic final decision path", () => {
   assert.match(migration, /create table if not exists public\.stock_movements/i);
@@ -106,7 +110,10 @@ test("review token binds server snapshot, document hash, preview attestations, a
   assert.match(overview, /const serverDocType = reviewPayloadComplete \? review\.docType : txn\.docType/);
   assert.match(overview, /Payload review server tidak lengkap\. Approval final diblokir/);
   assert.match(overview, /review\.approvalProgress/);
-  assert.match(overview, /JSON\.stringify\(preview,null,2\)/);
+  // Preview raw-JSON diganti tampilan tabel/grid manusiawi (masih dibangun murni
+  // dari field server), digerbang di belakang <details> yang menandai `previewed`.
+  assert.match(overview, /const preview = \{ nomor:serverDocNumber, jenis:serverDocType,/);
+  assert.match(overview, /onToggle=\{e=>\{if\(e\.currentTarget\.open\)setPreviewed\(true\);\}\}/);
   assert.doesNotMatch(overview, /â|Â/);
   assert.match(overview, /Buka preview dokumen final/);
   assert.match(overview, /reviewToken/);
@@ -163,30 +170,34 @@ test("TL intermediate approval remains pending and canonical Asman is explicit",
   assert.match(overview, /Setujui TL - Lanjutkan ke Asman/);
   assert.match(overview, /Tahap TL: keputusan ini meneruskan transaksi ke Asman/);
   assert.match(overview, /Tahap Asman final: stok akan berubah/);
-  assert.match(docs, /Canonical documents show Asman only after that account explicitly approves/);
-  assert.match(docs, /txn\.status === "APPROVED"/);
+  // Komentar penjelas dihapus saat cleanup, tapi gerbangnya sendiri (Asman
+  // canonical hanya tampil setelah txn APPROVED) masih di kode — cek langsung.
+  assert.match(docs, /const asmanUser = txn\.canonical\s*\?\s*\(txn\.status === "APPROVED" \? \(users\.find\(u => u\.id === txn\.approvedBy && u\.role === "ASMAN"\) \|\| \{\}\) : \{\}\)/);
 });
 
 test("derived TUG-8/9 drafts reserve no official number and replace themselves canonically", () => {
-  const adopt = app.slice(app.indexOf("async function adoptTUG5ULTG"), app.indexOf("function openDraftTug9"));
-  const tug8Draft = app.slice(app.indexOf("async function approveTUG7_MgrLogistik"), app.indexOf("async function rejectTUG7_MgrLogistik"));
+  const adopt = tugApprovals.slice(tugApprovals.indexOf("async function adoptTUG5ULTG"), tugApprovals.indexOf("function openDraftTug9"));
+  const tug8Draft = tugApprovals.slice(tugApprovals.indexOf("async function approveTUG7_MgrLogistik"), tugApprovals.indexOf("async function rejectTUG7_MgrLogistik"));
   assert.match(adopt, /id: `DRAFT-TUG9-/);
   assert.match(adopt, /draftLabel:"DRAFT — nomor resmi saat diajukan"/);
   assert.doesNotMatch(adopt, /docSeq:|generateDocNumbers\(|setDocSeq\(/);
   assert.match(tug8Draft, /id: `DRAFT-TUG8-/);
   assert.match(tug8Draft, /draftLabel:"DRAFT — nomor resmi saat diajukan"/);
   assert.doesNotMatch(tug8Draft, /docSeq:|generateDocNumbers\(|setDocSeq\(/);
-  assert.match(app, /async function commitNewTxn\(docType, formData, \{ replaceDraftId = null \} = \{\}\)/);
-  assert.match(app, /canonicalActionKeysRef\.current \|\|= newCanonicalActionKeys\(\)/);
-  assert.match(app, /Foto TUG-8\/TUG-9 belum aman di Storage/);
-  assert.match(app, /submittedItems\.some\(si => !si\.stockId \|\| !\(Number\(si\.qty\) > 0\)\)/);
-  assert.match(app, /const canonicalUptId = currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
+  // targetStage (baru) mengizinkan commitNewTxn menyimpan draft lokal tanpa syarat
+  // foto sudah aman di Storage — hanya untuk targetStage==="DRAFT", bukan submit resmi.
+  assert.match(tugTransactions, /async function commitNewTxn\(docType, formData, \{ replaceDraftId = null, targetStage = null \} = \{\}\)/);
+  assert.match(tugTransactions, /canonicalActionKeysRef\.current \|\|= newCanonicalActionKeys\(\)/);
+  assert.match(tugTransactions, /Foto TUG-8\/TUG-9 belum aman di Storage/);
+  assert.match(tugTransactions, /targetStage !== "DRAFT"/);
+  assert.match(tugTransactions, /submittedItems\.some\(si => !si\.stockId \|\| !\(Number\(si\.qty\) > 0\)\)/);
+  assert.match(tugTransactions, /const canonicalUptId = currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
   assert.match(adopt, /uptId: currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
-  assert.match(app, /uptId:txn\.uptId \|\| currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
-  assert.match(app, /adoptedTug9Id === replaceDraftId/);
-  assert.match(app, /tug8DraftId === replaceDraftId/);
-  assert.match(app, /openDraftTug9\(txn\)/);
-  assert.doesNotMatch(app.slice(app.indexOf("async function konfirmasiDraftTUG8"), app.indexOf("// Bangun ulang knowledge base")), /status:"PENDING"/);
+  assert.match(tugApprovals, /uptId:txn\.uptId \|\| currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
+  assert.match(tugTransactions, /adoptedTug9Id === replaceDraftId/);
+  assert.match(tugTransactions, /tug8DraftId === replaceDraftId/);
+  assert.match(tugApprovals, /openDraftTug9\(txn\)/);
+  assert.doesNotMatch(tugApprovals.slice(tugApprovals.indexOf("async function konfirmasiDraftTUG8")), /status:"PENDING"/);
   assert.match(tugForm, /DRAFT — nomor resmi saat diajukan/);
   assert.match(tugForm, /Lengkapi & Ajukan \$\{txnForm\.docType/);
   assert.match(approvalTab, /Lengkapi & Ajukan TUG-8/);
