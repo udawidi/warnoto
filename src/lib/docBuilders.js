@@ -1168,7 +1168,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
   const showBAP = !!txn.timMutuId;
 
   const items = txn?.stockItems || [];
-  const materialRowsTable = items.map(si => {
+  const materialRowsTable = items.map((si, idx) => {
     const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
     const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
     const kodeKatalog = canonicalKatalogCode(si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.katalog||"-") : (si.katalogBaru||"-"));
@@ -1176,6 +1176,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
     const jumlahRp = hargaSatuan * (si.qty || 0);
     return `
     <tr>
+      <td style="text-align:center">${idx + 1}</td>
       <td>${esc(namaBarang)}</td>
       <td style="text-align:center">${esc(kodeKatalog)}</td>
       <td style="text-align:center">${esc(satuan)}</td>
@@ -1294,7 +1295,7 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
 <div class="page">
   <div class="top-accent"></div>
   <div class="header-kop">
-    <div style="font-size:8.5px;font-weight:bold;line-height:1.3">${isPenerimaan ? "TUG-3 PENERIMAAN" : "TUG-3 KARANTINA"}<br/>Lembar 3 : GUDANG</div>
+    <div style="font-size:8.5px;font-weight:bold;line-height:1.3">${isPenerimaan ? "DATA STOCK GUDANG" : "KARANTINA"}<br/>Lembar 3 : GUDANG</div>
     <div class="pln-info">
       <img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
       <div class="kop-text">PLN: UIT - JBM</div>
@@ -1328,19 +1329,32 @@ table.photo-items-tbl td{border:1px solid #000;padding:6px}
     <table class="items-tbl">
       <thead>
         <tr>
-          <th style="width:24%">NAMA BARANG/SPARE PART (DITULIS LENGKAP)</th>
-          <th style="width:12%">KODE KATALOG</th>
-          <th style="width:6%">SAT</th>
-          <th style="width:8%">JUMLAH</th>
-          <th style="width:22%">KETERANGAN</th>
-          <th style="width:14%">HARGA SATUAN</th>
-          <th style="width:14%">JUMLAH</th>
+          <th style="width:6%">NO. URUT</th>
+          <th style="width:20%">NAMA BARANG/SPARE PART (DITULIS LENGKAP)</th>
+          <th style="width:11%">KODE KATALOG</th>
+          <th style="width:5%">SAT</th>
+          <th style="width:7%">JUMLAH</th>
+          <th style="width:19%">KETERANGAN</th>
+          <th style="width:16%">HARGA SATUAN</th>
+          <th style="width:16%">JUMLAH</th>
         </tr>
       </thead>
       <tbody>${materialRowsTable}</tbody>
     </table>
 
-    <div class="closing-note" style="font-style:normal;display:flex;gap:6px"><b>Jumlah</b> : Rp ${fmtRp(totalRp)}</div>
+    <table class="meta-tbl" style="margin-top:2px">
+      <tr>
+        <td class="lbl" style="width:100px">Nota No.</td><td style="width:10px">:</td><td>${esc(txn.notaNo || "-")}</td>
+        <td class="lbl" style="width:110px">Kode Perkiraan</td><td style="width:10px">:</td><td>${esc(txn.kodePerkiraan || "-")}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Perintah Kerja</td><td>:</td><td>${esc(txn.perintahKerja || "-")}</td>
+        <td class="lbl">Fungsi</td><td>:</td><td>${esc(txn.fungsi || "-")}</td>
+      </tr>
+      <tr>
+        <td class="lbl">Jumlah</td><td>:</td><td colspan="4">Rp ${fmtRp(totalRp)}</td>
+      </tr>
+    </table>
     <div class="closing-note" style="display:flex;gap:6px;word-break:break-word"><b style="flex-shrink:0">Keterangan</b> : ${esc(txn.keteranganTug3 || "Baik")}</div>
 
     ${isPenerimaan ? `
