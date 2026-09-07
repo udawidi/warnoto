@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { fmtDate, fmtDateOnly, scanUrlFor } from "../lib/utils.js";
 import { fmtNum, getSAPLabel } from "../lib/ragShared.mjs";
-import { buildKartuGantungHistory, resolveLokasiLengkap, getSAPBadgeStyle, jenisBarangAccentColor } from "../lib/sap.js";
+import { buildKartuGantungHistory, resolveLokasiLengkap, getSAPBadgeStyle, jenisBarangAccentColor, stockSapLabel } from "../lib/sap.js";
 import { buildTUG2FrontHTML, buildTUG2BackHTML } from "../lib/docBuilders.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
@@ -15,7 +15,8 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const gudangStr = resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList);
   const sampleStock = stocks.find(s=>s.katalogId===katalog.id && s.fotoKeseluruhan);
   const sampleFoto = sampleStock ? resolveStockPhotoUrl(sampleStock.fotoKeseluruhan) : null;
-  const kategoriMaterial = stocks.find(s=>s.katalogId===katalog.id)?.jenisBarang || "-";
+  const kategoriStock = stocks.find(s=>s.katalogId===katalog.id);
+  const kategoriMaterial = kategoriStock ? stockSapLabel(kategoriStock) : "-";
   const opnameHistory = [...(stocks.find(s=>s.katalogId===katalog.id)?.opnameHistory || [])].sort((a,b)=>b.tanggal-a.tanggal);
 
   const scanUrl = scanUrlFor(katalog.id);
@@ -112,7 +113,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   <tr>
                     <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,background:"#f8fafc",width:110}}>No. Katalog :</td>
                     <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:800,color:"#0284c7"}}>{katalog.katalog || "-"}</td>
-                    <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,background:"#f8fafc",width:90}}>Lokasi :</td>
+                    <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,background:"#f8fafc",width:90}}>Lokasi Sekarang :</td>
                     <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,fontSize:9.5}}>{gudangStr}</td>
                   </tr>
                   <tr>
@@ -187,7 +188,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   <tr>
                     <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,background:"#f8fafc",width:110}}>No. Katalog :</td>
                     <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:800,color:"#0284c7"}}>{katalog.katalog || "-"}</td>
-                    <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,background:"#f8fafc",width:90}}>Lokasi :</td>
+                    <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,background:"#f8fafc",width:90}}>Lokasi Sekarang :</td>
                     <td style={{border:"1px solid #0f172a",padding:"6px 8px",fontWeight:700,fontSize:9.5}}>{gudangStr}</td>
                   </tr>
                   <tr>

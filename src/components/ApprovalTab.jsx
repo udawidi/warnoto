@@ -4,7 +4,7 @@ import { KAPASITAS_LABEL, UIT, UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
-import { statusMaterialBadgeStyle, resolveSapLabel } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, resolveSapLabel, formatKontrakSumber } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
 
@@ -121,7 +121,8 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
     });
     return (t.stockItems||[]).map((si,i)=>{
       const stock = stocks.find(s=>s.id===si.stockId);
-      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit}</div>;
+      const kontrakSumber = formatKontrakSumber(stock?.kontrakRefs);
+      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit}{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 {kontrakSumber}</span>}</div>;
     });
   }
 

@@ -506,7 +506,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
     if (katalogId !== "ALL" && kat.id !== katalogId) return false;
     // Jenis Barang filter (from Data Stok row)
     if (jenisBarang !== "ALL") {
-      const jb = stockRow?.jenisBarang || "Persediaan";
+      const jb = stockRow?.jenisBarang || kat?.jenisBarang || "Persediaan";
       if (jb !== jenisBarang) return false;
     }
     // SAP status filter (from katalog number)
@@ -558,9 +558,13 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
 
     if (t.docType==="TUG9" || t.docType==="TUG8") {
       (t.stockItems||[]).forEach((si, itemIndex) => {
+        // Match langsung via katalogId (kokoh walau stockRow sudah dihapus/kosong).
+        // Fallback ke stockRow.katalogId untuk item legacy pra-canonical tanpa katalogId.
         const stockRow = stocks.find(s=>s.id===si.stockId);
-        const kat = resolveCanonicalKatalog(si, katalogList.find(k=>k.id===stockRow?.katalogId));
+        const resolvedKatalogId = si.katalogId || stockRow?.katalogId;
+        const kat = resolveCanonicalKatalog(si, katalogList.find(k=>k.id===resolvedKatalogId));
         if (!shouldIncludeKatalog(kat, stockRow)) return;
+        const lokasiId = si.lokasiId || stockRow?.lokasiId || "";
         rows.push(addLiveSearchFields({
           katalog: kat.katalog||"-", deskripsi: kat.name, merk:resolveMerk(kat, si), type:resolveType(kat, si),
           satuan: kat.satuan||"-", valuasi: stockRow?.price||0,
@@ -572,11 +576,11 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           katalogId: kat.id,
           sapStatus: katalogSapStatus(kat),
           sapLabel: katalogSapLabel(kat),
-          jenisBarang: stockRow?.jenisBarang||"-",
+          jenisBarang: stockRow?.jenisBarang || kat.jenisBarang || "-",
           docType: t.docType,
-          lokasiId: stockRow?.lokasiId||"",
-          lokasiKode: (lokasiList||[]).find(l=>l.id===stockRow?.lokasiId)?.kode||"-",
-          warehouseName: warehouseNameForLokasi(stockRow?.lokasiId),
+          lokasiId,
+          lokasiKode: (lokasiList||[]).find(l=>l.id===lokasiId)?.kode||"-",
+          warehouseName: warehouseNameForLokasi(lokasiId),
           source: "BARU",
           sourceLabel: "Baru",
           materialKey: historyMaterialKey(kat.katalog, kat.name, "live", `${t.id}:${itemIndex}`),
@@ -589,7 +593,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           unit: t.docType === "TUG8" ? (t.unitTujuan || t.penerimaUnit) : t.penerimaUnit,
           documentRefs: t.noNodin || t.noPersetujuan,
           notes: t.keteranganBarang || t.namaPekerjaan,
-          storageLocation: (lokasiList||[]).find(l=>l.id===stockRow?.lokasiId)?.kode,
+          storageLocation: (lokasiList||[]).find(l=>l.id===lokasiId)?.kode,
         }));
       });
     }

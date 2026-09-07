@@ -6,7 +6,7 @@ import { TUG15Tab } from "./TUG15Tab.jsx";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { fmtDate } from "../lib/utils.js";
-import { statusMaterialBadgeStyle } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
 
 export function TransactionHubTab({
   C, sty, currentUser, isMobile,
@@ -168,7 +168,8 @@ export function TransactionHubTab({
                     <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                       {t.docType!=="TUG10" ? t.stockItems.map((si,idx)=>{
                         const stock = enrichedStocks.find(s=>s.id===si.stockId);
-                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span></div>;
+                        const kontrakSumber = formatKontrakSumber(stock?.kontrakRefs);
+                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||"?"} <b>x{si.qty}</b> {stock?.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span>{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 {kontrakSumber}</span>}</div>;
                       }) : t.stockItems.map((si,idx)=>{
                         const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);

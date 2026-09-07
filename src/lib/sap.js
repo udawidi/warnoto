@@ -294,6 +294,17 @@ export function getSAPBadgeStyle(katalog) {
 // Perubahan urutan ini DISENGAJA (2026-08-11, keputusan arsitek) — bukan regresi.
 export function stockSapLabel(stock) { return rowSapLabel(stock); }
 
+// Ringkasan sumber kontrak (Fitur A LITE, lihat useTugApprovals.js) untuk ditampilkan di
+// picker/approval/history TUG-8/9. Banyak entry bisa menumpuk di satu stock (tiap TUG-3
+// nambah satu) — cukup tampilkan yang PALING BARU (tglMasuk terbesar), bukan semua, supaya
+// tetap ringkas satu baris.
+export function formatKontrakSumber(kontrakRefs) {
+  if (!Array.isArray(kontrakRefs) || kontrakRefs.length === 0) return "";
+  const latest = [...kontrakRefs].sort((a, b) => (b.tglMasuk || 0) - (a.tglMasuk || 0))[0];
+  if (!latest) return "";
+  return [latest.supplier, latest.noKontrak].filter(Boolean).join(" — ");
+}
+
 // Accent color per Jenis Barang, used on the printable QR label
 export function jenisBarangAccentColor(jenisBarang) {
   const map = {
@@ -313,7 +324,8 @@ export function jenisBarangAccentColor(jenisBarang) {
 // Each row carries a running balance (sisa) computed in chronological order.
 //
 // Resolution notes:
-// - TUG9/TUG8 items store stockId (a Data Stok row); we resolve katalogId via `stocks`.
+// - TUG9/TUG8 items carry katalogId directly (canonical); fallback resolves via
+//   `stocks` (stockId) only for legacy items created before canonicalItem stored it.
 // - TUG10/TUG3 items reference katalogId directly when katalogMode==="existing".
 //   For katalogMode==="new" items, the transaction itself doesn't retain the
 //   auto-created katalogId, so we match by name against the current katalogList entry instead.
@@ -337,8 +349,11 @@ export function buildKartuGantungHistory(katalog, txns, stocks, lokasiList, subG
     if (t.docType === "TUG9" || t.docType === "TUG8") {
       t.stockItems.forEach(si => {
         const stockRow = (stocks||[]).find(s=>s.id===si.stockId);
-        if (stockRow && stockRow.katalogId === katalogId) {
-          const lok = (lokasiList||[]).find(l=>l.id===stockRow.lokasiId);
+        // Match langsung via katalogId (kokoh walau stockRow sudah dihapus/kosong).
+        // Fallback ke stockRow.katalogId untuk item legacy pra-canonical tanpa katalogId.
+        const isMatch = si.katalogId ? si.katalogId === katalogId : stockRow?.katalogId === katalogId;
+        if (isMatch) {
+          const lok = (lokasiList||[]).find(l=>l.id===(si.lokasiId || stockRow?.lokasiId));
           events.push({ docType: t.docType, tgl: t.approvedAt||t.createdAt, noBon: t.docNumbers?.[t.docType==="TUG9"?"tug9":"tug8"], masuk:0, keluar:si.qty, rak: lok?.kode||"-", subGudang: resolveSubGudang(lok), catatan: t.namaPekerjaan||"-" });
         }
       });

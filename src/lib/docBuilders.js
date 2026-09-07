@@ -9,7 +9,7 @@ import { canonicalKatalogCode } from "./normalizeKatalogCode.js";
 import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
-import { buildKartuGantungHistory, resolveLokasiLengkap } from "./sap.js";
+import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel } from "./sap.js";
 import { resolveStockPhotoUrl } from "./stockCache.js";
 
 // Resolver id->nama UPT penerbit dokumen (mis. "UPT-SBY" -> "UPT Surabaya").
@@ -1161,7 +1161,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
   const docNoSJ = docs.sj || docs.tug3 || `${txn.docSeq || "1"}.SI/LOG.00.02/${uptKode}/VII/2026`;
   const docNoBA = docs.ba || docs.tug4 || docNoSJ.replace(".SI/", ".BA/").replace(".SJ/", ".BA/");
 
-  const asmanUser = users.find(u => u.role === "ASMAN") || {};
+  const asmanUser = users.find(u => u.id === txn.approvedByAsman) || users.find(u => u.role === "ASMAN") || {};
   const managerUser = users.find(u => u.role === "MANAGER") || {};
   const tm = (timMutuList || []).find(t => t.id === txn.timMutuId) || {};
   const isPenerimaan = !!txn.approvedByAsman;
@@ -1620,7 +1620,8 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
   const lokasiStr = resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList);
   const sampleStock = (stocks||[]).find(s=>s.katalogId===katalog.id && s.fotoKeseluruhan);
   const sampleFoto = sampleStock ? resolveStockPhotoUrl(sampleStock.fotoKeseluruhan) : null;
-  const kategoriMaterial = (stocks||[]).find(s=>s.katalogId===katalog.id)?.jenisBarang || "-";
+  const kartuGantungStock = (stocks||[]).find(s=>s.katalogId===katalog.id);
+  const kategoriMaterial = kartuGantungStock ? stockSapLabel(kartuGantungStock) : "-";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>Kartu Gantung Depan TUG.2 - ${esc(canonicalKatalogCode(katalog.katalog))}</title>
 <style>
@@ -1666,7 +1667,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
     <tr>
       <td class="lbl">No. Katalog :</td>
       <td style="font-weight:bold;color:#0284c7">${esc(canonicalKatalogCode(katalog.katalog) || "-")}</td>
-      <td class="lbl">Lokasi :</td>
+      <td class="lbl">Lokasi Sekarang :</td>
       <td style="font-weight:bold;font-size:9.5px">${esc(lokasiStr)}</td>
     </tr>
     <tr>
@@ -1703,7 +1704,8 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
 
   // "Lokasi :" di header kartu = gabungan Gudang + Sub Gudang + Blok Gudang.
   const lokasiStr = resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList);
-  const kategoriMaterial = (stocks||[]).find(s=>s.katalogId===katalog.id)?.jenisBarang || "-";
+  const kartuGantungStock = (stocks||[]).find(s=>s.katalogId===katalog.id);
+  const kategoriMaterial = kartuGantungStock ? stockSapLabel(kartuGantungStock) : "-";
   const opnameHistory = [...((stocks||[]).find(s=>s.katalogId===katalog.id)?.opnameHistory || [])].sort((a,b)=>b.tanggal-a.tanggal);
   const opnameHistoryHTML = opnameHistory.length ? `
   <div style="margin-bottom:10px">
@@ -1786,7 +1788,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
     <tr>
       <td class="lbl">No. Katalog :</td>
       <td style="font-weight:bold;color:#0284c7">${esc(canonicalKatalogCode(katalog.katalog) || "-")}</td>
-      <td class="lbl">Lokasi :</td>
+      <td class="lbl">Lokasi Sekarang :</td>
       <td style="font-weight:bold;font-size:9.5px">${esc(lokasiStr)}</td>
     </tr>
     <tr>

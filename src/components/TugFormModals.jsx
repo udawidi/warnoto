@@ -4,7 +4,7 @@ import { SearchableSelect } from "./SearchableSelect.jsx";
 import { PhotoSlot } from "./PhotoSlot.jsx";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { generateReservasiDocNo } from "../lib/utils.js";
-import { statusMaterialBadgeStyle } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
 import { can } from "../lib/perms.js";
 import { ROLES } from "../lib/roles.js";
 import { sortBlokOptions } from "../lib/masterSync.js";
@@ -246,12 +246,16 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                         onChange={v=>updateItemRow(idx,"stockId",v)}
                         getLabel={s=>`${s.name} [${s.katalog}] @ ${s.lokasi}`}
                         getSearchText={s=>`${s.name} ${s.katalog} ${s.lokasi}`}
-                        renderOption={s=>(
+                        renderOption={s=>{
+                          const kontrakSumber = formatKontrakSumber(s.kontrakRefs);
+                          return (
                           <div>
                             <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
                             <div style={{fontSize:12,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
+                            {kontrakSumber && <div style={{fontSize:11,color:C.muted}}>📄 {kontrakSumber}</div>}
                           </div>
-                        )}
+                          );
+                        }}
                         placeholder="-- Cari & pilih barang --"
                         sty={sty} C={C} isMobile={isMobile}
                       />
