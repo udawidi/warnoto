@@ -7,6 +7,19 @@ import { canApproveHeavyEquipmentLoan, EQUIPMENT_CATEGORIES, getEquipmentCategor
 import { OperationsHero } from "./OperationsHero.jsx";
 import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
 import { RiwayatPerjalananPanel } from "./RiwayatPerjalananPanel.jsx";
+import { fmtDateOnly } from "../lib/utils.js";
+
+const LOAN_APPROVAL_ATTESTATIONS = [
+  ["alat", "Saya sudah memeriksa alat, ketersediaan, dan kondisinya."],
+  ["pekerjaan", "Saya sudah memeriksa nama pekerjaan dan keperluan peminjaman."],
+  ["durasi", "Saya sudah memeriksa durasi peminjaman (tanggal ambil–kembali)."],
+  ["setuju", "Saya setuju alat dipinjamkan ke UPT peminjam."],
+];
+
+const LOAN_RETURN_CHECKS = [
+  ["fisik", "Alat sudah kembali secara fisik ke gudang."],
+  ["kondisi", "Kondisi alat sudah diperiksa, tidak ada kerusakan/kehilangan baru."],
+];
 
 const EQUIPMENT_FORM_FIELDS = [
   ["upt", "UPT"], ["lokasi", "Lokasi"], ["nama", "Nama"], ["jenis", "Jenis"],
@@ -76,6 +89,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const [loanForm, setLoanForm] = useState({equipmentId:"", requesterUpt:myUpt||"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
+  const [reviewingLoan, setReviewingLoan] = useState(null);
+  const [attested, setAttested] = useState({});
+  const [returningLoan, setReturningLoan] = useState(null);
+  const [returnChecked, setReturnChecked] = useState({});
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [editForm, setEditForm] = useState({statusAlat:"LAYAK", foto:null});
 
@@ -358,7 +375,14 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 <Badge metaKey={activeLoan?.runtimeStatus || eq.availabilityStatus || "TERSEDIA"}/>
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
-              <div style={{fontSize:12,color:C.muted,lineHeight:1.6}}>Merk/Type: <b>{eq.merkType||"-"}</b><br/>Kapasitas: <b>{eq.kapasitas||"-"}</b> • Tahun: <b>{eq.tahun||"-"}</b><br/>No Seri: <b>{eq.nomorSeri||"-"}</b><br/>Kondisi: <b>{eq.kondisi||"-"}</b><br/>Surat Izin: <b>{eq.suratIzinAlat||"Belum ada data"}</b></div>
+              <div className="equipment-spec-grid">
+                <div><span className="equipment-fact-label">Merk/Type</span><span className="equipment-fact-value">{eq.merkType||"-"}</span></div>
+                <div><span className="equipment-fact-label">Kapasitas</span><span className="equipment-fact-value">{eq.kapasitas||"-"}</span></div>
+                <div><span className="equipment-fact-label">Tahun</span><span className="equipment-fact-value">{eq.tahun||"-"}</span></div>
+                <div><span className="equipment-fact-label">No. Seri</span><span className="equipment-fact-value">{eq.nomorSeri||"-"}</span></div>
+                <div><span className="equipment-fact-label">Kondisi</span><span className="equipment-fact-value">{eq.kondisi||"-"}</span></div>
+                <div><span className="equipment-fact-label">Surat Izin</span><span className="equipment-fact-value">{eq.suratIzinAlat||"Belum ada data"}</span></div>
+              </div>
               {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius: 10,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
               {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius: 10,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color: "#64748b"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
               {lastLoan && <div style={{fontSize:12,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
@@ -444,7 +468,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                       <div style={{fontSize:12,color:C.muted}}>Rencana kembali: {l.tanggalKembali||"-"} • {l.namaPekerjaan||"-"} • Diajukan oleh {pemohon?.name||"?"}</div>
                     </div>
                     {hasRole(currentUser, "ADMIN","TL","ASMAN") && (
-                      <button style={sty.btn("success","sm")} onClick={()=>completeLoan(l.id)}>Tandai Kembali</button>
+                      <button style={sty.btn("success","sm")} onClick={()=>setReturningLoan(l)}>Tandai Kembali</button>
                     )}
                   </div>
                 );
@@ -456,6 +480,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             {unifiedLoans.map(loan=>{
               const eq=equipmentList.find(e=>e.id===loan.equipmentId);
               const isActive=["PENDING_OWNER_ASMAN","DIPINJAM","OVERDUE"].includes(loan.runtimeStatus);
+              const hariDiff=Math.round((new Date(loan.tanggalKembali)-new Date(loan.tanggalAmbil))/86400000)+1;
+              const durasiLabel=Number.isFinite(hariDiff)?`${loan.tanggalAmbil} – ${loan.tanggalKembali} (${hariDiff} hari)`:"-";
+              const pemohon=users.find(u=>u.id===loan.requestedBy);
+              const penyetuju=users.find(u=>u.id===loan.approvedBy);
               return (
                 <div key={loan.id} className="operations-row-card" style={{...sty.card,padding:12,borderLeft:`4px solid ${loanBorderColor(loan.runtimeStatus)}`,opacity:isActive?1:0.85}}>
                   <div className="equipment-loan-card__header" style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start",marginBottom:4}}>
@@ -465,17 +493,24 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                     </div>
                     <Badge metaKey={loan.runtimeStatus}/>
                   </div>
-                  <div style={{fontSize:12,fontWeight:700,marginBottom:2}}>{loan.namaPekerjaan||"-"}</div>
-                  <div style={{fontSize:12,color:C.muted,marginBottom:isActive?6:0}}>{loan.tanggalAmbil} s/d {loan.tanggalKembali}</div>
+                  <div style={{fontSize:13,fontWeight:700,marginBottom:6,WebkitLineClamp:2,WebkitBoxOrient:"vertical",display:"-webkit-box",overflow:"hidden"}}>{loan.namaPekerjaan||"-"}</div>
+                  <div className="equipment-loan-facts" style={{marginBottom:isActive?6:0}}>
+                    <div><span className="equipment-fact-label">Durasi</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{durasiLabel}</span></div>
+                    <div><span className="equipment-fact-label">Pemohon</span><span className="equipment-fact-value">{pemohon?.name||"?"}</span></div>
+                    <div><span className="equipment-fact-label">Diajukan</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{fmtDateOnly(loan.requestedAt)}</span></div>
+                    <div><span className="equipment-fact-label">Keperluan</span><span className="equipment-fact-value" style={{WebkitLineClamp:2,WebkitBoxOrient:"vertical",display:"-webkit-box",overflow:"hidden"}}>{loan.keperluan||"-"}</span></div>
+                    {loan.approvedBy && <div><span className="equipment-fact-label">Disetujui</span><span className="equipment-fact-value">{penyetuju?.name||"-"} · {fmtDateOnly(loan.approvedAt)}</span></div>}
+                    {loan.catatanApproval && <div><span className="equipment-fact-label">Catatan approval</span><span className="equipment-fact-value">{loan.catatanApproval}</span></div>}
+                  </div>
                   {isActive&&isPendingHeavyEquipmentLoan(loan)&&canApproveHeavyEquipmentLoan(currentUser,loan,uptList)&&(
                     <div className="equipment-loan-card__approval" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                       {rejectingId===loan.id
                         ?<><input style={{...sty.input,flex:"1 1 160px"}} value={reason} onChange={e=>setReason(e.target.value)} placeholder="Alasan penolakan"/><span className="approval-actions approval-actions--compact"><button className="approval-btn--danger" onClick={()=>{rejectLoan(loan.id,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button><button className="approval-btn--cancel" onClick={()=>{setRejectingId(null);setReason("");}}>Batal</button></span></>
-                        :<span className="approval-actions approval-actions--compact"><button className="approval-btn--approve" onClick={()=>approveLoan(loan.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button><button className="approval-btn--reject" onClick={()=>setRejectingId(loan.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>}
+                        :<span className="approval-actions approval-actions--compact"><button className="approval-btn--approve" onClick={()=>setReviewingLoan(loan)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui</button><button className="approval-btn--reject" onClick={()=>setRejectingId(loan.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>}
                     </div>
                   )}
                   {isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&hasRole(currentUser, "ADMIN","TL","ASMAN")&&(
-                    <button style={{...sty.btn("ghost","sm"),marginTop:6}} onClick={()=>completeLoan(loan.id)}>Tandai Kembali</button>
+                    <button style={{...sty.btn("ghost","sm"),marginTop:6}} onClick={()=>setReturningLoan(loan)}>Tandai Kembali</button>
                   )}
                   {["DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
                     <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&hasRole(currentUser, "ADMIN","TL","ASMAN")?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, eq, users, showToast)}>Cetak dokumen</button>
@@ -493,6 +528,82 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       {viewMode==="riwayat" && canSeeRiwayatPerjalanan && (
         <RiwayatPerjalananPanel active={viewMode==="riwayat"} equipmentList={equipmentList} users={users} uptScopeFilter={effectiveUptFilter||myUpt||""} sty={sty} C={C}/>
       )}
+
+      {/* MODAL REVIEW PEMINJAMAN — preview detail + checklist wajib sebelum approve */}
+      {reviewingLoan && (()=>{
+        const loan = reviewingLoan;
+        const eq = equipmentList.find(e=>e.id===loan.equipmentId);
+        const pemohon = users.find(u=>u.id===loan.requestedBy);
+        const ambil = new Date(loan.tanggalAmbil);
+        const kembali = new Date(loan.tanggalKembali);
+        const hariDiff = Math.round((kembali-ambil)/86400000)+1;
+        const hariLabel = Number.isFinite(hariDiff) ? `${hariDiff} hari` : "-";
+        const allChecked = LOAN_APPROVAL_ATTESTATIONS.every(([key])=>attested[key]);
+        const closeReview = ()=>{ setReviewingLoan(null); setAttested({}); };
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+            <div role="dialog" aria-label="Periksa Peminjaman Alat" style={{...sty.card,width:480,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+              <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}>Periksa Peminjaman Alat</h3>
+              <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Wajib periksa sebelum menyetujui</div>
+              <div style={{fontSize:13,display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+                <div><b>{eq?.nama||loan.equipmentId}</b></div>
+                <div style={{fontSize:12,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt}</div>
+                <div><b>Pekerjaan:</b> {loan.namaPekerjaan||"-"}</div>
+                <div><b>Keperluan:</b> {loan.keperluan||"-"}</div>
+                {loan.catatan && <div><b>Catatan:</b> {loan.catatan}</div>}
+                <div><b>Durasi:</b> {loan.tanggalAmbil} s/d {loan.tanggalKembali} ({hariLabel})</div>
+                <div><b>Diajukan oleh:</b> {pemohon?.name||"?"}</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                {LOAN_APPROVAL_ATTESTATIONS.map(([key,label])=>(
+                  <label key={key} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12}}>
+                    <input type="checkbox" checked={!!attested[key]} onChange={e=>setAttested(current=>({...current,[key]:e.target.checked}))}/>
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button className="approval-btn--cancel" style={{flex:1}} onClick={closeReview}>Batal</button>
+                <button className="approval-btn--approve" style={{flex:2}} disabled={!allChecked} onClick={()=>{approveLoan(loan.id);closeReview();}}>Setujui Peminjaman</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* MODAL KONFIRMASI KEMBALI — cegah salah pencet Tandai Kembali (tak bisa dibatalkan) */}
+      {returningLoan && (()=>{
+        const loan = returningLoan;
+        const eq = equipmentList.find(e=>e.id===loan.equipmentId);
+        const allReturnChecked = LOAN_RETURN_CHECKS.every(([key])=>returnChecked[key]);
+        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); };
+        return (
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+            <div role="dialog" aria-label="Konfirmasi Alat Kembali" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+              <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}>Konfirmasi Alat Kembali</h3>
+              <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:10,fontSize:12,marginBottom:12}}>Pastikan alat benar-benar sudah kembali. Aksi ini menandai alat TERSEDIA kembali dan TIDAK bisa dibatalkan.</div>
+              <div style={{fontSize:13,display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+                <div><b>{eq?.nama||loan.equipmentId}</b></div>
+                <div style={{fontSize:12,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt}</div>
+                <div><b>Pekerjaan:</b> {loan.namaPekerjaan||"-"}</div>
+                <div><b>Rencana kembali:</b> {loan.tanggalKembali||"-"}</div>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                {LOAN_RETURN_CHECKS.map(([key,label])=>(
+                  <label key={key} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12}}>
+                    <input type="checkbox" checked={!!returnChecked[key]} onChange={e=>setReturnChecked(current=>({...current,[key]:e.target.checked}))}/>
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button className="approval-btn--cancel" style={{flex:1}} onClick={closeReturn}>Batal</button>
+                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked} onClick={()=>{completeLoan(loan.id);closeReturn();}}>Tandai Sudah Kembali</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODAL EDIT ALAT — status alat + upload foto sekaligus, Admin/TL saja */}
       {editingEquipment && (()=>{

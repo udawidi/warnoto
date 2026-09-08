@@ -954,14 +954,12 @@ export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
 }
 
 export function downloadHeavyEquipmentLoanHTML(loan, equipment, users, showToast) {
+  // Preview di tab baru (bukan unduh file) — dokumen tampil lengkap dengan print-bar,
+  // user cetak sendiri lewat tombol Print di sana. Pola sama dengan builder dokumen lain.
+  const w = window.open("", "_blank"); // WAJIB sinkron di handler klik — anti popup-block
   const html = buildHeavyEquipmentLoanHTML(loan, equipment, users);
-  const blob = new Blob([html], {type:"text/html"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `PeminjamanAlat_${loan.id}.html`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
-  showToast && showToast("📄 File diunduh! Buka di browser lalu Print → Save as PDF.", "success");
+  if (w) { w.document.write(html); w.document.close(); }
+  else showToast && showToast("Popup diblokir browser. Izinkan popup untuk preview & cetak dokumen.", "error");
 }
 
 // ─── BERITA ACARA STOCK OPNAME DOCUMENT BUILDER ──────────────────────────
