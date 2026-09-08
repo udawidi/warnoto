@@ -48,6 +48,11 @@ function safeName(value: unknown, fallback: string) {
   const result = text(value, 120).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
   return result || fallback;
 }
+function storageKey(...segments: string[]) {
+  return segments
+    .map((s) => String(s ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "x")
+    .join("/");
+}
 function parseJson(value: unknown, fallback: any = {}) {
   if (typeof value !== "string") return value ?? fallback;
   try { return JSON.parse(value); } catch { return fallback; }
@@ -286,7 +291,7 @@ function evidenceDto(row: any) {
 async function upsertEvidence(input: any) {
   const { data: existing } = await admin.from("maturity_audit_evidence").select("audit_id").eq("drive_file_id", input.driveFile.id).maybeSingle();
   if (existing && existing.audit_id !== input.auditId) throw Object.assign(new Error("Berkas sudah terhubung ke audit lain."), { status: 409 });
-  const row = { audit_id: input.auditId, aspect_id: input.aspectId, item_id: input.itemId, item_label: input.itemLabel || "", category_id: input.categoryId || "", category_label: input.categoryLabel || "", upt: input.upt.name, upt_id: input.upt.id, drive_file_id: input.driveFile.id, drive_folder_id: input.folderId || null, file_name: input.driveFile.name || "Berkas", mime_type: input.driveFile.mimeType || "application/octet-stream", file_size: Number(input.driveFile.size || 0), md5_checksum: input.driveFile.md5Checksum || null, source: input.source || "UPLOAD", assignment_state: "ACTIVE", linked_at: nowMs(), linked_by: input.actorId, unlinked_at: null, unlinked_by: null };
+  const row = { audit_id: input.auditId, aspect_id: input.aspectId, item_id: input.itemId, item_label: input.itemLabel || "", category_id: input.categoryId || "", category_label: input.categoryLabel || "", upt: input.upt.name, upt_id: input.upt.id, drive_file_id: input.driveFile.id, drive_folder_id: input.folderId || null, file_name: input.driveFile.name || "Berkas", mime_type: input.driveFile.mimeType || "application/octet-stream", file_size: Number(input.driveFile.size || 0), md5_checksum: input.driveFile.md5Checksum || null, source: input.source || "UPLOAD", assignment_state: "ACTIVE", linked_at: nowMs(), linked_by: input.actorId, unlinked_at: null, unlinked_by: null, ...(input.storagePath ? { storage_path: input.storagePath } : {}) };
   const { data, error } = await admin.from("maturity_audit_evidence").upsert(row, { onConflict: "drive_file_id" }).select().single();
   if (error) throw new Error(`Metadata evidence tidak tersimpan: ${error.message}`);
   return data;
@@ -487,7 +492,19 @@ Deno.serve(async (req) => {
       const canonicalBody = { ...body, upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
       const tree = await ensureTree(canonicalBody);
       const driveFile = await uploadDriveFile(file, tree.itemFolder.drive_folder_id, tree.itemFolder.mapping_key);
-      const row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id });
+      // Backup self-host best-effort: Drive tetap sumber wajib, ini cadangan
+      // agar file tetap terbaca kalau token Drive habis. Kegagalan di sini
+      // TIDAK boleh menggagalkan upload (Drive sudah aman).
+      const storagePath = storageKey(tree.period.key, context.upt.name, text(body.categoryId), text(body.aspectId), text(body.itemId), file.name);
+      let storagePathSaved: string | null = null;
+      try {
+        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: true });
+        if (storageError) throw storageError;
+        storagePathSaved = storagePath;
+      } catch (storageError) {
+        console.warn(`Backup self-host evidence gagal (${storagePath}):`, storageError instanceof Error ? storageError.message : storageError);
+      }
+      const row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id, storagePath: storagePathSaved });
       await event(text(body.auditId), "EVIDENCE_UPLOADED", ctx.user.id, { evidenceId: row.id, driveFileId: driveFile.id, itemId: body.itemId });
       return json({ ok: true, evidence: evidenceDto(row), folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id });
     }
@@ -577,9 +594,53 @@ Deno.serve(async (req) => {
       const context = await resolveAuditContext({ auditId: evidence.audit_id }, ctx);
       if (evidence.upt_id !== context.upt.id) throw Object.assign(new Error("Scope evidence tidak cocok dengan audit canonical."), { status: 409 });
       await assertUptAccess(ctx, context.upt, false);
+      // Prefer backup self-host (lebih cepat, tanpa Drive) — fallback ke Drive
+      // kalau storage_path kosong (evidence lama) atau backup-nya gagal dibaca.
+      if (evidence.storage_path) {
+        const { data: blob } = await admin.storage.from("maturity-evidence").download(evidence.storage_path);
+        if (blob) {
+          await event(evidence.audit_id, "EVIDENCE_DOWNLOADED", ctx.user.id, { evidenceId, from: "storage" });
+          return new Response(blob, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name) } });
+        }
+      }
       const response = await driveFetch(`/files/${encodeURIComponent(evidence.drive_file_id)}?alt=media&supportsAllDrives=true`);
-      await event(evidence.audit_id, "EVIDENCE_DOWNLOADED", ctx.user.id, { evidenceId });
+      await event(evidence.audit_id, "EVIDENCE_DOWNLOADED", ctx.user.id, { evidenceId, from: "drive" });
       return new Response(response.body, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name) } });
+    }
+    if (action === "backfill") {
+      if (!NATIONAL_ROLES.has(ctx.profile.role)) return json({ ok: false, error: "Hanya Pusat/Superadmin yang dapat menjalankan sinkronisasi evidence lama." }, 403);
+      const limit = Math.max(1, Math.min(25, Number(body.limit) || 15));
+      const uptId = text(body.uptId);
+      let query = admin.from("maturity_audit_evidence").select("id, audit_id, aspect_id, item_id, category_id, upt, upt_id, drive_file_id, file_name, mime_type").is("storage_path", null).is("unlinked_at", null);
+      if (uptId) query = query.eq("upt_id", uptId);
+      const { data: rows, error: rowsError } = await query.limit(limit);
+      if (rowsError) throw new Error(`Gagal mengambil evidence lama: ${rowsError.message}`);
+      const auditIds = [...new Set((rows || []).map((row) => row.audit_id))];
+      const { data: audits } = auditIds.length ? await admin.from("maturity_audits").select("id, period_key").in("id", auditIds) : { data: [] };
+      const periodByAudit = new Map((audits || []).map((audit) => [audit.id, audit.period_key]));
+      let okCount = 0, failed = 0;
+      for (const row of rows || []) {
+        const periodKey = periodByAudit.get(row.audit_id);
+        if (!periodKey) { console.warn(`Backfill skip evidence ${row.id}: audit ${row.audit_id} tanpa period_key.`); failed++; continue; }
+        const storagePath = storageKey(periodKey, row.upt, row.category_id, row.aspect_id, row.item_id, row.file_name);
+        try {
+          const resp = await driveFetch(`/files/${encodeURIComponent(row.drive_file_id)}?alt=media&supportsAllDrives=true`);
+          const bytes = new Uint8Array(await resp.arrayBuffer());
+          const { error: uploadError } = await admin.storage.from("maturity-evidence").upload(storagePath, bytes, { contentType: row.mime_type || "application/octet-stream", upsert: true });
+          if (uploadError) throw uploadError;
+          const { error: updateError } = await admin.from("maturity_audit_evidence").update({ storage_path: storagePath }).eq("id", row.id);
+          if (updateError) throw updateError;
+          okCount++;
+        } catch (backfillError) {
+          console.warn(`Backfill gagal evidence ${row.id} (${storagePath}):`, backfillError instanceof Error ? backfillError.message : backfillError);
+          failed++;
+        }
+        await new Promise((r) => setTimeout(r, 150));
+      }
+      let remainingQuery = admin.from("maturity_audit_evidence").select("id", { count: "exact", head: true }).is("storage_path", null).is("unlinked_at", null);
+      if (uptId) remainingQuery = remainingQuery.eq("upt_id", uptId);
+      const { count: remaining } = await remainingQuery;
+      return json({ ok: true, processed: (rows || []).length, ok_count: okCount, failed, remaining: remaining || 0 });
     }
     return json({ ok: false, error: "action tidak dikenal." }, 400);
   } catch (error) {

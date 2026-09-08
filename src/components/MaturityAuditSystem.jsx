@@ -11,6 +11,7 @@ import {
   uploadMaturityDriveEvidence,
 } from "../lib/maturityDrive.js";
 import { buildForm5SHTML } from "../lib/docBuilders.js";
+import { analyzeMaturityAspect, hashAspectSnapshot } from "../lib/maturityAi.js";
 
 // =========================================================================
 // CONSTANTS & ICONS
@@ -324,11 +325,36 @@ export function MaturityAuditEditor({
     if (!canScoreUPT || !audit.id || !autosaveMaturityDraft) return;
     const timer = setTimeout(() => { autosaveMaturityDraft(); }, 1500);
     return () => clearTimeout(timer);
-  }, [maturityAuditForm.aspekScores, maturityAuditEvidence]);
+  }, [maturityAuditForm.aspekScores, maturityAuditEvidence, maturityAuditForm.aiAnalysis]);
   // Gate "Kirim Hasil ke UIT": wajib Form 5S sudah disimpan pada bulan berjalan
   const chk5S = maturityAuditEvidence?.["4.5"]?.find(f => f.id === "k3_5s_chk");
   const now = new Date();
   const form5SSavedThisMonth = chk5S?.savedAt && new Date(chk5S.savedAt).getMonth() === now.getMonth() && new Date(chk5S.savedAt).getFullYear() === now.getFullYear();
+
+  // Analisis AI per-aspek — LAZY (hanya saat halaman aspek dibuka, bukan di load
+  // daftar) + CACHE by hash(evidence+skor) supaya evidence/skor tak berubah tidak
+  // memicu analisis ulang. Hasil disimpan di maturityAuditForm.aiAnalysis[aspectId]
+  // (ikut autosave jsonb, lihat useMaturity.jsx) — persist lintas-sesi.
+  const [aiAnalysisRunning, setAiAnalysisRunning] = useState({}); // aspectId -> {i,total} in-flight only, tak perlu persist
+  useEffect(() => {
+    if (!activeAspectId) return;
+    const aspect = AUDIT_ASPECTS.find(a => a.id === activeAspectId);
+    const evidenceList = maturityAuditEvidence[activeAspectId] || [];
+    if (!aspect || evidenceList.length === 0) return;
+    const scoreObj = maturityAuditForm.aspekScores[activeAspectId];
+    const hash = hashAspectSnapshot(evidenceList, scoreObj);
+    if (maturityAuditForm.aiAnalysis?.[activeAspectId]?.hash === hash) return;
+    let cancelled = false;
+    setAiAnalysisRunning(prev => ({ ...prev, [activeAspectId]: { i: 0, total: evidenceList.length } }));
+    analyzeMaturityAspect(aspect, evidenceList, scoreObj, {
+      onProgress: (i, total) => { if (!cancelled) setAiAnalysisRunning(prev => ({ ...prev, [activeAspectId]: { i, total } })); },
+    }).then(result => {
+      if (cancelled) return;
+      setAiAnalysisRunning(prev => { const n = { ...prev }; delete n[activeAspectId]; return n; });
+      setMaturityAuditForm(f => ({ ...f, aiAnalysis: { ...(f.aiAnalysis || {}), [activeAspectId]: { hash, result, at: Date.now() } } }));
+    });
+    return () => { cancelled = true; };
+  }, [activeAspectId, maturityAuditEvidence[activeAspectId], maturityAuditForm.aspekScores[activeAspectId]]);
 
   const scoreBtn = (active, color) => ({
     width: 36,
@@ -976,9 +1002,64 @@ export function MaturityAuditEditor({
                   <div style={{ ...sty.card, background: C.bg }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                       <span style={{ color: C.accent }}><Icons.Sparkles /></span>
-                      <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>Rekomendasi AI</h4>
+                      <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>Analisis AI</h4>
                     </div>
-                    <p style={{ margin: 0, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>{activeAspect.aiNote}</p>
+                    {(() => {
+                      const running = aiAnalysisRunning[activeAspect.id];
+                      const cached = maturityAuditForm.aiAnalysis?.[activeAspect.id];
+                      const cachedResult = cached?.result;
+                      if (running) {
+                        return <p style={{ margin: 0, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>⏳ Membaca {running.i}/{running.total} dokumen…</p>;
+                      }
+                      if (!cachedResult) {
+                        return <p style={{ margin: 0, fontSize: 13, color: C.muted, lineHeight: 1.4, fontStyle: "italic" }}>{aspectFiles.length === 0 ? "Upload evidence untuk memicu analisis AI." : "Menunggu analisis AI…"}</p>;
+                      }
+                      if (cachedResult.status !== "ANSWERED") {
+                        return <p style={{ margin: 0, fontSize: 13, color: "#b91c1c", lineHeight: 1.4 }}>Analisis AI gagal ({cachedResult.errorMessage || "tidak tersedia"}). Nilai manual sesuai rubrik di kiri.</p>;
+                      }
+                      return (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ padding: "2px 10px", borderRadius: 14, background: `${C.accent}22`, color: C.accent, fontSize: 13, fontWeight: 800 }}>Estimasi Level {cachedResult.estimasiLevel}</span>
+                          </div>
+                          <p style={{ margin: 0, fontSize: 13, color: C.text, lineHeight: 1.4 }}>{cachedResult.alasanPenilaian}</p>
+                          {cachedResult.perEvidence?.length > 0 && (
+                            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                              {cachedResult.perEvidence.map((pe, i) => (
+                                <li key={i} style={{ fontSize: 13, color: pe.terpenuhi ? C.green : "#b91c1c" }}>
+                                  {pe.terpenuhi ? "✓" : "✗"} <strong>{pe.label}</strong>{pe.catatan ? ` — ${pe.catatan}` : ""}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                          {cachedResult.gap?.length > 0 && (
+                            <div>
+                              <strong style={{ fontSize: 13, color: C.text }}>Gap:</strong>
+                              <ul style={{ margin: "2px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                                {cachedResult.gap.map((g, i) => <li key={i}>{g}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          {cachedResult.rekomendasi?.length > 0 && (
+                            <div>
+                              <strong style={{ fontSize: 13, color: C.text }}>Rekomendasi:</strong>
+                              <ul style={{ margin: "2px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                                {cachedResult.rekomendasi.map((r, i) => <li key={i}>{r}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                          {cachedResult.menujuLevelMaksimal?.length > 0 && (
+                            <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 6 }}>
+                              <strong style={{ fontSize: 13, color: C.accent }}>Menuju Level 5 (maksimal):</strong>
+                              <ul style={{ margin: "2px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                                {cachedResult.menujuLevelMaksimal.map((m, i) => <li key={i}><strong style={{ color: C.text }}>{m.poin}</strong>{m.aksi ? ` — ${m.aksi}` : ""}</li>)}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <p style={{ margin: "8px 0 0 0", fontSize: 13, color: C.muted, lineHeight: 1.4, borderTop: `1px dashed ${C.border}`, paddingTop: 6 }}><em>Catatan standar:</em> {activeAspect.aiNote}</p>
                   </div>
 
                   {(canScoreUIT || canScorePusat || statusSkorUIT > 0 || statusSkorPusat > 0) && (

@@ -3,6 +3,7 @@ import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
+import { backfillMaturityEvidence } from "../lib/maturityDrive.js";
 
 // Progres kelengkapan evidence audit — nol fetch Drive, murni hitung dari
 // audit.evidence yg sudah ter-load (pola sama dgn MaturityAuditSystem.jsx:175).
@@ -43,7 +44,7 @@ const HISTORY_STATUS_LABEL = {
 };
 
 export function MaturityDashboardTab({
-  C, sty, currentUser, isMobile, hasRole,
+  C, sty, currentUser, isMobile, hasRole, showToast,
   maturityAudits, maturityAuditHistory = [], maturity5SAssessments = [], selectedMaturityUpt, selectedMaturityUptId = "", setSelectedMaturityUpt, canSwitchMaturityUpt,
   maturitySubTab, setMaturitySubTab,
   maturityAuditModal, setMaturityAuditModal,
@@ -55,7 +56,7 @@ export function MaturityDashboardTab({
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
   maturityAuditSaving,
-  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet,
+  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet, exportMaturityAuditPptx,
   calculateItemLevel, calcMaturityScore,
   saveMaturityTarget,
   gudangList, askConfirmDelete,
@@ -63,7 +64,34 @@ export function MaturityDashboardTab({
   users = [], uptList = [],
 }) {
             const [exportingSheetId, setExportingSheetId] = useState(null); // id audit yang lagi export ke Google Sheet
+            const [exportingPptxId, setExportingPptxId] = useState(null); // id audit yang lagi export ke PPT
             const canExportSheet = hasRole(currentUser, "ADMIN", "TL") || canSwitchMaturityUpt;
+            const canBackfillEvidence = hasRole(currentUser, "ADMIN_LOG_PUSAT"); // SUPERADMIN ikut lolos lewat hasRole
+            const [backfilling, setBackfilling] = useState(false);
+            async function handleBackfillEvidence() {
+              setBackfilling(true);
+              try {
+                let remaining = Infinity;
+                let prevRemaining = Infinity;
+                while (remaining > 0) {
+                  const result = await backfillMaturityEvidence({ limit: 15 });
+                  remaining = result.remaining;
+                  if (remaining >= prevRemaining) { showToast(`Sinkronisasi berhenti: ${remaining} evidence tak bisa diproses (kemungkinan file tak ada di Drive / rate-limit — coba ulang nanti).`, "error"); return; }
+                  prevRemaining = remaining;
+                  if (remaining > 0) showToast(`Menyalin evidence lama… sisa ${remaining}`);
+                }
+                showToast("✅ Evidence lama selesai disinkronkan ke self-host!");
+              } catch (err) {
+                showToast(err.message || "Sinkronisasi evidence gagal.", "error");
+              } finally {
+                setBackfilling(false);
+              }
+            }
+            async function handleExportPptx(a) {
+              setExportingPptxId(a.id);
+              try { await exportMaturityAuditPptx(a); } catch { /* toast sudah ditampilkan di hook */ }
+              finally { setExportingPptxId(null); }
+            }
             async function handleExportSheet(a) {
               setExportingSheetId(a.id);
               // Buka tab sinkron di dalam gesture klik; isi URL setelah await
@@ -228,6 +256,16 @@ export function MaturityDashboardTab({
                 ))}
               </div>
               </div>
+
+              {canBackfillEvidence && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+                  <button onClick={handleBackfillEvidence} disabled={backfilling} style={{
+                    padding: "8px 14px", borderRadius: 10, border: `1px solid ${C.border}`,
+                    background: backfilling ? "#e2e8f0" : "#f8fafc", color: C.text,
+                    fontSize: 12, fontWeight: 700, cursor: backfilling ? "not-allowed" : "pointer",
+                  }}>{backfilling ? "Menyalin…" : "🔄 Sinkronkan Evidence Lama ke Self-host"}</button>
+                </div>
+              )}
 
               {/*  DASHBOARD AUDIT  */}
               {maturitySubTab === "dashboard" && (() => {
@@ -738,6 +776,15 @@ export function MaturityDashboardTab({
                                           onClick={e => { e.stopPropagation(); handleExportSheet(a); }}
                                         >
                                           {exportingSheetId === a.id ? "Mengekspor…" : "Google Sheet"}
+                                        </button>
+                                      )}
+                                      {canExportSheet && (
+                                        <button
+                                          style={{ ...sty.btn("ghost", "sm"), fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: exportingPptxId === a.id ? "wait" : "pointer", pointerEvents: "auto", opacity: exportingPptxId === a.id ? 0.6 : 1 }}
+                                          disabled={exportingPptxId === a.id}
+                                          onClick={e => { e.stopPropagation(); handleExportPptx(a); }}
+                                        >
+                                          {exportingPptxId === a.id ? "Mengekspor…" : "⬇️ Download PPT"}
                                         </button>
                                       )}
                                       {canReview && <button style={{ ...sty.btn("primary", "sm"), fontSize: 12, display: "inline-flex", alignItems: "center", gap: 4, cursor: "pointer", pointerEvents: "auto" }} onClick={e => { e.stopPropagation(); openMaturityAudit(a); }}>

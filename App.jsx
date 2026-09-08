@@ -103,9 +103,7 @@ import { DEFAULT_LOKASI } from "./src/data/masterLokasi.js";
 import { DEFAULT_STOCKS } from "./src/data/stokSapDefault.js";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe, sanitizeRows } from "./src/lib/xlsxImport.js";
-import * as pdfjsLib from "pdfjs-dist";
-import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+import { extractPdfText } from "./src/lib/pdfText.js";
 import { PLN_LOGO_DATA_URI } from "./src/assets/plnLogoBase64.js";
 import { useDenahOcr } from "./src/hooks/useDenahOcr.js";
 import { useHeavyEquipment } from "./src/hooks/useHeavyEquipment.js";
@@ -386,6 +384,7 @@ export default function PLNWarehouse() {
     saveMaturityTarget,
     autosaveMaturityDraft,
     maturityDraftSavedAt,
+    exportMaturityAuditPptx,
     deleteMaturityAudit,
     exportMaturityAuditExcel,
     exportMaturityGoogleSheet,
@@ -2607,20 +2606,7 @@ export default function PLNWarehouse() {
   // AI Extract dari PDF kontrak menggunakan Groq API
   // Groq (openai/gpt-oss-120b) adalah model text-only, jadi teks PDF
   // diekstrak dulu di browser dengan pdf.js sebelum dikirim ke Groq.
-  async function extractPdfText(pdfBase64) {
-    const binary = atob(pdfBase64);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-    let text = "";
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const content = await page.getTextContent();
-      text += content.items.map(it => it.str).join(" ") + "\n";
-    }
-    return text;
-  }
-
+  // extractPdfText diangkat ke src/lib/pdfText.js (reusable, dipakai juga maturityAi.js).
   async function aiExtractKontrak(pdfBase64, onResult, onError, onLoading) {
     onLoading(true);
     try {
@@ -4420,6 +4406,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               currentUser={currentUser}
               isMobile={isMobile}
               hasRole={hasRole}
+              showToast={showToast}
               maturityAudits={maturityAudits}
               maturityAuditHistory={maturityAuditHistory}
               maturity5SAssessments={maturity5SAssessments}
@@ -4456,6 +4443,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               openMaturityAudit={openMaturityAudit}
               exportMaturityAuditExcel={exportMaturityAuditExcel}
               exportMaturityGoogleSheet={exportMaturityGoogleSheet}
+              exportMaturityAuditPptx={exportMaturityAuditPptx}
               calculateItemLevel={calculateItemLevel}
               calcMaturityScore={calcMaturityScore}
               saveMaturityTarget={saveMaturityTarget}

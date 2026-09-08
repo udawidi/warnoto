@@ -47,7 +47,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Master UPT bisa berbeda ejaan dengan nama yang tersimpan di baris audit.
   const selectedMaturityUptId = uptIdByNama(selectedMaturityUpt);
   const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
-  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
+  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{} });
   const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
   const [maturityDraftSavedAt, setMaturityDraftSavedAt] = useState(null);
   // ponytail: in-flight/dirty flags via ref (bukan state) — tak perlu re-render, cukup gate concurrency
@@ -215,7 +215,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     }
     const scores = {};
     AUDIT_ASPECTS.forEach(a => { scores[a.id] = { upt:0, uit:0, pusat:0 }; });
-    setMaturityAuditForm({ aspekScores: scores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"" });
+    setMaturityAuditForm({ aspekScores: scores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{} });
     setMaturityAuditEvidence(mergeCurrentMonth5SEvidence({}, selectedMaturityUpt));
     setMaturityAspectReviews({}); // audit baru — belum ada review tersimpan
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
@@ -228,7 +228,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setMaturitySubTab("pelaksanaan");
   }
   function openMaturityAudit(audit) {
-    setMaturityAuditForm({ aspekScores: JSON.parse(JSON.stringify(audit.aspekScores || {})), catatanUPT: audit.catatanUPT || "", catatanUIT: audit.catatanUIT || "", catatanPusat: audit.catatanPusat || "", fileUrl: audit.fileUrl || "", fileNama: audit.fileNama || "" });
+    setMaturityAuditForm({ aspekScores: JSON.parse(JSON.stringify(audit.aspekScores || {})), catatanUPT: audit.catatanUPT || "", catatanUIT: audit.catatanUIT || "", catatanPusat: audit.catatanPusat || "", fileUrl: audit.fileUrl || "", fileNama: audit.fileNama || "", aiAnalysis: JSON.parse(JSON.stringify(audit.aiAnalysis || {})) });
     setMaturityAuditEvidence(mergeCurrentMonth5SEvidence(JSON.parse(JSON.stringify(audit.evidence || {})), audit.upt));
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
     setActiveAspectId(null);
@@ -370,6 +370,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         catatanPusat: maturityAuditForm.catatanPusat,
         fileUrl: maturityAuditForm.fileUrl,
         fileNama: maturityAuditForm.fileNama,
+        aiAnalysis: maturityAuditForm.aiAnalysis || {},
         createdAt,
         createdBy: auditData.createdBy || currentUser.id,
         updatedAt: Date.now(),
@@ -448,6 +449,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         catatanPusat: maturityAuditForm.catatanPusat,
         fileUrl: maturityAuditForm.fileUrl,
         fileNama: maturityAuditForm.fileNama,
+        aiAnalysis: maturityAuditForm.aiAnalysis || {},
         createdAt,
         createdBy: auditData.createdBy || currentUser.id,
         updatedAt: Date.now(),
@@ -537,6 +539,121 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     }
   }
 
+  // Export PPT editable — cover, ringkasan 5 kategori, 1 slide per kategori
+  // (tabel aspek + insight AI ringkas kalau ada), slide rekomendasi menyeluruh.
+  // Sibling exportMaturityAuditExcel/exportMaturityGoogleSheet: dynamic import,
+  // try/catch → showToast error (pola exportGoogleSheet).
+  async function exportMaturityAuditPptx(audit) {
+    try {
+      const PptxGenJS = (await import("pptxgenjs")).default;
+      const pptx = new PptxGenJS();
+      const NAVY = "1E3A5F", BLUE = "2563EB", GRAY = "64748B";
+      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {});
+      const namaUpt = audit.upt || selectedMaturityUpt || "UPT";
+      const tahun = new Date(audit.createdAt || Date.now()).getFullYear();
+      const aiAnalysis = audit.aiAnalysis || {};
+      const catScoreOrder = { tata_kelola: "c1", tenaga_kerja: "c2", sarana_prasarana: "c3", k3: "c4", teknologi: "c5" };
+      const catLevel = v => Math.max(1, Math.min(5, Math.round(v)));
+
+      // Slide 1 — Cover
+      const cover = pptx.addSlide();
+      cover.background = { color: NAVY };
+      cover.addText("Audit Maturity Gudang", { x: 0.5, y: 1.3, w: 9, h: 0.8, fontSize: 32, bold: true, color: "FFFFFF" });
+      cover.addText(namaUpt, { x: 0.5, y: 2.1, w: 9, h: 0.6, fontSize: 22, color: "CBD5E1" });
+      cover.addText(`Periode: ${tahun}`, { x: 0.5, y: 2.7, w: 9, h: 0.4, fontSize: 14, color: "94A3B8" });
+      cover.addText(`Level ${audit.level || scoreResult.level} — ${MATURITY_LEVELS[audit.level || scoreResult.level] || "—"}`, { x: 0.5, y: 3.4, w: 9, h: 0.5, fontSize: 20, bold: true, color: "FFFFFF" });
+      cover.addText(`Skor Total: ${scoreResult.total.toFixed(2)} | Status: ${MATURITY_WORKFLOW_LABEL[audit.status] || audit.status || "—"}`, { x: 0.5, y: 3.9, w: 9, h: 0.4, fontSize: 14, color: "CBD5E1" });
+
+      // Slide 2 — Ringkasan 5 kategori
+      const sum = pptx.addSlide();
+      sum.addText("Ringkasan 5 Kategori", { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: NAVY });
+      const sumRows = [[
+        { text: "Kategori", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        { text: "Skor Rata", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        { text: "Level", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+      ]];
+      AUDIT_CATEGORIES.forEach(cat => {
+        const v = scoreResult[catScoreOrder[cat.id]] || 0;
+        sumRows.push([cat.label, v.toFixed(2), `${catLevel(v)} — ${MATURITY_LEVELS[catLevel(v)] || "—"}`]);
+      });
+      sum.addTable(sumRows, { x: 0.4, y: 0.9, w: 9, colW: [3.5, 2, 3.5], fontSize: 12, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
+
+      // Slide per kategori — tabel aspek + insight AI ringkas
+      AUDIT_CATEGORIES.forEach(cat => {
+        const slide = pptx.addSlide();
+        slide.addText(cat.label, { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: NAVY });
+        const aspects = AUDIT_ASPECTS.filter(a => a.category === cat.id);
+        const rows = [[
+          { text: "Aspek", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+          { text: "UPT", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+          { text: "UIT", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+          { text: "Pusat", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+          { text: "AI Est.", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        ]];
+        aspects.forEach(a => {
+          const s = audit.aspekScores?.[a.id] || {};
+          const ai = aiAnalysis[a.id]?.result;
+          rows.push([`${a.id} ${a.title}`, s.upt || "—", s.uit || "—", s.pusat || "—", ai?.estimasiLevel != null ? String(ai.estimasiLevel) : "—"]);
+        });
+        slide.addTable(rows, { x: 0.4, y: 0.85, w: 9, colW: [4.4, 1.15, 1.15, 1.15, 1.15], fontSize: 10, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
+
+        // Insight AI ringkas — hanya aspek yang punya aiAnalysis, di bawah tabel
+        const insightLines = aspects
+          .map(a => ({ a, ai: aiAnalysis[a.id]?.result }))
+          .filter(x => x.ai)
+          .map(({ a, ai }) => {
+            const gap = (ai.gap || [])[0];
+            const rekom = (ai.rekomendasi || [])[0];
+            return `${a.id}: ${ai.alasanPenilaian || "—"}${gap ? ` | Gap: ${gap}` : ""}${rekom ? ` | Rekom: ${rekom}` : ""}`;
+          });
+        if (insightLines.length) {
+          const yStart = 0.85 + 0.35 * (aspects.length + 1) / 2 + 0.3; // perkiraan tinggi tabel
+          slide.addText(insightLines.join("\n"), { x: 0.4, y: Math.min(yStart, 4.2), w: 9, h: 5 - Math.min(yStart, 4.2), fontSize: 9, color: GRAY, valign: "top" });
+        }
+      });
+
+      // Slide akhir — rekomendasi menyeluruh
+      const rec = pptx.addSlide();
+      rec.addText("Rekomendasi Menyeluruh", { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: NAVY });
+      const allRekom = [];
+      const allMenuju = [];
+      AUDIT_ASPECTS.forEach(a => {
+        const ai = aiAnalysis[a.id]?.result;
+        if (!ai) return;
+        (ai.rekomendasi || []).forEach(r => allRekom.push(`${a.id}: ${r}`));
+        (ai.menujuLevelMaksimal || []).forEach(m => allMenuju.push(`${a.id}: ${m.poin ? `[${m.poin}] ` : ""}${m.aksi || ""}`));
+      });
+      let y = 0.9;
+      if (allRekom.length) {
+        rec.addText("Rekomendasi:", { x: 0.4, y, w: 9, h: 0.3, fontSize: 13, bold: true, color: BLUE });
+        y += 0.35;
+        rec.addText(allRekom.slice(0, 12).join("\n"), { x: 0.4, y, w: 9, h: 1.6, fontSize: 9, color: "1E293B", valign: "top" });
+        y += 1.7;
+      }
+      if (allMenuju.length) {
+        rec.addText("Menuju Level 5:", { x: 0.4, y, w: 9, h: 0.3, fontSize: 13, bold: true, color: BLUE });
+        y += 0.35;
+        rec.addText(allMenuju.slice(0, 10).join("\n"), { x: 0.4, y, w: 9, h: 1.4, fontSize: 9, color: "1E293B", valign: "top" });
+        y += 1.5;
+      }
+      const catatan = [
+        audit.catatanUPT ? `Catatan UPT: ${audit.catatanUPT}` : "",
+        audit.catatanUIT ? `Catatan UIT: ${audit.catatanUIT}` : "",
+        audit.catatanPusat ? `Catatan Pusat: ${audit.catatanPusat}` : "",
+      ].filter(Boolean);
+      if (catatan.length) {
+        rec.addText(catatan.join("\n"), { x: 0.4, y: Math.min(y, 6.5), w: 9, h: 6.9 - Math.min(y, 6.5), fontSize: 9, color: GRAY, valign: "top" });
+      }
+
+      const safeUpt = namaUpt.replace(/[^a-zA-Z0-9]+/g, "_");
+      await pptx.writeFile({ fileName: `Maturity_${safeUpt}_${tahun}.pptx` });
+      showToast("File PPT berhasil didownload!");
+    } catch (err) {
+      showToast(err?.message || "Export PPT Maturity gagal.", "error");
+      throw err;
+    }
+  }
+
   return {
     maturityAssessments, setMaturityAssessments,
     maturityAudits, setMaturityAudits,
@@ -575,5 +692,6 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     deleteMaturityAudit,
     exportMaturityAuditExcel,
     exportMaturityGoogleSheet,
+    exportMaturityAuditPptx,
   };
 }

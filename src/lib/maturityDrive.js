@@ -37,6 +37,11 @@ export const loadMaturityDriveEvidence = auditId => request("sync", { auditId, s
 export const assignMaturityDriveEvidence = payload => request("assign", payload);
 export const unlinkMaturityDriveEvidence = payload => request("unlink", payload);
 
+export async function backfillMaturityEvidence({ limit = 15, uptId } = {}) {
+  const result = await request("backfill", { limit, uptId });
+  return { processed: result.processed || 0, ok: result.ok_count || 0, failed: result.failed || 0, remaining: result.remaining || 0 };
+}
+
 export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
   const formData = new FormData();
   formData.set("file", file, file.name);
