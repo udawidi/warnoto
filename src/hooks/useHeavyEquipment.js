@@ -20,6 +20,33 @@ function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
 }
 
+const SURAT_IZIN_MIME_EXT = { "application/pdf":"pdf", "image/jpeg":"jpg", "image/png":"png", "image/webp":"webp" };
+function extFromDataUrl(dataUrl) {
+  const mime = String(dataUrl).match(/^data:([^;]+);/)?.[1] || "";
+  return SURAT_IZIN_MIME_EXT[mime] || null;
+}
+
+// Upload dokumen surat izin (PDF atau foto) ke Storage → URL publik. PDF diupload
+// mentah (compressImage akan merusak file non-image), foto dikompres sama seperti
+// foto alat. Dipakai saveHeavyEquipmentEdit & createHeavyEquipment.
+async function uploadSuratIzin(dataUrl, equipmentId, showToast) {
+  const ext = extFromDataUrl(dataUrl);
+  if (!ext) { showToast("Format surat izin tidak didukung. Gunakan PDF, JPG, PNG, atau WebP.", "error"); return { ok:false }; }
+  let toUpload = dataUrl;
+  if (ext !== "pdf") {
+    try { toUpload = await compressImage(dataUrl, {maxBytes:1_000_000}); }
+    catch (e) { showToast(getHeavyEquipmentProcessingErrorMessage(e), "error"); return { ok:false }; }
+  }
+  try {
+    const url = await _withTimeout(uploadPhotoToStorage(toUpload, "tug-photos", `alat-berat/surat-izin/${equipmentId}.${ext}`), 30_000, "unggah surat izin");
+    return { ok:true, url };
+  } catch (e) {
+    console.warn("Upload surat izin alat berat gagal:", equipmentId, e?.message||e);
+    showToast(getHeavyEquipmentUploadErrorMessage(e), "error");
+    return { ok:false };
+  }
+}
+
 // Domain Alat Berat: master alat + peminjaman antar-UPT (ajukan/approve/reject/selesai).
 // saveToCloud diakses lewat stateRef.current (bukan langsung sbg param) karena hook ini
 // dipanggil sebelum saveToCloud (useCallback) didefinisikan di PLNWarehouse — stateRef.current.saveToCloud
@@ -38,7 +65,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     // Foto ke Storage dulu (pola sama dengan Data Stok — JANGAN base64 mentah masuk
     // jsonb heavy_equipment.data, cegah pola insiden 2026-07-23 & 2026-07-28 terulang
     // di tabel lain). Bucket reuse "tug-photos" (sudah publik), folder alat-berat/.
-    const canEditAllHeavyEquipment = hasRole(currentUser, "ADMIN");
+    const canEditAllHeavyEquipment = hasRole(currentUser, "ADMIN","TL");
     // Jangan menyebarkan properti yang tidak memiliki input (id, availabilityStatus,
     // metadata audit, dst.) ketika Admin membuka form lengkap. Untuk TL, payload
     // sengaja hanya dua field yang memang diizinkan.
@@ -65,6 +92,11 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
       }
     }
     if (isPhotoChanged && !_isDataUrl(updates.foto)) upd = { ...upd, foto: updates.foto || null };
+    if (_isDataUrl(upd.suratIzinAlat) && !isDemoMode()) {
+      const result = await uploadSuratIzin(upd.suratIzinAlat, equipmentId, showToast);
+      if (!result.ok) return false;
+      upd = { ...upd, suratIzinAlat: result.url };
+    }
     upd = { ...upd, updatedAt:Date.now(), updatedBy:currentUser.id };
     const next = heavyEquipmentList.map(eq => eq.id === equipmentId ? { ...eq, ...upd, ...(isPhotoChanged ? {fotoUpdatedAt:Date.now(), fotoUpdatedBy:currentUser.id} : {}) } : eq);
     const ok = await stateRef.current.saveToCloud({heavyEquipmentList: next}, {heavyEquipmentChangedRows:[next.find(eq=>eq.id===equipmentId)]});
@@ -86,6 +118,11 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
       catch (e) { showToast(getHeavyEquipmentProcessingErrorMessage(e), "error"); return false; }
       try { item = { ...item, foto: await _withTimeout(uploadPhotoToStorage(compressedPhoto, "tug-photos", `alat-berat/${item.id}.jpg`), 30_000, "unggah foto") }; }
       catch (e) { console.warn("Upload foto alat berat gagal:", item.id, e?.message||e); showToast(getHeavyEquipmentUploadErrorMessage(e), "error"); return false; }
+    }
+    if (_isDataUrl(item.suratIzinAlat) && !isDemoMode()) {
+      const result = await uploadSuratIzin(item.suratIzinAlat, item.id, showToast);
+      if (!result.ok) return false;
+      item = { ...item, suratIzinAlat: result.url };
     }
     const next = [item, ...heavyEquipmentList];
     const ok = await stateRef.current.saveToCloud({heavyEquipmentList: next}, {heavyEquipmentChangedRows:[item]});

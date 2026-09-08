@@ -24,10 +24,50 @@ const LOAN_RETURN_CHECKS = [
 const EQUIPMENT_FORM_FIELDS = [
   ["upt", "UPT"], ["lokasi", "Lokasi"], ["nama", "Nama"], ["jenis", "Jenis"],
   ["merkType", "Merk/Type"], ["kapasitas", "Kapasitas"], ["nomorSeri", "No. Seri"],
-  ["tahun", "Tahun"], ["kondisi", "Kondisi"], ["suratIzinAlat", "Surat Izin Alat"],
+  ["tahun", "Tahun"], ["kondisi", "Kondisi"],
 ];
 
-function EquipmentFields({ form, setForm, sty }) {
+// Dokumen berupa data URL (baru diupload, belum tersimpan) atau URL/path yang sudah
+// berbentuk PDF/gambar. Teks legacy (input lama sebelum fitur upload) bukan salah satu ini.
+function isSuratIzinDoc(val) {
+  return /^data:application\/pdf|^data:image\/|\.pdf($|\?)|\.(jpg|jpeg|png|webp)($|\?)/i.test(String(val||""));
+}
+function isSuratIzinPdf(val) {
+  return /^data:application\/pdf|\.pdf($|\?)/i.test(String(val||""));
+}
+
+function SuratIzinField({ value, onChange, showToast }) {
+  const isDoc = isSuratIzinDoc(value);
+  const isPdf = isDoc && isSuratIzinPdf(value);
+  return <label style={{display:"grid",gap:4,marginBottom:12,gridColumn:"1 / -1"}}>
+    <span style={{fontSize:12,fontWeight:700,color:"#64748b"}}>Surat Izin Alat</span>
+    {value && (isDoc
+      ? (isPdf
+        ? <div style={{fontSize:13}}>📄 <a href={value} target="_blank" rel="noreferrer">Lihat Surat Izin (PDF)</a></div>
+        : <img src={value} alt="Surat izin" style={{height:120,objectFit:"contain",border:"1px solid #e5e7eb",borderRadius:8}}/>)
+      : <div style={{fontSize:13,color:"#334155"}}>{value}</div>)}
+    <div style={{display:"flex",gap:8}}>
+      <label style={{fontSize:12,fontWeight:700,color:"#2563eb",cursor:"pointer"}}>
+        {value ? "Ganti" : "Upload"} Surat Izin
+        <input type="file" accept=".pdf,image/*" style={{display:"none"}} onChange={e=>{
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          const isAllowed = file.type === "application/pdf" || file.type.startsWith("image/");
+          if (!isAllowed) { showToast?.("Format tidak didukung. Gunakan PDF atau gambar.", "error"); return; }
+          if (file.size > 5*1024*1024) { showToast?.("Ukuran file maksimal 5MB.", "error"); return; }
+          const reader = new FileReader();
+          reader.onload = () => onChange(reader.result);
+          reader.onerror = () => showToast?.("Gagal membaca file.", "error");
+          reader.readAsDataURL(file);
+        }}/>
+      </label>
+      {value && <button type="button" style={{fontSize:12,fontWeight:700,color:"#dc2626",background:"none",border:"none",cursor:"pointer",padding:0}} onClick={()=>onChange("")}>Hapus</button>}
+    </div>
+  </label>;
+}
+
+function EquipmentFields({ form, setForm, sty, showToast }) {
   return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
     {EQUIPMENT_FORM_FIELDS.map(([key,label]) => <label key={key} style={sty.label}>{label}
       <input style={sty.input} value={form[key]||""} onChange={e=>setForm(current=>({...current,[key]:e.target.value}))}/>
@@ -42,6 +82,7 @@ function EquipmentFields({ form, setForm, sty }) {
       <input type="checkbox" checked={!!form.tracked} onChange={e=>setForm(current=>({...current,tracked:e.target.checked}))}/>
       Lacak lokasi
     </label>
+    <SuratIzinField value={form.suratIzinAlat} onChange={v=>setForm(current=>({...current,suratIzinAlat:v}))} showToast={showToast}/>
   </div>;
 }
 
@@ -63,7 +104,7 @@ function EquipmentPhotoInput({ foto, nama, handleImg, setForm, sty, C, showToast
   </>;
 }
 
-export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList, users, sty, C, handleImg, saveEdit, createEquipment, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
+export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList, users, sty, C, handleImg, setLightboxImg, saveEdit, createEquipment, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
   const myUpt = getUserUptScope(currentUser, uptList);
   const isMSB = currentUser?.role === "MSB" || currentUser?.role === "Manager UIT";
   // SUPERADMIN/Pusat tak punya UPT sendiri (myUpt kosong) → tak bisa dikunci sebagai peminjam.
@@ -368,7 +409,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
           return (
             <div key={eq.id} className="operations-card equipment-card" style={{...sty.card,padding:14,display:"flex",flexDirection:"column",gap:10,borderLeft:activeLoan?`4px solid ${loanBorderColor(activeLoan.runtimeStatus)}`:undefined}}>
               <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                {eq.foto ? <img src={eq.foto} alt={eq.nama} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <div className="equipment-placeholder">EQ</div>}
+                {eq.foto ? <img src={eq.foto} alt={eq.nama} onClick={()=>setLightboxImg?.(eq.foto)} style={{width:"100%",height:"100%",objectFit:"cover",cursor:"zoom-in"}}/> : <div className="equipment-placeholder">EQ</div>}
               </div>
               <div className="equipment-card__header" style={{display:"flex",justifyContent:"space-between",gap:8,alignItems:"flex-start"}}>
                 <div><div style={{fontSize:13,fontWeight:900}}>{eq.nama}</div><div style={{fontSize:12,color:C.muted}}>{eq.upt} • {eq.lokasi}</div></div>
@@ -381,12 +422,12 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 <div><span className="equipment-fact-label">Tahun</span><span className="equipment-fact-value">{eq.tahun||"-"}</span></div>
                 <div><span className="equipment-fact-label">No. Seri</span><span className="equipment-fact-value">{eq.nomorSeri||"-"}</span></div>
                 <div><span className="equipment-fact-label">Kondisi</span><span className="equipment-fact-value">{eq.kondisi||"-"}</span></div>
-                <div><span className="equipment-fact-label">Surat Izin</span><span className="equipment-fact-value">{eq.suratIzinAlat||"Belum ada data"}</span></div>
+                <div><span className="equipment-fact-label">Surat Izin</span><span className="equipment-fact-value">{eq.suratIzinAlat ? (isSuratIzinDoc(eq.suratIzinAlat) ? <a href={eq.suratIzinAlat} target="_blank" rel="noreferrer">{isSuratIzinPdf(eq.suratIzinAlat)?"📄 Lihat Surat Izin":"🖼️ Lihat Surat Izin"}</a> : eq.suratIzinAlat) : "Belum ada data"}</span></div>
               </div>
               {activeLoan && <div style={{background:activeLoan.runtimeStatus==="OVERDUE"?"#fef2f2":"#fff7ed",border:`1px solid ${activeLoan.runtimeStatus==="OVERDUE"?"#fecaca":"#fed7aa"}`,borderRadius: 10,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color:activeLoan.runtimeStatus==="OVERDUE"?C.red:"#c2410c"}}>{activeLoan.runtimeStatus==="OVERDUE"?"OVERDUE":"Sedang dipinjam"}</div><div>{activeLoan.requesterUpt} • {activeLoan.namaPekerjaan || "-"}</div><div style={{color:C.muted}}>Rencana kembali: {activeLoan.tanggalKembali || "-"}</div></div>}
               {["MAINTENANCE","KIR"].includes(eq.statusAlat) && <div style={{background:"#f3f4f6",border:`1px solid ${C.border}`,borderRadius: 10,padding:10,fontSize:12,lineHeight:1.5}}><div style={{fontWeight:900,color: "#64748b"}}>{eq.statusAlat==="KIR"?"🔵 Sedang KIR":"🔧 Sedang Maintenance"}</div><div style={{color:C.muted}}>Tidak bisa dipinjam UPT lain sampai statusnya berubah.</div></div>}
               {lastLoan && <div style={{fontSize:12,color:C.muted,borderTop:`1px solid ${C.border}`,paddingTop:8}}>Terakhir dipinjam oleh <b>{lastLoan.requesterUpt || "-"}</b> untuk pekerjaan <b>{lastLoan.namaPekerjaan || "-"}</b>.</div>}
-              {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm(canEditAll ? {...eq} : {statusAlat:eq.statusAlat||"LAYAK", foto:eq.foto||null});}}>Edit data alat</button>}
+              {canManage && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditingEquipment(eq.id);setEditForm({...eq});}}>Edit data alat</button>}
             </div>
           );
         })}
@@ -614,7 +655,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             <div role="dialog" aria-label="Edit Alat Berat" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
               <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{eq.nama} — {eq.upt}</div>
-              {canEditAll && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty}/>}
+              {canManage && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty} showToast={showToast}/>}
               <EquipmentPhotoInput foto={editForm.foto} nama={eq.nama} handleImg={handleImg} setForm={setEditForm} sty={sty} C={C} showToast={showToast}/>
               <div style={{marginBottom:16}}>
                 <label style={sty.label}>Status Alat</label>
@@ -635,7 +676,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       {addingEquipment && <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
         <div role="dialog" aria-label="Tambah Alat Berat" style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
           <h3 style={{fontSize:15,fontWeight:800,marginBottom:12}}>Tambah Alat Berat</h3>
-          <EquipmentFields form={addForm} setForm={setAddForm} sty={sty}/>
+          <EquipmentFields form={addForm} setForm={setAddForm} sty={sty} showToast={showToast}/>
           <EquipmentPhotoInput foto={addForm.foto} nama={addForm.nama||"Alat berat baru"} handleImg={handleImg} setForm={setAddForm} sty={sty} C={C} showToast={showToast}/>
           <label style={{...sty.label,marginTop:10}}>Status Alat
             <select style={sty.select} value={addForm.statusAlat} onChange={e=>setAddForm(form=>({...form,statusAlat:e.target.value}))}>{STATUS_ALAT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>

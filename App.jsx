@@ -4374,6 +4374,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             sty={sty}
             C={C}
             handleImg={handleImg}
+            setLightboxImg={setLightboxImg}
             saveEdit={saveHeavyEquipmentEdit}
             createEquipment={createHeavyEquipment}
             createLoan={createHeavyEquipmentLoan}
