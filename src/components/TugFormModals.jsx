@@ -2,6 +2,7 @@
 // Tug5FormModal, Tug98FormModal (TUG9/TUG8), Tug10FormModal, Tug3FormModal.
 import { SearchableSelect } from "./SearchableSelect.jsx";
 import { PhotoSlot } from "./PhotoSlot.jsx";
+import { Barcode, Camera } from "@phosphor-icons/react";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { generateReservasiDocNo } from "../lib/utils.js";
 import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
@@ -265,7 +266,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                   </div>
                   <div style={{display:"flex",gap:8,alignItems:"flex-end",flexWrap:"wrap"}}>
                     <div style={{width:isMobile?96:110,flexShrink:0}}><label style={sty.label}>Qty</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty===0||si.qty===""?"":si.qty} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/></div>
-                    <button type="button" title="Scan barcode" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>openScanner({txnIndex:idx})}>📷</button>
+                    <button type="button" title="Scan barcode" style={{...sty.btn("ghost","sm"),height:isMobile?44:36,display:"inline-flex",alignItems:"center",gap:6}} onClick={()=>openScanner({txnIndex:idx})}><Barcode size={15} weight="bold" aria-hidden="true" /> Scan</button>
                     {complete && <button type="button" style={{...sty.btn("ghost","sm"),height:isMobile?44:36}} onClick={()=>setTug98Collapsed(c=>({...c,[idx]:true}))}>▲ Ringkas</button>}
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus baris barang ini" style={{...sty.btn("danger","sm"),height:isMobile?44:36}} onClick={()=>removeItemRow(idx)}>✕</button>}
                   </div>
@@ -273,7 +274,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                     <div style={{borderTop:`1px dashed ${C.border}`,paddingTop:8}}>
                       <label style={sty.label}>Foto Barang Ini</label>
                       <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-                        <input type="file" onChange={e=>handleMaterialImg(e, si.stockId)} style={{fontSize:12,color:C.muted}}/>
+                        <label style={{...sty.btn("ghost","sm"),cursor:"pointer",display:"inline-flex",alignItems:"center",gap:6}}><Camera size={15} weight="bold" aria-hidden="true" /> {existingPhoto?"Ganti Foto":"Ambil Foto"}<input type="file" style={{display:"none"}} onChange={e=>handleMaterialImg(e, si.stockId)}/></label>
                         {existingPhoto && <img src={existingPhoto.img} alt="" style={{width:72,height:72,objectFit:"cover",borderRadius:10}}/>}
                       </div>
                     </div>

@@ -1,5 +1,6 @@
 // Komponen ApprovalHubTab — wrapper tab "Approval" (chip filter + seksi + riwayat),
 // dipindah dari App.jsx (refactor batch 2e). Membungkus pemanggilan <ApprovalTab/>.
+import { useState } from "react";
 import { fmtDate } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole, getScopeUptIds, inScopeUpt } from "../lib/roles.js";
@@ -28,7 +29,7 @@ export function ApprovalHubTab({
   heavyEquipmentLoans, approvalAlatBeratPage, setApprovalAlatBeratPage, heavyEquipmentList,
   approveHeavyEquipmentLoan, rejectHeavyEquipmentLoan,
   approvalOpnamePage, setApprovalOpnamePage, approveOpname_Asman, rejectOpname,
-  stockCountList, approvalStockCountPage, setApprovalStockCountPage, approveStockCountItem, rejectStockCountItem,
+  stockCountList, approvalStockCountPage, setApprovalStockCountPage, approveStockCountItem, approveStockCountItems, rejectStockCountItem,
   txns, approvalHistoryList, approvalHistoryPage, setApprovalHistoryPage,
   deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman,
   approveTUG3_TL, rejectTUG3_TL,
@@ -48,7 +49,8 @@ export function ApprovalHubTab({
     : hasRole(currentUser, "ASMAN") ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0;
   const alatBeratCount = hasRole(currentUser, "ASMAN") ? heavyEquipmentPendingCount : 0;
   const opnameCount = hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0;
-  const stockCountCount = hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0;
+  const stockCountCount = hasRole(currentUser, "ASMAN", "TL") ? stockCountPendingCount : 0;
+  const [selectedStockCount, setSelectedStockCount] = useState(() => new Set()); // key `${sessionId}_${itemId}`
   const total = tugCount+capCount+lokasiCount+stokCount+alatBeratCount+opnameCount+stockCountCount;
   const chips = [
     {id:"ALL", icon:"▦", label:"Semua", count:total},
@@ -318,28 +320,39 @@ export function ApprovalHubTab({
       {/* ── BAGIAN: Stock Count — temuan selisih per-item, di-approve ASMAN (dulu cuma
           muncul di menu Stock Opname & Count sendiri, tidak pernah tampil di halaman
           Approval terpusat ini — gap visibilitas sama seperti Stock Opname). ── */}
-      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOCK_COUNT") && hasRole(currentUser, "ASMAN") &&
+      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOCK_COUNT") && hasRole(currentUser, "ASMAN", "TL") &&
         stockCountList.some(s=>s.items.some(i=>i.approval==="PENDING")) && (()=>{
         const list = stockCountList.flatMap(s=>s.items.filter(i=>i.approval==="PENDING").map(i=>({session:s, item:i})));
         const paged = list.slice((approvalStockCountPage-1)*approvalPageSize, approvalStockCountPage*approvalPageSize);
+        const selectedPairs = list.filter(({session,item})=>selectedStockCount.has(`${session.id}_${item.id}`)).map(({session,item})=>({sessionId:session.id,itemId:item.id}));
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📊 Stock Count ({list.length})</div>
-            {paged.map(({session,item})=>(
-              <div key={`${session.id}_${item.id}`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                <div>
-                  <div style={{fontSize:12,fontWeight:700}}>{item.nama}</div>
-                  <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.katalogKode} • SAP {fmtNum(item.qtySap)} vs Aplikasi {item.katalogId?fmtNum(item.qtyApp):"Tidak terdaftar"} {item.satuan} • Selisih {item.selisih>0?"+":""}{fmtNum(item.selisih)} ({item.selisihPct}%) • {fmtDate(session.uploadedAt)}</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8,marginBottom:10}}>
+              <div style={{fontWeight:800,fontSize:13}}>📊 Stock Count ({list.length})</div>
+              <button style={sty.btn("primary","sm")} disabled={selectedPairs.length===0} onClick={()=>{approveStockCountItems(selectedPairs); setSelectedStockCount(new Set());}}>
+                ✓ Setuju terpilih ({selectedPairs.length})
+              </button>
+            </div>
+            {paged.map(({session,item})=>{
+              const key = `${session.id}_${item.id}`;
+              return (
+              <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
+                <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                  <input type="checkbox" style={{marginTop:3}} checked={selectedStockCount.has(key)} onChange={()=>setSelectedStockCount(s=>{const n=new Set(s); n.has(key)?n.delete(key):n.add(key); return n;})}/>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700}}>{item.nama}</div>
+                    <div style={{fontSize:12,color:C.muted}}>No. Katalog {item.katalogKode} • SAP {fmtNum(item.qtySap)} vs Aplikasi {item.katalogId?fmtNum(item.qtyApp):"Tidak terdaftar"} {item.satuan} • Selisih {item.selisih>0?"+":""}{fmtNum(item.selisih)} ({item.selisihPct}%) • {fmtDate(session.uploadedAt)}</div>
+                  </div>
                 </div>
                 <div className="approval-actions approval-actions--compact" style={{flexShrink:0}}>
-                  <button className="approval-btn--approve" onClick={()=>approveStockCountItem(session.id, item.id, "")}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
                   <button className="approval-btn--reject" onClick={()=>{
                     const reason = window.prompt("Alasan penolakan temuan Stock Count ini?");
                     if (reason) rejectStockCountItem(session.id, item.id, reason);
                   }}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                 </div>
               </div>
-            ))}
+              );
+            })}
             {renderApprovalPager(approvalStockCountPage, setApprovalStockCountPage, list.length)}
           </div>
         );

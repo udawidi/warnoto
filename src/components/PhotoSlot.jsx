@@ -1,13 +1,27 @@
 // Slot upload foto minimalist reusable (pola diangkat dari AttbTab.renderPhotoSlot).
 // Preview thumbnail + tombol berlabel (bukan input[type=file] telanjang) + tombol hapus.
+import { useEffect, useState } from "react";
 import { Camera, Image, Trash } from "@phosphor-icons/react";
+import { resolvePrivPhoto } from "../lib/supabaseSync.js";
 
 export function PhotoSlot({ label, value, onChange, onRemove, handleImg, sty, C, required }) {
+  // fotoSimKtp disimpan sbg "priv:<path>" (bucket privat); resolve ke signed URL HANYA untuk display,
+  // value/state asli tetap "priv:..." supaya save tidak bocorkan URL kadaluarsa ke DB.
+  const [displaySrc, setDisplaySrc] = useState(value);
+  useEffect(() => {
+    let alive = true;
+    if (typeof value === "string" && value.startsWith("priv:")) {
+      resolvePrivPhoto(value).then(u => { if (alive) setDisplaySrc(u); });
+    } else {
+      setDisplaySrc(value);
+    }
+    return () => { alive = false; };
+  }, [value]);
   return (
     <div>
       <label style={{...sty.label, display:"block", minHeight:34, lineHeight:1.25}}>{label}{required && <span style={{color:C.red}}> *</span>}</label>
       <div style={{height:90,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,marginBottom:6}}>
-        {value ? <img src={value} alt={label} width={120} height={90} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (<><Image size={24} weight="duotone" color="#9ca3af" aria-hidden="true" /><span style={{fontSize:11,color:C.muted}}>Belum ada foto</span></>)}
+        {value ? <img src={displaySrc} alt={label} width={120} height={90} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (<><Image size={24} weight="duotone" color="#9ca3af" aria-hidden="true" /><span style={{fontSize:11,color:C.muted}}>Belum ada foto</span></>)}
       </div>
       <div style={{display:"flex",gap:6}}>
         <label tabIndex={0} style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer",minHeight:44,touchAction:"manipulation",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}

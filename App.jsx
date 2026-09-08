@@ -1232,7 +1232,7 @@ export default function PLNWarehouse() {
     setOpnameFreeze,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
-    approveStockCountItem, rejectStockCountItem, deleteStockCountSession,
+    approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
   } = useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto });
   const {
     katalogModal, setKatalogModal, katalogForm, setKatalogForm,
@@ -4243,6 +4243,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 previewStockCount={previewStockCount}
                 saveStockCountSession={saveStockCountSession}
                 approveStockCountItem={approveStockCountItem}
+                approveStockCountItems={approveStockCountItems}
                 rejectStockCountItem={rejectStockCountItem}
                 deleteStockCountSession={deleteStockCountSession}
               />
@@ -4487,7 +4488,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             heavyEquipmentLoans={heavyEquipmentLoans} approvalAlatBeratPage={approvalAlatBeratPage} setApprovalAlatBeratPage={setApprovalAlatBeratPage} heavyEquipmentList={heavyEquipmentList}
             approveHeavyEquipmentLoan={approveHeavyEquipmentLoan} rejectHeavyEquipmentLoan={rejectHeavyEquipmentLoan}
             approvalOpnamePage={approvalOpnamePage} setApprovalOpnamePage={setApprovalOpnamePage} approveOpname_Asman={approveOpname_Asman} approveOpname_Manager={approveOpname_Manager} rejectOpname={rejectOpname}
-            stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={approveStockCountItem} rejectStockCountItem={rejectStockCountItem}
+            stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={approveStockCountItem} approveStockCountItems={approveStockCountItems} rejectStockCountItem={rejectStockCountItem}
             txns={txns} approvalHistoryList={approvalHistoryList} approvalHistoryPage={approvalHistoryPage} setApprovalHistoryPage={setApprovalHistoryPage}
             deleteDraftTug3={deleteDraftTug3}
             editDraftTug3={editDraftTug3} editTug5={editTug5} editTug10={editTug10} openEditCanonicalTug={editCanonicalTug98}

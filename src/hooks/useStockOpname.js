@@ -397,6 +397,30 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, requestedBy:null, requestedAt:session.uploadedAt});
     showToast("✅ Temuan Stock Count disetujui.");
   }
+  // Approval borongan — 1 setStockCountList + 1 saveToCloud utk semua item terpilih
+  // (bisa lintas sesi, pairs = [{sessionId,itemId}]), bukan loop approveStockCountItem
+  // per item (mahal ke self-host, lihat catatan tug3-base64-bloat-perf).
+  async function approveStockCountItems(pairs, catatan) {
+    if (!pairs || !pairs.length) return;
+    const bySession = new Map();
+    pairs.forEach(({sessionId, itemId}) => {
+      if (!bySession.has(sessionId)) bySession.set(sessionId, new Set());
+      bySession.get(sessionId).add(itemId);
+    });
+    const now = Date.now();
+    const nsc = stockCountList.map(s => {
+      const itemIds = bySession.get(s.id);
+      if (!itemIds) return s;
+      return { ...s, items: s.items.map(it => itemIds.has(it.id)
+        ? { ...it, approval:"APPROVED", approvedBy:currentUser.id, approvedAt:now, catatan:catatan||it.catatan }
+        : it) };
+    });
+    setStockCountList(nsc);
+    await stateRef.current.saveToCloud({stockCountList: nsc});
+    // ponytail: log ringkas per-batch; pecah per-item bila audit trail per-barang diperlukan
+    await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${pairs.length} item disetujui`, requestedBy:null, requestedAt:now});
+    showToast(`✅ ${pairs.length} temuan Stock Count disetujui.`);
+  }
   async function rejectStockCountItem(sessionId, itemId, catatan) {
     const session = stockCountList.find(s=>s.id===sessionId);
     const item = session?.items.find(i=>i.id===itemId);
@@ -424,6 +448,6 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     setOpnameFreeze,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
-    approveStockCountItem, rejectStockCountItem, deleteStockCountSession,
+    approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
   };
 }

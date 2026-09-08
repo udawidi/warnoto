@@ -7,8 +7,10 @@ import { can } from "../lib/perms.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import * as XLSX from "xlsx";
 
-export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, rejectStockCountItem, deleteStockCountSession }) {
+export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession }) {
   const [uploading, setUploading] = useState(false);
+  const [tindakanFilter, setTindakanFilter] = useState("ALL");
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const orderedStockCountList = [...stockCountList].sort((a, b) => Number(b.uploadedAt || 0) - Number(a.uploadedAt || 0));
   const pendingFindingsCount = orderedStockCountList.reduce((n,s)=>n+s.items.filter(i=>i.approval==="PENDING").length,0);
   const latestAkuratPct = orderedStockCountList[0]?.summary?.akuratPct ?? null;
@@ -188,6 +190,13 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
       ) : orderedStockCountList.map(session => {
         const isOpen = expandedId===session.id;
         const mismatch = session.items.filter(i=>i.status!=="AKURAT").sort((a,b)=>b.selisihPct-a.selisihPct);
+        const tindakanCounts = {
+          TAMBAH_STOK: mismatch.filter(i=>i.rekomendasi==="TAMBAH_STOK").length,
+          BUAT_TUG_KELUAR: mismatch.filter(i=>i.rekomendasi==="BUAT_TUG_KELUAR").length,
+          TIDAK_ADA_TINDAKAN: mismatch.filter(i=>i.rekomendasi==="TIDAK_ADA_TINDAKAN").length,
+        };
+        const shownMismatch = tindakanFilter==="ALL" ? mismatch : mismatch.filter(i=>i.rekomendasi===tindakanFilter);
+        const selectedInSession = mismatch.filter(i=>i.approval==="PENDING" && selectedIds.has(i.id));
         return (
           <div key={session.id} style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden",boxShadow:"none"}}>
             <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:8,padding:"14px 16px",cursor:"pointer",borderBottom:isOpen?`1px solid ${C.border}`:"none"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
@@ -217,21 +226,43 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
                 <details open={mismatch.some(i=>i.approval==="PENDING")} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:"6px 10px"}}>
                   <summary style={{cursor:"pointer",fontWeight:800,fontSize:13}}>Temuan selisih ({mismatch.length}) — buka untuk cek &amp; approval per item</summary>
                   <div style={{paddingTop:8}}>
+                  {mismatch.length>0 && (
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+                      <button style={tindakanFilter==="ALL"?sty.btn("primary","sm"):sty.btn("ghost","sm")} onClick={()=>setTindakanFilter("ALL")}>Semua ({mismatch.length})</button>
+                      <button style={tindakanFilter==="TAMBAH_STOK"?sty.btn("primary","sm"):sty.btn("ghost","sm")} onClick={()=>setTindakanFilter("TAMBAH_STOK")}>Proses di Aplikasi — Tambah Stok ({tindakanCounts.TAMBAH_STOK})</button>
+                      <button style={tindakanFilter==="BUAT_TUG_KELUAR"?sty.btn("primary","sm"):sty.btn("ghost","sm")} onClick={()=>setTindakanFilter("BUAT_TUG_KELUAR")}>Proses SAP — Buat TUG Keluar ({tindakanCounts.BUAT_TUG_KELUAR})</button>
+                      {tindakanCounts.TIDAK_ADA_TINDAKAN>0 && (
+                        <button style={tindakanFilter==="TIDAK_ADA_TINDAKAN"?sty.btn("primary","sm"):sty.btn("ghost","sm")} onClick={()=>setTindakanFilter("TIDAK_ADA_TINDAKAN")}>Tidak ada tindakan ({tindakanCounts.TIDAK_ADA_TINDAKAN})</button>
+                      )}
+                    </div>
+                  )}
+                  {hasRole(currentUser, "ASMAN", "TL") && mismatch.some(i=>i.approval==="PENDING") && (
+                    <div style={{marginBottom:10}}>
+                      <button style={sty.btn("primary","sm")} disabled={selectedInSession.length===0} onClick={()=>{approveStockCountItems(selectedInSession.map(i=>({sessionId:session.id,itemId:i.id}))); setSelectedIds(new Set());}}>
+                        ✓ Setuju terpilih ({selectedInSession.length})
+                      </button>
+                    </div>
+                  )}
                   {mismatch.length===0 ? (
                     <div style={{fontSize:12,color:C.green,fontWeight:700}}>✅ Semua item akurat, tidak ada selisih &gt;5%.</div>
-                  ) : mismatch.map(item => (
+                  ) : shownMismatch.map(item => (
                   <div key={item.id} style={{border:`1px solid ${C.border}`,borderRadius: 10,padding:12,marginBottom:8,background:item.approval==="PENDING"?"#fffbeb":item.approval==="APPROVED"?"#f0fdf4":"#fef2f2"}}>
                     <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:6}}>
-                      <div style={{minWidth:0,flex:"1 1 140px"}}>
-                        <div style={{fontWeight:700,fontSize:13}}>{item.nama}</div>
-                        <div style={{fontSize:12,color:C.muted}}>No. Katalog: {item.katalogKode}{!item.katalogId && " — tidak ada di Master Katalog"}</div>
+                      <div style={{minWidth:0,flex:"1 1 140px",display:"flex",gap:8,alignItems:"flex-start"}}>
+                        {item.approval==="PENDING" && hasRole(currentUser, "ASMAN", "TL") && (
+                          <input type="checkbox" style={{marginTop:3}} checked={selectedIds.has(item.id)} onChange={()=>setSelectedIds(s=>{const n=new Set(s); n.has(item.id)?n.delete(item.id):n.add(item.id); return n;})}/>
+                        )}
+                        <div>
+                          <div style={{fontWeight:700,fontSize:13}}>{item.nama}</div>
+                          <div style={{fontSize:12,color:C.muted}}>No. Katalog: {item.katalogKode}{!item.katalogId && " — tidak ada di Master Katalog"}</div>
+                        </div>
                       </div>
                       <span style={{fontSize:12,fontWeight:800,color:item.status==="APP_KURANG"?"#b45309":"#dc2626",whiteSpace:"nowrap",flexShrink:0}}>{item.selisih>0?"+":""}{fmtNum(item.selisih)} {item.satuan} ({item.selisihPct}%)</span>
                     </div>
                     <div style={{fontSize:12,color:C.muted,marginBottom:6}}>SAP: {fmtNum(item.qtySap)} {item.satuan} • Aplikasi: {item.katalogId ? `${fmtNum(item.qtyApp)} ${item.satuan}` : <span style={{color:"#7c3aed",fontStyle:"italic",fontWeight:700}}>Tidak terdaftar</span>}</div>
                     <div style={{fontSize:12,fontWeight:600,color:"#1d4ed8",marginBottom:8}}>{REKOMENDASI_LABEL[item.rekomendasi]}</div>
                     {item.approval==="PENDING" ? (
-                      hasRole(currentUser, "ASMAN") ? (
+                      hasRole(currentUser, "ASMAN", "TL") ? (
                         <div>
                           <input style={{...sty.input,fontSize:12,marginBottom:6}} placeholder="Catatan (opsional)" value={catatanDraft[item.id]||""} onChange={e=>setCatatanDraft(d=>({...d,[item.id]:e.target.value}))}/>
                           {rejectingItemId===item.id ? (
@@ -241,7 +272,6 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
                             </div>
                           ) : (
                             <div className="approval-actions approval-actions--compact">
-                              <button className="approval-btn--approve" onClick={()=>approveStockCountItem(session.id, item.id, catatanDraft[item.id])}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
                               <button className="approval-btn--reject" onClick={()=>setRejectingItemId(item.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                             </div>
                           )}
