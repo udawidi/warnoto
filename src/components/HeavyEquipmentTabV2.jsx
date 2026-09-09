@@ -209,6 +209,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     MAINTENANCE:{label:"Maintenance", bg:"#e5e7eb", fg:"#4b5563"},
     PENDING_OWNER_ASMAN:{label:"Menunggu Asman Pemilik", bg:"#fef3c7", fg:"#92400e"},
     OVERDUE:{label:"Overdue", bg:"#fee2e2", fg:C.red},
+    TERJADWAL:{label:"Terjadwal", bg:"#e0f2fe", fg:"#0369a1"},
     REJECTED:{label:"Ditolak", bg:"#fee2e2", fg:C.red},
     SELESAI:{label:"Selesai", bg:"#e0f2fe", fg:"#0369a1"},
   };
@@ -217,10 +218,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     const m = statusMeta[key] || {label:key, bg:"#f3f4f6", fg:C.muted};
     return <span style={{padding:"3px 9px",borderRadius: 14,fontSize:12,fontWeight:800,background:m.bg,color:m.fg,whiteSpace:"nowrap"}}>{m.label}</span>;
   };
-  const loanBorderColor = status => status==="OVERDUE" ? C.red : status==="PENDING_OWNER_ASMAN" ? C.yellow : status==="DIPINJAM" ? "#c2410c" : status==="REJECTED" ? C.red : "#0369a1";
+  const loanBorderColor = status => status==="OVERDUE" ? C.red : status==="PENDING_OWNER_ASMAN" ? C.yellow : status==="DIPINJAM" ? "#c2410c" : status==="TERJADWAL" ? "#0369a1" : status==="REJECTED" ? C.red : "#0369a1";
   const loanUserName = userId => users.find(u=>u.id===userId)?.name || "-";
   const latestLoanForEquipment = equipmentId => normalizedLoans.find(l=>l.equipmentId===equipmentId);
-  const activeLoanForEquipment = equipmentId => normalizedLoans.find(l=>l.equipmentId===equipmentId && ["DIPINJAM","OVERDUE"].includes(l.runtimeStatus));
+  const activeLoanForEquipment = equipmentId => normalizedLoans.find(l=>l.equipmentId===equipmentId && ["TERJADWAL","DIPINJAM","OVERDUE"].includes(l.runtimeStatus));
 
   const EQUIPMENT_CATEGORIES = [
     { id:"ALL", label:"Semua", icon:(
@@ -520,7 +521,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             {unifiedLoans.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada data peminjaman.</div>}
             {unifiedLoans.map(loan=>{
               const eq=equipmentList.find(e=>e.id===loan.equipmentId);
-              const isActive=["PENDING_OWNER_ASMAN","DIPINJAM","OVERDUE"].includes(loan.runtimeStatus);
+              const isActive=["PENDING_OWNER_ASMAN","TERJADWAL","DIPINJAM","OVERDUE"].includes(loan.runtimeStatus);
               const hariDiff=Math.round((new Date(loan.tanggalKembali)-new Date(loan.tanggalAmbil))/86400000)+1;
               const durasiLabel=Number.isFinite(hariDiff)?`${loan.tanggalAmbil} – ${loan.tanggalKembali} (${hariDiff} hari)`:"-";
               const pemohon=users.find(u=>u.id===loan.requestedBy);
@@ -553,7 +554,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                   {isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&hasRole(currentUser, "ADMIN","TL","ASMAN")&&(
                     <button style={{...sty.btn("ghost","sm"),marginTop:6}} onClick={()=>setReturningLoan(loan)}>Tandai Kembali</button>
                   )}
-                  {["DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
+                  {["TERJADWAL","DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
                     <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&hasRole(currentUser, "ADMIN","TL","ASMAN")?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, eq, users, showToast)}>Cetak dokumen</button>
                   )}
                 </div>

@@ -135,6 +135,13 @@ export function isPendingHeavyEquipmentLoan(loan) {
 export function getHeavyEquipmentLoanRuntimeStatus(loan, now = Date.now()) {
   const normalized = normalizeHeavyEquipmentLoanStatus(loan?.status);
   if (["SELESAI", "REJECTED", "PENDING_OWNER_ASMAN"].includes(normalized)) return normalized;
+  if (normalized === "DIPINJAM") {
+    const start = getHeavyEquipmentLoanStartDate(loan);
+    if (start) {
+      const startBegin = new Date(`${start}T00:00:00`).getTime();
+      if (!Number.isNaN(startBegin) && startBegin > now) return "TERJADWAL";
+    }
+  }
   const plannedReturn = getHeavyEquipmentLoanReturnDate(loan);
   if (plannedReturn) {
     const returnEnd = new Date(`${plannedReturn}T23:59:59`).getTime();
