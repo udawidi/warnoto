@@ -225,7 +225,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     // Ditemukan 2026-07-07: approve/reject Opname tidak pernah lapor ke logApprovalHistory
     // (beda dari semua jenis approval lain — Lokasi, Stock Move/Edit/Delete, Alat Berat,
     // Stock Count), jadi keputusannya tidak pernah muncul di "Riwayat Approval" terpusat.
-    await logApprovalHistory({type:"OPNAME", decision:"APPROVED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
+    await logApprovalHistory({type:"OPNAME", decision:"APPROVED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:(opn.items||[]).filter(i=>i.selisih!==0).map(i=>({label:i.nama, qty:i.selisih})), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
     let msg = "✅ Stock Opname SELESAI! Data Stok disesuaikan.";
     if (materialBaruDibuat.length) msg += ` ${materialBaruDibuat.length} material baru ditambahkan ke Master Katalog.`;
     if (materialBaruKonflik.length) msg += ` ⚠️ ${materialBaruKonflik.length} material baru TIDAK ditambahkan (bentrok No. Katalog): ${materialBaruKonflik.slice(0,2).join("; ")}${materialBaruKonflik.length>2?"...":""}.`;
@@ -256,7 +256,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason, freeze: freezeOnReject};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
     setOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
-    await logApprovalHistory({type:"OPNAME", decision:"REJECTED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
+    await logApprovalHistory({type:"OPNAME", decision:"REJECTED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:(opn.items||[]).filter(i=>i.selisih!==0).map(i=>({label:i.nama, qty:i.selisih})), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
     showToast("❌ Opname ditolak.", "error");
   }
   async function deleteOpname(id) {
@@ -398,7 +398,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       ...s, items: s.items.map(it=>it.id!==itemId?it:{...it, approval:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), catatan:catatan||it.catatan})
     });
     setStockCountList(nsc); await stateRef.current.saveToCloud({stockCountList: nsc});
-    await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, requestedBy:null, requestedAt:session.uploadedAt});
+    await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, items:[{label:item.nama, qty:item.selisih}], requestedBy:null, requestedAt:session.uploadedAt});
     showToast("✅ Temuan Stock Count disetujui.");
   }
   // Approval borongan — 1 setStockCountList + 1 saveToCloud utk semua item terpilih
@@ -406,6 +406,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
   // per item (mahal ke self-host, lihat catatan tug3-base64-bloat-perf).
   async function approveStockCountItems(pairs, catatan) {
     if (!pairs || !pairs.length) return;
+    const approvedItems = pairs.map(({sessionId, itemId}) => stockCountList.find(s=>s.id===sessionId)?.items.find(i=>i.id===itemId)).filter(Boolean);
     const bySession = new Map();
     pairs.forEach(({sessionId, itemId}) => {
       if (!bySession.has(sessionId)) bySession.set(sessionId, new Set());
@@ -422,7 +423,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     setStockCountList(nsc);
     await stateRef.current.saveToCloud({stockCountList: nsc});
     // ponytail: log ringkas per-batch; pecah per-item bila audit trail per-barang diperlukan
-    await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${pairs.length} item disetujui`, requestedBy:null, requestedAt:now});
+    await logApprovalHistory({type:"STOCK_COUNT", decision:"APPROVED", title:`Temuan Stock Count: ${pairs.length} item disetujui`, items:approvedItems.map(i=>({label:i.nama, qty:i.selisih})), requestedBy:null, requestedAt:now});
     showToast(`✅ ${pairs.length} temuan Stock Count disetujui.`);
   }
   async function rejectStockCountItem(sessionId, itemId, catatan) {
@@ -433,7 +434,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       ...s, items: s.items.map(it=>it.id!==itemId?it:{...it, approval:"REJECTED", approvedBy:currentUser.id, approvedAt:Date.now(), catatan:catatan||it.catatan})
     });
     setStockCountList(nsc); await stateRef.current.saveToCloud({stockCountList: nsc});
-    await logApprovalHistory({type:"STOCK_COUNT", decision:"REJECTED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, requestedBy:null, requestedAt:session.uploadedAt});
+    await logApprovalHistory({type:"STOCK_COUNT", decision:"REJECTED", title:`Temuan Stock Count: ${item.nama} (selisih ${item.selisih>0?"+":""}${item.selisih} ${item.satuan})`, items:[{label:item.nama, qty:item.selisih}], requestedBy:null, requestedAt:session.uploadedAt});
     showToast("❌ Temuan Stock Count ditolak.");
   }
   async function deleteStockCountSession(id) {

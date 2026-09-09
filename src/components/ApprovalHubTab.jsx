@@ -31,6 +31,11 @@ export function ApprovalHubTab({
   approvalOpnamePage, setApprovalOpnamePage, approveOpname_Asman, rejectOpname,
   stockCountList, approvalStockCountPage, setApprovalStockCountPage, approveStockCountItem, approveStockCountItems, rejectStockCountItem,
   txns, approvalHistoryList, approvalHistoryPage, setApprovalHistoryPage,
+  approvalHistoryMineOnly, setApprovalHistoryMineOnly,
+  approvalHistorySearch, setApprovalHistorySearch,
+  approvalHistoryDateFrom, setApprovalHistoryDateFrom,
+  approvalHistoryDateTo, setApprovalHistoryDateTo,
+  approvalHistoryShowAll, setApprovalHistoryShowAll,
   deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman,
   approveTUG3_TL, rejectTUG3_TL,
 }) {
@@ -366,12 +371,22 @@ export function ApprovalHubTab({
           title:`${t.docType||"TUG"} • ${t.docNumbers?.[docKeyMap[t.docType]] || t.id}`,
           decidedBy: t.status==="REJECTED" ? t.rejectedBy : t.approvedBy,
           decidedAt: t.status==="REJECTED" ? t.rejectedAt : t.approvedAt,
+          items: (t.stockItems||[]).map(si=>({label: si.namaBaru || katalogList.find(k=>k.id===si.katalogId)?.name || "Item", qty: si.qty})),
         }));
         const scopedHistTug = historyScope === null ? histTUG : histTUG.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope));
         const combinedAll = [...scopedApprovalHistory, ...scopedHistTug].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt);
-        const combined = combinedAll.slice((approvalHistoryPage-1)*approvalPageSize, approvalHistoryPage*approvalPageSize);
-        const typeLabel = {LOKASI:"📍 Lokasi/Blok", STOCK_MOVE:"📦 Pemindahan Stok", STOCK_EDIT:"✏️ Edit Stok", STOCK_DELETE:"🗑️ Hapus Stok", HEAVY_EQUIPMENT_LOAN:"🚜 Peminjaman Alat", TUG:"🔄 TUG", OPNAME:"📋 Stock Opname", STOCK_COUNT:"📊 Stock Count"};
-        const typeOrder = ["TUG","HEAVY_EQUIPMENT_LOAN","OPNAME","STOCK_COUNT","LOKASI","STOCK_MOVE","STOCK_EDIT","STOCK_DELETE"];
+        // Filter jenis (chip filter atas) juga berlaku ke riwayat — sebelumnya diabaikan.
+        const typeFilterMap = {TUG:["TUG"], ALAT_BERAT:["HEAVY_EQUIPMENT_LOAN"], OPNAME:["OPNAME"], STOCK_COUNT:["STOCK_COUNT"], STOK:["STOCK_MOVE","STOCK_EDIT","STOCK_DELETE"], LOKASI:["LOKASI"], KAPASITAS:["KAPASITAS"]};
+        const byType = approvalTypeFilter==="ALL" ? combinedAll : combinedAll.filter(h=>(typeFilterMap[approvalTypeFilter]||[approvalTypeFilter]).includes(h.type));
+        const mine = approvalHistoryMineOnly ? byType.filter(h=>h.decidedBy===currentUser.id) : byType;
+        const q = approvalHistorySearch.trim().toLowerCase();
+        const searched = q ? mine.filter(h => h.title?.toLowerCase().includes(q) || h.items?.some(it=>it.label?.toLowerCase().includes(q))) : mine;
+        const fromMs = approvalHistoryDateFrom ? new Date(approvalHistoryDateFrom+"T00:00:00").getTime() : null;
+        const toMs = approvalHistoryDateTo ? new Date(approvalHistoryDateTo+"T23:59:59").getTime() : null;
+        const filtered = searched.filter(h => (fromMs===null || h.decidedAt>=fromMs) && (toMs===null || h.decidedAt<=toMs));
+        const combined = approvalHistoryShowAll ? filtered : filtered.slice((approvalHistoryPage-1)*approvalPageSize, approvalHistoryPage*approvalPageSize);
+        const typeLabel = {LOKASI:"📍 Lokasi/Blok", STOCK_MOVE:"📦 Pemindahan Stok", STOCK_EDIT:"✏️ Edit Stok", STOCK_DELETE:"🗑️ Hapus Stok", HEAVY_EQUIPMENT_LOAN:"🚜 Peminjaman Alat", TUG:"🔄 TUG", OPNAME:"📋 Stock Opname", STOCK_COUNT:"📊 Stock Count", ATTB:"🧾 ATTB"};
+        const typeOrder = ["TUG","HEAVY_EQUIPMENT_LOAN","OPNAME","STOCK_COUNT","LOKASI","STOCK_MOVE","STOCK_EDIT","STOCK_DELETE","ATTB"];
         const groupsByType = typeOrder
           .map(type=>({ type, items: combined.filter(h=>h.type===type) }))
           .filter(g=>g.items.length>0);
@@ -380,28 +395,56 @@ export function ApprovalHubTab({
         combined.forEach(h=>{ if(!knownTypes.has(h.type)){ knownTypes.add(h.type); groupsByType.push({type:h.type, items:combined.filter(x=>x.type===h.type)}); } });
         return (
           <div style={{...sty.card,marginTop:16}}>
-            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📜 Riwayat Approval ({combinedAll.length})</div>
-            {combinedAll.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
+            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📜 Riwayat Approval ({filtered.length})</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:12}}>
+              <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,cursor:"pointer"}}>
+                <input type="checkbox" checked={approvalHistoryMineOnly} onChange={e=>setApprovalHistoryMineOnly(e.target.checked)}/>
+                Approval saya
+              </label>
+              <input type="text" placeholder="Cari judul/barang…" value={approvalHistorySearch} onChange={e=>setApprovalHistorySearch(e.target.value)}
+                style={{...sty.input,width:"auto",flex:"1 1 160px",minHeight:"unset",padding:"4px 8px",fontSize:12}}/>
+              <input type="date" value={approvalHistoryDateFrom} onChange={e=>setApprovalHistoryDateFrom(e.target.value)}
+                style={{...sty.input,width:"auto",minHeight:"unset",padding:"4px 8px",fontSize:12}}/>
+              <span style={{fontSize:12,color:C.muted}}>s/d</span>
+              <input type="date" value={approvalHistoryDateTo} onChange={e=>setApprovalHistoryDateTo(e.target.value)}
+                style={{...sty.input,width:"auto",minHeight:"unset",padding:"4px 8px",fontSize:12}}/>
+              <button style={sty.btn(approvalHistoryShowAll?"primary":"ghost","sm")} onClick={()=>setApprovalHistoryShowAll(v=>!v)}>
+                {approvalHistoryShowAll ? "Tampilkan per halaman" : "Tampilkan semua"}
+              </button>
+            </div>
+            {filtered.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
             {groupsByType.map(g=>(
               <div key={g.type} style={{marginBottom:14}}>
                 <div style={{fontSize:12,fontWeight:800,color:"#0098da",marginBottom:4}}>{typeLabel[g.type]||g.type} ({g.items.length})</div>
                 {g.items.map(h=>{
                   const decider = users.find(u=>u.id===h.decidedBy);
                   return (
-                    <div key={h.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700}}>{h.title}</div>
-                        <div style={{fontSize:12,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
+                    <div key={h.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+                        <div>
+                          <div style={{fontSize:12,fontWeight:700}}>{h.title}</div>
+                          <div style={{fontSize:12,color:C.muted}}>Oleh {decider?.name||"?"} • {fmtDate(h.decidedAt)}</div>
+                        </div>
+                        <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
+                          {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
+                        </span>
                       </div>
-                      <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:h.decision==="APPROVED"?"#dcfce7":"#fee2e2",color:h.decision==="APPROVED"?C.green:C.red}}>
-                        {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
-                      </span>
+                      {h.items?.length > 0 && (
+                        <details style={{marginTop:4}}>
+                          <summary style={{fontSize:12,color:"#0098da",cursor:"pointer"}}>{h.items.length} item</summary>
+                          <div style={{marginTop:4,paddingLeft:12}}>
+                            {h.items.map((it,idx)=>(
+                              <div key={idx} style={{fontSize:12,color:C.muted}}>📦 {it.label}{it.qty!=null && <> <b>x{fmtNum(it.qty)}</b></>}</div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
                     </div>
                   );
                 })}
               </div>
             ))}
-            {renderApprovalPager(approvalHistoryPage, setApprovalHistoryPage, combinedAll.length)}
+            {!approvalHistoryShowAll && renderApprovalPager(approvalHistoryPage, setApprovalHistoryPage, filtered.length)}
           </div>
         );
       })()}

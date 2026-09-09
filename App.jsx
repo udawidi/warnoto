@@ -1261,6 +1261,11 @@ export default function PLNWarehouse() {
     approvalOpnamePage, setApprovalOpnamePage,
     approvalStockCountPage, setApprovalStockCountPage,
     approvalHistoryPage, setApprovalHistoryPage,
+    approvalHistoryMineOnly, setApprovalHistoryMineOnly,
+    approvalHistorySearch, setApprovalHistorySearch,
+    approvalHistoryDateFrom, setApprovalHistoryDateFrom,
+    approvalHistoryDateTo, setApprovalHistoryDateTo,
+    approvalHistoryShowAll, setApprovalHistoryShowAll,
     approveLokasiChange, rejectLokasiChange,
   } = useApprovalHub({ currentUser, showToast, stateRef, logApprovalHistory, lokasiList, setLokasiList });
   stateRef.current = { stocks, txns, docSeq, satpamList, supplierList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, maturityAudits, maturityAuditHistory, maturity5SAssessments, heavyEquipmentList, heavyEquipmentLoans, attbList, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview, users, currentUser };
@@ -2227,7 +2232,8 @@ export default function PLNWarehouse() {
   // Catat 1 keputusan approval (disetujui/ditolak) ke riwayat — dipakai oleh
   // semua jenis approval non-TUG (TUG sudah punya jejaknya sendiri di txns).
   async function logApprovalHistory(entry) {
-    const nh = [{ id:`AH-${uid().slice(-8)}`, decidedBy:currentUser.id, decidedAt:Date.now(), ...entry }, ...approvalHistoryList].slice(0, 300);
+    // ponytail: cap 1000, pindah ke tabel Supabase kalau volume approval jauh melebihi ini
+    const nh = [{ id:`AH-${uid().slice(-8)}`, decidedBy:currentUser.id, decidedAt:Date.now(), ...entry }, ...approvalHistoryList].slice(0, 1000);
     setApprovalHistoryList(nh);
     await saveToCloud({approvalHistoryList: nh});
     logAudit(currentUser, entry.decision==="REJECTED"?"REJECT":"APPROVE", entry.docType || entry.type || "approval", entry.refId ?? null, entry);
@@ -2247,14 +2253,14 @@ export default function PLNWarehouse() {
     }
     const ns = stocks.map(s=>s.id===id ? approveStockLocationMove(s, lokSel, currentUser.id) : s);
     setStocks(ns); await saveToCloud({stocks:ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
-    await logApprovalHistory({type:"STOCK_MOVE", decision:"APPROVED", title:`${st.name}: ${lokAsal?.kode||"—"} → ${st.pendingLokasiKode}`, requestedBy:st.moveRequestedBy, requestedAt:st.moveRequestedAt});
+    await logApprovalHistory({type:"STOCK_MOVE", decision:"APPROVED", title:`${st.name}: ${lokAsal?.kode||"—"} → ${st.pendingLokasiKode}`, items:[{label:st.name, qty:st.qty}], requestedBy:st.moveRequestedBy, requestedAt:st.moveRequestedAt});
     showToast(`✅ Pemindahan gudang ${st.name} disetujui.`);
   }
   async function rejectStockMove(id) {
     const st = stocks.find(s=>s.id===id);
     if (!st || !st.lokasiMovePending) return;
     const lokAsal = lokasiList.find(l=>l.id===st.lokasiId);
-    await logApprovalHistory({type:"STOCK_MOVE", decision:"REJECTED", title:`${st.name}: ${lokAsal?.kode||"—"} → ${st.pendingLokasiKode}`, requestedBy:st.moveRequestedBy, requestedAt:st.moveRequestedAt});
+    await logApprovalHistory({type:"STOCK_MOVE", decision:"REJECTED", title:`${st.name}: ${lokAsal?.kode||"—"} → ${st.pendingLokasiKode}`, items:[{label:st.name, qty:st.qty}], requestedBy:st.moveRequestedBy, requestedAt:st.moveRequestedAt});
     const ns = stocks.map(s=>s.id===id ? rejectStockLocationMove(s) : s);
     setStocks(ns); await saveToCloud({stocks:ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
     showToast(`❌ Pemindahan gudang ${st.name} ditolak.`);
@@ -2542,7 +2548,7 @@ export default function PLNWarehouse() {
     const desc = describeStockEditPending(st);
     const ns = stocks.map(s=>s.id===id ? {...s, ...s.pendingEditData, editPending:false, pendingEditData:null, editApprovedBy:currentUser.id, editApprovedAt:Date.now()} : s);
     setStocks(ns); await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
-    await logApprovalHistory({type:"STOCK_EDIT", decision:"APPROVED", title:`Edit ${st.name}: ${desc}`, requestedBy:st.editRequestedBy, requestedAt:st.editRequestedAt});
+    await logApprovalHistory({type:"STOCK_EDIT", decision:"APPROVED", title:`Edit ${st.name}: ${desc}`, items:[{label:st.name}], requestedBy:st.editRequestedBy, requestedAt:st.editRequestedAt});
     showToast(`✅ Perubahan ${st.name} disetujui.`);
   }
   async function rejectStockEdit(id) {
@@ -2550,7 +2556,7 @@ export default function PLNWarehouse() {
     if (!st || !st.editPending) return;
     const ns = stocks.map(s=>s.id===id ? {...s, editPending:false, pendingEditData:null} : s);
     setStocks(ns); await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
-    await logApprovalHistory({type:"STOCK_EDIT", decision:"REJECTED", title:`Edit ${st.name} ditolak`, requestedBy:st.editRequestedBy, requestedAt:st.editRequestedAt});
+    await logApprovalHistory({type:"STOCK_EDIT", decision:"REJECTED", title:`Edit ${st.name} ditolak`, items:[{label:st.name}], requestedBy:st.editRequestedBy, requestedAt:st.editRequestedAt});
     showToast(`❌ Perubahan ${st.name} ditolak.`);
   }
 
@@ -2560,7 +2566,7 @@ export default function PLNWarehouse() {
     if (!st || !st.deletePending) return;
     const ns = stocks.filter(s=>s.id!==id);
     setStocks(ns); await saveToCloud({stocks: ns}, {stocksDeletedId: id});
-    await logApprovalHistory({type:"STOCK_DELETE", decision:"APPROVED", title:`Hapus ${st.name}`, requestedBy:st.deleteRequestedBy, requestedAt:st.deleteRequestedAt});
+    await logApprovalHistory({type:"STOCK_DELETE", decision:"APPROVED", title:`Hapus ${st.name}`, items:[{label:st.name, qty:st.qty}], requestedBy:st.deleteRequestedBy, requestedAt:st.deleteRequestedAt});
     showToast(`✅ Penghapusan ${st.name} disetujui.`);
   }
   async function rejectStockDelete(id) {
@@ -2568,7 +2574,7 @@ export default function PLNWarehouse() {
     if (!st || !st.deletePending) return;
     const ns = stocks.map(s=>s.id===id ? {...s, deletePending:false, deleteRequestedBy:null, deleteRequestedAt:null} : s);
     setStocks(ns); await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
-    await logApprovalHistory({type:"STOCK_DELETE", decision:"REJECTED", title:`Hapus ${st.name} ditolak`, requestedBy:st.deleteRequestedBy, requestedAt:st.deleteRequestedAt});
+    await logApprovalHistory({type:"STOCK_DELETE", decision:"REJECTED", title:`Hapus ${st.name} ditolak`, items:[{label:st.name, qty:st.qty}], requestedBy:st.deleteRequestedBy, requestedAt:st.deleteRequestedAt});
     showToast(`❌ Penghapusan ${st.name} ditolak.`);
   }
 
@@ -2711,7 +2717,7 @@ export default function PLNWarehouse() {
     } : a);
     setAttbList(next);
     await saveToCloud({attbList: next});
-    await logApprovalHistory({type:"ATTB", decision:"APPROVED", title:`Usulan ATTB ${item.nomorATTB||item.description}`, requestedBy:item.diajukanBy, requestedAt:item.diajukanAt});
+    await logApprovalHistory({type:"ATTB", decision:"APPROVED", title:`Usulan ATTB ${item.nomorATTB||item.description}`, items:[{label:item.description||item.nomorATTB}], requestedBy:item.diajukanBy, requestedAt:item.diajukanAt});
     showToast("Usulan ATTB disetujui, lanjut ke Tahap AE.1 s.d. AE.4.");
   }
   async function rejectAttbToKI(id, alasan) {
@@ -2722,7 +2728,7 @@ export default function PLNWarehouse() {
     const next = attbList.map(a => a.id===id ? { ...a, approvalStatus:"DRAFT", rejectedBy:currentUser.id, rejectedAt:Date.now(), alasanTolak:alasan.trim() } : a);
     setAttbList(next);
     await saveToCloud({attbList: next});
-    await logApprovalHistory({type:"ATTB", decision:"REJECTED", title:`Usulan ATTB ${item.nomorATTB||item.description}`, requestedBy:item.diajukanBy, requestedAt:item.diajukanAt});
+    await logApprovalHistory({type:"ATTB", decision:"REJECTED", title:`Usulan ATTB ${item.nomorATTB||item.description}`, items:[{label:item.description||item.nomorATTB}], requestedBy:item.diajukanBy, requestedAt:item.diajukanAt});
     showToast("Usulan ATTB ditolak, kembali ke Draft Tahap 1.", "error");
   }
   async function advanceAttbStage(id) {
@@ -4480,6 +4486,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             approvalOpnamePage={approvalOpnamePage} setApprovalOpnamePage={setApprovalOpnamePage} approveOpname_Asman={approveOpname_Asman} approveOpname_Manager={approveOpname_Manager} rejectOpname={rejectOpname}
             stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={approveStockCountItem} approveStockCountItems={approveStockCountItems} rejectStockCountItem={rejectStockCountItem}
             txns={txns} approvalHistoryList={approvalHistoryList} approvalHistoryPage={approvalHistoryPage} setApprovalHistoryPage={setApprovalHistoryPage}
+            approvalHistoryMineOnly={approvalHistoryMineOnly} setApprovalHistoryMineOnly={setApprovalHistoryMineOnly}
+            approvalHistorySearch={approvalHistorySearch} setApprovalHistorySearch={setApprovalHistorySearch}
+            approvalHistoryDateFrom={approvalHistoryDateFrom} setApprovalHistoryDateFrom={setApprovalHistoryDateFrom}
+            approvalHistoryDateTo={approvalHistoryDateTo} setApprovalHistoryDateTo={setApprovalHistoryDateTo}
+            approvalHistoryShowAll={approvalHistoryShowAll} setApprovalHistoryShowAll={setApprovalHistoryShowAll}
             deleteDraftTug3={deleteDraftTug3}
             editDraftTug3={editDraftTug3} editTug5={editTug5} editTug10={editTug10} openEditCanonicalTug={editCanonicalTug98}
             timMutuList={timMutuList}

@@ -24,10 +24,17 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
   const [approvalOpnamePage, setApprovalOpnamePage] = useState(1);
   const [approvalStockCountPage, setApprovalStockCountPage] = useState(1);
   const [approvalHistoryPage, setApprovalHistoryPage] = useState(1);
+  // Filter riwayat: "Approval saya", cari teks (title + item), rentang tanggal
+  // native <input type=date>, opsi lihat semua (bypass paginasi).
+  const [approvalHistoryMineOnly, setApprovalHistoryMineOnly] = useState(false);
+  const [approvalHistorySearch, setApprovalHistorySearch] = useState("");
+  const [approvalHistoryDateFrom, setApprovalHistoryDateFrom] = useState("");
+  const [approvalHistoryDateTo, setApprovalHistoryDateTo] = useState("");
+  const [approvalHistoryShowAll, setApprovalHistoryShowAll] = useState(false);
   useEffect(() => {
     setApprovalStokPage(1); setApprovalStokGudangPage(1); setApprovalEditStokPage(1);
     setApprovalHapusStokPage(1); setApprovalAlatBeratPage(1); setApprovalOpnamePage(1); setApprovalHistoryPage(1);
-  }, [approvalTypeFilter, approvalPageSize]);
+  }, [approvalTypeFilter, approvalPageSize, approvalHistoryMineOnly, approvalHistorySearch, approvalHistoryDateFrom, approvalHistoryDateTo]);
 
   // Approve/reject pengajuan perubahan blok lokasi (khusus role TL)
   async function approveLokasiChange(id) {
@@ -47,7 +54,8 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
     if (!ok) { setLokasiList(prevList); showToast("Gagal menyimpan ke server, approval Blok Lokasi DIBATALKAN. Coba lagi.","error"); return; }
     CLOUD.set("pln_lokasi_v4", nl);
     const aksiLabel = {ADD:"Tambah Blok Baru",EDIT:"Ubah Data Blok",DELETE:"Hapus Blok"}[item.pendingAction]||item.pendingAction;
-    await logApprovalHistory({type:"LOKASI", decision:"APPROVED", title:`${aksiLabel}: ${item.pendingAction==="EDIT"?item.pendingData?.kode:item.kode}`, requestedBy:item.requestedBy, requestedAt:item.requestedAt});
+    const kode = item.pendingAction==="EDIT"?item.pendingData?.kode:item.kode;
+    await logApprovalHistory({type:"LOKASI", decision:"APPROVED", title:`${aksiLabel}: ${kode}`, items:[{label:kode}], requestedBy:item.requestedBy, requestedAt:item.requestedAt});
     showToast("✅ Perubahan Blok Lokasi disetujui.");
   }
   async function rejectLokasiChange(id) {
@@ -65,7 +73,8 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
     if (!ok) { setLokasiList(prevList); showToast("Gagal menyimpan ke server, penolakan Blok Lokasi DIBATALKAN. Coba lagi.","error"); return; }
     CLOUD.set("pln_lokasi_v4", nl);
     const aksiLabel = {ADD:"Tambah Blok Baru",EDIT:"Ubah Data Blok",DELETE:"Hapus Blok"}[item.pendingAction]||item.pendingAction;
-    await logApprovalHistory({type:"LOKASI", decision:"REJECTED", title:`${aksiLabel}: ${item.pendingAction==="EDIT"?item.pendingData?.kode:item.kode}`, requestedBy:item.requestedBy, requestedAt:item.requestedAt});
+    const kode = item.pendingAction==="EDIT"?item.pendingData?.kode:item.kode;
+    await logApprovalHistory({type:"LOKASI", decision:"REJECTED", title:`${aksiLabel}: ${kode}`, items:[{label:kode}], requestedBy:item.requestedBy, requestedAt:item.requestedAt});
     showToast("❌ Perubahan Blok Lokasi ditolak.");
   }
 
@@ -81,6 +90,11 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
     approvalOpnamePage, setApprovalOpnamePage,
     approvalStockCountPage, setApprovalStockCountPage,
     approvalHistoryPage, setApprovalHistoryPage,
+    approvalHistoryMineOnly, setApprovalHistoryMineOnly,
+    approvalHistorySearch, setApprovalHistorySearch,
+    approvalHistoryDateFrom, setApprovalHistoryDateFrom,
+    approvalHistoryDateTo, setApprovalHistoryDateTo,
+    approvalHistoryShowAll, setApprovalHistoryShowAll,
     approveLokasiChange, rejectLokasiChange,
   };
 }

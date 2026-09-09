@@ -181,7 +181,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     setHeavyEquipmentLoans(nextLoans);
     setHeavyEquipmentList(nextEquipment);
     await stateRef.current.saveToCloud({heavyEquipmentLoans: nextLoans, heavyEquipmentList: nextEquipment}, {heavyEquipmentLoansChangedRows: [nextLoans.find(l=>l.id===loanId)]});
-    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"APPROVED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
+    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"APPROVED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, items:[{label:heavyEquipmentList.find(eq=>eq.id===loan.equipmentId)?.nama||loan.equipmentId}], requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
     showToast("Peminjaman alat disetujui.");
   }
 
@@ -195,7 +195,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ownerUpt, requesterUpt, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason.trim() } : l);
     setHeavyEquipmentLoans(nextLoans);
     await stateRef.current.saveToCloud({heavyEquipmentLoans: nextLoans}, {heavyEquipmentLoansChangedRows: [nextLoans.find(l=>l.id===loanId)]});
-    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"REJECTED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
+    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"REJECTED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, items:[{label:heavyEquipmentList.find(eq=>eq.id===loan.equipmentId)?.nama||loan.equipmentId}], requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
     showToast("Peminjaman alat ditolak.", "error");
   }
 
