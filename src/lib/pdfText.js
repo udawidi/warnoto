@@ -19,6 +19,25 @@ export async function extractPdfText(input, maxPages) {
   return text;
 }
 
+// Render halaman awal PDF scan (tak punya text layer) jadi gambar JPEG data-URL,
+// dipakai OCR via model vision (maturityAi.js ocrViaVision).
+export async function renderPdfPagesToImages(input, maxPages) {
+  const bytes = await toBytes(input);
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pages = Math.min(pdf.numPages, maxPages);
+  const images = [];
+  for (let i = 1; i <= pages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 1.5 });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    images.push(canvas.toDataURL("image/jpeg", 0.7));
+  }
+  return images;
+}
+
 async function toBytes(input) {
   if (input instanceof Uint8Array) return input;
   if (input instanceof Blob) return new Uint8Array(await input.arrayBuffer());

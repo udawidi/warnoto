@@ -56,9 +56,19 @@ export async function uploadForm5SPhoto({ file, upt, bulan, tahun }) {
   return result.evidence;
 }
 
+export const signMaturityDriveEvidence = evidenceId => request("sign", { evidenceId });
+
+// Coba signed URL dulu (GET langsung ke storage, cacheable, satu hop) — jauh
+// lebih cepat dari stream lewat edge function. Fallback ke download blob lama
+// kalau evidence belum backfill (storage_path kosong) atau sign gagal.
+// isObjectUrl memberi sinyal ke pemanggil: hanya objectURL yang perlu di-revoke.
 export async function openMaturityDriveEvidence(evidenceId) {
+  try {
+    const signed = await signMaturityDriveEvidence(evidenceId);
+    if (signed.url) return { url: signed.url, fileName: signed.fileName, mime: signed.mime || "", isObjectUrl: false };
+  } catch { /* fallback ke download di bawah */ }
   const { blob, fileName } = await request("download", { evidenceId }, { responseType: "blob" });
-  return { url: URL.createObjectURL(blob), fileName, mime: blob.type || "" };
+  return { url: URL.createObjectURL(blob), fileName, mime: blob.type || "", isObjectUrl: true };
 }
 
 export async function downloadMaturityDriveEvidence(evidenceId) {

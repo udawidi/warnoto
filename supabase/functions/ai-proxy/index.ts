@@ -17,6 +17,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY") ?? "";
 const OPENROUTER_MODEL = Deno.env.get("OPENROUTER_MODEL") || "deepseek/deepseek-chat";
+const OPENROUTER_VISION_MODEL = Deno.env.get("OPENROUTER_VISION_MODEL") || "google/gemini-2.0-flash-001";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,6 +51,9 @@ Deno.serve(async (req) => {
     if (!messages || messages.length === 0) return json({ error: { message: "messages wajib diisi." } }, 400);
     const maxTokens = Math.min(Number(body.max_tokens) || 900, 2000);
     const stream = body.stream === true;
+    // Whitelist ketat: hanya model vision yang di-env yang boleh dipilih pemanggil,
+    // cegah client minta model sembarang (abuse biaya OpenRouter).
+    const model = body.model === OPENROUTER_VISION_MODEL ? OPENROUTER_VISION_MODEL : OPENROUTER_MODEL;
 
     // ── 3. Forward ke OpenRouter, retry sekali kalau 429 (pola sama telegram-webhook) ──
     let resp;
@@ -64,7 +68,7 @@ Deno.serve(async (req) => {
           "X-Title": "WARNOTO",
         },
         body: JSON.stringify({
-          model: OPENROUTER_MODEL,
+          model,
           messages,
           max_tokens: maxTokens,
           ...(stream ? { stream: true } : {}),

@@ -3,6 +3,7 @@ import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRigh
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import {
   assignMaturityDriveEvidence,
+  backfillMaturityEvidence,
   downloadMaturityDriveEvidence,
   openMaturityDriveEvidence,
   syncMaturityDrive,
@@ -84,9 +85,9 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
     let cancelled = false;
     let objectUrl = "";
     openMaturityDriveEvidence(evidenceId)
-      .then(({ url, mime }) => {
-        if (cancelled) { URL.revokeObjectURL(url); return; }
-        objectUrl = url;
+      .then(({ url, mime, isObjectUrl }) => {
+        if (cancelled) { if (isObjectUrl) URL.revokeObjectURL(url); return; }
+        if (isObjectUrl) objectUrl = url;
         setState({ loading: false, error: "", url, mime });
       })
       .catch(error => {
@@ -293,6 +294,8 @@ export function MaturityAuditEditor({
   const [uploadingItems, setUploadingItems] = useState({});
   const [uploadError, setUploadError] = useState("");
   const [syncingDrive, setSyncingDrive] = useState(false);
+  const [backfillMsg, setBackfillMsg] = useState("");
+  const [backfilling, setBackfilling] = useState(false);
   const [unassignedFiles, setUnassignedFiles] = useState([]);
   const [assignmentTargets, setAssignmentTargets] = useState({});
   const [viewerFile, setViewerFile] = useState(null);
@@ -483,6 +486,26 @@ export function MaturityAuditEditor({
     } finally { setSyncingDrive(false); }
   };
 
+  // Backfill sekali-jalan: pindahkan evidence lama (belum punya storage_path,
+  // masih baca lambat dari Drive) ke storage self-host. Loop sampai remaining=0.
+  const handleBackfill = async () => {
+    setBackfilling(true); setBackfillMsg("Memindahkan evidence lama...");
+    try {
+      let remaining = 1;
+      let totalOk = 0;
+      while (remaining > 0) {
+        const result = await backfillMaturityEvidence({ limit: 15 });
+        totalOk += result.ok;
+        remaining = result.remaining;
+        setBackfillMsg(`Dipindahkan ${totalOk}, sisa ${remaining}...`);
+        if (result.processed === 0) break; // jaga-jaga kalau ada yang selalu gagal
+      }
+      setBackfillMsg(`Selesai. ${totalOk} evidence dipindahkan ke self-host.`);
+    } catch (error) {
+      setBackfillMsg(error?.message || "Backfill gagal.");
+    } finally { setBackfilling(false); }
+  };
+
   return (
     <div style={{ paddingBottom: 40 }}>
       {/* Main Header — banner navy korporat selaras .kpi-banner / .operations-hero--summary-only */}
@@ -493,6 +516,14 @@ export function MaturityAuditEditor({
           <p style={{ fontSize: 13, color: "rgba(219,234,254,.82)", margin: "5px 0 0", lineHeight: 1.45 }}>Area kerja pengelolaan kelengkapan bukti fisik dan penilaian skor kematangan.</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
+          {hasRole(currentUser, "SUPERADMIN") && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+              <button type="button" onClick={handleBackfill} disabled={backfilling} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", color: "#fff", background: "rgba(255,255,255,.14)", fontWeight: 700, fontSize: 12, cursor: backfilling ? "wait" : "pointer" }}>
+                {backfilling ? "Memindahkan..." : "Backfill evidence lama"}
+              </button>
+              {backfillMsg && <span style={{ fontSize: 11, color: "rgba(219,234,254,.82)" }}>{backfillMsg}</span>}
+            </div>
+          )}
           {canScoreUPT && maturityDraftSavedAt && (
             <span style={{ fontSize: 13, color: "rgba(219,234,254,.82)" }}>
               Tersimpan otomatis {new Date(maturityDraftSavedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}

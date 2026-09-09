@@ -1,11 +1,16 @@
 import { supabase } from "../supabaseClient.js";
 import { openMaturityDriveEvidence } from "./maturityDrive.js";
-import { extractPdfText } from "./pdfText.js";
+import { extractPdfText, renderPdfPagesToImages } from "./pdfText.js";
 
-const MAX_CHARS_PER_FILE = 1500;
-const MAX_CHARS_TOTAL = 6000;
-const MAX_DOCS = 6; // ponytail: cap dokumen dianalisa, sisanya cuma disebut nama (hemat token+waktu)
-const MAX_PDF_PAGES = 8;
+const MAX_CHARS_PER_FILE = 8000;
+const MAX_CHARS_TOTAL = 30000;
+const MAX_DOCS = 10; // ponytail: cap dokumen dianalisa, sisanya cuma disebut nama (hemat token+waktu)
+const MAX_PDF_PAGES = 20;
+
+// Whitelist di ai-proxy — HARUS sama persis dengan OPENROUTER_VISION_MODEL di env self-host.
+const VISION_MODEL = "google/gemini-2.0-flash-001";
+const MAX_OCR_EVIDENCE = 4; // batasi biaya: OCR vision jauh lebih mahal dari analisa teks
+const MAX_OCR_IMAGES_PER_FILE = 3;
 
 // djb2, cukup untuk deteksi perubahan (bukan kriptografis) — dipakai gate cache
 // "jangan analisa ulang kalau evidence & skor tak berubah".
@@ -32,15 +37,60 @@ async function xlsxToText(blob) {
     .join("\n");
 }
 
-async function extractEvidenceText(evidence) {
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+// 1 panggilan ai-proxy dgn model vision whitelist — transkripsi scan/gambar jadi teks.
+async function ocrViaVision(imageDataUrls) {
+  try {
+    const { data, error } = await supabase.functions.invoke("ai-proxy", {
+      body: {
+        model: VISION_MODEL,
+        max_tokens: 1500,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "text", text: "Transkripsikan seluruh teks dokumen ini apa adanya, tanpa komentar." },
+            ...imageDataUrls.map(url => ({ type: "image_url", image_url: { url } })),
+          ],
+        }],
+      },
+    });
+    if (error) throw error;
+    return data.choices?.[0]?.message?.content || "";
+  } catch {
+    return ""; // gagal OCR bukan fatal — evidence lain tetap dianalisa
+  }
+}
+
+// ocrBudget: counter bersama antar evidence dalam 1 aspek, membatasi biaya
+// OCR vision (jauh lebih mahal dari ekstrak teks biasa). undefined = tak boleh OCR.
+async function extractEvidenceText(evidence, ocrBudget) {
   const mime = evidence.mimeType || evidence.mime_type || evidence.mime || "";
   const name = evidence.name || evidence.file_name || evidence.label || "berkas";
   try {
-    const { url } = await openMaturityDriveEvidence(evidence.id || evidence.evidenceId);
+    const { url, isObjectUrl } = await openMaturityDriveEvidence(evidence.id || evidence.evidenceId);
     const blob = await fetch(url).then(r => r.blob());
-    URL.revokeObjectURL(url);
-    if (mime === "application/pdf" || name.toLowerCase().endsWith(".pdf")) {
-      return (await extractPdfText(blob, MAX_PDF_PAGES)).trim(); // kosong = hasil scan, tak di-OCR
+    if (isObjectUrl) URL.revokeObjectURL(url);
+    const isPdf = mime === "application/pdf" || name.toLowerCase().endsWith(".pdf");
+    if (isPdf) {
+      const text = (await extractPdfText(blob, MAX_PDF_PAGES)).trim();
+      if (text) return text;
+      if (!ocrBudget || ocrBudget.remaining <= 0) return "(scan — tak dibaca)";
+      ocrBudget.remaining--;
+      const images = await renderPdfPagesToImages(blob, MAX_OCR_IMAGES_PER_FILE);
+      return (await ocrViaVision(images)) || "(scan — tak dibaca)";
+    }
+    if (mime.startsWith("image/")) {
+      if (!ocrBudget || ocrBudget.remaining <= 0) return "(scan — tak dibaca)";
+      ocrBudget.remaining--;
+      return (await ocrViaVision([await blobToDataUrl(blob)])) || "(scan — tak dibaca)";
     }
     if (mime === "text/csv" || mime === "text/plain" || /\.(csv|txt)$/i.test(name)) return await blob.text();
     if (/\.(xlsx|xls)$/i.test(name) || mime.includes("spreadsheet")) return await xlsxToText(blob);
@@ -77,25 +127,29 @@ export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { on
   let done = 0;
   onProgress?.(0, total);
 
-  // gambar tak pernah didownload (tak bisa dianalisa tanpa OCR); sisanya prioritas PDF, dicap MAX_DOCS
+  // gambar & PDF scan di-OCR via model vision, dibatasi ocrBudget (MAX_OCR_EVIDENCE
+  // total per aspek); sisanya prioritas PDF bertext, dicap MAX_DOCS.
   const images = evidenceList.filter(isImageEvidence);
   const others = evidenceList.filter(e => !isImageEvidence(e));
   others.sort((a, b) => (isPdfEvidence(b) ? 1 : 0) - (isPdfEvidence(a) ? 1 : 0));
   const toProcess = others.slice(0, MAX_DOCS);
-  const skipped = others.slice(MAX_DOCS);
+  const skippedDocs = others.slice(MAX_DOCS);
+  const imagesToProcess = images.slice(0, MAX_OCR_EVIDENCE);
+  const skippedImages = images.slice(MAX_OCR_EVIDENCE);
+  const ocrBudget = { remaining: MAX_OCR_EVIDENCE };
 
-  const processed = await Promise.all(toProcess.map(async (evidence) => {
-    const raw = (await extractEvidenceText(evidence)).slice(0, MAX_CHARS_PER_FILE).trim();
+  const processed = await Promise.all([...toProcess, ...imagesToProcess].map(async (evidence) => {
+    const raw = (await extractEvidenceText(evidence, ocrBudget)).slice(0, MAX_CHARS_PER_FILE).trim();
     const fileName = evidence.name || evidence.file_name || "berkas";
     done++;
     onProgress?.(done, total);
     return { label: labelOf(evidence), fileName, text: raw || `(gambar/scan — isi tak dibaca otomatis)` };
   }));
 
-  const labeledOnly = [...images, ...skipped].map(e => ({
+  const labeledOnly = [...skippedImages, ...skippedDocs].map(e => ({
     label: labelOf(e),
     fileName: e.name || e.file_name || "berkas",
-    text: isImageEvidence(e) ? "(gambar/scan — isi tak dibaca otomatis)" : "(terupload, isi tak dibaca)",
+    text: isImageEvidence(e) ? "(scan — tak dibaca)" : "(terupload, isi tak dibaca)",
   }));
   onProgress?.(total, total);
 
@@ -111,7 +165,7 @@ export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { on
     const { data, error } = await supabase.functions.invoke("ai-proxy", {
       body: {
         temperature: 0.2,
-        max_tokens: 900,
+        max_tokens: 1500,
         messages: [
           { role: "system", content: "Kamu adalah auditor maturity gudang PLN yang objektif. Nilai HANYA berdasarkan isi dokumen yang diberikan dibanding rubrik level. Jawab HANYA JSON valid, tanpa teks lain." },
           { role: "user", content: `Aspek: ${aspect.id} ${aspect.title}

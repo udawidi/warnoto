@@ -607,6 +607,17 @@ Deno.serve(async (req) => {
       await event(evidence.audit_id, "EVIDENCE_DOWNLOADED", ctx.user.id, { evidenceId, from: "drive" });
       return new Response(response.body, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name), "Cache-Control": "private, max-age=3600" } });
     }
+    if (action === "sign") {
+      const evidenceId = text(body.evidenceId); const { data: evidence } = await admin.from("maturity_audit_evidence").select("*").eq("id", evidenceId).is("unlinked_at", null).maybeSingle();
+      if (!evidence) return json({ ok: false, error: "Evidence tidak ditemukan." }, 404);
+      const context = await resolveAuditContext({ auditId: evidence.audit_id }, ctx);
+      if (evidence.upt_id !== context.upt.id) throw Object.assign(new Error("Scope evidence tidak cocok dengan audit canonical."), { status: 409 });
+      await assertUptAccess(ctx, context.upt, false);
+      if (!evidence.storage_path) return json({ ok: true, url: null });
+      const { data, error } = await admin.storage.from("maturity-evidence").createSignedUrl(evidence.storage_path, 3600);
+      if (error || !data?.signedUrl) return json({ ok: true, url: null });
+      return json({ ok: true, url: data.signedUrl, mime: evidence.mime_type, fileName: evidence.file_name });
+    }
     if (action === "backfill") {
       if (!NATIONAL_ROLES.has(ctx.profile.role)) return json({ ok: false, error: "Hanya Pusat/Superadmin yang dapat menjalankan sinkronisasi evidence lama." }, 403);
       const limit = Math.max(1, Math.min(25, Number(body.limit) || 15));
