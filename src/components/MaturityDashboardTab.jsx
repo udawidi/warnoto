@@ -3,7 +3,6 @@ import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
-import { backfillMaturityEvidence } from "../lib/maturityDrive.js";
 
 // Progres kelengkapan evidence audit — nol fetch Drive, murni hitung dari
 // audit.evidence yg sudah ter-load (pola sama dgn MaturityAuditSystem.jsx:175).
@@ -66,27 +65,6 @@ export function MaturityDashboardTab({
             const [exportingSheetId, setExportingSheetId] = useState(null); // id audit yang lagi export ke Google Sheet
             const [exportingPptxId, setExportingPptxId] = useState(null); // id audit yang lagi export ke PPT
             const canExportSheet = hasRole(currentUser, "ADMIN", "TL") || canSwitchMaturityUpt;
-            const canBackfillEvidence = hasRole(currentUser, "ADMIN_LOG_PUSAT"); // SUPERADMIN ikut lolos lewat hasRole
-            const [backfilling, setBackfilling] = useState(false);
-            async function handleBackfillEvidence() {
-              setBackfilling(true);
-              try {
-                let remaining = Infinity;
-                let prevRemaining = Infinity;
-                while (remaining > 0) {
-                  const result = await backfillMaturityEvidence({ limit: 15 });
-                  remaining = result.remaining;
-                  if (remaining >= prevRemaining) { showToast(`Sinkronisasi berhenti: ${remaining} evidence tak bisa diproses (kemungkinan file tak ada di Drive / rate-limit — coba ulang nanti).`, "error"); return; }
-                  prevRemaining = remaining;
-                  if (remaining > 0) showToast(`Menyalin evidence lama… sisa ${remaining}`);
-                }
-                showToast("✅ Evidence lama selesai disinkronkan ke self-host!");
-              } catch (err) {
-                showToast(err.message || "Sinkronisasi evidence gagal.", "error");
-              } finally {
-                setBackfilling(false);
-              }
-            }
             async function handleExportPptx(a) {
               setExportingPptxId(a.id);
               try { await exportMaturityAuditPptx(a); } catch { /* toast sudah ditampilkan di hook */ }
@@ -256,16 +234,6 @@ export function MaturityDashboardTab({
                 ))}
               </div>
               </div>
-
-              {canBackfillEvidence && (
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-                  <button onClick={handleBackfillEvidence} disabled={backfilling} style={{
-                    padding: "8px 14px", borderRadius: 10, border: `1px solid ${C.border}`,
-                    background: backfilling ? "#e2e8f0" : "#f8fafc", color: C.text,
-                    fontSize: 12, fontWeight: 700, cursor: backfilling ? "not-allowed" : "pointer",
-                  }}>{backfilling ? "Menyalin…" : "🔄 Sinkronkan Evidence Lama ke Self-host"}</button>
-                </div>
-              )}
 
               {/*  DASHBOARD AUDIT  */}
               {maturitySubTab === "dashboard" && (() => {

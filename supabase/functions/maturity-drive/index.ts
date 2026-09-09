@@ -600,12 +600,12 @@ Deno.serve(async (req) => {
         const { data: blob } = await admin.storage.from("maturity-evidence").download(evidence.storage_path);
         if (blob) {
           await event(evidence.audit_id, "EVIDENCE_DOWNLOADED", ctx.user.id, { evidenceId, from: "storage" });
-          return new Response(blob, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name) } });
+          return new Response(blob, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name), "Cache-Control": "private, max-age=3600" } });
         }
       }
       const response = await driveFetch(`/files/${encodeURIComponent(evidence.drive_file_id)}?alt=media&supportsAllDrives=true`);
       await event(evidence.audit_id, "EVIDENCE_DOWNLOADED", ctx.user.id, { evidenceId, from: "drive" });
-      return new Response(response.body, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name) } });
+      return new Response(response.body, { headers: { ...corsHeaders, "Content-Type": evidence.mime_type || "application/octet-stream", "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(evidence.file_name)}`, "X-File-Name": encodeURIComponent(evidence.file_name), "Cache-Control": "private, max-age=3600" } });
     }
     if (action === "backfill") {
       if (!NATIONAL_ROLES.has(ctx.profile.role)) return json({ ok: false, error: "Hanya Pusat/Superadmin yang dapat menjalankan sinkronisasi evidence lama." }, 403);

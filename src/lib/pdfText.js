@@ -6,11 +6,12 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 // Diangkat dari App.jsx (extractPdfText lokal) supaya reusable di luar PLNWarehouse()
 // (dipakai maturityAi.js). Perilaku sama, hanya input diperluas: base64 string
 // (pemakaian lama, aiExtractKontrak) ATAU Blob/Uint8Array (pemakaian baru).
-export async function extractPdfText(input) {
+export async function extractPdfText(input, maxPages) {
   const bytes = await toBytes(input);
   const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
   let text = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
+  const pages = maxPages ? Math.min(pdf.numPages, maxPages) : pdf.numPages;
+  for (let i = 1; i <= pages; i++) {
     const page = await pdf.getPage(i);
     const content = await page.getTextContent();
     text += content.items.map(it => it.str).join(" ") + "\n";
