@@ -65,7 +65,12 @@ export const signMaturityDriveEvidence = evidenceId => request("sign", { evidenc
 export async function openMaturityDriveEvidence(evidenceId) {
   try {
     const signed = await signMaturityDriveEvidence(evidenceId);
-    if (signed.url) return { url: signed.url, fileName: signed.fileName, mime: signed.mime || "", isObjectUrl: false };
+    if (signed.url) {
+      // EF createSignedUrl memakai SUPABASE_URL internal container (http://kong:8000);
+      // ganti origin ke base publik klien supaya browser bisa fetch (same-origin warnoto.com).
+      const path = signed.url.replace(/^https?:\/\/[^/]+/i, "");
+      return { url: `${SUPABASE_URL}${path}`, fileName: signed.fileName, mime: signed.mime || "", isObjectUrl: false };
+    }
   } catch { /* fallback ke download di bawah */ }
   const { blob, fileName } = await request("download", { evidenceId }, { responseType: "blob" });
   return { url: URL.createObjectURL(blob), fileName, mime: blob.type || "", isObjectUrl: true };
