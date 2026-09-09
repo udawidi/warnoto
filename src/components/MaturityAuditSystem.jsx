@@ -339,24 +339,27 @@ export function MaturityAuditEditor({
   // memicu analisis ulang. Hasil disimpan di maturityAuditForm.aiAnalysis[aspectId]
   // (ikut autosave jsonb, lihat useMaturity.jsx) — persist lintas-sesi.
   const [aiAnalysisRunning, setAiAnalysisRunning] = useState({}); // aspectId -> {i,total} in-flight only, tak perlu persist
+  const runAspectAnalysis = (aspectId, { force = false, cancelRef } = {}) => {
+    const aspect = AUDIT_ASPECTS.find(a => a.id === aspectId);
+    const evidenceList = maturityAuditEvidence[aspectId] || [];
+    if (!aspect || evidenceList.length === 0) return;
+    const scoreObj = maturityAuditForm.aspekScores[aspectId];
+    const hash = hashAspectSnapshot(evidenceList, scoreObj);
+    if (!force && maturityAuditForm.aiAnalysis?.[aspectId]?.hash === hash) return;
+    setAiAnalysisRunning(prev => ({ ...prev, [aspectId]: { i: 0, total: evidenceList.length } }));
+    analyzeMaturityAspect(aspect, evidenceList, scoreObj, {
+      onProgress: (i, total) => { if (!cancelRef?.cancelled) setAiAnalysisRunning(prev => ({ ...prev, [aspectId]: { i, total } })); },
+    }).then(result => {
+      if (cancelRef?.cancelled) return;
+      setAiAnalysisRunning(prev => { const n = { ...prev }; delete n[aspectId]; return n; });
+      setMaturityAuditForm(f => ({ ...f, aiAnalysis: { ...(f.aiAnalysis || {}), [aspectId]: { hash, result, at: Date.now() } } }));
+    });
+  };
   useEffect(() => {
     if (!activeAspectId) return;
-    const aspect = AUDIT_ASPECTS.find(a => a.id === activeAspectId);
-    const evidenceList = maturityAuditEvidence[activeAspectId] || [];
-    if (!aspect || evidenceList.length === 0) return;
-    const scoreObj = maturityAuditForm.aspekScores[activeAspectId];
-    const hash = hashAspectSnapshot(evidenceList, scoreObj);
-    if (maturityAuditForm.aiAnalysis?.[activeAspectId]?.hash === hash) return;
-    let cancelled = false;
-    setAiAnalysisRunning(prev => ({ ...prev, [activeAspectId]: { i: 0, total: evidenceList.length } }));
-    analyzeMaturityAspect(aspect, evidenceList, scoreObj, {
-      onProgress: (i, total) => { if (!cancelled) setAiAnalysisRunning(prev => ({ ...prev, [activeAspectId]: { i, total } })); },
-    }).then(result => {
-      if (cancelled) return;
-      setAiAnalysisRunning(prev => { const n = { ...prev }; delete n[activeAspectId]; return n; });
-      setMaturityAuditForm(f => ({ ...f, aiAnalysis: { ...(f.aiAnalysis || {}), [activeAspectId]: { hash, result, at: Date.now() } } }));
-    });
-    return () => { cancelled = true; };
+    const cancelRef = { cancelled: false };
+    runAspectAnalysis(activeAspectId, { cancelRef });
+    return () => { cancelRef.cancelled = true; };
   }, [activeAspectId, maturityAuditEvidence[activeAspectId], maturityAuditForm.aspekScores[activeAspectId]]);
 
   const scoreBtn = (active, color) => ({
@@ -1034,6 +1037,9 @@ export function MaturityAuditEditor({
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                       <span style={{ color: C.accent }}><Icons.Sparkles /></span>
                       <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>Analisis AI</h4>
+                      {aspectFiles.length > 0 && (
+                        <button type="button" disabled={!!aiAnalysisRunning[activeAspect.id]} onClick={() => runAspectAnalysis(activeAspect.id, { force: true })} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: aiAnalysisRunning[activeAspect.id] ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, color: C.text, opacity: aiAnalysisRunning[activeAspect.id] ? 0.5 : 1 }}>🔄 Analisis ulang</button>
+                      )}
                     </div>
                     {(() => {
                       const running = aiAnalysisRunning[activeAspect.id];
