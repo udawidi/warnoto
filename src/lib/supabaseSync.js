@@ -4,7 +4,7 @@
 import { supabase, SUPABASE_URL, SUPABASE_KEY, fetchSupabase } from "../supabaseClient.js";
 import { UIT, UPT, STATUS_RETUR_TO_JENIS } from "../constants.js";
 import { fmtDateOnly } from "./utils.js";
-import { katalogSapStatus, katalogSapLabel } from "./sap.js";
+import { resolveSapLabel } from "./sap.js";
 import { syncMasterTable } from "./masterSync.js";
 import { isDemoMode } from "./demo.js";
 import { normalizeKatalogCode } from "./normalizeKatalogCode.js";
@@ -518,12 +518,15 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
       const jb = stockRow?.jenisBarang || kat?.jenisBarang || "Persediaan";
       if (jb !== jenisBarang) return false;
     }
-    // SAP status filter (from katalog number)
-    if (sapStatus !== "ALL") {
-      if (katalogSapStatus(kat) !== sapStatus) return false;
-    }
     return true;
   }
+  // Fix A (laporan TUG salah klasifikasi SAP): status per BARIS, bukan tebakan dari kode
+  // katalog — pakai override eksplisit (pilihan user tersimpan) kalau ada, fallback ke
+  // katalog. Dipakai juga untuk filter "Kategori SAP" per-baris supaya konsisten dgn display.
+  const sapPair = (code, override) => {
+    const lbl = resolveSapLabel(code, override);
+    return { sapStatus: lbl === "Non-SAP" ? "Non-SAP" : "SAP", sapLabel: lbl };
+  };
   const resolveMerk = (kat, item) => kat?.merk || kat?.merek || item?.merk || item?.merek || "-";
   const resolveType = (kat, item) => kat?.type || kat?.tipe || item?.type || item?.tipe || "-";
   const warehouseNameForLokasi = lokasiId => {
@@ -573,6 +576,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
         const resolvedKatalogId = si.katalogId || stockRow?.katalogId;
         const kat = resolveCanonicalKatalog(si, katalogList.find(k=>k.id===resolvedKatalogId));
         if (!shouldIncludeKatalog(kat, stockRow)) return;
+        const sp = sapPair(kat.katalog, stockRow?.sapStatus || kat?.sapStatus);
+        if (sapStatus !== "ALL" && sp.sapStatus !== sapStatus) return;
         const lokasiId = si.lokasiId || stockRow?.lokasiId || "";
         rows.push(addLiveSearchFields({
           katalog: kat.katalog||"-", deskripsi: kat.name, merk:resolveMerk(kat, si), type:resolveType(kat, si),
@@ -583,8 +588,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           keterangan: t.namaPekerjaan||"-",
           tanggalMutasi: tanggal, ts,
           katalogId: kat.id,
-          sapStatus: katalogSapStatus(kat),
-          sapLabel: katalogSapLabel(kat),
+          sapStatus: sp.sapStatus,
+          sapLabel: sp.sapLabel,
           jenisBarang: stockRow?.jenisBarang || kat.jenisBarang || "-",
           docType: t.docType,
           lokasiId,
@@ -618,6 +623,9 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
             || { id:si.katalogId||"", katalog:si.katalogBaru||"", name:si.namaBaru, satuan:si.satuanBaru||"-" });
         const fakeStockRow = { jenisBarang: STATUS_RETUR_TO_JENIS[si.statusMaterial]||"Persediaan" };
         if (!shouldIncludeKatalog(kat, fakeStockRow)) return;
+        const returStockOverride = stocks.find(s => s.katalogId===kat?.id && s.lokasiId===t.lokasiTujuanId)?.sapStatus || kat?.sapStatus;
+        const sp = sapPair(kat?.katalog, returStockOverride);
+        if (sapStatus !== "ALL" && sp.sapStatus !== sapStatus) return;
         rows.push(addLiveSearchFields({
           katalog: kat?.katalog||"-", deskripsi: kat?.name||"-", merk:resolveMerk(kat, si), type:resolveType(kat, si),
           satuan: kat?.satuan||"-", valuasi: 0,
@@ -627,8 +635,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           keterangan: `${t.namaPekerjaan||"-"} â€” ${si.statusMaterial||""}`,
           tanggalMutasi: tanggal, ts,
           katalogId: kat?.id||"-",
-          sapStatus: katalogSapStatus(kat),
-          sapLabel: katalogSapLabel(kat),
+          sapStatus: sp.sapStatus,
+          sapLabel: sp.sapLabel,
           jenisBarang: fakeStockRow.jenisBarang,
           docType: "TUG10",
           lokasiId: t.lokasiTujuanId||"",
@@ -661,6 +669,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
             || { id:"-", katalog:si.katalogBaru||"", name:si.namaBaru, satuan:si.satuanBaru||"-" });
         const fakeStockRow = { jenisBarang:"Persediaan" };
         if (!shouldIncludeKatalog(kat, fakeStockRow)) return;
+        const sp = sapPair(kat?.katalog, si.sapStatus || kat?.sapStatus);
+        if (sapStatus !== "ALL" && sp.sapStatus !== sapStatus) return;
         rows.push(addLiveSearchFields({
           katalog: kat?.katalog||"-", deskripsi: kat?.name||"-", merk:resolveMerk(kat, si), type:resolveType(kat, si),
           satuan: kat?.satuan||"-", valuasi: si.hargaSatuan||0,
@@ -670,8 +680,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           keterangan: `Penerimaan dari ${t.dariSupplier||"-"}`,
           tanggalMutasi: tanggal, ts,
           katalogId: kat?.id||"-",
-          sapStatus: katalogSapStatus(kat),
-          sapLabel: katalogSapLabel(kat),
+          sapStatus: sp.sapStatus,
+          sapLabel: sp.sapLabel,
           jenisBarang: "Persediaan",
           docType: "TUG3",
           lokasiId: si.lokasiTujuanId||"",
@@ -703,6 +713,8 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
       (t.stockItems || []).forEach((si, itemIndex) => {
         const kat = katalogList.find(k => k.id === si.katalogId);
         if (!shouldIncludeKatalog(kat, { jenisBarang:"Persediaan" })) return;
+        const sp = sapPair(kat?.katalog, kat?.sapStatus);
+        if (sapStatus !== "ALL" && sp.sapStatus !== sapStatus) return;
         rows.push(addLiveSearchFields({
           katalog: kat?.katalog || "-", deskripsi: kat?.name || "-", merk:resolveMerk(kat, si), type:resolveType(kat, si),
           satuan: kat?.satuan || "-", valuasi:0,
@@ -714,7 +726,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           // TUG-5 adalah permintaan, bukan mutasi: sentinel ini mempertahankan
           // guard sync lama agar tidak masuk tug15_history/live saldo.
           katalogId:"-", resolvedKatalogId:kat?.id || "-", affectsSaldo:false,
-          sapStatus: katalogSapStatus(kat), sapLabel:katalogSapLabel(kat), jenisBarang:"Persediaan",
+          sapStatus: sp.sapStatus, sapLabel: sp.sapLabel, jenisBarang:"Persediaan",
           docType:"TUG5", lokasiId:"", lokasiKode:"-",
           warehouseName:"Tidak tercatat",
           source:"BARU", sourceLabel:"Baru", materialKey:historyMaterialKey(kat?.katalog, kat?.name, "live", `${t.id}:${itemIndex}`),

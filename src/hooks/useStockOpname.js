@@ -2,7 +2,7 @@ import { useState } from "react";
 import { UPT } from "../constants.js";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
-import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted } from "../lib/sap.js";
+import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted, stockSapLabel } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
 
 function readCachedList(key) {
@@ -307,7 +307,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const newKatalog = {
       id: newKatalogId, katalog: code, name: nama,
       category: nama.split(";")[0].trim() || "Material",
-      jenisBarang: "Non-Stock", satuan: satuan || "-",
+      jenisBarang: "Non-Stock", satuan: satuan || "-", sapStatus: "Non-SAP",
       keterangan: `Ditemukan saat Stock Opname Non-SAP (menunggu approval sesi ${opnameId})`,
       pendingOpnameId: opnameId, belumDicocokkanMara: !!belumDicocokkanMara,
       createdAt: now,
@@ -342,8 +342,12 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
   function computeStockCountItems(sapRows) {
     const TOL_PCT = 5; // toleransi sama dengan widget "Akurasi Material" sebelumnya
     return (sapRows||[]).filter(r=>r.katalog).map(row => {
-      const kat = katalogList.find(k=>k.katalog===row.katalog);
-      const qtyApp = kat ? totalQtyForKatalog(kat.id, stocks) : 0;
+      const rk = normalizeKatalog(row.katalog);
+      const kat = katalogList.find(k => normalizeKatalog(k.katalog) === rk);
+      const qtyApp = kat
+        ? stocks.filter(s => s.katalogId === kat.id && stockSapLabel(s) !== "Non-SAP")
+                .reduce((a, s) => a + (s.qty || 0), 0)
+        : 0;
       const qtySap = row.qty || 0;
       const selisih = qtyApp - qtySap;
       const selisihPct = qtySap===0 ? (qtyApp===0?0:100) : Math.round(Math.abs(selisih)/qtySap*1000)/10;

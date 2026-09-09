@@ -2972,6 +2972,7 @@ export default function PLNWarehouse() {
       const touchedKatalogIds = new Set();
 
       txn.stockItems.forEach(si => {
+        if (si.statusMaterial === "Bongkaran ATTB (MTU)") return; // ke modul ATTB (BAGIAN B), bukan Data Stok
         const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
         if (si.katalogMode === "existing" && si.katalogId) {
           // Find an existing Data Stok row for this katalog+location; bump qty if found
@@ -2996,7 +2997,7 @@ export default function PLNWarehouse() {
           const dupKatalog = katCodeBaru && newKatalog.find(k => canonicalKatalogCode(k.katalog) === katCodeBaru);
           const newKatId = dupKatalog ? dupKatalog.id : `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
           if (!dupKatalog) {
-            newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
+            newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", sapStatus:"Non-SAP", createdAt:Date.now() });
             touchedKatalogIds.add(newKatId);
           }
           const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId);

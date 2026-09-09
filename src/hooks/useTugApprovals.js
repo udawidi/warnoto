@@ -247,7 +247,7 @@ export function useTugApprovals({
         const katId = dupKatalog ? dupKatalog.id : `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
         arrivedKatalogIds.add(katId);
         if (!dupKatalog) {
-          newKatalog.push({ id:katId, katalog:katalogCodeBaru, name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", createdAt:Date.now() });
+          newKatalog.push({ id:katId, katalog:katalogCodeBaru, name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", sapStatus, createdAt:Date.now() });
           touchedKatalogIds.add(katId);
         }
         const existingRow2 = newStocks.find(s => s.katalogId===katId && s.lokasiId===lokasiId);

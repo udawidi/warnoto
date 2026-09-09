@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { JENIS_BARANG, UPT } from "../constants.js";
 import { fmtNum } from "../lib/ragShared.mjs";
-import { getSAPBadgeStyle } from "../lib/sap.js";
+import { sapBadgeStyleForLabel } from "../lib/sap.js";
 import { buildMutasiRows, loadLegacyHistoryArchive, resolveLegacyPrivateUrl, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoMaterialToSupabase } from "../lib/supabaseSync.js";
 import { bolehTulisKatalog } from "../lib/roles.js";
 import { buildMonitoringWorkbook, buildTUG15ReportModel } from "../lib/tug15Report.js";
@@ -237,7 +237,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
             </thead>
             <tbody>
               {pagedRows.map((r,i)=>{
-                const sapBs = getSAPBadgeStyle(r.katalog);
+                const sapBs = sapBadgeStyleForLabel(r.sapLabel);
                 return (
                   <tr className="mobile-card-table__row" key={i} role="button" tabIndex={0} aria-label={`Buka detail transaksi ${r.deskripsi || r.katalog}`} onClick={()=>openHistoryForRow(r)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();openHistoryForRow(r);}}} style={{borderBottom:`1px solid ${C.border}`,background:i%2===0?"white":"#f9fafb",cursor:"pointer"}}>
                     <td data-label="No" style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{(page-1)*pageSize+i+1}</td>
