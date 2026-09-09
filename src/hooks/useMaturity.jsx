@@ -296,7 +296,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Skor akhir: getScore pilih pusat>uit>upt(rasio bukti), rata 5 kategori,
   // A = avg(5 kategori)*0.75 + B = avg(sarana_prasarana,k3,teknologi)*0.25;
   // level dibucket dari threshold 1.5 / 2.5 / 3.5 / 4.5.
-  function calcMaturityScore(scores = {}, evidence = {}) {
+  function calcMaturityScore(scores = {}, evidence = {}, aiAnalysis = {}) {
     const getAspectScore = (a) => {
       const centerscore = scores[a.id]?.pusat || 0;
       if (centerscore > 0) return centerscore;
@@ -304,6 +304,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       if (uitscore > 0) return uitscore;
       const uptscore = scores[a.id]?.upt || 0;
       if (uptscore > 0) return uptscore;
+      const aiLevel = Math.round(aiAnalysis?.[a.id]?.result?.estimasiLevel || 0);
+      if (aiLevel >= 1 && aiLevel <= 5) return aiLevel;
       const uploadedCount = (evidence[a.id] || []).length;
       return calculateItemLevel(uploadedCount, a.requiredEvidence.length);
     };
@@ -332,8 +334,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     const aspectScores = Object.fromEntries(AUDIT_ASPECTS.map(a => [a.id, getAspectScore(a)]));
     return { c1, c2, c3, c4, c5, itemA, itemB, total, level, aspectScores };
   }
-  function calcMaturityLevel(scores, evidence = {}) {
-    return calcMaturityScore(scores, evidence).level;
+  function calcMaturityLevel(scores, evidence = {}, aiAnalysis = {}) {
+    return calcMaturityScore(scores, evidence, aiAnalysis).level;
   }
   async function saveMaturityAudit(audit, newStatus) {
     // Yang menentukan siapa boleh bertindak adalah status LAMA (klausa USING policy);
@@ -347,7 +349,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const isExistingAudit = maturityAudits.some(item => item.id === audit?.id);
       const { isNew: _isNew, ...auditData } = audit || {};
       const scores = maturityAuditForm.aspekScores;
-      const scoreResult = calcMaturityScore(scores, maturityAuditEvidence);
+      const scoreResult = calcMaturityScore(scores, maturityAuditEvidence, maturityAuditForm.aiAnalysis);
       const level = scoreResult.level;
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
@@ -427,7 +429,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const isExistingAudit = maturityAudits.some(item => item.id === audit.id);
       const { isNew: _isNew, ...auditData } = audit;
       const scores = maturityAuditForm.aspekScores;
-      const scoreResult = calcMaturityScore(scores, ev);
+      const scoreResult = calcMaturityScore(scores, ev, maturityAuditForm.aiAnalysis);
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
       const periodKey = auditData.periodKey || `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
@@ -526,7 +528,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // per-aspek ke folder Drive khusus. Fase 1: manual, tanpa tabel/skema baru.
   async function exportMaturityGoogleSheet(audit) {
     try {
-      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {});
+      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {}, audit.aiAnalysis || {});
       const tahun = new Date(audit.createdAt || Date.now()).getFullYear();
       const namaUpt = audit.upt || selectedMaturityUpt;
       const { base64, filename } = await buildMaturitySheet({ scoresByAspek: scoreResult.aspectScores, tahun, namaUpt });
@@ -548,7 +550,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const PptxGenJS = (await import("pptxgenjs")).default;
       const pptx = new PptxGenJS();
       const NAVY = "1E3A5F", BLUE = "2563EB", GRAY = "64748B";
-      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {});
+      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {}, audit.aiAnalysis || {});
       const namaUpt = audit.upt || selectedMaturityUpt || "UPT";
       const tahun = new Date(audit.createdAt || Date.now()).getFullYear();
       const aiAnalysis = audit.aiAnalysis || {};

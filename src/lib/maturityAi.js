@@ -42,7 +42,7 @@ export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { on
         temperature: 0.2,
         max_tokens: 1500,
         messages: [
-          { role: "system", content: "Kamu adalah auditor maturity gudang PLN yang objektif. Nilai HANYA berdasarkan KELENGKAPAN & kesesuaian NAMA dokumen evidence yang terupload dibanding evidence wajib & rubrik level — kamu TIDAK membaca isi dokumen. Jawab HANYA JSON valid, tanpa teks lain." },
+          { role: "system", content: "Kamu adalah auditor maturity gudang PLN yang objektif. Nilai HANYA berdasarkan KELENGKAPAN & kesesuaian NAMA dokumen evidence yang terupload dibanding evidence wajib & rubrik level — kamu TIDAK membaca isi dokumen. Karena tak bisa melihat isi, kamu DILARANG menyatakan ada/tidaknya tanda tangan, stempel, tanggal, atau isi dokumen — jangan pernah bilang dokumen 'tidak bertanda tangan' maupun 'sudah bertanda tangan'. Jawab HANYA JSON valid, tanpa teks lain." },
           { role: "user", content: `Aspek: ${aspect.id} ${aspect.title}
 Evidence wajib: ${JSON.stringify(aspect.requiredEvidence)}
 Rubrik level:\n${aspect.levels.join(" ").slice(0, 800)}
@@ -52,7 +52,7 @@ Nama evidence yang terupload (isi TIDAK dibaca, nilai dari kelengkapan & nama sa
 
 Kembalikan JSON dengan struktur PERSIS:
 {"estimasiLevel":1-5,"alasanPenilaian":"","perEvidence":[{"label":"","terpenuhi":true,"catatan":""}],"gap":["..."],"rekomendasi":["..."],"menujuLevelMaksimal":[{"poin":"","aksi":""}]}
-perEvidence dibuat dari daftar Evidence wajib, terpenuhi=true kalau tampak ada evidence terupload yang namanya cocok. menujuLevelMaksimal berisi poin konkret yang masih kurang dibanding rubrik Level 5 beserta aksi perbaikannya.` },
+perEvidence dibuat dari daftar Evidence wajib, terpenuhi=true kalau tampak ada evidence terupload yang namanya cocok (berdasar NAMA & kelengkapan saja, BUKAN isi/tanda tangan). Untuk kriteria rubrik yang menuntut tanda tangan/stempel/tanggal (mis. tanda tangan GM), JANGAN menyimpulkan tidak terpenuhi hanya karena kamu tak bisa melihatnya — tulis di catatan 'perlu verifikasi manual tanda tangan/stempel' dan JANGAN turunkan estimasiLevel semata karena tanda tangan tak terlihat. Untuk setiap perEvidence dengan terpenuhi=false, catatan WAJIB sebut singkat apa yang belum ada DAN aksi yang harus dilakukan (contoh: "belum ada — unggah Probis Stock Opname bertanda tangan GM"), jangan hanya "belum lengkap". gap WAJIB berisi daftar NAMA evidence wajib yang belum tampak terupload (selisih Evidence wajib vs nama evidence terupload), BUKAN kalimat umum seperti "kurang dari 2 dokumen". rekomendasi berisi langkah konkret untuk melengkapi tiap evidence yang kurang. menujuLevelMaksimal berisi poin konkret yang masih kurang dibanding rubrik Level 5 beserta aksi perbaikannya.` },
         ],
       },
     });

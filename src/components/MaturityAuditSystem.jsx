@@ -391,6 +391,8 @@ export function MaturityAuditEditor({
     }
     const uptScore = maturityAuditForm.aspekScores[item.id]?.upt;
     if (uptScore > 0) return uptScore;
+    const aiLevel = Math.round(maturityAuditForm.aiAnalysis?.[item.id]?.result?.estimasiLevel || 0);
+    if (aiLevel >= 1 && aiLevel <= 5) return aiLevel;
     const uploadedCount = (maturityAuditEvidence[item.id] || []).length;
     return calculateItemLevel(uploadedCount, item.requiredEvidence.length);
   };
@@ -579,9 +581,15 @@ export function MaturityAuditEditor({
         {activeAspectId && activeAspect ? (() => {
           const aspectFiles = maturityAuditEvidence[activeAspect.id] || [];
           const uploadedCount = aspectFiles.length;
-          const calculatedLevel = calculateItemLevel(uploadedCount, activeAspect.requiredEvidence.length);
+          const calculatedLevel = getScore(activeAspect, "pusat");
           const statusSkorUIT = maturityAuditForm.aspekScores[activeAspect.id]?.uit || 0;
           const statusSkorPusat = maturityAuditForm.aspekScores[activeAspect.id]?.pusat || 0;
+          const statusAiLevel = Math.round(maturityAuditForm.aiAnalysis?.[activeAspect.id]?.result?.estimasiLevel || 0);
+          const levelBadgeLabel = statusSkorPusat > 0 ? "TERVALIDASI PUSAT"
+            : statusSkorUIT > 0 ? "DINILAI UIT"
+            : (statusAiLevel >= 1 && statusAiLevel <= 5) ? "ESTIMASI AI"
+            : "TERVERIFIKASI";
+          const levelBadgeColor = levelBadgeLabel === "ESTIMASI AI" ? C.muted : C.accent;
 
           return (
             <div>
@@ -1024,7 +1032,7 @@ export function MaturityAuditEditor({
                           }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <strong>Level {lvlNum}</strong>
-                              {isActive && <span style={{ background: C.accent, color: "white", padding: "1px 6px", borderRadius: 10, fontSize: 13, fontWeight: 800 }}>TERVERIFIKASI</span>}
+                              {isActive && <span style={{ background: levelBadgeColor, color: "white", padding: "1px 6px", borderRadius: 10, fontSize: 13, fontWeight: 800 }}>{levelBadgeLabel}</span>}
                             </div>
                             <div style={{ marginTop: 2, lineHeight: 1.3 }}>{lvlText.replace(/^Level \d:\s*/, "")}</div>
                           </div>
@@ -1054,41 +1062,65 @@ export function MaturityAuditEditor({
                       if (cachedResult.status !== "ANSWERED") {
                         return <p style={{ margin: 0, fontSize: 13, color: "#b91c1c", lineHeight: 1.4 }}>Analisis AI gagal ({cachedResult.errorMessage || "tidak tersedia"}). Nilai manual sesuai rubrik di kiri.</p>;
                       }
+                      const evPerlu = (cachedResult.perEvidence || []).filter(pe => !pe.terpenuhi);
+                      const evAda = (cachedResult.perEvidence || []).filter(pe => pe.terpenuhi);
                       return (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ padding: "2px 10px", borderRadius: 14, background: `${C.accent}22`, color: C.accent, fontSize: 13, fontWeight: 800 }}>Estimasi Level {cachedResult.estimasiLevel}</span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                            <span style={{ fontSize: 28, fontWeight: 900, color: C.accent, lineHeight: 1 }}>{cachedResult.estimasiLevel}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: "0.5px" }}>Estimasi Level</span>
                           </div>
                           <p style={{ margin: 0, fontSize: 13, color: C.text, lineHeight: 1.4 }}>{cachedResult.alasanPenilaian}</p>
-                          {cachedResult.perEvidence?.length > 0 && (
-                            <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
-                              {cachedResult.perEvidence.map((pe, i) => (
-                                <li key={i} style={{ fontSize: 13, color: pe.terpenuhi ? C.green : "#b91c1c" }}>
-                                  {pe.terpenuhi ? "✓" : "✗"} <strong>{pe.label}</strong>{pe.catatan ? ` — ${pe.catatan}` : ""}
-                                </li>
-                              ))}
-                            </ul>
+
+                          {(evPerlu.length > 0 || evAda.length > 0) && (
+                            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                              {evPerlu.length > 0 && (
+                                <div>
+                                  <strong style={{ fontSize: 12, color: "#b91c1c", textTransform: "uppercase", letterSpacing: "0.5px" }}>Perlu dilengkapi</strong>
+                                  <ul style={{ margin: "4px 0 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                                    {evPerlu.map((pe, i) => (
+                                      <li key={i} style={{ fontSize: 13, color: "#b91c1c", background: "#b91c1c0d", borderLeft: "3px solid #b91c1c", borderRadius: 6, padding: "4px 8px" }}>
+                                        ✗ <strong>{pe.label}</strong>{pe.catatan ? ` — ${pe.catatan}` : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {evAda.length > 0 && (
+                                <details>
+                                  <summary style={{ fontSize: 12, color: C.green, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", cursor: "pointer" }}>Sudah ada ({evAda.length})</summary>
+                                  <ul style={{ margin: "4px 0 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+                                    {evAda.map((pe, i) => (
+                                      <li key={i} style={{ fontSize: 13, color: C.green }}>
+                                        ✓ <strong>{pe.label}</strong>{pe.catatan ? ` — ${pe.catatan}` : ""}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </details>
+                              )}
+                            </div>
                           )}
+
                           {cachedResult.gap?.length > 0 && (
-                            <div>
-                              <strong style={{ fontSize: 13, color: C.text }}>Gap:</strong>
-                              <ul style={{ margin: "2px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 8 }}>
+                              <strong style={{ fontSize: 12, color: C.text, textTransform: "uppercase", letterSpacing: "0.5px" }}>Gap</strong>
+                              <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
                                 {cachedResult.gap.map((g, i) => <li key={i}>{g}</li>)}
                               </ul>
                             </div>
                           )}
                           {cachedResult.rekomendasi?.length > 0 && (
                             <div>
-                              <strong style={{ fontSize: 13, color: C.text }}>Rekomendasi:</strong>
-                              <ul style={{ margin: "2px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                              <strong style={{ fontSize: 12, color: C.text, textTransform: "uppercase", letterSpacing: "0.5px" }}>Rekomendasi</strong>
+                              <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
                                 {cachedResult.rekomendasi.map((r, i) => <li key={i}>{r}</li>)}
                               </ul>
                             </div>
                           )}
                           {cachedResult.menujuLevelMaksimal?.length > 0 && (
-                            <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 6 }}>
-                              <strong style={{ fontSize: 13, color: C.accent }}>Menuju Level 5 (maksimal):</strong>
-                              <ul style={{ margin: "2px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
+                            <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
+                              <strong style={{ fontSize: 12, color: C.accent, textTransform: "uppercase", letterSpacing: "0.5px" }}>Menuju Level 5 (maksimal)</strong>
+                              <ul style={{ margin: "4px 0 0 0", paddingLeft: 16, fontSize: 13, color: C.muted, lineHeight: 1.4 }}>
                                 {cachedResult.menujuLevelMaksimal.map((m, i) => <li key={i}><strong style={{ color: C.text }}>{m.poin}</strong>{m.aksi ? ` — ${m.aksi}` : ""}</li>)}
                               </ul>
                             </div>

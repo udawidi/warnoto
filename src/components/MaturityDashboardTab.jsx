@@ -98,8 +98,7 @@ export function MaturityDashboardTab({
               : (row.upt || "UPT Surabaya") === selectedMaturityUpt;
             const uptAudits = maturityAudits.filter(isSelectedUpt);
             const latestAudit = uptAudits[0] || null;
-            const calcResult = latestAudit ? calcMaturityScore(latestAudit.aspekScores || {}, latestAudit.evidence || {}) : { itemA: 0, itemB: 0, total: 0, level: 1 };
-            const currentLevel = latestAudit ? calcResult.level : 1;
+            const calcResult = latestAudit ? calcMaturityScore(latestAudit.aspekScores || {}, latestAudit.evidence || {}, latestAudit.aiAnalysis || {}) : { itemA: 0, itemB: 0, total: 0, level: 1 };
             const evidenceCount = latestAudit?.evidence ? Object.values(latestAudit.evidence).flat().length : 0;
             const statusLabel = latestAudit ? (MATURITY_WORKFLOW_LABEL[latestAudit.status] || latestAudit.status) : "Belum Ada Audit";
             const statusColor = latestAudit ? (MATURITY_WORKFLOW_COLOR[latestAudit.status] || "#64748b") : "#64748b";
@@ -110,6 +109,16 @@ export function MaturityDashboardTab({
             const previousHistory = uptAuditHistory[uptAuditHistory.length - 2] || null;
             const historyChange = latestHistory && previousHistory ? latestHistory.score - previousHistory.score : null;
             const recentHistory = [...uptAuditHistory].reverse();
+            // Angka RESMI KPI (level besar) HARUS dari FINAL (latestHistory), bukan
+            // draft/UIT/AI live — provisional bocor ke Dashboard = level tak sah.
+            // scoreToLevel mirror threshold calcMaturityScore (useMaturity.jsx ~1.5/2.5/3.5/4.5);
+            // maturity_audit_history tak simpan kolom level, cuma score decimal.
+            const scoreToLevel = s => s >= 4.5 ? 5 : s >= 3.5 ? 4 : s >= 2.5 ? 3 : s >= 1.5 ? 2 : 1;
+            const currentLevel = latestHistory ? scoreToLevel(latestHistory.score) : 1;
+            const pendingPusatValidation = !!latestAudit && latestAudit.status !== "FINAL";
+            const kpiStatusNote = pendingPusatValidation
+              ? "Menunggu validasi Pusat"
+              : (!latestHistory ? "Belum ada hasil final" : null);
             return (
               <div className="operations-page">
               <div className="kpi-banner" style={{
@@ -140,8 +149,9 @@ export function MaturityDashboardTab({
                   textAlign: isMobile ? "left" : "right"
                 }}>
                   <div style={{ fontSize: 12, color: "#93c5fd", fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px" }}>Level Maturity</div>
-                  <div style={{ fontSize: 24, fontWeight: 950, color: "white", margin: "2px 0", lineHeight: 1.1, letterSpacing: "-1px" }}>Level {currentLevel}</div>
-                  <div style={{ fontSize: 12, color: "#93c5fd", fontWeight: 700 }}>{MATURITY_LEVELS[currentLevel] || "Basic"}</div>
+                  <div style={{ fontSize: 24, fontWeight: 950, color: "white", margin: "2px 0", lineHeight: 1.1, letterSpacing: "-1px" }}>{latestHistory ? `Level ${currentLevel}` : "—"}</div>
+                  <div style={{ fontSize: 12, color: "#93c5fd", fontWeight: 700 }}>{latestHistory ? (MATURITY_LEVELS[currentLevel] || "Basic") : ""}</div>
+                  {kpiStatusNote && <div style={{ fontSize: 11, color: "#fde68a", fontWeight: 700, marginTop: 2 }}>{kpiStatusNote}</div>}
                 </div>
 
                 {canSwitchMaturityUpt && isMobile && (
