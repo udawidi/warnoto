@@ -171,6 +171,13 @@ export function useTugApprovals({
   async function approveTUG3Final_Asman(txn) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menyetujui TUG-3 Final.","error"); return; }
     if (txn.stage !== "PENDING_ASMAN") { showToast("Transaksi ini tidak dalam tahap menunggu Asman.","error"); return; }
+    const missingKatalog = (txn.stockItems || []).some(si =>
+      si.katalogMode === "existing" && !katalogList.some(k => k.id === si.katalogId)
+    );
+    if (missingKatalog) {
+      showToast("TUG-3 ditolak: katalog barang existing tidak ditemukan di Master Katalog. Perbaiki ajuan sebelum approve.", "error");
+      return;
+    }
     // Fase A — gudang tujuan lagi di-opname: tunda approve (blokir keras, sama seperti
     // commitNewTxn) supaya stok tak berubah di tengah hitung fisik.
     const frozen = findActiveFreezeSession(collectTxnGudangIds("TUG3", txn, lokasiList), opnameList);
@@ -222,6 +229,8 @@ export function useTugApprovals({
         : katalogCodeBaru;
       const sapStatus = resolveSapLabel(katalogCodeForSap, si.sapStatus || STATUS_SAP[0]);
       const jenisBarang = sapStatus === "SAP — Cadang" ? "Cadang" : "Persediaan";
+      const qtyMasuk = Number(si.qty) || 0;
+      const existingKatalog = si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId) : null;
       // FIX 2: foto barang diisi dari lampiran TUG-3 (si.fotoBarang, sudah berupa URL
       // Storage sejak commitNewTxn -> processTxnPhotos), bukan lagi null.
       const fotoBarang = si.fotoBarang || null;
@@ -232,11 +241,11 @@ export function useTugApprovals({
           // Jangan timpa foto lama kalau baris existing sudah punya foto sendiri.
           // fotoKeseluruhan = field kanonik yang dirender sel Foto tabel Data Stok
           // (DataStokTab.jsx:291); img cuma dipakai thumbnail fallback lain — isi dua-duanya.
-          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs) } : s);
+          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyMasuk, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs) } : s);
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry] });
+          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry] });
           touchedStockIds.add(newId);
         }
       } else {
@@ -252,11 +261,11 @@ export function useTugApprovals({
         }
         const existingRow2 = newStocks.find(s => s.katalogId===katId && s.lokasiId===lokasiId);
         if (existingRow2) {
-          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: s.qty + si.qty, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs) } : s);
+          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyMasuk, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs) } : s);
           touchedStockIds.add(existingRow2.id);
         } else {
           const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newStkId, katalogId:katId, lokasiId, qty:si.qty, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry] });
+          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry] });
           touchedStockIds.add(newStkId);
         }
       }

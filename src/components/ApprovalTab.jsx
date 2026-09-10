@@ -105,7 +105,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
 
   function itemsOf(t) {
     if (t.docType==="TUG10") return (t.stockItems||[]).map((si,i)=>{
-      const nama = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
+      const nama = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name || si.snapshot?.name || "?") : si.namaBaru;
       const bs = statusMaterialBadgeStyle(si.statusMaterial);
       return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {nama} <b>x{si.qty}</b> <span style={{padding:"2px 6px",borderRadius: 14,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></div>;
     });

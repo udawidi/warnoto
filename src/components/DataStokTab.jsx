@@ -41,6 +41,18 @@ export function DataStokTab({
   const [moveStock, setMoveStock] = useState(null); // {st, lok, gdg} — trigger modal Pindah Blok
   const searchInputRef = useRef(null);
 
+  function katalogForStock(st) {
+    return katalogList.find(k => k.id === st.katalogId) || {
+      id: st.katalogId,
+      name: st.name,
+      katalog: st.katalog,
+      satuan: st.satuan || st.unit,
+      category: st.category,
+      jenis: st.jenis,
+      keterangan: st.keterangan,
+    };
+  }
+
   // QR label = scanUrlFor(katalogId) → berisi katalogId, bukan no.katalog yang bisa dicari
   // matchesStockSearch (sap.js, tidak cek katalogId). Resolve dulu; barcode 1D polos (bukan
   // URL) langsung dipakai apa adanya. Dipakai hardware & kamera (root cause, satu tempat).
@@ -337,12 +349,12 @@ export function DataStokTab({
                                 showToast(`Blok ${lok?.kode||"-"} belum diplot koordinatnya di denah. Atur di Master Data → Master Gudang.`,"error");
                               }}><MapPin size={16} weight="bold" aria-hidden="true" /></button>}
                             <button className="table-action-button stock-mobile-action--card" aria-label="Kartu Gantung Digital" title="Kartu Gantung Digital"
-                              onClick={()=>{const k=katalogList.find(x=>x.id===st.katalogId); if(k) setKartuGantungDetail(k);}}><Tag size={16} weight="bold" aria-hidden="true" /> <span>Kartu Gantung</span></button>
+                              onClick={()=>setKartuGantungDetail(katalogForStock(st))}><Tag size={16} weight="bold" aria-hidden="true" /> <span>Kartu Gantung</span></button>
                           </div>
                           <div className="stock-desktop-actions" onClick={e=>e.stopPropagation()}>
                             <div className="table-actions">
                             <button className="table-action-button is-icon" title="Kartu Gantung TUG-2"
-                              onClick={()=>{const k=katalogList.find(x=>x.id===st.katalogId); if(k) setKartuGantungDetail(k);}}><Tag size={16} weight="bold" aria-hidden="true" /></button>
+                              onClick={()=>setKartuGantungDetail(katalogForStock(st))}><Tag size={16} weight="bold" aria-hidden="true" /></button>
                             {!isAgg && <button
                               className="table-action-button is-icon"
                               title={canLihatPeta ? "Lihat di Peta Gudang" : !lok ? "Blok belum diisi" : !hasDenah ? "Denah belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}

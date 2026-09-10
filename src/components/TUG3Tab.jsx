@@ -71,7 +71,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 <summary style={{cursor:"pointer",color:C.muted,fontSize:12}}>Lihat item ({t.stockItems.length})</summary>
                 <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginTop:4}}>
                   {t.stockItems.map((si,idx)=>{
-                    const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
+                    const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name || si.snapshot?.name || "?") : si.namaBaru;
                     return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b></div>;
                   })}
                 </div>
