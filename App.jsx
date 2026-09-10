@@ -2979,6 +2979,7 @@ export default function PLNWarehouse() {
 
       txn.stockItems.forEach(si => {
         if (si.statusMaterial === "Bongkaran ATTB (MTU)") return; // ke modul ATTB (BAGIAN B), bukan Data Stok
+        const qty = Number(si.qty) || 0;
         const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
         if (si.katalogMode === "existing" && si.katalogId) {
           // Find an existing Data Stok row for this katalog+location; bump qty if found
@@ -2986,13 +2987,14 @@ export default function PLNWarehouse() {
           if (existingRow) {
             // fix bug-2 (identik TUG-3): foto retur ikut fotoKeseluruhan (kolom Foto DataStokTab),
             // jangan timpa foto lama kalau baris sudah punya.
-            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: s.qty + si.qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
+            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
             touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
             // Retur TUG-10 masuk sbg Non-SAP dulu (belum terdaftar SAP Persediaan/Cadang) —
             // admin reklasifikasi ke SAP kemudian. Baris existing yang cuma di-bump qty TIDAK diubah sapStatus-nya.
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            const kat = katalogList.find(k => k.id === si.katalogId);
+            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
             touchedStockIds.add(newId);
           }
         } else {
@@ -3008,11 +3010,11 @@ export default function PLNWarehouse() {
           }
           const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId);
           if (existingRow2) {
-            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: s.qty + si.qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
+            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
             touchedStockIds.add(existingRow2.id);
           } else {
             const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty:si.qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
             touchedStockIds.add(newStkId);
           }
         }
@@ -3059,13 +3061,20 @@ export default function PLNWarehouse() {
       const nextAttb = newAttbItems.length ? [...newAttbItems, ...attbList] : attbList;
       if (newAttbItems.length) setAttbList(nextAttb);
 
-      const approvedTxn = { ...txn, status:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated };
+      const approvedTxn = { ...txn, status:"APPROVED", stage:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated };
       const newTxns = txns.map(t => t.id===txn.id ? approvedTxn : t);
+      const prevStocks = stocks, prevKatalogList = katalogList, prevTxns = txns, prevAttbList = attbList;
       setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-      await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog, attbList: nextAttb}, {
+      const ok = await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog, attbList: nextAttb}, {
         stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
         katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
       });
+      if (!ok) {
+        setStocks(prevStocks); setKatalogList(prevKatalogList); setTxns(prevTxns);
+        if (newAttbItems.length) setAttbList(prevAttbList);
+        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — stok belum tersimpan (koneksi). Coba setujui lagi.`, "error");
+        return false;
+      }
       // Persist ke tabel dedicated TUG-10 (parity TUG-3) — fail-safe, blob tetap sumber cadangan.
       upsertTug10Transaction(approvedTxn).catch(err => console.warn("upsertTug10Transaction (approve) gagal:", err));
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
