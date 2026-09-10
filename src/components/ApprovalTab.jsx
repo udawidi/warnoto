@@ -17,6 +17,8 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const [tug4Modal, setTug4Modal] = useState(null);
   const [tug3ReviewTxn, setTug3ReviewTxn] = useState(null);
   const [tug3Previewed, setTug3Previewed] = useState(false);
+  const [tug10ReviewTxn, setTug10ReviewTxn] = useState(null);
+  const [tug10Previewed, setTug10Previewed] = useState(false);
   function openTug4Modal(txn) {
     // Sama seperti TUG3Tab.jsx openTug4Modal — status SAP/Non-SAP per barang diputuskan
     // di sini (TL, tahap TUG-4), default dibawa dari pilihan form TUG-3.
@@ -223,7 +225,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               {t.docType==="TUG10" && (
                 rejectingId===t.id
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTxn(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
-                  : <><button className="approval-btn--approve" onClick={()=>approveTxn(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui — Stok Masuk</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
+                  : <><button className="approval-btn--approve" onClick={()=>{setTug10Previewed(false);setTug10ReviewTxn(t);}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui — Stok Masuk</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
               {/* TUG-8 Draft dari TUG-7 */}
               {isTUG8Draft && hasRole(currentUser, "ADMIN","TL") && (
@@ -486,6 +488,49 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
             </div>
             {tug3Minus && <div style={{fontSize:12,color:"#b91c1c",fontWeight:700,marginTop:7}}>Proyeksi stok minus — approval diblokir. Periksa qty barang (tidak boleh negatif).</div>}
             {!tug3Previewed && !tug3Minus && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
+          </div>
+        </div>
+      )}
+
+      {/* TUG-10 review — wajib buka preview dokumen sebelum boleh approve, stok bertambah */}
+      {tug10ReviewTxn && (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
+          <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM APPROVAL FINAL</div>
+            <h3 style={{fontSize:17,fontWeight:800,margin:"4px 0 10px"}}>Penerimaan TUG-10 / {tug10ReviewTxn.docNumbers?.tug10}</h3>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,fontSize:12,marginBottom:14}}>
+              <div><b>Nomor</b><br/>{tug10ReviewTxn.docNumbers?.tug10 || "-"}</div>
+              <div><b>UPT</b><br/>{uptList.find(u=>u.id===tug10ReviewTxn.uptId)?.nama || "-"}</div>
+              <div><b>Lokasi tujuan</b><br/>{lokasiList.find(l=>l.id===tug10ReviewTxn.lokasiTujuanId)?.nama || "-"}</div>
+            </div>
+            <details style={{border:`1px solid ${C.border}`,borderRadius:10,padding:8,marginBottom:14}} onToggle={e=>{if(e.currentTarget.open)setTug10Previewed(true);}}>
+              <summary style={{cursor:"pointer",fontWeight:700}}>Buka preview dokumen — barang yang akan diterima</summary>
+              <div className="mobile-card-table" style={{overflowX:"auto",marginTop:8}}>
+                <table style={{width:"100%",fontSize:12,borderCollapse:"collapse"}}>
+                  <thead><tr style={{background:"#f8fafc"}}><th style={{padding:6,textAlign:"left"}}>Material</th><th style={{padding:6,textAlign:"right"}}>Qty</th><th style={{padding:6,textAlign:"right"}}>Stok saat ini</th><th style={{padding:6,textAlign:"right"}}>Proyeksi</th></tr></thead>
+                  <tbody>
+                    {tug10ReviewTxn.stockItems.map((si, idx) => {
+                      const nama = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
+                      const bs = statusMaterialBadgeStyle(si.statusMaterial);
+                      const stok = stocks.find(s=>s.katalogId===si.katalogId && s.lokasiId===tug10ReviewTxn.lokasiTujuanId);
+                      return (
+                        <tr key={idx} style={{borderTop:`1px solid ${C.border}`}}>
+                          <td style={{padding:6}}>{nama} <span style={{padding:"2px 6px",borderRadius:14,fontSize:11,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></td>
+                          <td style={{padding:6,textAlign:"right"}}>{fmtNum(si.qty)}</td>
+                          <td style={{padding:6,textAlign:"right"}}>{stok ? fmtNum(stok.qty) : "baru"}</td>
+                          <td style={{padding:6,textAlign:"right",fontWeight:700}}>{stok ? fmtNum(stok.qty + si.qty) : `+${fmtNum(si.qty)}`}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug10ReviewTxn(null)}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2}} disabled={!tug10Previewed} onClick={()=>{approveTxn(tug10ReviewTxn);setTug10ReviewTxn(null);}}>✓ Setujui — Stok Masuk</button>
+            </div>
+            {!tug10Previewed && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
           </div>
         </div>
       )}
