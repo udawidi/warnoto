@@ -281,7 +281,7 @@ export function katalogSapStatus(k) {
 export function sapBadgeStyleForLabel(label) {
   const l = String(label || "");
   if (l.includes("Cadang")) return { bg:"#fee2e2", fg:"#b91c1c" };
-  if (l.includes("Persediaan")) return { bg:"#dbeafe", fg:"#1d4ed8" };
+  if (l.includes("Persediaan") || l.includes("Pre Memory")) return { bg:"#dbeafe", fg:"#1d4ed8" };
   return { bg:"#f3f4f6", fg:"#6b7280" }; // Non-SAP
 }
 export function getSAPBadgeStyle(katalog) {

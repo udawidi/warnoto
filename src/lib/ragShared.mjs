@@ -33,7 +33,10 @@ export function resolveSapLabel(kodeKatalog, override) {
 }
 
 // Untuk satu baris Data Stok / Master Katalog (punya .katalog, .sapStatus, .id).
+// Non-SAP eksplisit tetap menang; jenis Pre Memory mengoreksi label SAP turunan/legacy.
 export function rowSapLabel(row) {
+  if (row?.sapStatus === "Non-SAP") return "Non-SAP";
+  if (row?.jenisBarang === "Pre Memory") return "SAP — Pre Memory";
   if (row?.sapStatus) return resolveSapLabel(row?.katalog, row.sapStatus);
   if (String(row?.id || "").startsWith("STK-PREMEM-")) return "Non-SAP";
   return getSAPLabel(row?.katalog);

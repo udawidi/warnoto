@@ -4,7 +4,7 @@
 // modal detail (App.jsx). Kolom Gudang/Blok pindah ke modal "Pindah Blok".
 import { useState, useRef, useEffect } from "react";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
-import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
+import { JENIS_BARANG, STATUS_SAP_FILTER } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
@@ -161,7 +161,7 @@ export function DataStokTab({
                   <option value="ALL">Semua Jenis</option>{JENIS_BARANG.map(j=><option key={j}>{j}</option>)}
                 </select>
                 <select style={{...sty.select,maxWidth:280}} value={filterStatusSAP} onChange={e=>setFilterStatusSAP(e.target.value)} aria-label="Filter Status Material">
-                  <option value="ALL">Semua Status</option>{STATUS_SAP.map(s=><option key={s} value={s}>{s}</option>)}
+                  <option value="ALL">Semua Status</option>{STATUS_SAP_FILTER.map(s=><option key={s} value={s}>{s}</option>)}
                 </select>
                 {/* Filter lokasi material per UPT — hanya muncul utk viewer multi-UPT (UIT/Pusat). */}
                 {stockUptFilterOptions?.length>0 && (
