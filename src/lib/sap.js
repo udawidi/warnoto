@@ -166,7 +166,7 @@ export function maraQueryGroups(query) {
 // upgrade ke pg_trgm/tsvector kalau mara_catalog membesar signifikan.
 export function applyMaraNameSearch(builder, query) {
   return maraQueryGroups(query).reduce(
-    (b, alts) => b.or(alts.map(t => `nama.ilike.%${t}%`).join(",")),
+    (b, alts) => b.or(alts.flatMap(t => [`nama.ilike.%${t}%`, `kode_material.ilike.%${t}%`]).join(",")),
     builder
   );
 }

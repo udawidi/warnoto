@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { maraQueryGroups, matchesMaterialSearch } from "../../src/lib/sap.js";
+import { maraQueryGroups, matchesMaterialSearch, applyMaraNameSearch } from "../../src/lib/sap.js";
 
 test("per-kata: satu grup per kata, AND antar kata (dict-agnostic)", () => {
   const groups = maraQueryGroups("kabel tembaga");
@@ -37,4 +37,24 @@ test("fuzzy tidak over-match: beda >1 edit pada kata >=4 tetap ditolak", () => {
 
 test("fuzzy tidak berlaku untuk kata <4 huruf (tetap prefix/exact lama)", () => {
   assert.equal(matchesMaterialSearch(["ROD PENTANAHAN"], "rad"), false);
+});
+
+// Stub builder yang merekam tiap argumen .or() — cukup untuk memastikan filter
+// menyentuh kolom yang benar tanpa perlu Supabase asli.
+function orCapturingBuilder() {
+  const calls = [];
+  const b = { or: (s) => { calls.push(s); return b; }, calls };
+  return b;
+}
+
+test("MARA: token no katalog mencari di kode_material, bukan cuma nama", () => {
+  const b = applyMaraNameSearch(orCapturingBuilder(), "1234567");
+  const joined = b.calls.join(" ");
+  assert.ok(joined.includes("kode_material.ilike.%1234567%"));
+  assert.ok(joined.includes("nama.ilike.%1234567%"));
+});
+
+test("DB lokal: no katalog partial match (substring, tak harus cocok penuh)", () => {
+  assert.ok(matchesMaterialSearch(["TRAFO DISTRIBUSI 1234567"], "34567"));
+  assert.ok(matchesMaterialSearch(["TRAFO DISTRIBUSI 1234567"], "1234567"));
 });
