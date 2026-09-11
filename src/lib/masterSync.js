@@ -99,13 +99,24 @@ export function extractLatLngFromAddress(text) {
 
 export async function loadMasterTable(table) {
   if (!supabase) return null;
-  let { data, error } = await supabase.from(table).select("*");
-  if (error) {
+  const pageSize = 1000; // PostgREST default max-rows; explicit paging prevents silent truncation.
+  const fetchAll = async () => {
+    const rows = [];
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await supabase.from(table).select("*").order("id", { ascending: true }).range(from, from + pageSize - 1);
+      if (error) throw error;
+      rows.push(...(data || []));
+      if (!data || data.length < pageSize) return rows;
+    }
+  };
+  let data;
+  try { data = await fetchAll(); }
+  catch (firstError) {
     // Retry SEKALI kalau gagal (mis. timeout parsial server self-host/Cloudflare Tunnel)
     // sebelum menyerah ke cache localStorage lama di caller (App.jsx loadCloud()).
     await new Promise(r => setTimeout(r, 1200));
-    ({ data, error } = await supabase.from(table).select("*"));
-    if (error) { console.error(`loadMasterTable(${table}): ${error.message}`, error); return null; }
+    try { data = await fetchAll(); }
+    catch (error) { console.error(`loadMasterTable(${table}): ${error.message}`, error); return null; }
   }
   return data.map(row => (table === "stock_opname" || table === "stock_count")
     ? mapStockScopeRow(row)

@@ -45,6 +45,13 @@ test("stock delete hint selects the targeted delete path before full reconciliat
   );
 });
 
+test("master table loader paginates beyond the PostgREST 1000-row limit", () => {
+  assert.match(masterSyncSource, /const pageSize = 1000/);
+  assert.match(masterSyncSource, /for \(let from = 0; ; from \+= pageSize\)/);
+  assert.match(masterSyncSource, /\.order\("id", \{ ascending: true \}\)\.range\(from, from \+ pageSize - 1\)/);
+  assert.match(masterSyncSource, /if \(!data \|\| data\.length < pageSize\) return rows/);
+});
+
 test("TUG-10 approval syncs only resources changed by the approved items", () => {
   const approval = transactionApprovalSource();
   assert.match(approval, /const saveOverrides = \{txns: newTxns\}/);
