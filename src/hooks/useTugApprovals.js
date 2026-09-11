@@ -9,6 +9,9 @@ import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
 import { roleTier } from "../lib/roles.js";
 import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
+import { loadMasterTable } from "../lib/masterSync.js";
+import { isDemoMode } from "../lib/demo.js";
+import { CLOUD } from "../lib/cloud.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -185,8 +188,21 @@ export function useTugApprovals({
 
     // Same incoming-material logic as TUG-10 approval: bump existing Data Stok
     // row or auto-create new Master Katalog + Data Stok entry.
-    let newKatalog = [...katalogList];
-    let newStocks = [...stocks];
+    // Retry harus membaca marker dari server; percobaan sebelumnya bisa sudah menulis stok
+    // lalu gagal menyimpan transaksi dedicated.
+    let approvalKatalog = katalogList;
+    let approvalStocks = stocks;
+    if (supabase && !isDemoMode()) {
+      const [serverStocks, serverKatalog] = await Promise.all([loadMasterTable("stocks"), loadMasterTable("katalog")]);
+      if (!serverStocks || !serverKatalog) {
+        showToast("Approval TUG-3 gagal: data server belum terbaca. Coba lagi.", "error");
+        return false;
+      }
+      approvalStocks = serverStocks;
+      approvalKatalog = serverKatalog;
+    }
+    let newKatalog = [...approvalKatalog];
+    let newStocks = [...approvalStocks];
     let nextKatNum = newKatalog.length + 1;
     let nextStkNum = newStocks.length + 1;
     // Lacak baris stok & katalog yang benar-benar berubah/ditambah (pola sama TUG-10) —
@@ -214,7 +230,7 @@ export function useTugApprovals({
     // dipakai untuk flag reaktif reservasi ULTG yang menunggu (lihat newTxns di bawah).
     const arrivedKatalogIds = new Set();
 
-    txn.stockItems.forEach(si => {
+    txn.stockItems.forEach((si, itemIdx) => {
       const lokasiId = si.lokasiTujuanId || txn.stockItems[0]?.lokasiTujuanId;
       if (!lokasiId) return;
       // FIX 3: kode katalog baru dari TUG-3 dinormalisasi (buang prefix "100" 10-digit
@@ -230,7 +246,8 @@ export function useTugApprovals({
       const sapStatus = resolveSapLabel(katalogCodeForSap, si.sapStatus || STATUS_SAP[0]);
       const jenisBarang = sapStatus === "SAP — Cadang" ? "Cadang" : "Persediaan";
       const qtyMasuk = Number(si.qty) || 0;
-      const existingKatalog = si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId) : null;
+      const existingKatalog = si.katalogMode === "existing" ? approvalKatalog.find(k => k.id === si.katalogId) : null;
+      const effectKey = `${txn.id}:${itemIdx}`;
       // FIX 2: foto barang diisi dari lampiran TUG-3 (si.fotoBarang, sudah berupa URL
       // Storage sejak commitNewTxn -> processTxnPhotos), bukan lagi null.
       const fotoBarang = si.fotoBarang || null;
@@ -241,11 +258,14 @@ export function useTugApprovals({
           // Jangan timpa foto lama kalau baris existing sudah punya foto sendiri.
           // fotoKeseluruhan = field kanonik yang dirender sel Foto tabel Data Stok
           // (DataStokTab.jsx:291); img cuma dipakai thumbnail fallback lain — isi dua-duanya.
-          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyMasuk, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs) } : s);
+          const alreadyApplied = Number(existingRow._tug3Applied?.[effectKey]) || 0;
+          const qtyToApply = Math.max(0, qtyMasuk - alreadyApplied);
+          if (!qtyToApply) return;
+          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs), _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry] });
+          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk } });
           touchedStockIds.add(newId);
         }
       } else {
@@ -261,11 +281,14 @@ export function useTugApprovals({
         }
         const existingRow2 = newStocks.find(s => s.katalogId===katId && s.lokasiId===lokasiId);
         if (existingRow2) {
-          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyMasuk, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs) } : s);
+          const alreadyApplied = Number(existingRow2._tug3Applied?.[effectKey]) || 0;
+          const qtyToApply = Math.max(0, qtyMasuk - alreadyApplied);
+          if (!qtyToApply) return;
+          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs), _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
           touchedStockIds.add(existingRow2.id);
         } else {
           const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry] });
+          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk } });
           touchedStockIds.add(newStkId);
         }
       }
@@ -286,13 +309,30 @@ export function useTugApprovals({
       }
       return t;
     });
+    const prevTxns = txns, prevStocks = stocks, prevKatalog = katalogList;
     setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-    await saveToCloud({txns: newTxns, stocks: newStocks, katalogList: newKatalog}, {
+    const saveOverrides = { txns: newTxns };
+    if (touchedStockIds.size) saveOverrides.stocks = newStocks;
+    if (touchedKatalogIds.size) saveOverrides.katalogList = newKatalog;
+    const savedOk = await saveToCloud(saveOverrides, {
       stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
       katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
     });
+    if (savedOk === false) {
+      setTxns(txns); setStocks(stocks); setKatalogList(katalogList);
+      try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
+      showToast("TUG-3 gagal disimpan. Status tetap menunggu approval; stok tidak ditambahkan.", "error");
+      return;
+    }
+    let dedicatedSaved = false;
+    try { dedicatedSaved = await upsertTug3Transaction(newTxns.find(t => t.id===txn.id)); } catch (err) { console.warn("upsertTug3Transaction (approve) gagal:", err); }
+    if (!dedicatedSaved) {
+      setTxns(prevTxns); setStocks(prevStocks); setKatalogList(prevKatalog);
+      try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
+      showToast("TUG-3 gagal disimpan ke transaksi utama. Coba lagi; stok tidak diulang saat retry.", "error");
+      return false;
+    }
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug3, {stage:"APPROVED"});
-    await upsertTug3Transaction(newTxns.find(t => t.id===txn.id));
     showToast(`✅ ${txn.docNumbers.tug3} DISETUJUI FINAL! Stok bertambah ke gudang.`);
     // Notif WA/Telegram — TUG-3 legacy blob, tidak punya row di tug_transactions
     // (trigger DB tidak nangkap) jadi enqueue dari client. Fire-and-forget.

@@ -1536,24 +1536,31 @@ export default function PLNWarehouse() {
     const writerUptId = stateRef.current.currentUser?.uptId || null;
     const extraColsStocks = item => ({ katalog_id: item.katalogId || null, lokasi_id: item.lokasiId || null, upt_id: item.uptId || writerUptId });
     const syncTasks = [];
+    // Material baru harus masuk ke Master Katalog lebih dulu karena `stocks.katalog_id`
+    // punya foreign key ke tabel katalog. Jangan mulai sync stok paralel sebelum katalog selesai.
+    let katalogSyncPromise = null;
     if (overrides.katalogList !== undefined) {
       // Kalau caller kasih hint baris katalog yang berubah → sync ringan (cuma baris itu),
       // tanpa reconciliation-delete. Kalau tidak → full sync seperti biasa (aman untuk
       // kasus yang butuh deteksi baris terhapus).
       const katHint = hints.katalogChangedRows;
-      syncTasks.push({ label: "Master Katalog", promise: (Array.isArray(katHint) && katHint.length > 0)
-        ? syncMasterTableRows("katalog", katHint)
-        : syncMasterTable("katalog", kat) });
+      katalogSyncPromise = (Array.isArray(katHint) && katHint.length > 0)
+        ? Promise.resolve().then(() => syncMasterTableRows("katalog", katHint))
+        : Promise.resolve().then(() => syncMasterTable("katalog", kat));
+      syncTasks.push({ label: "Master Katalog", promise: katalogSyncPromise });
     }
     if (overrides.stocks !== undefined) {
       // Idem untuk Data Stok — ini kasus utama optimasi (tabel `stocks` paling berat).
       const stocksHint = hints.stocksChangedRows;
       const deletedStockId = hints.stocksDeletedId;
-      syncTasks.push({ label: "Data Stok", promise: (Array.isArray(stocksHint) && stocksHint.length > 0)
-        ? syncMasterTableRows("stocks", stocksHint, extraColsStocks)
-        : deletedStockId
-          ? deleteMasterTableRow("stocks", deletedStockId)
-          : syncMasterTable("stocks", s, extraColsStocks) });
+      syncTasks.push({ label: "Data Stok", promise: (async () => {
+        if (katalogSyncPromise && (await katalogSyncPromise) === false) return false;
+        return (Array.isArray(stocksHint) && stocksHint.length > 0)
+          ? syncMasterTableRows("stocks", stocksHint, extraColsStocks)
+          : deletedStockId
+            ? deleteMasterTableRow("stocks", deletedStockId)
+            : syncMasterTable("stocks", s, extraColsStocks);
+      })() });
     }
     // Material Cadang — durable per-UPT di Supabase (dulu localStorage-only → hilang saat
     // Clear site data). Hanya untuk penulis ber-uptId (akun scoped); state mereka = data UPT
