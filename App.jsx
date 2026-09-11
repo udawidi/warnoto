@@ -585,6 +585,7 @@ export default function PLNWarehouse() {
   // One user action keeps the same RPC idempotency keys across retry after a timeout.
   const canonicalActionKeysRef = useRef(null);
   const canonicalDecisionKeysRef = useRef({});
+  const tug10ApprovalInFlightRef = useRef(new Set());
   const [docPreviewDoc, setDocPreviewDoc] = useState(null); // versi docPreview dgn SIM/KTP privat sudah jadi signed URL
   const [kartuGantungDetail, setKartuGantungDetail] = useState(null);
   const [petaMiniDetail, setPetaMiniDetail] = useState(null); // {stock, lokasi, gudang}
@@ -2963,13 +2964,44 @@ export default function PLNWarehouse() {
     }
 
     if (txn.docType === "TUG10") {
+      if (tug10ApprovalInFlightRef.current.has(txn.id)) {
+        showToast("Approval transaksi ini sedang diproses.", "info");
+        return false;
+      }
+      tug10ApprovalInFlightRef.current.add(txn.id);
+      try {
       // Incoming material (return to warehouse): for each line item, either
       // increase qty on an existing Data Stok row, or auto-create a new
       // Master Katalog entry + new Data Stok row. Status maps to Jenis Barang via
       // STATUS_RETUR_TO_JENIS: Bongkaran -> "Bongkaran", Bongkaran ATTB (MTU) -> "ATTB".
       // Material Sisa Baru has no forced mapping, defaults to "Persediaan".
-      let newKatalog = [...katalogList];
-      let newStocks = [...stocks];
+      // Read the server baseline before applying effects. A previous attempt may have
+      // written stocks but failed while persisting the transaction; retry must see its
+      // marker instead of adding the same qty again.
+      let approvalKatalog = katalogList;
+      let approvalStocks = stocks;
+      let approvalAttb = attbList;
+      if (supabase && !isDemoMode()) {
+        const [serverStocks, serverKatalog] = await Promise.all([
+          loadMasterTable("stocks"),
+          loadMasterTable("katalog"),
+        ]);
+        const needsAttb = (txn.stockItems || []).some(si => si.statusMaterial === "Bongkaran ATTB (MTU)");
+        const serverAttb = needsAttb ? await loadMasterTable("attb_list") : null;
+        if (!serverStocks || !serverKatalog || (needsAttb && !serverAttb)) {
+          showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — data server belum terbaca. Coba lagi.`, "error");
+          return false;
+        }
+        approvalStocks = serverStocks;
+        approvalKatalog = serverKatalog;
+        if (serverAttb) approvalAttb = serverAttb;
+      }
+      if (supabase && !isDemoMode() && !txn.uptId) {
+        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — UPT transaksi tidak tersedia.`, "error");
+        return false;
+      }
+      let newKatalog = [...approvalKatalog];
+      let newStocks = [...approvalStocks];
       let nextKatNum = newKatalog.length + 1;
       let nextStkNum = newStocks.length + 1;
       // Lacak baris stok & katalog yang benar-benar berubah/ditambah di transaksi ini,
@@ -2977,24 +3009,28 @@ export default function PLNWarehouse() {
       const touchedStockIds = new Set();
       const touchedKatalogIds = new Set();
 
-      txn.stockItems.forEach(si => {
+      txn.stockItems.forEach((si, itemIdx) => {
         if (si.statusMaterial === "Bongkaran ATTB (MTU)") return; // ke modul ATTB (BAGIAN B), bukan Data Stok
         const qty = Number(si.qty) || 0;
         const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
+        const effectKey = `${txn.id}:${itemIdx}`;
         if (si.katalogMode === "existing" && si.katalogId) {
           // Find an existing Data Stok row for this katalog+location; bump qty if found
           const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===txn.lokasiTujuanId);
           if (existingRow) {
+            const alreadyApplied = Number(existingRow._tug10Applied?.[effectKey]) || 0;
+            const qtyToApply = Math.max(0, qty - alreadyApplied);
+            if (!qtyToApply) return;
             // fix bug-2 (identik TUG-3): foto retur ikut fotoKeseluruhan (kolom Foto DataStokTab),
             // jangan timpa foto lama kalau baris sudah punya.
-            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
+            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
             touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
             // Retur TUG-10 masuk sbg Non-SAP dulu (belum terdaftar SAP Persediaan/Cadang) —
             // admin reklasifikasi ke SAP kemudian. Baris existing yang cuma di-bump qty TIDAK diubah sapStatus-nya.
-            const kat = katalogList.find(k => k.id === si.katalogId);
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            const kat = approvalKatalog.find(k => k.id === si.katalogId);
+            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
             touchedStockIds.add(newId);
           }
         } else {
@@ -3010,11 +3046,14 @@ export default function PLNWarehouse() {
           }
           const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId);
           if (existingRow2) {
-            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qty, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur } : s);
+            const alreadyApplied = Number(existingRow2._tug10Applied?.[effectKey]) || 0;
+            const qtyToApply = Math.max(0, qty - alreadyApplied);
+            if (!qtyToApply) return;
+            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
             touchedStockIds.add(existingRow2.id);
           } else {
             const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, createdAt:Date.now() });
+            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
             touchedStockIds.add(newStkId);
           }
         }
@@ -3027,8 +3066,8 @@ export default function PLNWarehouse() {
       const newAttbItems = [];
       txn.stockItems.forEach((si, idx) => {
         if (si.statusMaterial !== "Bongkaran ATTB (MTU)") return;
-        if (attbList.some(a => a.sourceTxnId === txn.id && a.sourceItemIdx === idx)) return;
-        const kat = si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId) : null;
+        if (approvalAttb.some(a => a.sourceTxnId === txn.id && a.sourceItemIdx === idx)) return;
+        const kat = si.katalogMode === "existing" ? approvalKatalog.find(k => k.id === si.katalogId) : null;
         const namaBarang = si.katalogMode === "existing" ? (kat?.name || "-") : (si.namaBaru || "-");
         const satuan = si.katalogMode === "existing" ? (kat?.satuan || "unit") : (si.satuanBaru || "unit");
         const lokTujuan = lokasiList.find(l => l.id === txn.lokasiTujuanId);
@@ -3058,25 +3097,40 @@ export default function PLNWarehouse() {
           updatedAt: nowAttb, updatedBy: currentUser.id,
         });
       });
-      const nextAttb = newAttbItems.length ? [...newAttbItems, ...attbList] : attbList;
+      const nextAttb = newAttbItems.length ? [...newAttbItems, ...approvalAttb] : approvalAttb;
       if (newAttbItems.length) setAttbList(nextAttb);
 
       const approvedTxn = { ...txn, status:"APPROVED", stage:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated };
       const newTxns = txns.map(t => t.id===txn.id ? approvedTxn : t);
       const prevStocks = stocks, prevKatalogList = katalogList, prevTxns = txns, prevAttbList = attbList;
       setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-      const ok = await saveToCloud({stocks: newStocks, txns: newTxns, katalogList: newKatalog, attbList: nextAttb}, {
+      // Sinkronkan hanya tabel yang benar-benar berubah. Full-sync tabel yang tidak
+      // terkait dapat gagal karena RLS/koneksi dan membatalkan approval yang valid.
+      const saveOverrides = {txns: newTxns};
+      if (touchedStockIds.size) saveOverrides.stocks = newStocks;
+      if (touchedKatalogIds.size) saveOverrides.katalogList = newKatalog;
+      if (newAttbItems.length) saveOverrides.attbList = nextAttb;
+      const ok = await saveToCloud(saveOverrides, {
         stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
         katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
       });
       if (!ok) {
         setStocks(prevStocks); setKatalogList(prevKatalogList); setTxns(prevTxns);
         if (newAttbItems.length) setAttbList(prevAttbList);
-        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — stok belum tersimpan (koneksi). Coba setujui lagi.`, "error");
+        try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
+        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — sebagian data mungkin sudah tersimpan. Coba lagi; qty tidak digandakan.`, "error");
         return false;
       }
       // Persist ke tabel dedicated TUG-10 (parity TUG-3) — fail-safe, blob tetap sumber cadangan.
-      upsertTug10Transaction(approvedTxn).catch(err => console.warn("upsertTug10Transaction (approve) gagal:", err));
+      let dedicatedSaved = false;
+      try { dedicatedSaved = await upsertTug10Transaction(approvedTxn); }
+      catch (err) { console.warn("upsertTug10Transaction (approve) gagal:", err); }
+      if (!dedicatedSaved) {
+        setTxns(prevTxns);
+        try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
+        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — transaksi belum tersimpan. Stok tidak diulang saat retry.`, "error");
+        return false;
+      }
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah. (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah.`);
       // Notif WA/Telegram — TUG-10 blob, tidak punya trigger DB (sama pola TUG-3).
@@ -3094,6 +3148,9 @@ export default function PLNWarehouse() {
         pekerjaan: txn.namaPekerjaan||"",
       });
       return true;
+      } finally {
+        tug10ApprovalInFlightRef.current.delete(txn.id);
+      }
     }
   }
   async function rejectTxn(txn, reason) {
