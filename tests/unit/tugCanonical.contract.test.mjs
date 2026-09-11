@@ -18,6 +18,8 @@ const tug5Tab = read("src/components/TUG5Tab.jsx");
 // ekstraksi logic pasca Tranche split-App.jsx).
 const tugApprovals = read("src/hooks/useTugApprovals.js");
 const tugTransactions = read("src/hooks/useTugTransactions.js");
+const sourceMigration = read("supabase/migrations/20260911_tug_item_source_history.sql");
+const schema = read("supabase/schema.sql");
 
 test("canonical TUG migration has one atomic final decision path", () => {
   assert.match(migration, /create table if not exists public\.stock_movements/i);
@@ -217,4 +219,42 @@ test("TUG-15 report files remain outside canonical scope", () => {
   for (const file of forbidden) assert.ok(fs.existsSync(path.join(root, file)), `${file} must remain present`);
   const diff = spawnSync("git", ["diff", "--quiet", "--", ...forbidden], { cwd: root });
   assert.equal(diff.status, 0, "canonical work must not modify TUG > Laporan files");
+});
+
+test("source history is separate from signed item evidence and server-derived", () => {
+  assert.match(sourceMigration, /alter table public\.tug_items[\s\S]*add column if not exists source_snapshot jsonb not null/i);
+  assert.match(sourceMigration, /function public\.tug_source_snapshot_for_stock/i);
+  assert.match(sourceMigration, /security definer/i);
+  assert.match(sourceMigration, /revoke all on function public\.tug_source_snapshot_for_stock/i);
+  assert.match(sourceMigration, /insert into public\.tug_items\([^)]*source_snapshot/i);
+  assert.match(sourceMigration, /tug_source_snapshot_for_stock\(st\.id, now\(\), 'CREATE'\)/i);
+  assert.match(sourceMigration, /tug_source_snapshot_for_stock\(st\.id, now\(\), 'AMEND'\)/i);
+  assert.match(sourceMigration, /HISTORICAL_BACKFILL/i);
+  assert.match(sourceMigration, /tug3_transactions/i);
+  assert.match(sourceMigration, /tug_catalog_code_key/i);
+  assert.match(sourceMigration, /katalogBaru/i);
+  assert.match(sourceMigration, /st_gudang\.upt_id = t\.upt_id/i);
+  assert.match(sourceMigration, /approvedAtAsman.*tglMasuk.*tanggalDiterima/is);
+  assert.match(sourceMigration, /tglMasuk.*is not null.*to_timestamp/is);
+  assert.match(sourceMigration, /nullif\(btrim\(r\.value->>'docNo'/i);
+  assert.match(sourceMigration, /nullif\(btrim\(r\.value->>'noKontrak'/i);
+  assert.match(sourceMigration, /TUG10_RETURN/i);
+  assert.match(sourceMigration, /_tug10Applied/i);
+  assert.match(sourceMigration, /'item','dupKatalog'/i);
+  assert.match(sourceMigration, /SAP_MIGRATION/i);
+  assert.match(sourceMigration, /STK-MIG-/i);
+  assert.match(sourceMigration, /INITIAL_STOCK/i);
+  assert.match(sourceMigration, /to_timestamp\(public\.tug_source_epoch_ms/i);
+  assert.match(sourceMigration, /grant execute on function public\.tug_create_transaction\(jsonb,jsonb,uuid\) to authenticated/i);
+  assert.match(sourceMigration, /grant execute on function public\.tug_amend\(uuid,integer,jsonb,jsonb,uuid\) to authenticated/i);
+  assert.doesNotMatch(sourceMigration, /using gin \(source_snapshot\)/i);
+});
+
+test("bootstrap schema mirrors the source-history contract", () => {
+  assert.match(schema, /tug_items[\s\S]*source_snapshot jsonb not null default/i);
+  assert.match(schema, /function public\.tug_source_epoch_ms/i);
+  assert.match(schema, /function public\.tug_catalog_code_key/i);
+  assert.match(schema, /function public\.tug_source_snapshot_for_stock/i);
+  assert.match(schema, /revoke all on function public\.tug_source_snapshot_for_stock/i);
+  assert.match(schema, /tug_create_transaction.*tug_amend[\s\S]*source_snapshot/is);
 });

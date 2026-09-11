@@ -253,7 +253,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                           <div>
                             <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
                             <div style={{fontSize:12,color:C.muted}}>📍 {s.lokasi} • {s.jenisBarang!=="Non-Stock"?`Stok: ${fmtNum(s.qty)} ${s.unit}`:"Non-Stock"}</div>
-                            {kontrakSumber && <div style={{fontSize:11,color:C.muted}}>📄 {kontrakSumber}</div>}
+                            {kontrakSumber && <div style={{fontSize:11,color:C.muted}}>📄 Riwayat sumber: {kontrakSumber}</div>}
                           </div>
                           );
                         }}

@@ -115,7 +115,17 @@ export function canonicalRowToTxn(row) {
     docType: row.doc_type,
     docSeq: Number(row.doc_sequence),
     docNumbers: { ...(document.docNumbers || {}), [docKey]: row.doc_number },
-    stockItems: (row.tug_items || []).map(i => ({ ...i.snapshot, stockId: i.stock_id, katalogId: i.katalog_id, lokasiId: i.lokasi_id, qty: Number(i.qty), unit: i.unit })),
+    stockItems: (row.tug_items || []).map(i => ({
+      ...i.snapshot,
+      stockId: i.stock_id,
+      katalogId: i.katalog_id,
+      lokasiId: i.lokasi_id,
+      qty: Number(i.qty),
+      unit: i.unit,
+      // Informational provenance lives outside the signed item snapshot. Keep
+      // the snake_case DB name at the boundary and expose the app convention.
+      sourceSnapshot: i.source_snapshot || i.sourceSnapshot || null,
+    })),
     status: row.status === "FINAL_APPROVED" ? "APPROVED" : row.status,
     stage: row.stage,
     requiredApprover: { PENDING_TL:"TL", PENDING_ASMAN:"ASMAN", PENDING_MANAGER:"MANAGER", PENDING_MGR_LOGISTIK:"MGR_LOGISTIK_UIT", PENDING_MGR_ULTG:"MGR_ULTG" }[row.stage] || null,

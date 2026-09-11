@@ -48,6 +48,85 @@ begin
 end $$;
 
 -- ────────────────────────────────────────────────────────────
+-- CANONICAL TUG SOURCE HISTORY (parity with
+-- migrations/20260911_tug_item_source_history.sql)
+-- Canonical TUG tables/RPCs are installed by their dedicated migration. This
+-- guarded block keeps a fresh bootstrap/schema refresh aligned when those
+-- tables already exist, without inventing a second canonical DDL path.
+-- `tug_create_transaction` and `tug_amend` must insert `source_snapshot`
+-- through `tug_source_snapshot_for_stock(...)`; the dedicated migration owns
+-- those unchanged RPC signatures and definitions.
+-- ────────────────────────────────────────────────────────────
+do $$
+begin
+  if to_regclass('public.tug_items') is not null then
+    alter table public.tug_items
+      add column if not exists source_snapshot jsonb not null default '{}'::jsonb;
+  end if;
+end $$;
+
+create or replace function public.tug_source_epoch_ms(p_value text)
+returns bigint language plpgsql immutable set search_path = public as $$
+begin
+  if nullif(btrim(p_value), '') is null then return null; end if;
+  if p_value ~ '^\d{10,13}$' then
+    if p_value::numeric < 1000000000000 then return (p_value::numeric * 1000)::bigint; end if;
+    return p_value::bigint;
+  end if;
+  begin
+    return (extract(epoch from p_value::timestamptz) * 1000)::bigint;
+  exception when others then
+    return null;
+  end;
+end $$;
+
+create or replace function public.tug_catalog_code_key(p_value text)
+returns text language plpgsql immutable set search_path = public as $$
+declare v_digits text := regexp_replace(coalesce(p_value,''), '[^0-9]', '', 'g');
+begin
+  if v_digits = '' then return lower(btrim(coalesce(p_value,''))); end if;
+  if length(v_digits) = 10 and left(v_digits,3) = '100' then v_digits := substr(v_digits,4); end if;
+  return coalesce(nullif(ltrim(v_digits,'0'),''),'0');
+end $$;
+
+create or replace function public.tug_source_snapshot_for_stock(
+  p_stock_id text, p_at timestamptz default now(), p_provenance text default 'CREATE'
+) returns jsonb language plpgsql stable security definer set search_path = public as $$
+declare v_data jsonb; v_contracts jsonb := '[]'::jsonb; v_kind text;
+begin
+  select coalesce(data,'{}'::jsonb) into v_data from public.stocks where id=p_stock_id;
+  if v_data is null then
+    return jsonb_build_object('sourceKind','INITIAL_STOCK','contracts','[]'::jsonb,'provenance',p_provenance);
+  end if;
+  select coalesce(jsonb_agg(q.ref order by q.entry_ms desc, q.doc_no),'[]'::jsonb) into v_contracts
+  from (
+    select distinct on (coalesce(r.value->>'docNo',''),coalesce(r.value->>'noKontrak',''))
+      r.value as ref, public.tug_source_epoch_ms(r.value->>'tglMasuk') as entry_ms,
+      coalesce(r.value->>'docNo','') as doc_no
+    from jsonb_array_elements(case when jsonb_typeof(v_data->'kontrakRefs')='array'
+      then v_data->'kontrakRefs' else '[]'::jsonb end) r(value)
+    where nullif(btrim(r.value->>'docNo'),'') is not null
+      and nullif(btrim(r.value->>'noKontrak'),'') is not null
+      and public.tug_source_epoch_ms(r.value->>'tglMasuk') is not null
+      and to_timestamp(public.tug_source_epoch_ms(r.value->>'tglMasuk')/1000.0) <= p_at
+    order by coalesce(r.value->>'docNo',''),coalesce(r.value->>'noKontrak',''),
+      public.tug_source_epoch_ms(r.value->>'tglMasuk') desc
+  ) q;
+  if jsonb_array_length(v_contracts)>0 then v_kind:='TUG3_CONTRACT';
+  elsif v_data ? '_tug10Applied' or v_data ? 'sourceTxnId'
+     or coalesce(v_data->>'source','') in ('TUG10','TUG10_RETURN','item','dupKatalog') then v_kind:='TUG10_RETURN';
+  elsif v_data ? 'sapBaselineQty' or v_data ? 'sapBaselineAt'
+     or left(coalesce(p_stock_id,''),8) in ('STK-SAP-','STK-MIG-')
+     or coalesce(v_data->>'source','') in ('SAP','SAP_MIGRATION') then v_kind:='SAP_MIGRATION';
+  else v_kind:='INITIAL_STOCK'; end if;
+  return jsonb_build_object('sourceKind',v_kind,'contracts',v_contracts,'provenance',p_provenance);
+end $$;
+
+revoke all on function public.tug_source_epoch_ms(text) from public, anon, authenticated;
+revoke all on function public.tug_catalog_code_key(text) from public, anon, authenticated;
+revoke all on function public.tug_source_snapshot_for_stock(text,timestamptz,text) from public, anon, authenticated;
+
+-- ────────────────────────────────────────────────────────────
 -- 1b. STOCKS — Data Stok aktif (qty per item per lokasi), pola jsonb sama.
 --     BEDA dari stocks_snapshot (tabel ringkas khusus bot chat/cron malam,
 --     lihat section 17) -- tabel ini SUMBER UTAMA Data Stok aplikasi.

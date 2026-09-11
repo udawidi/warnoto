@@ -298,11 +298,51 @@ export function stockSapLabel(stock) { return rowSapLabel(stock); }
 // picker/approval/history TUG-8/9. Banyak entry bisa menumpuk di satu stock (tiap TUG-3
 // nambah satu) — cukup tampilkan yang PALING BARU (tglMasuk terbesar), bukan semua, supaya
 // tetap ringkas satu baris.
-export function formatKontrakSumber(kontrakRefs) {
-  if (!Array.isArray(kontrakRefs) || kontrakRefs.length === 0) return "";
-  const latest = [...kontrakRefs].sort((a, b) => (b.tglMasuk || 0) - (a.tglMasuk || 0))[0];
-  if (!latest) return "";
-  return [latest.supplier, latest.noKontrak].filter(Boolean).join(" — ");
+const SOURCE_KIND_LABELS = {
+  SAP_MIGRATION: "Migrasi SAP",
+  TUG10_RETURN: "Retur TUG-10",
+  INITIAL_STOCK: "Stok awal — kontrak tidak tersedia",
+};
+
+function sourceTime(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (/^\d{10,13}$/.test(String(value || ""))) {
+    const n = Number(value);
+    return n < 1e12 ? n * 1000 : n;
+  }
+  const n = Date.parse(value || "");
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Normalize server source snapshots and legacy stock kontrakRefs for display. */
+export function normalizeSourceSnapshot(source, fallbackRefs = []) {
+  const raw = Array.isArray(source) ? { contracts: source } : (source || {});
+  const hasSnapshotShape = !Array.isArray(source) && source && typeof source === "object"
+    && ["sourceKind", "contracts", "provenance"].some(key => Object.prototype.hasOwnProperty.call(source, key));
+  const refs = Array.isArray(raw.contracts) ? raw.contracts : (hasSnapshotShape ? [] : (Array.isArray(fallbackRefs) ? fallbackRefs : []));
+  const unique = new Map();
+  refs.forEach(ref => {
+    if (!ref || typeof ref !== "object") return;
+    const key = `${ref.docNo || ""}|${ref.noKontrak || ""}`;
+    const existing = unique.get(key);
+    if (!existing || sourceTime(ref.tglMasuk) > sourceTime(existing.tglMasuk)) unique.set(key, { ...ref });
+  });
+  const contracts = [...unique.values()].sort((a, b) => sourceTime(b.tglMasuk) - sourceTime(a.tglMasuk));
+  const sourceKind = contracts.length ? "TUG3_CONTRACT" : (raw.sourceKind || "INITIAL_STOCK");
+  return {
+    sourceKind,
+    contracts,
+    provenance: raw.provenance || null,
+  };
+}
+
+/** Human-readable complete provenance, newest contract first. */
+export function formatKontrakSumber(source, fallbackRefs = []) {
+  const snapshot = normalizeSourceSnapshot(source, fallbackRefs);
+  if (snapshot.contracts.length) {
+    return snapshot.contracts.map(ref => [ref.supplier, ref.noKontrak, ref.docNo].filter(Boolean).join(" — ")).join(" · ");
+  }
+  return SOURCE_KIND_LABELS[snapshot.sourceKind] || "";
 }
 
 // Accent color per Jenis Barang, used on the printable QR label
