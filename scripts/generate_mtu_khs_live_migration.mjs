@@ -38,6 +38,21 @@ const json = value => `${esc(JSON.stringify(value ?? {}))}::jsonb`;
 const sha256 = value => crypto.createHash("sha256").update(value).digest("hex");
 const stableId = (prefix, ...parts) => `${prefix}-${sha256(parts.map(item => compact(item)).join("|")).slice(0, 24)}`;
 
+function readSpecificationSheet(workbook) {
+  const sheet = workbook.Sheets.Spesifikasi;
+  if (!sheet) return [];
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }).slice(2)
+    .filter(row => compact(row[0]))
+    .map(row => ({
+      mtu_code: compact(row[0]),
+      data: {
+        description: String(row[2] || "").trim(),
+        noSapStok: catalogCode(row[5]),
+        noSapCadang: catalogCode(row[6]),
+      },
+    }));
+}
+
 function readMasters() {
   if (process.env.MTU_KHS_MASTERS_JSON) return JSON.parse(fs.readFileSync(process.env.MTU_KHS_MASTERS_JSON, "utf8"));
   const sql = `select json_build_object(
@@ -46,7 +61,9 @@ function readMasters() {
     'gi',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,upt_id,ultg_id,normalized_name nama,active from public.mtu_khs_gardu_induk) x),
     'bay',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,gardu_induk_id,normalized_name nama,active from public.mtu_khs_gardu_induk_bay) x),
     'gudang',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,upt_id,data->>'nama' nama from public.gudang) x),
-    'supplier',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,data->>'nama' nama from public.supplier) x)
+    'supplier',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,data->>'nama' nama from public.supplier) x),
+    'spec',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,procurement_year,mtu_code,vendor,data from public.mtu_khs_specs) x),
+    'catalog',(select coalesce(json_agg(row_to_json(x)),'[]'::json) from (select id,data from public.katalog) x)
   )::text;`;
   const encoded = Buffer.from(sql, "utf8").toString("base64");
   const remote = `echo ${encoded} | base64 -d | docker exec -i supabase-db psql -U postgres -d postgres -At`;
@@ -89,6 +106,32 @@ function supplierId(masters, provider) {
   throw new Error(`MTU_SUPPLIER_UNRESOLVED:${provider}`);
 }
 
+const catalogCode = value => String(value ?? "").replace(/^0+(?=\d)/, "");
+const catalogData = item => item?.data && typeof item.data === "object" ? { ...item, ...item.data } : item || {};
+function specForRow(masters, source, year) {
+  const code = compact(source.mtuCode);
+  const vendor = compact(source.vendor || source.provider);
+  const sheetSpec = (masters.specification || []).find(item => compact(item.mtu_code) === code);
+  const dbSpec = (masters.spec || []).find(item => Number(item.procurement_year) === year && compact(item.mtu_code) === code && (!item.vendor || compact(item.vendor) === vendor));
+  return dbSpec || sheetSpec ? { ...(sheetSpec || {}), ...(dbSpec || {}), data: { ...(sheetSpec?.data || {}), ...(dbSpec?.data || {}) } } : null;
+}
+function catalogForRow(masters, source, year) {
+  if (year !== 2024) return { id: null, warning: null };
+  const spec = specForRow(masters, source, year);
+  const specData = catalogData(spec);
+  const isSpare = compact(source.bayName) === "SPARE";
+  const isSf6 = /SF6[-\s]+REGULATOR/.test(compact(source.materialName)) || /SF6[-\s]+REGULATOR/.test(compact(source.mtuCode)) || /SF6[-\s]+REGULATOR/.test(compact(source.bayName));
+  const stockCode = isSf6 ? "4190948" : catalogCode(specData.noSapStok || specData.no_sap_stok || specData.noSapPersediaan || specData.no_sap_persediaan || specData.sapStok || specData.sapPersediaan);
+  const spareCode = isSf6 ? "1004190948" : catalogCode(specData.noSapCadang || specData.no_sap_cadang || specData.sapCadang);
+  const code = isSpare ? spareCode : stockCode;
+  const specification = isSf6
+    ? { description: "UNIV ACC;SF6 REGULATOR", noSapStok: "4190948", noSapCadang: "1004190948" }
+    : { description: specData.description || specData.deskripsi || specData.name || source.materialName, noSapStok: stockCode, noSapCadang: spareCode };
+  if (!code) return { id: null, warning: /^STR\b/.test(compact(source.mtuCode)) ? "KATALOG_UNMAPPED_STR" : "KATALOG_UNMAPPED", specification };
+  const existing = (masters.catalog || []).find(item => catalogCode(catalogData(item).katalog || catalogData(item).kodeMaterial || item.id?.replace(/^KAT-/, "")) === code);
+  return { id: existing?.id || `KAT-${code}`, code, existing, spec, specification, description: specification.description, jenisBarang: isSpare ? "Cadang" : "Persediaan" };
+}
+
 function inferRow272(rows) {
   const target = rows.find(row => row.rowNumber === 272);
   if (!target || target.source.mtuCode) return { applied: false, evidence: [] };
@@ -108,14 +151,19 @@ function mapRows(masters, parsed, year) {
   const missingBay = new Map();
   const reactivatedGi = new Map();
   const reactivatedBay = new Map();
+  const missingCatalog = new Map();
+  const catalogWarnings = [];
   const mapped = rows.map(row => {
     const source = row.source;
     const upt = resolveUpt(masters, source.uptName);
     if (!upt.row) throw new Error(`MTU_UPT_UNRESOLVED:${year}:${row.rowNumber}:${source.uptName}`);
     const warehouse = /^GUDANG\b/i.test(compact(source.giName));
     const supplier = supplierId(masters, source.provider);
-    const mappingProvenance = { UPT: { source: source.uptName, targetId: upt.row.id, method: "exact" }, Supplier: { source: source.provider, targetId: supplier.id, method: supplier.sourceOnly ? "source-only" : "exact-or-token" } };
-    const mappedSource = { ...source, uptId: upt.row.id, supplierId: supplier.id, mappingProvenance };
+    const catalog = catalogForRow(masters, source, year);
+    if (catalog.warning) catalogWarnings.push({ rowNumber: row.rowNumber, warning: catalog.warning });
+    if (catalog.code && !catalog.existing) missingCatalog.set(catalog.id, { id: catalog.id, code: catalog.code, description: catalog.description, jenisBarang: catalog.jenisBarang });
+    const mappingProvenance = { UPT: { source: source.uptName, targetId: upt.row.id, method: "exact" }, Supplier: { source: source.provider, targetId: supplier.id, method: supplier.sourceOnly ? "source-only" : "exact-or-token" }, Catalog: { source: catalog.code || "", targetId: catalog.id, method: catalog.existing ? "exact" : catalog.code ? "source-upsert" : "unresolved" } };
+    const mappedSource = { ...source, uptId: upt.row.id, supplierId: supplier.id, katalogId: catalog.id, catalogNumber: catalog.code || null, materialDescription: catalog.description || null, catalogType: catalog.jenisBarang || null, catalogSpecification: catalog.specification || null, catalogWarning: catalog.warning || null, mappingProvenance };
     if (warehouse) {
       const wanted = compact(source.giName).replace(/^GUDANG\s+/, "");
       const gudang = one(masters.gudang, item => item.upt_id === upt.row.id && compact(item.nama) === wanted);
@@ -192,10 +240,10 @@ function mapRows(masters, parsed, year) {
     mappingProvenance.Gudang = { source: source.location || "", targetId: null, method: "not-applicable" };
     return { ...row, source: mappedSource };
   });
-  return { rows: mapped, missingGi: [...missingGi.values()], missingBay: [...missingBay.values()], reactivatedGi: [...reactivatedGi.values()], reactivatedBay: [...reactivatedBay.values()], inference };
+  return { rows: mapped, missingGi: [...missingGi.values()], missingBay: [...missingBay.values()], missingCatalog: [...missingCatalog.values()], catalogWarnings, reactivatedGi: [...reactivatedGi.values()], reactivatedBay: [...reactivatedBay.values()], inference };
 }
 
-function buildSql(sourceSha, yearItems, missingGi, missingBay, reactivatedGi, reactivatedBay, hitachiNeeded) {
+function buildSql(sourceSha, yearItems, missingGi, missingBay, missingCatalog, reactivatedGi, reactivatedBay, hitachiNeeded) {
   const all = yearItems.flatMap(item => item.rows);
   const statements = ["begin;", "set local lock_timeout = '15s';"];
   const migrationKey = `MTU-LIVE-${sourceSha.slice(0, 16)}`;
@@ -203,6 +251,7 @@ function buildSql(sourceSha, yearItems, missingGi, missingBay, reactivatedGi, re
   for (const bay of reactivatedBay) statements.push(`do $migration$ begin if exists (select 1 from public.mtu_khs_gardu_induk_bay where id=${esc(bay.id)} and active=false) then update public.mtu_khs_gardu_induk_bay set active=true, data=coalesce(data,'{}'::jsonb)||${json({ mtuKhsReactivation: { batchKey: migrationKey, previousActive: false, sourceName: bay.sourceName } })}, updated_at=now() where id=${esc(bay.id)}; end if; end $migration$;`);
   for (const gi of missingGi) statements.push(`do $migration$ begin if exists (select 1 from public.mtu_khs_gardu_induk where id=${esc(gi.id)} and (upt_id is distinct from ${esc(gi.upt_id)} or ultg_id is distinct from ${esc(gi.ultg_id)} or normalized_name is distinct from ${esc(gi.nama)})) then raise exception 'MTU_GI_ID_CONFLICT:%', ${esc(gi.id)}; end if; end $migration$; insert into public.mtu_khs_gardu_induk(id,upt_id,ultg_id,normalized_name,active,data,created_by) values (${esc(gi.id)},${esc(gi.upt_id)},${esc(gi.ultg_id)},${esc(gi.nama)},true,${json({ nama: gi.nama, normalizedName: gi.nama, mtuKhsMigration: true })},null) on conflict (id) do nothing;`);
   for (const bay of missingBay) statements.push(`do $migration$ begin if exists (select 1 from public.mtu_khs_gardu_induk_bay where id=${esc(bay.id)} and (gardu_induk_id is distinct from ${esc(bay.gardu_induk_id)} or normalized_name is distinct from ${esc(bay.nama)})) then raise exception 'MTU_BAY_ID_CONFLICT:%', ${esc(bay.id)}; end if; end $migration$; insert into public.mtu_khs_gardu_induk_bay(id,gardu_induk_id,normalized_name,active,data,created_by) values (${esc(bay.id)},${esc(bay.gardu_induk_id)},${esc(bay.nama)},true,${json({ nama: bay.nama, normalizedName: bay.nama, mtuKhsMigration: true })},null) on conflict (id) do nothing;`);
+  for (const catalog of missingCatalog) statements.push(`do $migration$ begin if exists (select 1 from public.katalog where id=${esc(catalog.id)} and coalesce(data->>'katalog','') not in ('',${esc(catalog.code)})) then raise exception 'MTU_KATALOG_ID_CONFLICT:%', ${esc(catalog.id)}; end if; end $migration$; insert into public.katalog(id,data,created_at) values (${esc(catalog.id)},${json({ katalog: catalog.code, name: catalog.description, category: "Lainnya", jenisBarang: catalog.jenisBarang, source: "MTU_KHS_SPEC" })},extract(epoch from now())::bigint) on conflict (id) do nothing;`);
   if (hitachiNeeded) statements.push(`do $migration$ begin if exists (select 1 from public.supplier where id='MTU-SUPPLIER-HITACHI' and data->>'nama' is distinct from 'HITACHI') then raise exception 'MTU_SUPPLIER_ID_CONFLICT:MTU-SUPPLIER-HITACHI'; end if; end $migration$; insert into public.supplier(id,data) values ('MTU-SUPPLIER-HITACHI',${json({ nama: "HITACHI", source: "MTU_KHS_SOURCE_ONLY" })}) on conflict (id) do nothing;`);
   for (const item of yearItems) {
     const batch = `MTU-BATCH-${item.year}-${sourceSha.slice(0, 16)}`;
@@ -211,10 +260,11 @@ function buildSql(sourceSha, yearItems, missingGi, missingBay, reactivatedGi, re
       const rawHash = sha256(JSON.stringify(row.rawData || {}));
       const recordId = `MTU-KHS-${item.year}-${row.rowNumber}-${rawHash.slice(0, 16)}`;
       const specId = row.source.mtuCode ? stableId("MTU-SPEC-KHS", item.year, row.source.mtuCode, row.source.vendor) : null;
-      const normalized = { ...row.source, mtuSpecId: specId, katalogId: null, mappingProvenance: { ...(row.source.mappingProvenance || {}), Spec: { source: row.source.mtuCode || "", targetId: specId, method: specId ? "deterministic-source" : "not-applicable" } }, _migration: { batchKey: batch, migrationActor: "SYSTEM_ON_BEHALF_OF_USER", requestedBy: ACTOR, sourceRow: row.rowNumber, rawRowSha256: rawHash, inference: row.inference || null, sourceHierarchyConflict: row.source.sourceHierarchyConflict || null } };
-      statements.push(`insert into public.mtu_khs_import_rows(id,batch_id,source_row,raw_data,normalized_data,validation_errors,validation_warnings,duplicate_candidate,raw_row_sha256) values (${esc(`${batch}-${row.rowNumber}`)},${esc(batch)},${row.rowNumber},${json(row.rawData)},${json(normalized)},'[]'::jsonb,'[]'::jsonb,false,${esc(rawHash)}) on conflict (id) do nothing;`);
-      if (specId) statements.push(`insert into public.mtu_khs_specs(id,procurement_year,mtu_code,vendor,katalog_id,mapping_status,data) values (${esc(specId)},${item.year},${esc(normalized.mtuCode)},${esc(normalized.vendor)},null,'APPROVED',${json({ mtuKhsMigration: true, batchKey: batch, provider: normalized.provider })}) on conflict (procurement_year,mtu_code,vendor) do update set mapping_status='APPROVED', data=excluded.data;`);
-      statements.push(`insert into public.mtu_khs_records(id,upt_id,ultg_id,gardu_induk_id,bay_id,gudang_id,mtu_spec_id,katalog_id,supplier_id,procurement_year,sifat_pekerjaan,qty,data,created_by) values (${esc(recordId)},${esc(normalized.uptId)},nullif(${esc(normalized.ultgId)},''),nullif(${esc(normalized.garduIndukId)},''),nullif(${esc(normalized.bayId)},''),nullif(${esc(normalized.gudangId)},''),${specId ? esc(specId) : "null"},null,${esc(normalized.supplierId)},${item.year},${esc(normalized.sifatPekerjaan)},${Number(normalized.physicalQty || 0)},${json(normalized)},${esc(ACTOR)}) on conflict (id) do nothing;`);
+      const normalized = { ...row.source, mtuSpecId: specId, katalogId: row.source.katalogId || null, mappingProvenance: { ...(row.source.mappingProvenance || {}), Spec: { source: row.source.mtuCode || "", targetId: specId, method: specId ? "deterministic-source" : "not-applicable" } }, _migration: { batchKey: batch, migrationActor: "SYSTEM_ON_BEHALF_OF_USER", requestedBy: ACTOR, sourceRow: row.rowNumber, rawRowSha256: rawHash, inference: row.inference || null, sourceHierarchyConflict: row.source.sourceHierarchyConflict || null } };
+      const warnings = row.source.catalogWarning ? [row.source.catalogWarning] : [];
+      statements.push(`insert into public.mtu_khs_import_rows(id,batch_id,source_row,raw_data,normalized_data,validation_errors,validation_warnings,duplicate_candidate,raw_row_sha256) values (${esc(`${batch}-${row.rowNumber}`)},${esc(batch)},${row.rowNumber},${json(row.rawData)},${json(normalized)},'[]'::jsonb,${json(warnings)},false,${esc(rawHash)}) on conflict (id) do nothing;`);
+      if (specId) statements.push(`insert into public.mtu_khs_specs(id,procurement_year,mtu_code,vendor,katalog_id,mapping_status,data) values (${esc(specId)},${item.year},${esc(normalized.mtuCode)},${esc(normalized.vendor)},null,'APPROVED',${json({ mtuKhsMigration: true, batchKey: batch, provider: normalized.provider, ...(normalized.catalogSpecification || {}) })}) on conflict (procurement_year,mtu_code,vendor) do update set mapping_status='APPROVED', data=coalesce(public.mtu_khs_specs.data,'{}'::jsonb)||excluded.data;`);
+      statements.push(`insert into public.mtu_khs_records(id,upt_id,ultg_id,gardu_induk_id,bay_id,gudang_id,mtu_spec_id,katalog_id,supplier_id,procurement_year,sifat_pekerjaan,qty,data,created_by) values (${esc(recordId)},${esc(normalized.uptId)},nullif(${esc(normalized.ultgId)},''),nullif(${esc(normalized.garduIndukId)},''),nullif(${esc(normalized.bayId)},''),nullif(${esc(normalized.gudangId)},''),${specId ? esc(specId) : "null"},${normalized.katalogId ? esc(normalized.katalogId) : "null"},${esc(normalized.supplierId)},${item.year},${esc(normalized.sifatPekerjaan)},${Number(normalized.physicalQty || 0)},${json(normalized)},${esc(ACTOR)}) on conflict (id) do nothing;`);
     }
   }
   const batchList = yearItems.map(item => esc(`MTU-BATCH-${item.year}-${sourceSha.slice(0, 16)}`)).join(",");
@@ -223,21 +273,23 @@ function buildSql(sourceSha, yearItems, missingGi, missingBay, reactivatedGi, re
   return statements.join("\n");
 }
 
-function buildRollback(sourceSha, years, missingGi, missingBay) {
+function buildRollback(sourceSha, years, missingGi, missingBay, missingCatalog = []) {
   const batches = years.map(year => `MTU-BATCH-${year}-${sourceSha.slice(0, 16)}`);
   const inList = batches.map(esc).join(",");
   const bayList = missingBay.map(item => esc(item.id)).join(",") || "null";
   const giList = missingGi.map(item => esc(item.id)).join(",") || "null";
+  const catalogList = missingCatalog.map(item => esc(item.id)).join(",") || "null";
   const reactivationBatch = esc(`MTU-LIVE-${sourceSha.slice(0, 16)}`);
-  return `begin;\n-- Generated rollback. It refuses to remove masters still referenced outside this migration.\ndelete from public.mtu_khs_records where data->'_migration'->>'batchKey' in (${inList});\ndelete from public.mtu_khs_import_rows where batch_id in (${inList});\ndelete from public.mtu_khs_import_batches where id in (${inList});\ndelete from public.mtu_khs_specs where data->>'mtuKhsMigration' = 'true' and data->>'batchKey' in (${inList}) and not exists (select 1 from public.mtu_khs_records r where r.mtu_spec_id = mtu_khs_specs.id);\nupdate public.mtu_khs_gardu_induk_bay set active=false, updated_at=now() where data->'mtuKhsReactivation'->>'batchKey' = ${reactivationBatch} and data->'mtuKhsReactivation'->>'previousActive' = 'false' and not exists (select 1 from public.mtu_khs_records r where r.bay_id = mtu_khs_gardu_induk_bay.id);\nupdate public.mtu_khs_gardu_induk set active=false, updated_at=now() where data->'mtuKhsReactivation'->>'batchKey' = ${reactivationBatch} and data->'mtuKhsReactivation'->>'previousActive' = 'false' and not exists (select 1 from public.mtu_khs_records r where r.gardu_induk_id = mtu_khs_gardu_induk.id);\ndelete from public.mtu_khs_gardu_induk_bay where data->>'mtuKhsMigration' = 'true' and id in (${bayList}) and not exists (select 1 from public.mtu_khs_records r where r.bay_id = mtu_khs_gardu_induk_bay.id);\ndelete from public.mtu_khs_gardu_induk where data->>'mtuKhsMigration' = 'true' and id in (${giList}) and not exists (select 1 from public.mtu_khs_records r where r.gardu_induk_id = mtu_khs_gardu_induk.id);\ndelete from public.supplier where id = 'MTU-SUPPLIER-HITACHI' and data->>'source' = 'MTU_KHS_SOURCE_ONLY' and not exists (select 1 from public.mtu_khs_records where supplier_id = supplier.id);\ncommit;\n`;
+    return `begin;\n-- Generated rollback. It refuses to remove masters still referenced outside this migration.\ndelete from public.mtu_khs_records where data->'_migration'->>'batchKey' in (${inList});\ndelete from public.mtu_khs_import_rows where batch_id in (${inList});\ndelete from public.mtu_khs_import_batches where id in (${inList});\ndelete from public.mtu_khs_specs where data->>'mtuKhsMigration' = 'true' and data->>'batchKey' in (${inList}) and not exists (select 1 from public.mtu_khs_records r where r.mtu_spec_id = mtu_khs_specs.id);\nupdate public.mtu_khs_gardu_induk_bay set active=false, updated_at=now() where data->'mtuKhsReactivation'->>'batchKey' = ${reactivationBatch} and data->'mtuKhsReactivation'->>'previousActive' = 'false' and not exists (select 1 from public.mtu_khs_records r where r.bay_id = mtu_khs_gardu_induk_bay.id);\nupdate public.mtu_khs_gardu_induk set active=false, updated_at=now() where data->'mtuKhsReactivation'->>'batchKey' = ${reactivationBatch} and data->'mtuKhsReactivation'->>'previousActive' = 'false' and not exists (select 1 from public.mtu_khs_records r where r.gardu_induk_id = mtu_khs_gardu_induk.id);\ndelete from public.mtu_khs_gardu_induk_bay where data->>'mtuKhsMigration' = 'true' and id in (${bayList}) and not exists (select 1 from public.mtu_khs_records r where r.bay_id = mtu_khs_gardu_induk_bay.id);\ndelete from public.mtu_khs_gardu_induk where data->>'mtuKhsMigration' = 'true' and id in (${giList}) and not exists (select 1 from public.mtu_khs_records r where r.gardu_induk_id = mtu_khs_gardu_induk.id);\ndelete from public.katalog where id in (${catalogList}) and data->>'source' = 'MTU_KHS_SPEC' and not exists (select 1 from public.mtu_khs_records r where r.katalog_id = katalog.id) and not exists (select 1 from public.stock_current s where s.katalog_id = katalog.id);\ndelete from public.supplier where id = 'MTU-SUPPLIER-HITACHI' and data->>'source' = 'MTU_KHS_SOURCE_ONLY' and not exists (select 1 from public.mtu_khs_records where supplier_id = supplier.id);\ncommit;\n`;
 }
 
-export { compact, siteKeys, resolveGiByUpt, mapRows, buildSql, buildRollback, inferRow272, NON_SITE_BAYS, readMasters };
+export { compact, siteKeys, resolveGiByUpt, mapRows, buildSql, buildRollback, inferRow272, catalogForRow, specForRow, readSpecificationSheet, NON_SITE_BAYS, readMasters };
 
 function main() {
   const workbook = XLSX.read(fs.readFileSync(SOURCE), { type: "buffer", cellDates: false, raw: false });
   const sourceSha = sha256(fs.readFileSync(SOURCE));
   const masters = readMasters();
+  masters.specification = readSpecificationSheet(workbook);
   const yearItems = [];
   for (const [year, sheetName] of [[2024, "Input KHS 2024"], [2026, "Input KHS 2026"]]) {
     const parsed = parseMtuKhsWorkbook({ SheetNames: [sheetName], Sheets: { [sheetName]: workbook.Sheets[sheetName] } }, { procurementYear: year });
@@ -253,20 +305,21 @@ function main() {
       if (row.source.bayId && (!row.source.garduIndukId || !masters.bay.find(item => item.id === row.source.bayId && item.gardu_induk_id === row.source.garduIndukId))) throw new Error(`MTU_PREFLIGHT_BAY_HIERARCHY:${year}:${row.rowNumber}`);
       if (row.source.gudangId && (row.source.garduIndukId || row.source.bayId || !masters.gudang.find(item => item.id === row.source.gudangId && item.upt_id === row.source.uptId))) throw new Error(`MTU_PREFLIGHT_GUDANG_HIERARCHY:${year}:${row.rowNumber}`);
     }
-    yearItems.push({ year, sheetName, rows: result.rows, inference: result.inference, uitId: uitIds[0], reactivatedGi: result.reactivatedGi, reactivatedBay: result.reactivatedBay });
+    yearItems.push({ year, sheetName, rows: result.rows, inference: result.inference, uitId: uitIds[0], missingCatalog: result.missingCatalog, catalogWarnings: result.catalogWarnings, reactivatedGi: result.reactivatedGi, reactivatedBay: result.reactivatedBay });
   }
   const missingGi = [...new Map(yearItems.flatMap(item => item.rows).filter(row => row.source.garduIndukId?.startsWith("MTU-GI-KHS-")).map(row => [row.source.garduIndukId, { id: row.source.garduIndukId, upt_id: row.source.uptId, ultg_id: row.source.ultgId, nama: compact(row.source.giName) }])).values()];
   const missingBay = [...new Map(yearItems.flatMap(item => item.rows).filter(row => row.source.bayId?.startsWith("MTU-BAY-KHS-")).map(row => [row.source.bayId, { id: row.source.bayId, gardu_induk_id: row.source.garduIndukId, nama: compact(row.source.bayName) }])).values()];
   const reactivatedGi = [...new Map(yearItems.flatMap(item => item.reactivatedGi || []).map(item => [item.id, item])).values()];
   const reactivatedBay = [...new Map(yearItems.flatMap(item => item.reactivatedBay || []).map(item => [item.id, item])).values()];
+  const missingCatalog = [...new Map(yearItems.flatMap(item => item.missingCatalog || []).map(item => [item.id, item])).values()];
   const hitachiNeeded = yearItems.some(item => item.rows.some(row => row.source.provider === "HITACHI" && row.source.supplierId === "MTU-SUPPLIER-HITACHI"));
-  const sql = buildSql(sourceSha, yearItems, missingGi, missingBay, reactivatedGi, reactivatedBay, hitachiNeeded);
-  const rollback = buildRollback(sourceSha, [2024, 2026], missingGi, missingBay);
+  const sql = buildSql(sourceSha, yearItems, missingGi, missingBay, missingCatalog, reactivatedGi, reactivatedBay, hitachiNeeded);
+  const rollback = buildRollback(sourceSha, [2024, 2026], missingGi, missingBay, missingCatalog);
   const out = process.env.MTU_KHS_SQL_OUT || `supabase/migrations/20260912d_mtu_khs_live_${sourceSha.slice(0, 12)}.sql`;
   const rollbackOut = out.replace(/\.sql$/, ".rollback.sql");
   if (process.argv.includes("--emit")) { fs.writeFileSync(out, sql); fs.writeFileSync(rollbackOut, rollback); }
   const conflicts = yearItems.flatMap(item => item.rows.map(row => row.source.sourceHierarchyConflict).filter(Boolean));
-  console.log(JSON.stringify({ sourceSha256: sourceSha, years: Object.fromEntries(yearItems.map(item => [item.year, { uitId: item.uitId, rows: item.rows.length, physicalQty: item.rows.reduce((sum, row) => sum + row.source.physicalQty, 0), validationErrors: 0, inference: item.inference } ])), totalRows: yearItems.reduce((sum, item) => sum + item.rows.length, 0), missingGi: missingGi.length, missingGiNames: missingGi.map(item => item.nama), missingBay: missingBay.length, reactivatedGi: reactivatedGi.length, reactivatedGiNames: reactivatedGi.map(item => item.nama), reactivatedBay: reactivatedBay.length, reactivatedBayNames: reactivatedBay.map(item => item.nama), sourceHierarchyConflict: { total: conflicts.length, GI: conflicts.filter(item => item.field === "GI").length, ULTG: conflicts.filter(item => item.field === "ULTG").length }, hitachiSourceOnly: hitachiNeeded, sql: out, rollback: rollbackOut, emitted: process.argv.includes("--emit") }, null, 2));
+  console.log(JSON.stringify({ sourceSha256: sourceSha, years: Object.fromEntries(yearItems.map(item => [item.year, { uitId: item.uitId, rows: item.rows.length, physicalQty: item.rows.reduce((sum, row) => sum + row.source.physicalQty, 0), validationErrors: 0, catalogWarnings: (item.catalogWarnings || []).length, inference: item.inference } ])), totalRows: yearItems.reduce((sum, item) => sum + item.rows.length, 0), missingGi: missingGi.length, missingGiNames: missingGi.map(item => item.nama), missingBay: missingBay.length, missingCatalog: missingCatalog.length, missingCatalogCodes: missingCatalog.map(item => item.code), reactivatedGi: reactivatedGi.length, reactivatedGiNames: reactivatedGi.map(item => item.nama), reactivatedBay: reactivatedBay.length, reactivatedBayNames: reactivatedBay.map(item => item.nama), sourceHierarchyConflict: { total: conflicts.length, GI: conflicts.filter(item => item.field === "GI").length, ULTG: conflicts.filter(item => item.field === "ULTG").length }, hitachiSourceOnly: hitachiNeeded, sql: out, rollback: rollbackOut, emitted: process.argv.includes("--emit") }, null, 2));
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();

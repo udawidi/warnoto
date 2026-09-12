@@ -16,6 +16,9 @@ const aliases = {
   tanggalKontrak: ["TANGGAL KONTRAK", "TGL KONTRAK"],
   tanggalSerahTerima: ["BATAS SERAH TERIMA (BASTB) KONTRAKTUAL", "RENCANA KEDATANGAN", "TANGGAL SERAH TERIMA", "DELIVERY", "TGL RENCANA"],
   onsiteDate: ["TANGGAL MATERIAL ON SITE", "ONSITE", "TANGGAL ONSITE", "TGL ONSITE", "MATERIAL ONSITE"],
+  installationDate: ["REALISASI PASANG", "TANGGAL REALISASI PASANG", "TANGGAL TERPASANG"],
+  installedQty: ["JUMLAH TERPASANG", "JUMLAH TERINSTALL", "QTY TERPASANG"],
+  remainingQty: ["SISA", "SISA MATERIAL", "QTY SISA"],
   noSpmk: ["NOMOR SPMK", "NO SPMK", "SPMK"],
   location: ["LOKASI PASANG", "LOKASI", "LOKASI MTU", "GUDANG", "BLOK"],
   serialNumber: ["NO SERI", "SERIAL NUMBER", "SERIAL"],
@@ -84,7 +87,7 @@ export function parseMtuKhsWorkbook(input, { procurementYear, headerRow } = {}) 
     // Footer/summary rows have no vendor, UPT, or material identity.
     const providerColumnExists = findColumn(headers, aliases.provider) >= 0;
     if (!meaningful(uptName) || !meaningful(materialName) || (providerColumnExists && !meaningful(provider))) continue;
-    const source = { procurementYear: normalizeMtuYear(procurementYear || sheetName), provider, uptName, ultgName: pick("ultgName"), giName: pick("giName"), bayName: pick("bayName"), mtuCode: pick("mtuCode"), materialName, qty: Number(String(pick("qty")).replace(/\./g, "").replace(",", ".")) || 0, unit: pick("unit"), sifatPekerjaan: pick("sifatPekerjaan"), noKontrak: pick("noKontrak"), tanggalKontrak: pick("tanggalKontrak"), tanggalSerahTerima: pick("tanggalSerahTerima"), onsiteDate: pick("onsiteDate"), noSpmk: pick("noSpmk"), location: pick("location"), serialNumber: pick("serialNumber"), rawData: raw };
+    const source = { procurementYear: normalizeMtuYear(procurementYear || sheetName), provider, uptName, ultgName: pick("ultgName"), giName: pick("giName"), bayName: pick("bayName"), mtuCode: pick("mtuCode"), materialName, qty: Number(String(pick("qty")).replace(/\./g, "").replace(",", ".")) || 0, unit: pick("unit"), sifatPekerjaan: pick("sifatPekerjaan"), noKontrak: pick("noKontrak"), tanggalKontrak: pick("tanggalKontrak"), tanggalSerahTerima: pick("tanggalSerahTerima"), onsiteDate: pick("onsiteDate"), installationDate: pick("installationDate"), installedQty: pick("installedQty"), remainingQty: pick("remainingQty"), noSpmk: pick("noSpmk"), location: pick("location"), serialNumber: pick("serialNumber"), rawData: raw };
     const normalized = normalizeMtuRecord(source);
     const validation = validateMtuRecord(normalized, { requireMappings: false });
     if (!normalized.mtuCode) validation.errors.push("MTU_CODE_REQUIRED");

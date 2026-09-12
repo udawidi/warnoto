@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
 import { applyMtuMappings, buildMtuImportHashes, parseMtuKhsWorkbook, summarizeMtuImport } from "../../src/features/mtu-khs/mtuKhsImport.js";
-import { canAccessMtuRecord, normalizeMtuCode, normalizeMtuRecord, physicalQuantity, resolveMtuScope, sameYearDrawing, validateMtuRecord } from "../../src/features/mtu-khs/mtuKhsModel.js";
+import { canAccessMtuRecord, deriveMtuLifecycle, jakartaTodayIso, normalizeMtuCode, normalizeMtuRecord, parseMtuDates, physicalQuantity, resolveMtuScope, sameYearDrawing, validateMtuRecord } from "../../src/features/mtu-khs/mtuKhsModel.js";
 import { filterMtuHierarchy } from "../../src/features/mtu-khs/mtuKhsHierarchy.js";
 
 test("GI hierarchy filters descendants and resets are represented by empty child selection", () => {
@@ -18,6 +18,18 @@ test("MTU model normalizes code, year, and service quantity", () => {
   assert.equal(normalizeMtuCode("S - CT150 001"), "CT150-001");
   assert.equal(physicalQuantity(record), 0);
   assert.equal(record.physicalQty, 0);
+});
+
+test("MTU lifecycle follows KHS onsite/install dates and quantities", () => {
+  assert.deepEqual(parseMtuDates("18 May 2026\n7 Juli 2026"), { original: "18 May 2026\n7 Juli 2026", dates: ["2026-05-18", "2026-07-07"], last: "2026-07-07" });
+  assert.equal(jakartaTodayIso(new Date("2026-09-12T00:00:00Z")), "2026-09-12");
+  assert.equal(deriveMtuLifecycle({ procurementYear: 2024, qty: 3, onsiteDate: "18 May 2026", installationDate: "7 July 2026", installedQty: 1, remainingQty: 2 }, { now: new Date("2026-09-12T00:00:00Z") }), "ON_SITE");
+  assert.equal(deriveMtuLifecycle({ procurementYear: 2024, qty: 1, installationDate: "7 Juli 2026", installedQty: 1, remainingQty: 0 }), "INSTALLED");
+  assert.equal(deriveMtuLifecycle({ procurementYear: 2024, qty: 1, installationDate: "19 July 2926", installedQty: 1, remainingQty: 0 }), "INSTALLED");
+  assert.equal(deriveMtuLifecycle({ procurementYear: 2024, qty: 1, onsiteDate: "18 September 2026" }, { now: new Date("2026-09-12T00:00:00Z") }), "PLANNED_ARRIVAL");
+  assert.equal(normalizeMtuRecord({ procurementYear: 2026, qty: 1, onsiteDate: "18 September 2026" }).lifecycleStatus, "PLANNED_ARRIVAL");
+  const normalizedTwice = normalizeMtuRecord(normalizeMtuRecord({ procurementYear: 2024, qty: 1, onsiteDate: "18 May 2026", onsiteDateOriginal: "18 May 2026 & berita acara" }));
+  assert.equal(normalizedTwice.onsiteDateOriginal, "18 May 2026 & berita acara");
 });
 
 test("validation requires UPT and non-empty GI mapping", () => {

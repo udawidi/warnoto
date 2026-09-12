@@ -9,7 +9,7 @@ import { MtuKhsImportPanel } from "./MtuKhsImportPanel.jsx";
 import "./mtuKhs.css";
 
 const years = ["", "2024", "2026"];
-const statusColors = { VENDOR: "blue", IN_TRANSIT: "yellow", WAREHOUSE: "purple", ON_SITE: "orange", INSTALLED: "green", CANCELLED: "neutral" };
+const statusColors = { VENDOR: "blue", IN_TRANSIT: "yellow", WAREHOUSE: "purple", ON_SITE: "orange", INSTALLED: "green", PLANNED_ARRIVAL: "yellow", CANCELLED: "neutral" };
 const text = value => value == null || value === "" ? "-" : String(value);
 
 export function MtuKhsTab({ currentUser, uptList = [], ultgList = [], gudangList = [], supplierList = [], katalogList = [], C, sty, isMobile }) {
@@ -50,7 +50,7 @@ export function MtuKhsTab({ currentUser, uptList = [], ultgList = [], gudangList
   const vendors = useMemo(() => [...new Set(scopeRecords.map(record => record.vendor).filter(Boolean))].sort(), [scopeRecords]);
   const uptOptions = useMemo(() => uptList.filter(item => isMtuNationalRole(currentUser) || filterMtuRecords([{ uptId: item.id }], currentUser, uptList).length).sort((a, b) => String(a.nama).localeCompare(String(b.nama))), [currentUser, uptList]);
   const filtered = useMemo(() => scopeRecords.filter(record => {
-    const haystack = [record.materialName, record.mtuCode, record.vendor, record.giName, record.bayName, record.noKontrak, record.uptName].join(" ").toLowerCase();
+    const haystack = [record.materialName, record.materialDescription, record.catalogNumber, record.mtuCode, record.vendor, record.giName, record.bayName, record.noKontrak, record.uptName].join(" ").toLowerCase();
     return (!search || haystack.includes(search.toLowerCase())) && (!year || String(record.procurementYear) === year) && (!status || record.lifecycleStatus === status) && (!vendor || record.vendor === vendor) && (!upt || record.uptId === upt);
   }), [scopeRecords, search, year, status, vendor, upt]);
   const metrics = useMemo(() => ({ total: filtered.length, qty: filtered.reduce((total, record) => total + (record.physicalQty || 0), 0), onsite: filtered.filter(record => ["ON_SITE", "INSTALLED"].includes(record.lifecycleStatus)).length, installed: filtered.filter(record => record.lifecycleStatus === "INSTALLED").length, drawing: filtered.filter(record => !documents.some(document => (document.recordId === record.id || document.record_id === record.id || sameYearDrawing(record, document)) && document.url)).length }), [filtered, documents]);

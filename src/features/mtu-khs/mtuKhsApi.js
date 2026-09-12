@@ -30,7 +30,7 @@ async function fetchPaged(table, query = {}) {
 }
 
 function unwrap(row) {
-  return normalizeMtuRecord({ ...(row?.data || {}), id: row?.id, uptId: row?.upt_id || row?.data?.uptId, ultgId: row?.ultg_id || row?.data?.ultgId, garduIndukId: row?.gardu_induk_id || row?.data?.garduIndukId, bayId: row?.bay_id || row?.data?.bayId, status: row?.status || row?.data?.status });
+  return normalizeMtuRecord({ ...(row?.data || {}), id: row?.id, uptId: row?.upt_id || row?.data?.uptId, ultgId: row?.ultg_id || row?.data?.ultgId, garduIndukId: row?.gardu_induk_id || row?.data?.garduIndukId, bayId: row?.bay_id || row?.data?.bayId, lifecycleStatus: row?.lifecycle_status || row?.data?.lifecycleStatus, status: row?.status || row?.data?.status });
 }
 
 export async function loadMtuKhsRecords({ user, uptList = [], year } = {}) {
@@ -126,5 +126,5 @@ export async function deleteMtuKhsMasterRow(table, id) {
 
 export function toMtuRecordRow(record) {
   const normalized = normalizeMtuRecord(record);
-  return { id: normalized.id, upt_id: normalized.uptId || null, ultg_id: normalized.ultgId || null, gardu_induk_id: normalized.garduIndukId || null, bay_id: normalized.bayId || null, procurement_year: normalized.procurementYear, status: normalized.status || "DRAFT", data: normalized };
+  return { id: normalized.id, upt_id: normalized.uptId || null, ultg_id: normalized.ultgId || null, gardu_induk_id: normalized.garduIndukId || null, bay_id: normalized.bayId || null, katalog_id: normalized.katalogId || null, procurement_year: normalized.procurementYear, lifecycle_status: normalized.lifecycleStatus, status: normalized.status || "DRAFT", data: normalized };
 }

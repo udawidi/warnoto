@@ -12,7 +12,7 @@ export function MtuKhsDetail({ record, documents = [], usage = [], canEdit = fal
   const drawings = documents.filter(document => sameYearDrawing(record, document));
   const usedQty = usage.reduce((total, item) => total + (Number(item.qty || item.quantity) || 0), 0);
   const detailRows = [
-    ["Vendor", record.vendor], ["Kode MTU", record.mtuCode], ["Material", record.materialName], ["Qty", `${record.qty || 0} ${record.unit || "unit"}`],
+    ["Vendor", record.vendor], ["Kode MTU", record.mtuCode], ["Material", record.materialName], ["Deskripsi katalog", record.materialDescription], ["No. katalog", record.catalogNumber], ["Jenis katalog", record.catalogType], ["Qty", `${record.qty || 0} ${record.unit || "unit"}`], ["Terpasang", `${record.installedQty ?? 0} ${record.unit || "unit"}`], ["Sisa", `${record.remainingQty ?? record.physicalQty ?? 0} ${record.unit || "unit"}`],
     ["Kontrak", record.noKontrak], ["SPMK", record.noSpmk], ["GI", record.giName], ["Bay", record.bayName], ["Lokasi", record.location],
   ];
   return <div className="mtu-khs-detail-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
