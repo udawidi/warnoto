@@ -47,6 +47,14 @@
 - [x] T023 Re-run focused tests, production build, mobile-card audit checks, and diff hygiene checks.
 - [x] T024 Correct Master Gardu Induk UX to a single cascading UIT → UPT → ULTG → GI → Bay hierarchy; Bay is always scoped to its GI.
 
+## Phase 8: Complete GI/Bay source consolidation
+
+- [x] T025 Replace the partial seed source with `D:\CLAUDE\WARNOTO data\Data Material HAR\BAY GI.xlsx`, sheet `3a. BAY`: 2,429 raw rows, 185 GI, 2,427 Bay, 15 ULTG, and 6 UPT.
+- [x] T026 Add the pure workbook transform and deterministic, idempotent additive migration generator in `scripts/generate_mtu_gi_bay_seed.mjs`; preserve legacy rows and source provenance, deduplicate exact pairs, and retain duplicate external IDs as separate Bays.
+- [x] T027 Mark `TIDAK OPERASI` Bays inactive while retaining source status and rows; pin the NGIMBANG hierarchy anomaly to ULTG BABAT.
+- [x] T028 Filter inactive GI/Bay rows from the MTU master loader and add focused transform tests for counts, deduplication, blank IDs, status, and hierarchy.
+- [x] T029 Run focused tests, full build, diff hygiene, and graphify update after implementation.
+
 ## Dependencies
 
 - T003-T006 block feature UI and writes.

@@ -101,7 +101,7 @@ Users open the exact same-year drawing for a record and see usage from approved 
 
 - **MTU Record**: Procurement allocation, UPT owner, hierarchy references, quantities, commercial fields, milestones, and operational status.
 - **MTU Unit**: Optional serialized child of an MTU record.
-- **GI**: Scoped installation-site master beneath one ULTG.
+- **GI**: Scoped installation-site master beneath one ULTG. The complete source is `D:\CLAUDE\WARNOTO data\Data Material HAR\BAY GI.xlsx`, sheet `3a. BAY` (2,429 raw rows, 185 GI, 2,427 Bay, 15 ULTG, 6 UPT); the seed is additive and preserves legacy rows.
 - **Bay**: Scoped master beneath one GI.
 - **MTU Specification**: KHS code and optional reviewed catalog association.
 - **Document**: Exact external document metadata and URL.

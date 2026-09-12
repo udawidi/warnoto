@@ -2,6 +2,8 @@ import { supabase } from "../../supabaseClient.js";
 import { normalizeMtuRecord, filterMtuRecords, isMtuNationalRole } from "./mtuKhsModel.js";
 
 const pageSize = 1000;
+const ACTIVE_MASTER_TABLES = new Set(["mtu_khs_gardu_induk", "mtu_khs_gardu_induk_bay"]);
+export function mtuKhsMasterQuery(table) { return ACTIVE_MASTER_TABLES.has(table) ? { active: true } : {}; }
 export function friendlyMtuKhsError(error) {
   const message = error?.message || String(error || "");
   return /relation .* does not exist|could not find the table|schema cache/i.test(message)
@@ -37,7 +39,7 @@ export async function loadMtuKhsRecords({ user, uptList = [], year } = {}) {
 }
 
 export async function loadMtuKhsMaster(table, { user, uptList = [] } = {}) {
-  const result = await fetchPaged(table);
+  const result = await fetchPaged(table, mtuKhsMasterQuery(table));
   if (!result.error) {
     const data = result.data.map(row => ({ ...(row.data || {}), id: row.id, uptId: row.upt_id || row.data?.uptId, ultgId: row.ultg_id || row.data?.ultgId, garduIndukId: row.gardu_induk_id || row.data?.garduIndukId }));
     return { ...result, data: isMtuNationalRole(user) ? data : data.filter(row => !row.uptId || filterMtuRecords([row], user, uptList).length > 0) };

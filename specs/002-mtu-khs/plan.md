@@ -24,7 +24,7 @@ Build a dedicated Supabase-backed MTU KHS feature, stage legacy workbook imports
 
 **Constraints**: No new dependency, no production schema apply, App.jsx thin wiring, no direct stock mutation, RLS mandatory
 
-**Scale/Scope**: Two source worksheets, six UPT, 15 normalized ULTG, 82 GI, 195 Bay, hierarchical UIT/UPT/ULTG/GI/Bay scope
+**Scale/Scope**: Two MTU worksheets plus the complete GI/Bay workbook (`D:\CLAUDE\WARNOTO data\Data Material HAR\BAY GI.xlsx`, sheet `3a. BAY`): 2,429 raw rows, six UPT, 15 normalized ULTG, 185 GI, 2,427 Bay, additive legacy preservation, and hierarchical UIT/UPT/ULTG/GI/Bay scope
 
 ## Constitution Check
 
