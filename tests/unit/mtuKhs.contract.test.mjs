@@ -53,9 +53,9 @@ test("MTU import hardening recomputes blocking errors and keeps optional mapping
   assert.match(hardeningSql, /MTU_TARGET_EXCLUSIVE:GUDANG/);
   assert.match(hardeningSql, /MTU_MAPPING_REQUIRED:SITE/);
   assert.match(hardeningSql, /MTU_MAPPING_REQUIRED:BAY/);
-  assert.match(hardeningSql, /warnings := warnings \|\| 'MTU_MAPPING_REQUIRED:SUPPLIER'/);
-  assert.match(hardeningSql, /warnings := warnings \|\| 'MTU_MAPPING_REQUIRED:SPEC'/);
-  assert.match(hardeningSql, /warnings := warnings \|\| 'MTU_MAPPING_REQUIRED:KATALOG'/);
+  assert.match(hardeningSql, /array_append\(warnings, 'MTU_MAPPING_REQUIRED:SUPPLIER'\)/);
+  assert.match(hardeningSql, /array_append\(warnings, 'MTU_MAPPING_REQUIRED:SPEC'\)/);
+  assert.match(hardeningSql, /array_append\(warnings, 'MTU_MAPPING_REQUIRED:KATALOG'\)/);
   assert.match(hardeningSql, /issues := public\.mtu_khs_validate_import_row/);
   assert.match(hardeningSql, /for update loop/);
   assert.match(hardeningSql, /MTU_IMPORT_ALREADY_COMMITTED/);
@@ -64,8 +64,7 @@ test("MTU import hardening recomputes blocking errors and keeps optional mapping
   assert.match(hardeningSql, /jsonb_typeof\(p_rows\) <> 'array'/);
   assert.match(hardeningSql, /jsonb_array_length\(p_rows\) = 0/);
   assert.doesNotMatch(hardeningSql, /grant execute on function public\.mtu_khs_validate_import_row/);
-  assert.doesNotMatch(hardeningSql, /errors := errors \|\| 'MTU_MAPPING_REQUIRED:SUPPLIER'/);
-  assert.doesNotMatch(hardeningSql, /errors := errors \|\| 'MTU_MAPPING_REQUIRED:SPEC'/);
+  assert.doesNotMatch(hardeningSql, /(?:errors|warnings)\s*:=\s*(?:errors|warnings)\s*\|\|\s*'/);
   assert.doesNotMatch(hardeningSql, /insert into public\.(supplier|mtu_khs_specs|katalog)/);
 });
 

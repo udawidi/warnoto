@@ -82,6 +82,17 @@ test("parser safely maps MATERIAL, excludes footer rows, and preserves source me
   assert.deepEqual(parsed.rows[1].validation.errors, ["MTU_CODE_REQUIRED"]);
 });
 
+test("parser maps provider from PENYEDIA MATERIAL when PENYEDIA PASANG also exists", () => {
+  const rows = [
+    [], [], [], ["PENYEDIA MATERIAL", "PENYEDIA PASANG", "UPT", "MATERIAL", "JENIS MTU", "QTY"],
+    ["HITACHI", "KONTRAKTOR X", "UPT Surabaya", "Current Transformer", "CT150-001", "1"],
+  ];
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), "Input KHS 2024");
+  const parsed = parseMtuKhsWorkbook(workbook, { procurementYear: 2024 });
+  assert.equal(parsed.rows[0].source.provider, "HITACHI");
+});
+
 test("parser maps the actual KHS contract and placement headers", () => {
   const rows = [
     [],

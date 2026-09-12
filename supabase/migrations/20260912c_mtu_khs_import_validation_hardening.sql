@@ -25,6 +25,10 @@ declare
   target_bay text := nullif(btrim(normalized->>'bayId'), '');
   target_gudang text := nullif(btrim(normalized->>'gudangId'), '');
   source_bay text := nullif(nullif(btrim(normalized->>'bayName'), ''), '-');
+  source_non_site_bay boolean := upper(coalesce(nullif(nullif(btrim(normalized->>'bayName'), ''), '-'), '')) in (
+    'SPARE', 'PENGGANTIAN UNIT LAIN', 'SF6 REGULATOR',
+    'SF6 REGULATOR (GAS FILLING DEVICE) FOR CB'
+  );
   source_has_location boolean := (
     nullif(nullif(btrim(normalized->>'giName'), ''), '-') is not null
     or nullif(nullif(btrim(normalized->>'bayName'), ''), '-') is not null
@@ -32,102 +36,102 @@ declare
   );
 begin
   if sifat not in ('MATERIAL', 'SUPERVISI') then
-    errors := errors || 'MTU_SIFAT_INVALID';
+    errors := array_append(errors, 'MTU_SIFAT_INVALID');
   end if;
 
   if sifat = 'MATERIAL' and code is null then
-    errors := errors || 'MTU_CODE_REQUIRED';
+    errors := array_append(errors, 'MTU_CODE_REQUIRED');
   end if;
 
   if qty_text is not null then
     if qty_text !~ '^[[:space:]]*[+-]?([0-9]+([.][0-9]+)?|[.][0-9]+)[[:space:]]*$' then
-      errors := errors || 'MTU_QTY_INVALID';
+      errors := array_append(errors, 'MTU_QTY_INVALID');
     else
       begin
         qty_value := qty_text::numeric;
-        if qty_value < 0 then errors := errors || 'MTU_QTY_INVALID'; end if;
+        if qty_value < 0 then errors := array_append(errors, 'MTU_QTY_INVALID'); end if;
       exception when others then
-        errors := errors || 'MTU_QTY_INVALID';
+        errors := array_append(errors, 'MTU_QTY_INVALID');
       end;
     end if;
   end if;
 
   if target_upt is null or not exists (select 1 from public.upt where id = target_upt) then
-    errors := errors || 'MTU_MAPPING_REQUIRED:UPT';
+    errors := array_append(errors, 'MTU_MAPPING_REQUIRED:UPT');
   elsif p_batch_uit_id is not null and not exists (
     select 1 from public.upt where id = target_upt and uit_id = p_batch_uit_id
   ) then
-    errors := errors || 'MTU_HIERARCHY_INVALID:UPT_UIT';
+    errors := array_append(errors, 'MTU_HIERARCHY_INVALID:UPT_UIT');
   end if;
 
   if target_ultg is not null and not exists (
     select 1 from public.ultg where id = target_ultg and upt_id = target_upt
   ) then
-    errors := errors || 'MTU_HIERARCHY_INVALID:ULTG';
+    errors := array_append(errors, 'MTU_HIERARCHY_INVALID:ULTG');
   end if;
 
   -- A Bay carries its parent GI. Gudang is a mutually exclusive physical target.
   if target_gudang is not null and (target_gi is not null or target_bay is not null) then
-    errors := errors || 'MTU_TARGET_EXCLUSIVE:GUDANG';
+    errors := array_append(errors, 'MTU_TARGET_EXCLUSIVE:GUDANG');
   end if;
-  if source_has_location and target_gi is null and target_bay is null and target_gudang is null then
-    errors := errors || 'MTU_MAPPING_REQUIRED:SITE';
+  if source_has_location and not source_non_site_bay and target_gi is null and target_bay is null and target_gudang is null then
+    errors := array_append(errors, 'MTU_MAPPING_REQUIRED:SITE');
   end if;
-  if source_bay is not null and upper(source_bay) <> 'SPARE' and target_bay is null and target_gudang is null then
-    errors := errors || 'MTU_MAPPING_REQUIRED:BAY';
+  if source_bay is not null and not source_non_site_bay and target_bay is null and target_gudang is null then
+    errors := array_append(errors, 'MTU_MAPPING_REQUIRED:BAY');
   end if;
 
   if target_gi is not null then
     if target_ultg is null then
-      errors := errors || 'MTU_MAPPING_REQUIRED:ULTG';
+      errors := array_append(errors, 'MTU_MAPPING_REQUIRED:ULTG');
     elsif not exists (
       select 1 from public.mtu_khs_gardu_induk gi
       where gi.id = target_gi and gi.upt_id = target_upt and gi.ultg_id = target_ultg
     ) then
-      errors := errors || 'MTU_HIERARCHY_INVALID:GI';
+      errors := array_append(errors, 'MTU_HIERARCHY_INVALID:GI');
     end if;
   end if;
 
   if target_bay is not null then
     if target_gi is null then
-      errors := errors || 'MTU_MAPPING_REQUIRED:GI';
+      errors := array_append(errors, 'MTU_MAPPING_REQUIRED:GI');
     elsif not exists (
       select 1
       from public.mtu_khs_gardu_induk_bay bay
       join public.mtu_khs_gardu_induk gi on gi.id = bay.gardu_induk_id
       where bay.id = target_bay and gi.id = target_gi and gi.upt_id = target_upt
     ) then
-      errors := errors || 'MTU_HIERARCHY_INVALID:BAY';
+      errors := array_append(errors, 'MTU_HIERARCHY_INVALID:BAY');
     end if;
   end if;
 
   if target_gudang is not null and not exists (
     select 1 from public.gudang where id = target_gudang and upt_id = target_upt
   ) then
-    errors := errors || 'MTU_HIERARCHY_INVALID:GUDANG';
+    errors := array_append(errors, 'MTU_HIERARCHY_INVALID:GUDANG');
   end if;
 
   -- Optional references never block review/commit and are never auto-created.
   if nullif(btrim(normalized->>'provider'), '') is not null and nullif(btrim(normalized->>'supplierId'), '') is null then
-    warnings := warnings || 'MTU_MAPPING_REQUIRED:SUPPLIER';
+    warnings := array_append(warnings, 'MTU_MAPPING_REQUIRED:SUPPLIER');
   elsif nullif(btrim(normalized->>'supplierId'), '') is not null and not exists (
     select 1 from public.supplier where id = normalized->>'supplierId'
   ) then
-    warnings := warnings || 'MTU_MAPPING_INVALID:SUPPLIER';
+    warnings := array_append(warnings, 'MTU_MAPPING_INVALID:SUPPLIER');
   end if;
   if code is not null and nullif(btrim(normalized->>'mtuSpecId'), '') is null then
-    warnings := warnings || 'MTU_MAPPING_REQUIRED:SPEC';
+    warnings := array_append(warnings, 'MTU_MAPPING_REQUIRED:SPEC');
   elsif nullif(btrim(normalized->>'mtuSpecId'), '') is not null and not exists (
     select 1 from public.mtu_khs_specs where id = normalized->>'mtuSpecId'
   ) then
-    warnings := warnings || 'MTU_MAPPING_INVALID:SPEC';
+    warnings := array_append(warnings, 'MTU_MAPPING_INVALID:SPEC');
   end if;
   if code is not null and nullif(btrim(normalized->>'katalogId'), '') is null then
-    warnings := warnings || 'MTU_MAPPING_REQUIRED:KATALOG';
+    warnings := array_append(warnings, 'MTU_MAPPING_REQUIRED:KATALOG');
   elsif nullif(btrim(normalized->>'katalogId'), '') is not null and not exists (
     select 1 from public.katalog where id = normalized->>'katalogId'
   ) then
-    warnings := warnings || 'MTU_MAPPING_INVALID:KATALOG';
+    warnings := array_append(warnings, 'MTU_MAPPING_INVALID:KATALOG');
   end if;
 
   return jsonb_build_object('errors', to_jsonb(errors), 'warnings', to_jsonb(warnings));

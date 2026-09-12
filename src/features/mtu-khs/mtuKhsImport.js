@@ -2,7 +2,7 @@ import * as XLSX from "xlsx";
 import { normalizeMtuRecord, normalizeMtuText, normalizeMtuYear, validateMtuRecord } from "./mtuKhsModel.js";
 
 const aliases = {
-  provider: ["PROVIDER", "PENYEDIA", "VENDOR", "NAMA PENYEDIA"],
+  provider: ["PROVIDER", "PENYEDIA MATERIAL", "PENYEDIA", "VENDOR", "NAMA PENYEDIA"],
   uptName: ["UPT", "NAMA UPT", "UNIT PELAKSANA"] ,
   ultgName: ["ULTG", "NAMA ULTG"],
   giName: ["GI", "GIS", "GITET", "GARDU INDUK", "NAMA GI", "GI/GIS/GITET"],

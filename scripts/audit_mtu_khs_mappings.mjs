@@ -35,8 +35,10 @@ function one(list, predicate) {
 }
 function supplierMatch(provider) {
   const wanted = compact(provider);
+  if (!wanted) return { status: "unresolved", row: null, candidates: [] };
   return one(masters.supplier, item => {
     const name = compact(item.nama);
+    if (!name) return false;
     return name === wanted || name.includes(`(${wanted})`) || name.split(/[^A-Z0-9]+/).includes(wanted);
   });
 }
