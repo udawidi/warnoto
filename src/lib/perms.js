@@ -19,7 +19,7 @@ export const PERM_MENUS = [
   { key: "menu.attb", label: "MRWI" },
   { key: "menu.opname", label: "Stock Opname & Count" },
   { key: "menu.maturity", label: "Penilaian Maturity" },
-  { key: "menu.rencana", label: "Rencana Kedatangan" },
+  { key: "menu.rencana", label: "MTU KHS" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
   { key: "menu.inspeksiMaterial", label: "Inspeksi Material Cadang" },
   { key: "menu.ai", label: "Pak War (AI)" },

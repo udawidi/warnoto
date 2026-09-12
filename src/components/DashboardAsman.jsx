@@ -4,7 +4,6 @@ import { fmtNum, getKritisAgg } from "../lib/ragShared.mjs";
 import { getMaterialAkanHabis, buildMonthlySeriesByKatalog } from "../lib/analytics.js";
 import { KPISaldoCards } from "./KPISaldoCards.jsx";
 import { PendingWidget } from "./PendingWidget.jsx";
-import { RencanaWidget } from "./RencanaWidget.jsx";
 import { HeavyEquipmentDashboardSummary } from "./HeavyEquipmentDashboardSummary.jsx";
 import { AttbDashboardSummary } from "./AttbDashboardSummary.jsx";
 import { DashboardAnalitikSection } from "./DashboardAnalitikSection.jsx";
@@ -65,7 +64,6 @@ export function DashboardAsman({ stocks, txns, katalogList, uptList, rencanaKeda
           )}
         </div>
         <div>
-          <RencanaWidget rencanaKedatanganList={rencanaKedatanganList} C={C} sty={sty} setTab={setTab}/>
           {/* Material Akan Habis */}
           {akanHabis.length>0 && (
             <div style={{...sty.card}}>

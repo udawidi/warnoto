@@ -126,6 +126,7 @@ export function AppSidebar({
                         {id:"supplier",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Supplier"},
                         {id:"timmutu",icon:<SidebarIcon name="users" size={16}/>,label:"Tim Mutu"},
                         {id:"organisasi",icon:<SidebarIcon name="organization" size={16}/>,label:"Struktur Organisasi"},
+                        {id:"garduInduk",icon:<SidebarIcon name="organization" size={16}/>,label:"Gardu Induk / GI"},
                         {id:"gudang",icon:<SidebarIcon name="warehouse" size={16}/>,label:"Master Gudang"},
                         ...(can(currentUser, "aksi.kelolaAkun", rolePerms) ? [{id:"akun",icon:<SidebarIcon name="user" size={16}/>,label:"Kelola Akun"}] : []),
                         ...(can(currentUser, "aksi.migrasiData", rolePerms) ? [{id:"migrasi",icon:<SidebarIcon name="migrate" size={16}/>,label:"Migrasi Data"}] : []),

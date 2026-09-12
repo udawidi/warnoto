@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-10
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-12
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -32,6 +32,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Frontend dev role (Kevin `kevinnsetiawan`, user 2026-08-12):** boleh edit presentasi (`src/components/*`, `src/theme.js`, `src/index.css`, JSX `App.jsx`) + **push langsung ke `main` tanpa PR**. Zona terlarang: state/handler/`saveToCloud`/`src/lib/*`/`src/hooks/*`/schema/workflows/deps. Aturan lengkap di `.github/ROLE_FRONTEND_DEVELOPER.md`. **Proteksi `main` DILONGGARKAN**: required PR review + required status check `build` DIHAPUS (force_push tetap off). Jaring rollback: Vercel Instant Rollback (UI) + tag `snapshot-YYYY-MM-DD` harian (`.github/workflows/daily-snapshot.yml`) + dump DB per-jam `vps-backup`.
 
 ### Fitur canonical
+- **MTU KHS (2026-09-12, kode selesai; migration belum diterapkan):** menu Rencana Kedatangan diganti workspace MTU KHS terpisah di `src/features/mtu-khs/`. Database canonical, RLS, approval, import 2024/2026, drawing, penggunaan, dan sinkron referensi stok diusulkan melalui migration `20260911_mtu_khs.sql`. Master lokasi memakai hierarki mengikat `UIT > UPT > ULTG > GI > Bay`; Bay selalu anak satu GI. Pengelolaan GI/Bay hanya di `Master Data > Gardu Induk / GI`, bukan di menu MTU KHS. Seed satu kali `20260912_mtu_gi_master_seed.sql` berisi 15 ULTG, 82 GI, 195 Bay dari sheet `Lapor UPT DISESUSAIKAN`, scoped `UPT_ID`, insert-only dan idempoten. Migration production wajib diterapkan berurutan setelah konfirmasi user.
 - **TUG canonical hanya TUG-8/TUG-9** (tabel/RPC self-host, review-first Admin→TL→Asman, nomor server dari counter UPT). **TUG-15/Laporan di luar scope canonical.** TUG legacy hanya baseline, tanpa replay stok.
 - **Template PDF TUG-3/4/5/10 seragam gaya AppSheet TUG-9** (`docBuilders.js`). JANGAN ambil perubahan `App.jsx` dari PR Kevin (menghapus guard Mode Demo / tombol "Isi Data Contoh" ke form resmi).
 - **Maturity canonical self-host:** `maturity_assessments`, `maturity_audits`, `maturity_audit_history` (unik per upt/tahun/semester), `maturity_5s_assessments` (append-only, authenticated hanya SELECT+INSERT). Evidence audit = Google Drive binary + Supabase metadata; root folder `UPT Surabaya Apps` (`13FFto2pzVRLq4LBpRaJsIyGa2Bk5gaYD`), OAuth cred hanya di Edge Runtime MiniPC. Scope dari `maturity_audits.upt_id`; UIT hanya UPT se-`uit_id`; audit FINAL immutable. Mode Demo Maturity sengaja dimatikan.
@@ -59,6 +60,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **MTU KHS selesai di codebase, belum aktif di production (2026-09-12).** UI monitoring dan Master Gardu Induk responsif; master mengikuti cascading `UIT > UPT > ULTG > GI > Bay`, tanpa selector GI/Bay sejajar. Test MTU 12/12, build, audit mobile, card-collapse, diff-check, dan QA browser lulus. Migration database belum diterapkan; commit/push sedang diproses review-first.
 
 - **Integritas material TUG-3/TUG-10 diperbaiki dan PUSHED main (`25ff92c`, `c5aa0c8`, 2026-09-10).** TUG-3 kini memvalidasi katalog existing, menyimpan snapshot identitas, memakai fallback snapshot pada daftar transaksi/Kartu Gantung, dan menormalkan qty. Approval TUG-10 kini menormalkan qty, menyimpan identitas stok, menetapkan stage `APPROVED`, serta rollback tanpa status sukses bila `saveToCloud` gagal. Backfill production selesai untuk TUG-3 `209`/`213` dan TUG-10 `220`; stok RAK-G hasil TUG-10 menjadi BALL CLEVIS 6 BH, SOCKET CLEVIS 74 BH, ISOLATOR 1 BH. Material `4191468` tetap 101 BH dari seed SAP awal dan tidak memiliki dokumen TUG masuk.
 
@@ -426,7 +429,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
      Rekomendasi Pengadaan, Maturity UPT dropdown, modal besar Kartu Gantung/Cetak Barcode (opsional).
   3. ✅ **ATTB ringkasan per-UPT — SELESAI (2026-08-16)** (lihat entri di atas).
   4. Backlog lama tetap: `python ml/train_forecast.py` (env service_role/CI, non-blocking);
-     fitur baru MTU KHS & gudang MRWI (belum didesain); Non-SBY UPT isi `minQty`/histori (data gap).
+     fitur baru gudang MRWI (belum didesain); Non-SBY UPT isi `minQty`/histori (data gap).
 
   ### Pending jangka pendek rombak mobile (urut prioritas)
   1. ✅ Verifikasi device Rekomendasi Pengadaan + Maturity UPT dropdown — user ACC "lumayan ok" 2026-08-16.
@@ -478,10 +481,9 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
     2. **Jalankan `python ml/train_forecast.py`** (env Supabase service_role / GitHub Actions) → prediksi ML per-UPT terisi. Leak lintas-UPT SUDAH tertutup (migration+filter); ini untuk akurasi ke depan. Tak blocking.
     3. **Verifikasi alur upload Material Cadang baru** default UIT-scope (read sudah verified: Gresik lihat analisa UIT-JBM).
   - **Jangka panjang:**
-    1. **[FITUR BARU] Sinkron data MTU KHS** — belum didesain/dibangun. (definisikan sumber & mapping saat mulai.)
-    2. **[FITUR BARU] Sinkron data gudang MRWI** — belum didesain/dibangun. (definisikan sumber & mapping saat mulai.)
-    3. **Non-SBY UPT isi metadata operasional** — `minQty` (stok minimum) semua 0/kosong di 5 UPT non-SBY → Forecast Kritis & Rekomendasi Pengadaan mereka kosong (bukan bug, data gap). Perlu admin UPT isi minQty (+histori transaksi +analisa Material Cadang). Opsi: tambah kolom minQty di template import biar massal.
-    4. **Importer Template Migrasi Stok full-stock** di menu Migrasi Data (belum dibangun, lihat bagian "Lain").
+    1. **[FITUR BARU] Sinkron data gudang MRWI** — belum didesain/dibangun. (definisikan sumber & mapping saat mulai.)
+    2. **Non-SBY UPT isi metadata operasional** — `minQty` (stok minimum) semua 0/kosong di 5 UPT non-SBY → Forecast Kritis & Rekomendasi Pengadaan mereka kosong (bukan bug, data gap). Perlu admin UPT isi minQty (+histori transaksi +analisa Material Cadang). Opsi: tambah kolom minQty di template import biar massal.
+    3. **Importer Template Migrasi Stok full-stock** di menu Migrasi Data (belum dibangun, lihat bagian "Lain").
 
 - **Sesi 2026-08-14 (Opus) — Forecast Stok ML isolasi per-UPT + rapikan Master Katalog. DI-PUSH (`b484180`, `fdca211`).**
   - **Forecast ML per-UPT (`b484180`):** `forecast_predictions` dulu tanpa `upt_id` → prediksi Prophet (praktis cuma SBY punya histori) bocor ke UPT lain yang menstok katalog sama (26 katalog). Migration `20260814_forecast_predictions_upt_id.sql` (kolom `upt_id`, unique `(katalog_id, upt_id, tanggal_prediksi)`, backfill lama→UPT-SBY) **APPLIED self-host**. `ml/train_forecast.py` grup `(upt_id, katalog_id)` (derive upt via `lokasi_id→gudang.upt_id`; baris legacy lokasi-diarsip 97/104 fallback UPT-SBY; current-qty per-UPT dari `stocks.upt_id`). `ForecastStokPage.jsx` query filter `.in("upt_id", dataScope)`. Verified: scope Gresik=0 prediksi (leak tutup), SBY=1440. **SISA (ops, tak blocking):** jalankan `python ml/train_forecast.py` (env service_role/CI) untuk akurasi per-UPT ke depan; leak sudah tertutup tanpa itu.
@@ -569,6 +571,11 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+1. Terapkan `20260911_mtu_khs.sql` ke Supabase self-host production setelah konfirmasi eksplisit.
+2. Terapkan `20260912_mtu_gi_master_seed.sql`, lalu verifikasi tepat 15 ULTG, 82 GI, 195 Bay dan relasi Bay→GI.
+3. Smoke test production untuk scope UPT/UIT, import 2024/2026, update lokasi, drawing, kontrak, onsite, dan referensi penggunaan stok.
+4. Push commit MTU KHS ke `main` hanya setelah konfirmasi eksplisit; Vercel deploy otomatis.
+
 **VERIFIKASI BROWSER pasca-deploy fix material (2026-09-10):** pastikan TUG-3 `209`/`213` menampilkan nama material; Kartu Gantung `4191468` dapat dibuka dan halaman belakang menampilkan baseline Migrasi Data 101 BH; Data Stok RAK-G menampilkan tiga material TUG-10 `220` dengan qty 6/74/1.
 
 **CATATAN HANDOFF TERHAPUS — periksa DI KANTOR (dilaporkan user 2026-09-04, belum diidentifikasi).** Beberapa sesi Claude berjalan bersamaan di folder yang sama; sesi yang jalan **di terminal** melakukan commit gaya `git add -A` berkala sehingga perubahan uncommitted sesi lain ikut tersapu (contoh: edit `HANDOFF.md` staging masuk ke `971e7c8 feat(opname)`, fix `src/supabaseClient.js` masuk ke `a97e8d1 feat(opname)`). User melaporkan **ada catatan yang hilang** akibat ini, tapi belum tahu catatan yang mana — keputusan user: diperiksa dan diperbaiki nanti di kantor, JANGAN dikerjakan spekulatif sekarang. Cara periksa: `git log -p -- HANDOFF.md` di sekitar `971e7c8`, `a97e8d1`, `c34aa6b`, cari baris yang hilang tanpa pengganti. **Pencegahan mulai sekarang: commit per file (`git add <file>` spesifik, JANGAN `-A`), `git pull --rebase` sebelum mengedit, jangan meninggalkan pekerjaan uncommitted menggantung.**
@@ -650,7 +657,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** — (tidak ada; whitelist `warnoto.com` sudah CLEAR 2026-08-14).
+**Blocker:** Aktivasi MTU KHS menunggu konfirmasi terpisah untuk push dan penerapan dua migration Supabase production.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
@@ -669,5 +676,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-09 Claude: **Riwayat Approval + batch Maturity (`66dbb42`,`642c0f0`,`a256157` PUSHED main).** Riwayat approval: item+qty via `<details>` + filter (Approval saya/cari/tanggal/jenis) + Tampilkan semua + cap 300→1000. Maturity AI **metadata-only** (tak baca isi dok, keputusan user krn kelamaan; deteksi TTD per-file dari model lain SUDAH DI-REVERT krn lambat+bocor sync) + larangan klaim TTD (netral) + gap spesifik + tombol Analisis ulang + panel dirombak. **Penentuan level aspek**: rantai `pusat>uit>upt>AI>rasio` (pra-UIT pakai estimasi AI, badge sumber); **Dashboard/History level resmi hanya dari FINAL/validasi Pusat** (`MaturityDashboardTab` KPI dari `latestHistory`, audit berjalan → "Menunggu validasi Pusat"). Gotcha: "sinkron lama" di localhost = artefak Vite proxy, prod normal (lihat memory). SISA: verifikasi browser menyeluruh + #2d trigger history skor (belum diputus).
 - 2026-09-10 Codex: **Fix identitas/qty TUG-3 dan atomic-save TUG-10 (`25ff92c`,`c5aa0c8` PUSHED main); backfill production TUG-3 `209`/`213` dan TUG-10 `220` selesai.**
+- 2026-09-12 Codex: **MTU KHS dan Master Gardu Induk selesai; hierarki `UIT>UPT>ULTG>GI>Bay`, seed 15/82/195, test/build/QA lulus; migration belum diterapkan dan push menunggu konfirmasi.**

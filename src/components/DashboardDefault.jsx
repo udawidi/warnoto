@@ -7,7 +7,6 @@ import { summarizeTxnDashboard } from "../lib/analytics.js";
 import { KPISaldoCards } from "./KPISaldoCards.jsx";
 import { CollapsibleSection } from "./CollapsibleSection.jsx";
 import { PendingWidget } from "./PendingWidget.jsx";
-import { RencanaWidget } from "./RencanaWidget.jsx";
 import { HeavyEquipmentDashboardSummary } from "./HeavyEquipmentDashboardSummary.jsx";
 import { AttbDashboardSummary } from "./AttbDashboardSummary.jsx";
 import { DashboardAnalitikSection } from "./DashboardAnalitikSection.jsx";
@@ -114,7 +113,7 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, uptLis
           </div>
         </div>
       )}
-      <CollapsibleSection id={isMobile ? "default-mobile-aktivitas" : "aktivitas"} title="Aktivitas Terbaru & Rencana Kedatangan" icon={<ClockCounterClockwise weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} defaultOpen={!isMobile} C={C}>
+      <CollapsibleSection id={isMobile ? "default-mobile-aktivitas" : "aktivitas"} title="Aktivitas Terbaru" icon={<ClockCounterClockwise weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} defaultOpen={!isMobile} C={C}>
       <div className="dashboard-overview__activity">
         <div>
           <PendingWidget myPendingApprovals={myPendingApprovals} C={C} sty={sty} setTab={setTab}/>
@@ -142,7 +141,6 @@ export function DashboardDefault({ stocks, txns, katalogList, lokasiList, uptLis
             })}
           </div>
         </div>
-        <div><RencanaWidget rencanaKedatanganList={rencanaKedatanganList} C={C} sty={sty} setTab={setTab}/></div>
       </div>
       </CollapsibleSection>
       <CollapsibleSection id={isMobile ? "default-mobile-analitik" : "analitik"} title="Analitik & Grafik" icon={<ChartLineUp weight="fill" size={16} style={{verticalAlign:"-0.15em"}}/>} defaultOpen={!isMobile} C={C}>

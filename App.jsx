@@ -45,7 +45,7 @@ import { DashboardAsman } from "./src/components/DashboardAsman.jsx";
 import { DashboardManager } from "./src/components/DashboardManager.jsx";
 import { DashboardMaturityBanner } from "./src/components/DashboardMaturityBanner.jsx";
 import { StockCountTab } from "./src/components/StockCountTab.jsx";
-import { RencanaKedatanganTab } from "./src/components/RencanaKedatanganTab.jsx";
+import { MtuKhsTab } from "./src/features/mtu-khs/MtuKhsTab.jsx";
 import { KapasitasGudangTab } from "./src/components/KapasitasGudangTab.jsx";
 import { AIAgentPage } from "./src/components/AIAgentPage.jsx";
 import { AuditLogPage } from "./src/components/AuditLogPage.jsx";
@@ -4154,7 +4154,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"profilOperator",icon:<SidebarIcon name="user"/>,label:"Profil"},
   ] : isPengadaan ? [
     {id:"dashboard",icon:<SidebarIcon name="dashboard"/>,label:"Dashboard"},
-    {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
+    {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"MTU KHS"},
   ] : isUltgRole ? [
     {id:"dashboard",icon:<SidebarIcon name="dashboard"/>,label:"Dashboard"},
     {id:"stock",icon:<SidebarIcon name="stock"/>,label:"Data Stok"},
@@ -4162,7 +4162,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"transaction",icon:<SidebarIcon name="transaction"/>,label:"TUG"},
     {id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge: hasRole(currentUser, "MGR_ULTG") ? myPendingApprovals.length : 0},
     {id:"heavyEquipment",icon:<SidebarIcon name="equipment"/>,label:"Alat Berat"},
-    {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
+    {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"MTU KHS"},
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
   ] : [
@@ -4176,7 +4176,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"MRWI",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"maturity",icon:<SidebarIcon name="maturity"/>,label:"Penilaian Maturity"},
-    {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"Rencana Kedatangan"},
+    {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"MTU KHS"},
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"inspeksiMaterial",icon:<SidebarIcon name="inspection"/>,label:"Inspeksi Material"},
     {id:"ai",icon:<SidebarIcon name="ai"/>,label:"Pak War"},
@@ -4186,7 +4186,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
-  const masterPageTitle = stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="supplier"?"Master Supplier":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi":stockSubTab==="akun"?"Kelola Akun":stockSubTab==="migrasi"?"Migrasi Data SAP / Non-SAP":stockSubTab==="auditLog"?"Audit Log":stockSubTab==="perms"?"Matrix Izin":"Master Gudang";
+  const masterPageTitle = stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="supplier"?"Master Supplier":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi":stockSubTab==="garduInduk"?"Master Gardu Induk":stockSubTab==="akun"?"Kelola Akun":stockSubTab==="migrasi"?"Migrasi Data SAP / Non-SAP":stockSubTab==="auditLog"?"Audit Log":stockSubTab==="perms"?"Matrix Izin":"Master Gudang";
   const pageMeta = {
     dashboard: {eyebrow:"Operations Overview",title:hasRole(currentUser,"MANAGER")?"Dashboard Eksekutif":hasRole(currentUser,"ASMAN")?"Dashboard Operasional":"Dashboard Gudang"},
     stock: {eyebrow:"Inventory Control",title:"Data Stok Gudang"},
@@ -4197,7 +4197,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     attb: {eyebrow:"Asset Disposal Governance",title:"MRWI — Penghapusan Aset"},
     maturity: {eyebrow:"Warehouse Maturity Audit",title:"Penilaian Maturity Gudang"},
     opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
-    rencana: {eyebrow:"Inbound Planning",title:"Rencana Kedatangan Barang"},
+    rencana: {eyebrow:"Material Transmisi Utama",title:"MTU KHS"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
     inspeksiMaterial: {eyebrow:"Material Assurance",title:"Inspeksi Material Cadang"},
@@ -4338,14 +4338,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         )}
 
         {tab==="rencana" && (
-          <RencanaKedatanganTab
-            rencanaList={rencanaKedatanganList}
-            katalogList={katalogList}
+          <MtuKhsTab
             currentUser={currentUser}
+            uptList={uptList}
+            ultgList={ultgList}
+            gudangList={gudangList}
+            supplierList={supplierList}
+            katalogList={katalogList}
             sty={sty} C={C} isMobile={isMobile}
-            saveRencana={saveRencana}
-            deleteRencana={deleteRencana}
-            aiExtractKontrak={aiExtractKontrak}
           />
         )}
 

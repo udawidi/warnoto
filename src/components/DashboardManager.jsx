@@ -5,7 +5,6 @@ import { buildMonthlySeriesByKatalog } from "../lib/analytics.js";
 import { KPISaldoCards } from "./KPISaldoCards.jsx";
 import { CollapsibleSection } from "./CollapsibleSection.jsx";
 import { PendingWidget } from "./PendingWidget.jsx";
-import { RencanaWidget } from "./RencanaWidget.jsx";
 import { HeavyEquipmentDashboardSummary } from "./HeavyEquipmentDashboardSummary.jsx";
 import { AttbDashboardSummary } from "./AttbDashboardSummary.jsx";
 import { DashboardAnalitikSection } from "./DashboardAnalitikSection.jsx";
@@ -17,7 +16,6 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
   // sama dipakai ulang untuk rekap per-UPT di tabel bawah.
   const monthlySeriesByKatalogId = buildMonthlySeriesByKatalog(txns, stocks);
   const stokKritis = getKritisAgg(stocks, monthlySeriesByKatalogId);
-  const terlambat = rencanaKedatanganList.flatMap(r=>(r.items||[]).map(i=>({...i,tanggalSerahTerima:r.tanggalSerahTerima}))).filter(i=>i.tanggalSerahTerima && new Date(i.tanggalSerahTerima).getTime()<Date.now());
   const txnBulanIni = txns.filter(t=>{const d=new Date(t.createdAt); const now=new Date(); return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();});
 
   return (
@@ -44,7 +42,6 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
           {label:"Total Item Stok",val:stocks.length,icon:<Package weight="fill" size={22}/>,color:C.accent},
           {label:"Stok Kritis",val:stokKritis.length,icon:<Warning weight="fill" size={22}/>,color:stokKritis.length>0?"#dc2626":"#16a34a"},
           {label:"TUG Pending",val:myPendingApprovals.length,icon:<Hourglass weight="fill" size={22}/>,color:myPendingApprovals.length>0?"#f59e0b":"#16a34a"},
-          {label:"Rencana Terlambat",val:terlambat.length,icon:<Warning weight="fill" size={22}/>,color:terlambat.length>0?"#dc2626":"#16a34a"},
           {label:"Transaksi Bulan Ini",val:txnBulanIni.length,icon:<ClipboardText weight="fill" size={22}/>,color:"#7c3aed"},
         ].map((s,i)=>(
           <div key={i} className="kpi-card" style={{"--kpi-color":s.color}}>
@@ -129,7 +126,6 @@ export function DashboardManager({ stocks, txns, katalogList, uptList, rencanaKe
             );
           })()}
         </div>
-        <div><RencanaWidget rencanaKedatanganList={rencanaKedatanganList} C={C} sty={sty} setTab={setTab}/></div>
       </div>
 
       <DashboardAnalitikSection txns={txns} stocks={stocks} katalogList={katalogList} topN={topN} setTopN={setTopN} pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode} C={C} sty={sty}/>

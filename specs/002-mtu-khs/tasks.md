@@ -1,0 +1,56 @@
+# Tasks: MTU KHS
+
+**Input**: Design documents from `/specs/002-mtu-khs/`
+
+## Phase 1: Setup
+
+- [x] T001 Create the feature module under `src/features/mtu-khs/` and keep `App.jsx` wiring-only
+- [x] T002 Add unit tests for normalization, physical quantity, import identity, scope, and drawing-year rules in `tests/unit/mtuKhs.test.mjs`
+
+## Phase 2: Foundation
+
+- [x] T003 Add proposed MTU/GI/Bay schema, RLS, validation, indexes, and RPCs in `supabase/migrations/20260911_mtu_khs.sql`
+- [x] T004 Add SQL contract tests proving direct DML denial, PENGADAAN/UPT/UIT/Pusat scope, approval routing, row locking, atomic decisions, hierarchy validation, and import retry idempotency
+- [x] T005 Implement shared model constants and pure validators in `src/features/mtu-khs/mtuKhsModel.js`
+- [x] T006 Implement scoped Supabase queries and mutation calls in `src/features/mtu-khs/mtuKhsApi.js`
+
+## Phase 3: Monitor and update MTU (US1, US3)
+
+- [x] T007 [US1] Build responsive monitor, KPI, filters, table/card list and states in `src/features/mtu-khs/MtuKhsTab.jsx`
+- [x] T008 [US1] Build record detail tabs for location, usage, installation, drawing, contract and history
+- [x] T009 [US3] Build role-aware change form and pending approval presentation
+- [x] T010 [US1] Relabel and mount MTU KHS through thin changes in `App.jsx`
+
+## Phase 4: Import and master mapping (US2)
+
+- [x] T011 [US2] Implement 2024/2026 workbook parser and validation in `src/features/mtu-khs/mtuKhsImport.js`
+- [x] T012 [US2] Build per-UIT staging review for GI/Bay or warehouse targets, duplicates, supplier, spec and catalog mappings
+- [x] T013 [US2] Add scoped GI/Bay management to the MTU feature or Master Data with row-level writes
+
+## Phase 5: Drawing and usage (US4)
+
+- [x] T014 [US4] Implement exact same-year document registry and record attachment UI
+- [x] T015 [US4] Implement approved-TUG usage links as read-only stock references
+
+## Phase 6: Validation
+
+- [x] T016 Run unit tests and fix failures
+- [x] T017 Run mobile audit/card-collapse checks and fix regressions
+- [x] T018 Run production build and inspect final diff for App.jsx bloat, security, and unrelated changes
+
+## Phase 7: Master data consolidation (revised plan)
+
+- [x] T019 Move GI/Bay management out of MTU KHS into the Master Data `garduInduk` subtab, reusing `MtuKhsMasterPanel`.
+- [x] T020 Add typed GI scope (`upt_id`, `normalized_name`) and deterministic Bay name uniqueness to the proposed MTU migration; use direct UPT scope in RLS/RPCs.
+- [x] T021 Add the insert-only, idempotent 20260912 master seed migration with provenance from the approved Google Sheet export (15 ULTG, 82 GI, 195 Bay).
+- [x] T022 Extend contract tests and feature artifacts for the revised master scope, UPT mapping, Kasihjaitm/KRIAN exception, and hierarchy uniqueness.
+- [x] T023 Re-run focused tests, production build, mobile-card audit checks, and diff hygiene checks.
+- [x] T024 Correct Master Gardu Induk UX to a single cascading UIT → UPT → ULTG → GI → Bay hierarchy; Bay is always scoped to its GI.
+
+## Dependencies
+
+- T003-T006 block feature UI and writes.
+- T007-T010 deliver the monitor independently.
+- T011-T013 depend on master and API foundation.
+- T014-T015 depend on record detail and API foundation.
+- T016-T018 run after implementation tasks.
