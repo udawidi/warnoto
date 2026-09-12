@@ -108,6 +108,8 @@ test("2026 catalog change requests validate and persist the typed catalog id", (
 test("MTU detail exposes the approved lifecycle controls with mobile-safe sizing", () => {
   assert.match(detailUi, /Pengeluaran TUG-8\/9/);
   assert.match(detailUi, /Rekonsiliasi TUG 2024/);
+  assert.match(detailUi, /activeTab === "usage" && isPhysical && year === 2024/);
+  assert.match(detailUi, /activeTab === "summary" && <div className=\"mtu-khs-detail__section\"><h3><Clock size=\{17\} \/> Drawing tahun yang sama/);
   assert.match(detailUi, /Penerimaan Material TUG-3\/4/);
   assert.match(tabUi, /canReconcile=\{currentUser\?\.role === "TL" \|\| currentUser\?\.role === "SUPERADMIN"\}/);
   assert.match(tabUi, /openNewTxn\("TUG3", draft\)/);

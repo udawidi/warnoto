@@ -61,7 +61,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Lifecycle stok/TUG MTU KHS selesai dan diterapkan ke production (2026-09-13).** UI 2024/2026, pemetaan katalog via approval, provenance TUG-3, penerimaan parsial/idempoten, serta referensi final TUG-8/9 sudah terintegrasi. Migration production berhasil dalam satu transaksi; 3 RPC baru dan kolom provenance terverifikasi. Test penuh 224/224, test lifecycle 8/8, build dan diff-check lulus. Smoke Playwright responsif mengalami timeout runner pada 4 proyek; kontrak CSS mobile 360 px lulus unit test.
+- **Lifecycle stok/TUG MTU KHS selesai dan diterapkan ke production (2026-09-13).** UI 2024/2026, pemetaan katalog via approval, provenance TUG-3, penerimaan parsial/idempoten, serta referensi final TUG-8/9 sudah terintegrasi. Panel Rekonsiliasi TUG 2024 hanya tampil di tab Pengeluaran TUG-8/9; panel Drawing hanya tampil di Ringkasan. Migration production berhasil dalam satu transaksi; 3 RPC baru dan kolom provenance terverifikasi. Test penuh 224/224, test lifecycle 8/8, build dan diff-check lulus. Smoke Playwright responsif mengalami timeout runner pada 4 proyek; kontrak CSS mobile 360 px lulus unit test.
 
 - **Integritas material TUG-3/TUG-10 diperbaiki dan PUSHED main (`25ff92c`, `c5aa0c8`, 2026-09-10).** TUG-3 kini memvalidasi katalog existing, menyimpan snapshot identitas, memakai fallback snapshot pada daftar transaksi/Kartu Gantung, dan menormalkan qty. Approval TUG-10 kini menormalkan qty, menyimpan identitas stok, menetapkan stage `APPROVED`, serta rollback tanpa status sukses bila `saveToCloud` gagal. Backfill production selesai untuk TUG-3 `209`/`213` dan TUG-10 `220`; stok RAK-G hasil TUG-10 menjadi BALL CLEVIS 6 BH, SOCKET CLEVIS 74 BH, ISOLATOR 1 BH. Material `4191468` tetap 101 BH dari seed SAP awal dan tidak memiliki dokumen TUG masuk.
 
@@ -676,4 +676,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-09-12 Codex: **MTU KHS dan Master Gardu Induk selesai; migration lifecycle/katalog production diterapkan dan diverifikasi.**
-- 2026-09-13 Codex: **Lifecycle stok/TUG MTU 2024/2026 diterapkan ke production; test/build lulus dan frontend dipush ke main.**
+- 2026-09-13 Codex: **Lifecycle stok/TUG MTU diterapkan; posisi panel Rekonsiliasi dan Drawing dirapikan per tab, test/build lulus, lalu dipush ke main.**
