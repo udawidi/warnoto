@@ -3,12 +3,25 @@ import { normalizeMtuRecord, filterMtuRecords, isMtuNationalRole } from "./mtuKh
 
 const pageSize = 1000;
 const ACTIVE_MASTER_TABLES = new Set(["mtu_khs_gardu_induk", "mtu_khs_gardu_induk_bay"]);
+const mtuRecordsCache = new Map();
+const mtuSyncDrainSessions = new Set();
+const mtuRecordCacheKey = ({ user, uptList = [], year, status, vendor, upt, search, page = 1, pageSize = 20 } = {}) => JSON.stringify([user?.id, user?.role, user?.uptId, user?.uitId, uptList.map(item => item.id).join(","), year || "", status || "", vendor || "", upt || "", search || "", page, pageSize]);
 export function mtuKhsMasterQuery(table) { return ACTIVE_MASTER_TABLES.has(table) ? { active: true } : {}; }
+export function clearMtuKhsCache() { mtuRecordsCache.clear(); }
+export function getCachedMtuKhsRecords(query) { return mtuRecordsCache.get(mtuRecordCacheKey(query)) || null; }
 export function friendlyMtuKhsError(error) {
   const message = error?.message || String(error || "");
   return /relation .* does not exist|could not find the table|schema cache/i.test(message)
     ? "Database MTU KHS belum diaktifkan. Terapkan migration terlebih dahulu."
     : message || "Permintaan MTU KHS gagal";
+}
+
+/** Compact contract reference for dense monitoring tables. */
+export function formatMtuContract(value) {
+  const text = String(value || "").trim();
+  if (!text) return "-";
+  const match = text.match(/\b(\d{3})\s*[.\-/]?\s*(KR|KHS)\b/i);
+  return match ? `${match[1]}.${match[2].toUpperCase()}` : text;
 }
 
 async function fetchPaged(table, query = {}) {
@@ -30,12 +43,25 @@ async function fetchPaged(table, query = {}) {
 }
 
 function unwrap(row) {
-  return normalizeMtuRecord({ ...(row?.data || {}), id: row?.id, uptId: row?.upt_id || row?.data?.uptId, ultgId: row?.ultg_id || row?.data?.ultgId, garduIndukId: row?.gardu_induk_id || row?.data?.garduIndukId, bayId: row?.bay_id || row?.data?.bayId, lifecycleStatus: row?.lifecycle_status || row?.data?.lifecycleStatus, status: row?.status || row?.data?.status });
+  return normalizeMtuRecord({ ...(row?.data || {}), id: row?.id, uptId: row?.upt_id || row?.data?.uptId, ultgId: row?.ultg_id || row?.data?.ultgId, garduIndukId: row?.gardu_induk_id || row?.data?.garduIndukId, bayId: row?.bay_id || row?.data?.bayId, lifecycleStatus: row?.lifecycle_status || row?.data?.lifecycleStatus, status: row?.status || row?.data?.status, version: row?.version || row?.data?.version });
 }
 
-export async function loadMtuKhsRecords({ user, uptList = [], year } = {}) {
+export async function loadMtuKhsRecords({ user, uptList = [], year, status, vendor, upt, search, page = 1, pageSize = 20 } = {}) {
+  const cacheKey = mtuRecordCacheKey({ user, uptList, year, status, vendor, upt, search, page, pageSize });
+  if (mtuRecordsCache.has(cacheKey)) return mtuRecordsCache.get(cacheKey);
+  if (supabase?.rpc) {
+    const { data, error } = await supabase.rpc("mtu_khs_list_records", { p_year: year || null, p_lifecycle_status: status || null, p_vendor: vendor || null, p_upt_id: upt || null, p_search: search || null, p_limit: pageSize, p_offset: (page - 1) * pageSize });
+    if (!error && data && !Array.isArray(data)) {
+      const result = { data: (data.items || []).map(unwrap), total: data.total || 0, metrics: data.metrics || {}, vendors: data.vendors || [], error: null };
+      mtuRecordsCache.set(cacheKey, result);
+      return result;
+    }
+  }
   const result = await fetchPaged("mtu_khs_records", year ? { procurement_year: year } : {});
-  return { ...result, data: filterMtuRecords(result.data.map(unwrap), user, uptList) };
+  const all = filterMtuRecords(result.data.map(unwrap), user, uptList).filter(record => (!status || record.lifecycleStatus === status) && (!vendor || record.vendor === vendor) && (!upt || record.uptId === upt) && (!search || [record.materialName, record.materialDescription, record.catalogNumber, record.mtuCode, record.vendor, record.giName, record.bayName, record.noKontrak, record.uptName].join(" ").toLowerCase().includes(search.toLowerCase())));
+  const fallback = { ...result, total: all.length, data: all.slice((page - 1) * pageSize, page * pageSize), metrics: { qty: all.reduce((sum, record) => sum + (record.physicalQty || 0), 0), onsite: all.filter(record => ["ON_SITE", "INSTALLED"].includes(record.lifecycleStatus)).length, installed: all.filter(record => record.lifecycleStatus === "INSTALLED").length }, vendors: [...new Set(all.map(record => record.vendor).filter(Boolean))].sort() };
+  mtuRecordsCache.set(cacheKey, fallback);
+  return fallback;
 }
 
 export async function loadMtuKhsMaster(table, { user, uptList = [] } = {}) {
@@ -71,6 +97,23 @@ export async function submitMtuKhsChange({ recordId, expectedVersion = 1, patch,
 export async function decideMtuKhsChange({ changeId, decision, note = "" }) {
   if (!supabase || !changeId || !["APPROVED", "REJECTED"].includes(decision)) return { data: null, error: new Error("Keputusan approval MTU tidak valid") };
   return supabase.rpc("mtu_khs_decide_change", { p_change_id: changeId, p_decision: decision, p_note: note });
+}
+
+export async function pushMtuKhsSheetSync({ jobId, dryRun = false, maxJobs = 10 } = {}) {
+  if (!supabase?.functions) return { data: null, error: new Error("Supabase belum tersedia") };
+  return supabase.functions.invoke("push-mtu-khs", { body: { ...(jobId ? { jobId } : {}), dryRun, maxJobs } });
+}
+
+export async function loadMtuKhsSyncJobs({ statuses = ["PENDING", "SYNCING", "FAILED", "CONFLICT"] } = {}) {
+  if (!supabase) return { data: [], error: new Error("Supabase belum tersedia") };
+  const { data, error } = await supabase.from("mtu_khs_sheet_sync_jobs").select("id,record_id,status,attempts,last_error,updated_at,synced_at").in("status", statuses).order("updated_at", { ascending: false }).limit(100);
+  return { data: data || [], error };
+}
+
+export async function drainMtuKhsSheetSyncOnce(sessionKey = "default") {
+  if (mtuSyncDrainSessions.has(sessionKey)) return { data: null, error: null, skipped: true };
+  mtuSyncDrainSessions.add(sessionKey);
+  return pushMtuKhsSheetSync({ maxJobs: 10 });
 }
 
 export async function promoteMtuKhsImport(batchId) {

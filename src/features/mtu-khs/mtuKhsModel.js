@@ -15,8 +15,27 @@ export const MTU_KHS_DRAWING_FOLDERS = {
   TWINK: "https://drive.google.com/drive/folders/1rs8N9pPXxC0DXF3HMwOkUY2OURnm_rYo",
 };
 
+export function formatMtuDate(value) {
+  if (!value) return "";
+  const date = new Date(`${String(value).slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(date);
+}
+
+export function mtuStatusDate(record = {}) {
+  const field = ["PLANNED_ARRIVAL", "ON_SITE"].includes(record.lifecycleStatus) ? "onsiteDate" : record.lifecycleStatus === "INSTALLED" ? "installationDate" : "";
+  return field ? record[field] || "" : "";
+}
+
 const asText = value => String(value ?? "").replace(/\s+/g, " ").trim();
 const asOriginalText = value => String(value ?? "").trim();
+
+export function extractMtuContractDetail(rawData = {}) {
+  const entry = Object.entries(rawData || {}).find(([key, value]) => /^KONTRAK RINCI/i.test(String(key).trim()) && !/__href$/i.test(String(key).trim()) && asOriginalText(value));
+  if (!entry) return { number: "", url: "" };
+  const href = rawData[`${entry[0]}__href`] || Object.entries(rawData || {}).find(([key]) => /^KONTRAK RINCI/i.test(String(key).trim()) && /__href$/i.test(String(key).trim()))?.[1] || "";
+  return { number: asOriginalText(entry[1]), url: asOriginalText(href) };
+}
 
 const MONTHS = {
   JANUARY: 1, JAN: 1, JANUARI: 1, FEBRUARY: 2, FEB: 2, FEBRUARI: 2,
@@ -111,6 +130,7 @@ export function normalizeMtuRecord(record = {}) {
   const installation = parseMtuDates(record.installationDate || record.tanggalTerpasang || record.rawData?.["REALISASI PASANG"]);
   const installedQty = numericValue(record.installedQty ?? record.jumlahTerpasang ?? record.rawData?.["JUMLAH TERPASANG"]);
   const remainingQty = numericValue(record.remainingQty ?? record.sisa ?? record.rawData?.SISA);
+  const contractDetail = extractMtuContractDetail(record.rawData || {});
   const enriched = {
     ...record,
     procurementYear: year,
@@ -126,6 +146,8 @@ export function normalizeMtuRecord(record = {}) {
     installationDateOriginal: record.installationDateOriginal || installation.original,
     installedQty,
     remainingQty,
+    contractDetailNumber: record.contractDetailNumber || contractDetail.number,
+    contractDetailUrl: record.contractDetailUrl || contractDetail.url,
     lifecycleStatus: MTU_KHS_LIFECYCLE.includes(record.lifecycleStatus) ? record.lifecycleStatus : null,
     mtuCode: normalizeMtuCode(record.mtuCode || record.jenisMtu || record.jenis_mtu || record.codeRfq),
     vendor: asText(record.vendor || record.provider || record.penyedia),

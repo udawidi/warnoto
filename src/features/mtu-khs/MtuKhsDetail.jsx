@@ -1,30 +1,39 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowSquareOut, Clock, MapPin, Package, PencilSimple, X } from "@phosphor-icons/react";
-import { MTU_KHS_DRAWING_FOLDERS, MTU_KHS_LIFECYCLE_LABEL, sameYearDrawing } from "./mtuKhsModel.js";
+import { formatMtuDate, MTU_KHS_DRAWING_FOLDERS, MTU_KHS_LIFECYCLE_LABEL, sameYearDrawing } from "./mtuKhsModel.js";
 
 const value = item => item == null || item === "" ? "-" : String(item);
+const importantDates = record => [["Tanggal kontrak", record.tanggalKontrak], ["Delivery / BASTB", record.tanggalSerahTerima], ["Material onsite", record.onsiteDate], ["Rencana pasang", record.installationPlanDate], ["Realisasi pasang", record.installationDate || record.tanggalTerpasang]].filter(([, item]) => item);
 
 export function MtuKhsDetail({ record, documents = [], usage = [], canEdit = false, canRegisterDocument = false, canLinkUsage = false, onClose, onSubmit, onRegisterDocument, onLinkUsage, approvedTugItems = [], C, sty }) {
   const [activeTab, setActiveTab] = useState("summary");
+  const closeRef = useRef(null);
   const [documentDraft, setDocumentDraft] = useState({ title: "", url: "", revision: "" });
   const [usageDraft, setUsageDraft] = useState({ id: "", qty: "" });
+  useEffect(() => {
+    closeRef.current?.focus();
+    const onKeyDown = event => { if (event.key === "Escape") onClose?.(); };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [record?.id]);
   if (!record) return null;
   const drawings = documents.filter(document => sameYearDrawing(record, document));
   const usedQty = usage.reduce((total, item) => total + (Number(item.qty || item.quantity) || 0), 0);
   const detailRows = [
-    ["Vendor", record.vendor], ["Kode MTU", record.mtuCode], ["Material", record.materialName], ["Deskripsi katalog", record.materialDescription], ["No. katalog", record.catalogNumber], ["Jenis katalog", record.catalogType], ["Qty", `${record.qty || 0} ${record.unit || "unit"}`], ["Terpasang", `${record.installedQty ?? 0} ${record.unit || "unit"}`], ["Sisa", `${record.remainingQty ?? record.physicalQty ?? 0} ${record.unit || "unit"}`],
-    ["Kontrak", record.noKontrak], ["SPMK", record.noSpmk], ["GI", record.giName], ["Bay", record.bayName], ["Lokasi", record.location],
+    ["Vendor", record.vendor], ["Kode RFQ", record.mtuCode], ["Material", record.materialName], ["Deskripsi katalog", record.materialDescription], ["Code Catalog", record.catalogNumber], ["Jenis katalog", record.catalogType], ["Qty", `${record.qty || 0} ${record.unit || "unit"}`], ["Terpasang", `${record.installedQty ?? 0} ${record.unit || "unit"}`], ["Sisa", `${record.remainingQty ?? record.physicalQty ?? 0} ${record.unit || "unit"}`],
+    ["Kontrak KHS", record.noKontrak], ["Kontrak rinci", record.contractDetailNumber || record.noKontrak], ["SPMK", record.noSpmk],
   ];
+  const dates = importantDates(record);
   return <div className="mtu-khs-detail-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}>
     <section className="mtu-khs-detail" role="dialog" aria-modal="true" aria-labelledby="mtu-khs-detail-title">
       <header className="mtu-khs-detail__header">
-        <div><span className="mtu-khs-eyebrow">MTU KHS {record.procurementYear || ""}</span><h2 id="mtu-khs-detail-title">{value(record.materialName || record.mtuCode)}</h2><p>{value(record.vendor)} · {value(record.uptName)}</p></div>
-        <button type="button" className="mtu-khs-icon-button" aria-label="Tutup detail" onClick={onClose}><X size={20} /></button>
+        <div><span className="mtu-khs-eyebrow">MTU KHS {record.procurementYear || ""}</span><h2 id="mtu-khs-detail-title">{value(record.materialDescription || record.materialName || record.mtuCode)}</h2><p>{value(record.mtuCode)} · {value(record.vendor)} · {value(record.uptName)}</p></div>
+        <button ref={closeRef} type="button" className="mtu-khs-icon-button" aria-label="Tutup detail" onClick={onClose}><X size={20} /></button>
       </header>
-      <div className="mtu-khs-detail__status"><span className="mtu-khs-status mtu-khs-status--blue">{MTU_KHS_LIFECYCLE_LABEL[record.lifecycleStatus] || record.lifecycleStatus}</span><span className="mtu-khs-status mtu-khs-status--neutral">{record.sifatPekerjaan}</span></div>
+      <div className="mtu-khs-detail__status"><span className="mtu-khs-detail__meta">Status: {MTU_KHS_LIFECYCLE_LABEL[record.lifecycleStatus] || record.lifecycleStatus}</span><span className="mtu-khs-detail__meta">Jenis: {record.sifatPekerjaan}</span></div>
       <div className="mtu-khs-detail__tabs" role="tablist">{[["summary","Ringkasan"],["location","Lokasi"],["usage","Pemakaian"],["installation","Pemasangan"],["history","Riwayat"]].map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={activeTab === key} className={activeTab === key ? "is-active" : ""} onClick={() => setActiveTab(key)}>{label}</button>)}</div>
       <div className="mtu-khs-detail__body">
-        {activeTab === "summary" && <><div className="mtu-khs-detail-grid">{detailRows.map(([label, item]) => <div key={label}><span>{label}</span><strong>{value(item)}</strong></div>)}</div><div className="mtu-khs-detail__section"><h3>Kontrak & milestone</h3><p className="mtu-khs-muted">Kontrak {value(record.noKontrak)} · SPMK {value(record.noSpmk)} · Delivery {value(record.tanggalSerahTerima)}</p></div></>}
+        {activeTab === "summary" && <><div className="mtu-khs-detail-grid mtu-khs-detail-grid--compact">{detailRows.map(([label, item]) => <div key={label}><span>{label}</span><strong title={String(item || "")}>{value(item)}</strong></div>)}</div>{dates.length > 0 && <div className="mtu-khs-detail__section mtu-khs-detail__section--compact"><h3><Clock size={17} /> Tanggal penting</h3><div className="mtu-khs-important-dates">{dates.map(([label, date]) => <div key={label}><span>{label}</span><time dateTime={String(date).slice(0, 10)}>{formatMtuDate(date)}</time></div>)}</div></div>}</>}
         {activeTab === "location" && <div className="mtu-khs-detail__section"><h3><MapPin size={17} /> Jejak lokasi</h3><p className="mtu-khs-muted">UPT {value(record.uptName)} · ULTG {value(record.ultgName)}</p><p><strong>{value(record.giName)}</strong> / {value(record.bayName)} · {value(record.location)}</p><div className="mtu-khs-timeline"><div><span className="is-done" /><p><strong>Vendor / Pabrik</strong><small>{value(record.tanggalFAT || record.fatDate)}</small></p></div><div><span className={record.onsiteDate ? "is-done" : ""} /><p><strong>Onsite GI</strong><small>{value(record.onsiteDate || record.tanggalOnsite)}</small></p></div><div><span className={record.installationDate ? "is-done" : ""} /><p><strong>Terpasang</strong><small>{value(record.installationDate || record.tanggalTerpasang)}</small></p></div></div></div>}
         {activeTab === "usage" && <div className="mtu-khs-detail__section"><h3><Package size={17} /> Pemakaian approved TUG</h3><div className="mtu-khs-usage-summary"><strong>{usedQty}</strong><span>dari {record.qty || 0} {record.unit || "unit"} terhubung ke TUG approved</span></div>{usage.length === 0 && <p className="mtu-khs-muted">Belum ada link TUG approved.</p>}{usage.map(item => <p key={item.id}><strong>{item.tugItemId || item.tug_item_id}</strong> · {item.qty || item.quantity} {record.unit || "unit"}</p>)}{canLinkUsage && approvedTugItems.length > 0 && <div className="mtu-khs-usage-link"><select aria-label="TUG approved" value={usageDraft.id} onChange={event => setUsageDraft(draft => ({ ...draft, id: event.target.value }))}><option value="">Pilih TUG approved</option>{approvedTugItems.map(item => <option key={item.id} value={item.id}>{item.id} · {item.qty}</option>)}</select><input aria-label="Qty pemakaian" type="number" min="0.01" step="0.01" placeholder="Qty" value={usageDraft.qty} onChange={event => setUsageDraft(draft => ({ ...draft, qty: event.target.value }))} /><button type="button" className="approval-btn approval-btn--primary" onClick={() => { if (usageDraft.id && usageDraft.qty) onLinkUsage?.(record.id, usageDraft.id, Number(usageDraft.qty)); }}>Link TUG</button></div>}</div>}
         {activeTab === "installation" && <div className="mtu-khs-detail__section"><h3><MapPin size={17} /> Pemasangan</h3><div className="mtu-khs-detail-grid"><div><span>Status</span><strong>{value(record.installationStatus || record.lifecycleStatus)}</strong></div><div><span>Rencana</span><strong>{value(record.installationPlanDate)}</strong></div><div><span>Aktual</span><strong>{value(record.installationDate || record.tanggalTerpasang)}</strong></div></div></div>}

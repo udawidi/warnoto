@@ -64,6 +64,17 @@
 - [x] T034 Generate deterministic per-UIT review batches with real file and row hashes, source provenance, duplicate candidates, and a reversible staging procedure.
 - [x] T035 Run focused tests, build, mapping audit, production backup verification, and confirm canonical MTU records remain empty before requesting approval to apply the hardening migration and stage data.
 
+## Phase 10: Monitoring performance and Sheet mirror
+
+- [x] T036 Add unit and SQL contract tests for contract-detail extraction, server pagination, scoped metrics, sync-job idempotency, and approval-created jobs.
+- [x] T037 Add the proposed paginated list RPC and durable Google Sheet sync-job schema/RPC changes with a rollback migration.
+- [x] T038 Implement the authenticated `push-mtu-khs` Edge Function with dry-run, source-row verification, conflict protection, field allowlist, audit values, and retry-safe processing.
+- [x] T039 Update the MTU API and monitoring UI for 20/50 server pagination, lazy detail data, stable query keys, and session cache invalidation.
+- [x] T040 Update table labels/columns, Kode RFQ wording, contract-detail display, and remove Drawing from the monitoring table/KPI.
+- [x] T041 Compact and repair the responsive detail modal, including static metadata chips, sticky close header, safe-area sizing, and keyboard focus behavior.
+- [x] T042 Integrate approved record updates with Sheet-job dispatch/status/retry without weakening review-first behavior; keep approved TUG usage read-only and outside Sheet mirror v1.
+- [x] T043 Run focused/full tests, production build, mobile/desktop browser smoke, dry-run Google access check, graphify update, and final diff audit.
+
 ## Dependencies
 
 - T003-T006 block feature UI and writes.

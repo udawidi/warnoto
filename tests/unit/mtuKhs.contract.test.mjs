@@ -5,6 +5,9 @@ import { readFileSync } from "node:fs";
 const sql = readFileSync(new URL("../../supabase/migrations/20260911_mtu_khs.sql", import.meta.url), "utf8");
 const hardeningSql = readFileSync(new URL("../../supabase/migrations/20260912c_mtu_khs_import_validation_hardening.sql", import.meta.url), "utf8");
 const seedSql = readFileSync(new URL("../../supabase/migrations/20260912_mtu_gi_master_seed.sql", import.meta.url), "utf8");
+const syncSql = readFileSync(new URL("../../supabase/migrations/20260912_mtu_khs_sheet_sync_backend.sql", import.meta.url), "utf8");
+const syncRollbackSql = readFileSync(new URL("../../supabase/migrations/20260912_mtu_khs_sheet_sync_backend.rollback.sql", import.meta.url), "utf8");
+const syncFunction = readFileSync(new URL("../../supabase/functions/push-mtu-khs/index.ts", import.meta.url), "utf8");
 const seedStart = seedSql.indexOf("[", seedSql.indexOf("$mtu_data$"));
 const seedEnd = seedSql.lastIndexOf("]$mtu_data$") + 1;
 const seedRows = JSON.parse(seedSql.slice(seedStart, seedEnd));
@@ -79,6 +82,50 @@ test("MTU migration contains hierarchy and master deactivation guards", () => {
   assert.match(sql, /uq_mtu_khs_gi_upt_name/);
   assert.match(sql, /uq_mtu_khs_bay_gi_name/);
   assert.match(sql, /public\.mtu_khs_can_access_upt\(upt_id\)/);
+});
+
+test("MTU Sheet sync queue is transactional, scoped, and retry-safe", () => {
+  assert.match(syncSql, /create table if not exists public\.mtu_khs_sheet_sync_jobs/);
+  assert.match(syncSql, /status in \('PENDING','SYNCING','SYNCED','CONFLICT','FAILED','SKIPPED'\)/);
+  assert.match(syncSql, /unique \(change_request_id\)/);
+  assert.match(syncSql, /create policy "MTU KHS sheet sync scoped"/);
+  assert.match(syncSql, /on conflict \(change_request_id\) do nothing/);
+  assert.match(syncSql, /1Fd978ThcVpCmGEbADILLbjpsGfpWtdKlJdnNdvnzOiw/);
+  assert.match(syncSql, /Input KHS 2024/);
+  assert.match(syncSql, /Input KHS 2026/);
+  assert.match(syncSql, /contractDetailNumber/);
+  assert.match(syncRollbackSql, /MTU_KHS_SHEET_SYNC_ROLLBACK_BLOCKED/);
+});
+
+test("MTU paginated RPC clamps page size and returns items, metrics, and vendors", () => {
+  assert.match(syncSql, /create or replace function public\.mtu_khs_list_records/);
+  assert.match(syncSql, /case when p_limit in \(20,50\) then p_limit else 20 end/);
+  assert.match(syncSql, /'items'/);
+  assert.match(syncSql, /'total'/);
+  assert.match(syncSql, /'metrics'/);
+  assert.match(syncSql, /'vendors'/);
+  assert.match(syncSql, /public\.mtu_khs_can_access_upt\(r\.upt_id\)/);
+  assert.match(syncSql, /lifecycle_status in \('ON_SITE','INSTALLED'\)/);
+});
+
+test("MTU Sheet Edge Function is service-role, dry-run, allowlisted, and retry-safe", () => {
+  assert.match(syncFunction, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(syncFunction, /dryRun/);
+  assert.match(syncFunction, /buildCellChanges/);
+  assert.match(syncFunction, /status: \"SYNCING\"/);
+  assert.match(syncFunction, /status: \"SYNCED\"/);
+  assert.match(syncFunction, /status: \"CONFLICT\"/);
+  assert.match(syncFunction, /status: \"FAILED\"/);
+  assert.match(syncFunction, /MTU_KHS_SHEET_SYNC_ENABLED/);
+  assert.match(syncFunction, /values:batchUpdate/);
+  assert.match(syncFunction, /SHEET_ID/);
+  assert.match(syncFunction, /\["PENDING", "FAILED", "CONFLICT"\]/);
+  assert.match(syncFunction, /async function validateAccess/);
+  assert.match(syncFunction, /A1:ZZ10/);
+  assert.doesNotMatch(syncFunction.slice(syncFunction.indexOf("async function validateAccess"), syncFunction.indexOf("async function inspectJob")), /A:ZZ\?/);
+  assert.match(syncFunction, /body\.dryRun === true && !body\.jobId/);
+  assert.match(syncFunction, /job\.before_data[\s\S]*job\.source_row[\s\S]*job\.after_data/);
+  assert.match(syncFunction, /buildCellChanges\(detected\.headers, row,/);
 });
 
 test("MTU approval supports superadmin override and explicit clear semantics", () => {

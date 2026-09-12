@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
 import { applyMtuMappings, buildMtuImportHashes, parseMtuKhsWorkbook, summarizeMtuImport } from "../../src/features/mtu-khs/mtuKhsImport.js";
-import { canAccessMtuRecord, deriveMtuLifecycle, jakartaTodayIso, normalizeMtuCode, normalizeMtuRecord, parseMtuDates, physicalQuantity, resolveMtuScope, sameYearDrawing, validateMtuRecord } from "../../src/features/mtu-khs/mtuKhsModel.js";
+import { canAccessMtuRecord, deriveMtuLifecycle, formatMtuDate, jakartaTodayIso, mtuStatusDate, normalizeMtuCode, normalizeMtuRecord, parseMtuDates, physicalQuantity, resolveMtuScope, sameYearDrawing, validateMtuRecord } from "../../src/features/mtu-khs/mtuKhsModel.js";
 import { filterMtuHierarchy } from "../../src/features/mtu-khs/mtuKhsHierarchy.js";
+import { formatMtuContract } from "../../src/features/mtu-khs/mtuKhsApi.js";
 
 test("GI hierarchy filters descendants and resets are represented by empty child selection", () => {
   const data = { uptList: [{ id: "UPT-1", uitId: "UIT-1" }, { id: "UPT-2", uitId: "UIT-2" }], ultgList: [{ id: "ULTG-1", parentUptId: "UPT-1" }, { id: "ULTG-2", parentUptId: "UPT-2" }], gis: [{ id: "GI-1", ultgId: "ULTG-1" }, { id: "GI-2", ultgId: "ULTG-2" }], bays: [{ id: "BAY-1", garduIndukId: "GI-1" }, { id: "BAY-2", garduIndukId: "GI-2" }] };
@@ -20,6 +21,13 @@ test("MTU model normalizes code, year, and service quantity", () => {
   assert.equal(record.physicalQty, 0);
 });
 
+test("MTU contract detail is shortened without losing unusual references", () => {
+  assert.equal(formatMtuContract("006.KR/DAN.01.01/F34000000/2026"), "006.KR");
+  assert.equal(formatMtuContract("KONTRAK-KHUSUS"), "KONTRAK-KHUSUS");
+  assert.equal(formatMtuContract("NOMOR-KONTRAK-TANPA-POLA-YANG-PANJANG"), "NOMOR-KONTRAK-TANPA-POLA-YANG-PANJANG");
+  assert.equal(formatMtuContract(""), "-");
+});
+
 test("MTU lifecycle follows KHS onsite/install dates and quantities", () => {
   assert.deepEqual(parseMtuDates("18 May 2026\n7 Juli 2026"), { original: "18 May 2026\n7 Juli 2026", dates: ["2026-05-18", "2026-07-07"], last: "2026-07-07" });
   assert.equal(jakartaTodayIso(new Date("2026-09-12T00:00:00Z")), "2026-09-12");
@@ -30,6 +38,14 @@ test("MTU lifecycle follows KHS onsite/install dates and quantities", () => {
   assert.equal(normalizeMtuRecord({ procurementYear: 2026, qty: 1, onsiteDate: "18 September 2026" }).lifecycleStatus, "PLANNED_ARRIVAL");
   const normalizedTwice = normalizeMtuRecord(normalizeMtuRecord({ procurementYear: 2024, qty: 1, onsiteDate: "18 May 2026", onsiteDateOriginal: "18 May 2026 & berita acara" }));
   assert.equal(normalizedTwice.onsiteDateOriginal, "18 May 2026 & berita acara");
+});
+
+test("MTU status shows its relevant operational date", () => {
+  assert.equal(mtuStatusDate({ lifecycleStatus: "PLANNED_ARRIVAL", onsiteDate: "2026-09-18" }), "2026-09-18");
+  assert.equal(mtuStatusDate({ lifecycleStatus: "ON_SITE", onsiteDate: "2026-05-18" }), "2026-05-18");
+  assert.equal(mtuStatusDate({ lifecycleStatus: "INSTALLED", installationDate: "2026-07-07" }), "2026-07-07");
+  assert.equal(mtuStatusDate({ lifecycleStatus: "VENDOR", onsiteDate: "2026-09-18" }), "");
+  assert.match(formatMtuDate("2026-09-18"), /18 Sep 2026/i);
 });
 
 test("validation requires UPT and non-empty GI mapping", () => {

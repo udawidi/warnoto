@@ -11,6 +11,7 @@
 ## Queries
 
 - Scoped, paginated MTU record list with year/vendor/UPT/status/drawing/search filters.
+- `mtu_khs_list_records(year, upt_id, vendor, lifecycle_status, search, limit, offset)` returns scoped items, exact total, filtered metrics, and vendor options. `limit` accepts only 20 or 50.
 - Record detail with units, documents, usage links, and change history.
 - Scoped GI and Bay master lists.
 - Import batch and row validation lists.
@@ -21,6 +22,8 @@
 - `mtu_khs_decide_change(request_id, decision, reason)`: validates approver role/scope and applies accepted patches atomically.
 - `mtu_khs_commit_import(batch_id, idempotency_key)`: validates mappings, duplicates, approval, hierarchy and idempotency before promotion.
 - GI/Bay row-level create/update/deactivate operations guarded by master permission and hierarchy scope.
+- An approved MTU change creates one idempotent Sheet-sync job in the same database transaction. Google delivery is asynchronous and never rolls back an approved canonical record.
+- `push-mtu-khs` accepts a stored job identifier, validates the caller, and writes only allowlisted source-sheet fields after verifying the target row identity.
 
 ## Errors
 
