@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as XLSX from "xlsx";
-import { applyMtuMappings, parseMtuKhsWorkbook, summarizeMtuImport } from "../../src/features/mtu-khs/mtuKhsImport.js";
+import { applyMtuMappings, buildMtuImportHashes, parseMtuKhsWorkbook, summarizeMtuImport } from "../../src/features/mtu-khs/mtuKhsImport.js";
 import { canAccessMtuRecord, normalizeMtuCode, normalizeMtuRecord, physicalQuantity, resolveMtuScope, sameYearDrawing, validateMtuRecord } from "../../src/features/mtu-khs/mtuKhsModel.js";
 import { filterMtuHierarchy } from "../../src/features/mtu-khs/mtuKhsHierarchy.js";
 
@@ -58,4 +58,62 @@ test("parser uses 2024 header row 4, preserves rows and ignores blank extents", 
   assert.equal(summarizeMtuImport(parsed).serviceRows, 1);
   const mapped = applyMtuMappings(parsed, { upt: { "UPT SURABAYA": "UPT-SBY" }, gi: { "GI KETINTANG": "GI-1" } });
   assert.equal(mapped[0].validation.valid, true);
+});
+
+test("parser safely maps MATERIAL, excludes footer rows, and preserves source metadata", () => {
+  const rows = Array.from({ length: 8 }, () => []);
+  rows[3] = ["PROVIDER", "UPT", "PENYEDIA MATERIAL", "MATERIAL", "JENIS MTU", "QTY"];
+  rows[4] = ["UNINDO", "UPT Surabaya", "UNINDO", "Current Transformer", "CT150-001", "2"];
+  rows[5] = ["", "", "", "", "", ""];
+  rows[6] = ["TOTAL", "", "", "", "", "2"];
+  rows[7] = ["UNINDO", "UPT Surabaya", "UNINDO", "Current Transformer", "", "1"];
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet.E8.l = { Target: "https://example.test/material-8" };
+  XLSX.utils.book_append_sheet(workbook, sheet, "Input KHS 2024");
+
+  const parsed = parseMtuKhsWorkbook(workbook, { procurementYear: 2024 });
+  assert.equal(parsed.rows.length, 2);
+  assert.equal(parsed.rows[0].rowNumber, 5);
+  assert.equal(parsed.rows[0].source.materialName, "Current Transformer");
+  assert.equal(parsed.rows[1].rowNumber, 8);
+  assert.deepEqual(parsed.rows[1].hyperlinks, [{ field: "JENIS MTU", url: "https://example.test/material-8" }]);
+  assert.equal(parsed.rows[1].validation.valid, false);
+  assert.deepEqual(parsed.rows[1].validation.errors, ["MTU_CODE_REQUIRED"]);
+});
+
+test("parser maps the actual KHS contract and placement headers", () => {
+  const rows = [
+    [],
+    ["PROVIDER", "UPT", "MATERIAL", "KONTRAK KHS", "NOMOR SPMK", "BATAS SERAH TERIMA (BASTB) KONTRAKTUAL", "TANGGAL MATERIAL ON SITE", "LOKASI PASANG", "NO SERI"],
+    ["UNINDO", "UPT Surabaya", "Current Transformer", "KHS-01", "SPMK-01", "2026-12-01", "2026-11-01", "GI Ketintang", "SN-01"],
+  ];
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.aoa_to_sheet(rows);
+  sheet.F3 = { v: 46160, w: "2026-06-17", t: "n" };
+  sheet.G3 = { v: 46130, w: "2026-05-18", t: "n" };
+  XLSX.utils.book_append_sheet(workbook, sheet, "Input KHS 2026");
+  const parsed = parseMtuKhsWorkbook(workbook, { procurementYear: 2026, headerRow: 2 });
+  const source = parsed.rows[0].source;
+  assert.equal(source.noKontrak, "KHS-01");
+  assert.equal(source.noSpmk, "SPMK-01");
+  assert.equal(source.tanggalSerahTerima, "2026-06-17");
+  assert.equal(source.onsiteDate, "2026-05-18");
+  assert.equal(source.location, "GI Ketintang");
+  assert.equal(source.serialNumber, "SN-01");
+});
+
+test("import hashes are deterministic and mark only repeated raw rows", async () => {
+  const parsed = { sheetName: "Input KHS 2024", rows: [
+    { rawData: { A: "1" }, source: { procurementYear: 2024 } },
+    { rawData: { A: "1" }, source: { procurementYear: 2024 } },
+    { rawData: { A: "2" }, source: { procurementYear: 2024 } },
+  ] };
+  const first = await buildMtuImportHashes(new TextEncoder().encode("file"), parsed);
+  const second = await buildMtuImportHashes(new TextEncoder().encode("file"), parsed);
+  assert.equal(first.fileSha256, "3b9c358f36f0a31b6ad3e14f309c7cf198ac9246e8316f9ce543d5b19ac02b80");
+  assert.equal(first.fileSha256, second.fileSha256);
+  assert.deepEqual(first.rawRowSha256, second.rawRowSha256);
+  assert.deepEqual(first.duplicateCandidate, [true, true, false]);
+  assert.equal(first.batchId, `MTU-BATCH-2024-${first.fileSha256.slice(0, 16)}`);
 });

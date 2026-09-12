@@ -12,18 +12,47 @@ const aliases = {
   qty: ["QTY", "JUMLAH", "VOLUME", "JUMLAH MATERIAL"],
   unit: ["SATUAN", "UNIT"],
   sifatPekerjaan: ["SIFAT PEKERJAAN", "SIFAT"],
-  noKontrak: ["NO KONTRAK", "NOMOR KONTRAK", "KHS", "NO. KONTRAK"],
+  noKontrak: ["KONTRAK KHS", "NO KONTRAK", "NOMOR KONTRAK", "KHS", "NO. KONTRAK"],
   tanggalKontrak: ["TANGGAL KONTRAK", "TGL KONTRAK"],
-  tanggalSerahTerima: ["RENCANA KEDATANGAN", "TANGGAL SERAH TERIMA", "DELIVERY", "TGL RENCANA"],
-  onsiteDate: ["ONSITE", "TANGGAL ONSITE", "TGL ONSITE", "MATERIAL ONSITE"],
-  noSpmk: ["NO SPMK", "SPMK"],
-  location: ["LOKASI", "LOKASI MTU", "GUDANG", "BLOK"],
-  serialNumber: ["SERIAL NUMBER", "NO SERI", "SERIAL"],
+  tanggalSerahTerima: ["BATAS SERAH TERIMA (BASTB) KONTRAKTUAL", "RENCANA KEDATANGAN", "TANGGAL SERAH TERIMA", "DELIVERY", "TGL RENCANA"],
+  onsiteDate: ["TANGGAL MATERIAL ON SITE", "ONSITE", "TANGGAL ONSITE", "TGL ONSITE", "MATERIAL ONSITE"],
+  noSpmk: ["NOMOR SPMK", "NO SPMK", "SPMK"],
+  location: ["LOKASI PASANG", "LOKASI", "LOKASI MTU", "GUDANG", "BLOK"],
+  serialNumber: ["NO SERI", "SERIAL NUMBER", "SERIAL"],
 };
 
 function normalizeHeader(value) { return normalizeMtuText(value).replace(/[.:]/g, "").replace(/\s+/g, " "); }
-function findColumn(headers, names) { const candidates = names.map(normalizeHeader); return headers.findIndex(header => candidates.some(candidate => header === candidate || header.includes(candidate))); }
-function cellText(cell) { return cell?.v == null ? "" : String(cell.v).trim(); }
+function findColumn(headers, names) {
+  const candidates = names.map(normalizeHeader);
+  // Exact aliases win.  A generic alias such as MATERIAL must not capture
+  // PENYEDIA MATERIAL when the sheet also contains the real MATERIAL column.
+  for (const candidate of candidates) {
+    const exact = headers.findIndex(header => header === candidate);
+    if (exact >= 0) return exact;
+  }
+  const matches = headers.reduce((found, header, index) => {
+    if (candidates.some(candidate => candidate.length > 3 && header.includes(candidate))) found.push(index);
+    return found;
+  }, []);
+  return matches.length === 1 ? matches[0] : -1;
+}
+function cellText(cell) { return cell?.w != null ? String(cell.w).trim() : cell?.v == null ? "" : String(cell.v).trim(); }
+function meaningful(value) { return value && value !== "-"; }
+
+async function sha256(value) {
+  const bytes = typeof value === "string" ? new TextEncoder().encode(value) : value instanceof ArrayBuffer ? new Uint8Array(value) : new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export async function buildMtuImportHashes(fileBytes, parsed) {
+  const rawRowSha256 = await Promise.all((parsed?.rows || []).map(row => sha256(JSON.stringify(row.rawData || {}))));
+  const counts = rawRowSha256.reduce((result, hash) => result.set(hash, (result.get(hash) || 0) + 1), new Map());
+  const duplicateCandidate = rawRowSha256.map(hash => counts.get(hash) > 1);
+  const fileSha256 = await sha256(fileBytes);
+  const year = parsed?.rows?.[0]?.source?.procurementYear || "unknown";
+  return { fileSha256, rawRowSha256, duplicateCandidate, batchId: `MTU-BATCH-${year}-${fileSha256.slice(0, 16)}` };
+}
 
 export function parseMtuKhsWorkbook(input, { procurementYear, headerRow } = {}) {
   const workbook = input?.SheetNames ? input : XLSX.read(input, { type: typeof input === "string" ? "binary" : "array", cellFormula: false, cellHTML: false });
@@ -49,9 +78,18 @@ export function parseMtuKhsWorkbook(input, { procurementYear, headerRow } = {}) 
     }
     if (!hasValue) continue;
     const pick = field => { const index = findColumn(headers, aliases[field] || [field]); return index < 0 ? "" : raw[headers[index]]; };
-    const source = { procurementYear: normalizeMtuYear(procurementYear || sheetName), provider: pick("provider"), uptName: pick("uptName"), ultgName: pick("ultgName"), giName: pick("giName"), bayName: pick("bayName"), mtuCode: pick("mtuCode"), materialName: pick("materialName"), qty: Number(String(pick("qty")).replace(/\./g, "").replace(",", ".")) || 0, unit: pick("unit"), sifatPekerjaan: pick("sifatPekerjaan"), noKontrak: pick("noKontrak"), tanggalKontrak: pick("tanggalKontrak"), tanggalSerahTerima: pick("tanggalSerahTerima"), onsiteDate: pick("onsiteDate"), noSpmk: pick("noSpmk"), location: pick("location"), serialNumber: pick("serialNumber"), rawData: raw };
+    const provider = pick("provider");
+    const uptName = pick("uptName");
+    const materialName = pick("materialName");
+    // Footer/summary rows have no vendor, UPT, or material identity.
+    const providerColumnExists = findColumn(headers, aliases.provider) >= 0;
+    if (!meaningful(uptName) || !meaningful(materialName) || (providerColumnExists && !meaningful(provider))) continue;
+    const source = { procurementYear: normalizeMtuYear(procurementYear || sheetName), provider, uptName, ultgName: pick("ultgName"), giName: pick("giName"), bayName: pick("bayName"), mtuCode: pick("mtuCode"), materialName, qty: Number(String(pick("qty")).replace(/\./g, "").replace(",", ".")) || 0, unit: pick("unit"), sifatPekerjaan: pick("sifatPekerjaan"), noKontrak: pick("noKontrak"), tanggalKontrak: pick("tanggalKontrak"), tanggalSerahTerima: pick("tanggalSerahTerima"), onsiteDate: pick("onsiteDate"), noSpmk: pick("noSpmk"), location: pick("location"), serialNumber: pick("serialNumber"), rawData: raw };
     const normalized = normalizeMtuRecord(source);
-    rows.push({ rowNumber: r + 1, source: normalized, rawData: raw, hyperlinks: Object.entries(raw).filter(([key]) => key.endsWith("__href")).map(([key, url]) => ({ field: key.slice(0, -6), url })), validation: validateMtuRecord(normalized, { requireMappings: false }) });
+    const validation = validateMtuRecord(normalized, { requireMappings: false });
+    if (!normalized.mtuCode) validation.errors.push("MTU_CODE_REQUIRED");
+    validation.valid = validation.errors.length === 0;
+    rows.push({ rowNumber: r + 1, source: normalized, rawData: raw, hyperlinks: Object.entries(raw).filter(([key]) => key.endsWith("__href")).map(([key, url]) => ({ field: key.slice(0, -6), url })), validation });
   }
   return { sheetName, headerRow: actualHeaderRow, rows, errors: [] };
 }

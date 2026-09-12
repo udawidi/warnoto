@@ -55,6 +55,15 @@
 - [x] T028 Filter inactive GI/Bay rows from the MTU master loader and add focused transform tests for counts, deduplication, blank IDs, status, and hierarchy.
 - [x] T029 Run focused tests, full build, diff hygiene, and graphify update after implementation.
 
+## Phase 9: Legacy MTU record migration
+
+- [x] T030 Correct workbook column selection and data-row qualification so the source yields exactly 713 records for 2024 and 357 for 2026 without dropping incomplete business rows.
+- [x] T031 Add focused parser tests for ambiguous material headers, footer exclusion, source-row preservation, and the missing-code review blocker.
+- [x] T032 Produce a read-only mapping audit against production UPT, ULTG, GI, Bay, warehouse, supplier, specification, and catalog masters; never guess ambiguous matches or create masters automatically.
+- [x] T033 Propose a follow-up migration that enforces the same hierarchy and blocker rules in stage, mapping update, and commit RPCs without promoting any canonical record.
+- [ ] T034 Generate deterministic per-UIT review batches with real file and row hashes, source provenance, duplicate candidates, and a reversible staging procedure.
+- [ ] T035 Run focused tests, build, mapping audit, production backup verification, and confirm canonical MTU records remain empty before requesting approval to apply the hardening migration and stage data.
+
 ## Dependencies
 
 - T003-T006 block feature UI and writes.

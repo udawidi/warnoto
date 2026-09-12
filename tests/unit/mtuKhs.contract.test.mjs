@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const sql = readFileSync(new URL("../../supabase/migrations/20260911_mtu_khs.sql", import.meta.url), "utf8");
+const hardeningSql = readFileSync(new URL("../../supabase/migrations/20260912c_mtu_khs_import_validation_hardening.sql", import.meta.url), "utf8");
 const seedSql = readFileSync(new URL("../../supabase/migrations/20260912_mtu_gi_master_seed.sql", import.meta.url), "utf8");
 const seedStart = seedSql.indexOf("[", seedSql.indexOf("$mtu_data$"));
 const seedEnd = seedSql.lastIndexOf("]$mtu_data$") + 1;
@@ -34,11 +35,38 @@ test("MTU migration makes import retry idempotent and validates mappings", () =>
   assert.match(sql, /create or replace function public\.mtu_khs_update_import_row_mapping/);
   assert.match(sql, /MTU_MAPPING_REQUIRED:SITE/);
   assert.match(sql, /MTU_HIERARCHY_INVALID:GUDANG/);
-  assert.match(sql, /MTU_MAPPING_REQUIRED:SUPPLIER/);
-  assert.match(sql, /MTU_MAPPING_REQUIRED:SPEC/);
   assert.match(sql, /p_mapping jsonb/);
   assert.match(sql, /mtu_spec_id, katalog_id, supplier_id/);
   assert.match(sql, /MTU_QTY_INVALID/);
+});
+
+test("MTU import hardening recomputes blocking errors and keeps optional mappings as warnings", () => {
+  assert.match(hardeningSql, /alter table public\.mtu_khs_import_rows[\s\S]*validation_warnings jsonb/);
+  assert.match(hardeningSql, /create or replace function public\.mtu_khs_validate_import_row/);
+  assert.match(hardeningSql, /MTU_CODE_REQUIRED/);
+  assert.match(hardeningSql, /MTU_QTY_INVALID/);
+  assert.match(hardeningSql, /MTU_MAPPING_REQUIRED:UPT/);
+  assert.match(hardeningSql, /MTU_HIERARCHY_INVALID:ULTG/);
+  assert.match(hardeningSql, /MTU_HIERARCHY_INVALID:GI/);
+  assert.match(hardeningSql, /MTU_HIERARCHY_INVALID:BAY/);
+  assert.match(hardeningSql, /MTU_HIERARCHY_INVALID:GUDANG/);
+  assert.match(hardeningSql, /MTU_TARGET_EXCLUSIVE:GUDANG/);
+  assert.match(hardeningSql, /MTU_MAPPING_REQUIRED:SITE/);
+  assert.match(hardeningSql, /MTU_MAPPING_REQUIRED:BAY/);
+  assert.match(hardeningSql, /warnings := warnings \|\| 'MTU_MAPPING_REQUIRED:SUPPLIER'/);
+  assert.match(hardeningSql, /warnings := warnings \|\| 'MTU_MAPPING_REQUIRED:SPEC'/);
+  assert.match(hardeningSql, /warnings := warnings \|\| 'MTU_MAPPING_REQUIRED:KATALOG'/);
+  assert.match(hardeningSql, /issues := public\.mtu_khs_validate_import_row/);
+  assert.match(hardeningSql, /for update loop/);
+  assert.match(hardeningSql, /MTU_IMPORT_ALREADY_COMMITTED/);
+  assert.match(hardeningSql, /MTU_IMPORT_PROVENANCE_INVALID/);
+  assert.match(hardeningSql, /row_item->>'rawRowSha256'/);
+  assert.match(hardeningSql, /jsonb_typeof\(p_rows\) <> 'array'/);
+  assert.match(hardeningSql, /jsonb_array_length\(p_rows\) = 0/);
+  assert.doesNotMatch(hardeningSql, /grant execute on function public\.mtu_khs_validate_import_row/);
+  assert.doesNotMatch(hardeningSql, /errors := errors \|\| 'MTU_MAPPING_REQUIRED:SUPPLIER'/);
+  assert.doesNotMatch(hardeningSql, /errors := errors \|\| 'MTU_MAPPING_REQUIRED:SPEC'/);
+  assert.doesNotMatch(hardeningSql, /insert into public\.(supplier|mtu_khs_specs|katalog)/);
 });
 
 test("MTU migration contains hierarchy and master deactivation guards", () => {
