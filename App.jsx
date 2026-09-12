@@ -4345,6 +4345,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             gudangList={gudangList}
             supplierList={supplierList}
             katalogList={katalogList}
+            enrichedStocks={scopedEnrichedStocks}
+            openNewTxn={openNewTxn}
+            setTugSubTab={setTugSubTab}
+            setTugGroup={setTugGroup}
+            setTab={setTab}
+            canCreateTransaction={can(currentUser, "aksi.buatTransaksi", rolePerms)}
             sty={sty} C={C} isMobile={isMobile}
           />
         )}

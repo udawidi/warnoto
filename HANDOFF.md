@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-12
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-13
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -32,7 +32,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Frontend dev role (Kevin `kevinnsetiawan`, user 2026-08-12):** boleh edit presentasi (`src/components/*`, `src/theme.js`, `src/index.css`, JSX `App.jsx`) + **push langsung ke `main` tanpa PR**. Zona terlarang: state/handler/`saveToCloud`/`src/lib/*`/`src/hooks/*`/schema/workflows/deps. Aturan lengkap di `.github/ROLE_FRONTEND_DEVELOPER.md`. **Proteksi `main` DILONGGARKAN**: required PR review + required status check `build` DIHAPUS (force_push tetap off). Jaring rollback: Vercel Instant Rollback (UI) + tag `snapshot-YYYY-MM-DD` harian (`.github/workflows/daily-snapshot.yml`) + dump DB per-jam `vps-backup`.
 
 ### Fitur canonical
-- **MTU KHS (2026-09-12, database production aktif; frontend menunggu push):** menu Rencana Kedatangan diganti workspace MTU KHS terpisah di `src/features/mtu-khs/`. Database canonical, RLS, approval, import 2024/2026, drawing, penggunaan, dan sinkron referensi stok memakai rangkaian migration `20260911` sampai `20260912e`. Master lokasi memakai hierarki mengikat `UIT > UPT > ULTG > GI > Bay`; Bay selalu anak satu GI. Pengelolaan GI/Bay hanya di `Master Data > Gardu Induk / GI`, bukan di menu MTU KHS. Lifecycle production: 2024 = 265 terpasang, 385 onsite, 3 rencana kedatangan, 60 vendor; 2026 = 357 rencana kedatangan. Katalog 2024 terhubung 676, tersisa 37 STR belum terpetakan; katalog 2026 sengaja kosong.
+- **MTU KHS (2026-09-13, production aktif):** workspace memakai database canonical, RLS, approval, import 2024/2026, drawing, dan hierarki `UIT > UPT > ULTG > GI > Bay`. Material fisik 2024 direkonsiliasi TL tanpa backfill/mutasi stok; sisa fisik dapat ditautkan ke stok dengan UPT+katalog sama. Material 2026 diterima parsial melalui draft TUG-3 lalu TUG-4/final Asman; final menambah stok atomik dan idempoten. Pengeluaran hanya referensi TUG-8/9 `FINAL_APPROVED`, tidak memutasi stok dari MTU. `SUPERVISI` dikecualikan. Migration `20260913_mtu_khs_tug_lifecycle.sql` sudah diterapkan.
 - **TUG canonical hanya TUG-8/TUG-9** (tabel/RPC self-host, review-first Admin→TL→Asman, nomor server dari counter UPT). **TUG-15/Laporan di luar scope canonical.** TUG legacy hanya baseline, tanpa replay stok.
 - **Template PDF TUG-3/4/5/10 seragam gaya AppSheet TUG-9** (`docBuilders.js`). JANGAN ambil perubahan `App.jsx` dari PR Kevin (menghapus guard Mode Demo / tombol "Isi Data Contoh" ke form resmi).
 - **Maturity canonical self-host:** `maturity_assessments`, `maturity_audits`, `maturity_audit_history` (unik per upt/tahun/semester), `maturity_5s_assessments` (append-only, authenticated hanya SELECT+INSERT). Evidence audit = Google Drive binary + Supabase metadata; root folder `UPT Surabaya Apps` (`13FFto2pzVRLq4LBpRaJsIyGa2Bk5gaYD`), OAuth cred hanya di Edge Runtime MiniPC. Scope dari `maturity_audits.upt_id`; UIT hanya UPT se-`uit_id`; audit FINAL immutable. Mode Demo Maturity sengaja dimatikan.
@@ -61,7 +61,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **MTU KHS selesai dan data production sudah dimigrasikan (2026-09-12).** UI monitoring dan Master Gardu Induk responsif; master mengikuti cascading `UIT > UPT > ULTG > GI > Bay`, tanpa selector GI/Bay sejajar. Migration lifecycle/katalog `20260912e` diterapkan dengan assertion DB lulus dan rollback tersedia. Test penuh 203/203, test MTU terbaru 22/22, build, diff-check, dan smoke localhost lulus. Frontend sudah dikomit lokal; belum push/deploy.
+- **Lifecycle stok/TUG MTU KHS selesai dan diterapkan ke production (2026-09-13).** UI 2024/2026, pemetaan katalog via approval, provenance TUG-3, penerimaan parsial/idempoten, serta referensi final TUG-8/9 sudah terintegrasi. Migration production berhasil dalam satu transaksi; 3 RPC baru dan kolom provenance terverifikasi. Test penuh 224/224, test lifecycle 8/8, build dan diff-check lulus. Smoke Playwright responsif mengalami timeout runner pada 4 proyek; kontrak CSS mobile 360 px lulus unit test.
 
 - **Integritas material TUG-3/TUG-10 diperbaiki dan PUSHED main (`25ff92c`, `c5aa0c8`, 2026-09-10).** TUG-3 kini memvalidasi katalog existing, menyimpan snapshot identitas, memakai fallback snapshot pada daftar transaksi/Kartu Gantung, dan menormalkan qty. Approval TUG-10 kini menormalkan qty, menyimpan identitas stok, menetapkan stage `APPROVED`, serta rollback tanpa status sukses bila `saveToCloud` gagal. Backfill production selesai untuk TUG-3 `209`/`213` dan TUG-10 `220`; stok RAK-G hasil TUG-10 menjadi BALL CLEVIS 6 BH, SOCKET CLEVIS 74 BH, ISOLATOR 1 BH. Material `4191468` tetap 101 BH dari seed SAP awal dan tidak memiliki dokumen TUG masuk.
 
@@ -571,8 +571,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-1. Push commit MTU KHS ke `main` hanya setelah konfirmasi eksplisit; Vercel deploy otomatis.
-2. Smoke test `pln.warnoto.com` setelah deploy untuk scope UPT/UIT, lifecycle, katalog, drawing, kontrak, lokasi, dan referensi penggunaan stok.
+1. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
+2. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
 3. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
 
 **VERIFIKASI BROWSER pasca-deploy fix material (2026-09-10):** pastikan TUG-3 `209`/`213` menampilkan nama material; Kartu Gantung `4191468` dapat dibuka dan halaman belakang menampilkan baseline Migrasi Data 101 BH; Data Stok RAK-G menampilkan tiga material TUG-10 `220` dengan qty 6/74/1.
@@ -656,7 +656,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** Frontend MTU KHS belum live karena push ke `main` menunggu konfirmasi eksplisit.
+**Blocker:** Tidak ada blocker implementasi. Verifikasi browser production lifecycle MTU tetap perlu dilakukan setelah deploy Vercel selesai.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
@@ -675,5 +675,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-10 Codex: **Fix identitas/qty TUG-3 dan atomic-save TUG-10 (`25ff92c`,`c5aa0c8` PUSHED main); backfill production TUG-3 `209`/`213` dan TUG-10 `220` selesai.**
-- 2026-09-12 Codex: **MTU KHS dan Master Gardu Induk selesai; migration lifecycle/katalog production diterapkan dan diverifikasi, test/build/QA lulus; commit lokal selesai, push menunggu konfirmasi.**
+- 2026-09-12 Codex: **MTU KHS dan Master Gardu Induk selesai; migration lifecycle/katalog production diterapkan dan diverifikasi.**
+- 2026-09-13 Codex: **Lifecycle stok/TUG MTU 2024/2026 diterapkan ke production; test/build lulus dan frontend dipush ke main.**

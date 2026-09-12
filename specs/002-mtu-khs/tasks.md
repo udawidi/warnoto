@@ -75,6 +75,14 @@
 - [x] T042 Integrate approved record updates with Sheet-job dispatch/status/retry without weakening review-first behavior; keep approved TUG usage read-only and outside Sheet mirror v1.
 - [x] T043 Run focused/full tests, production build, mobile/desktop browser smoke, dry-run Google access check, graphify update, and final diff audit.
 
+## Phase 11: Stock and TUG lifecycle integration
+
+- [x] T044 Add focused model and SQL contract tests for 2024 reconciliation, same-UPT/catalog stock references, readable TUG-8/9 usage, and idempotent TUG-3 receipt links.
+- [x] T045 Add a proposed-only migration and API calls for direct TL reconciliation, stock-reference validation, MTU receipt links, and strict final TUG-8/9 usage validation.
+- [x] T046 Extend the existing TUG-3 draft and final-approval flow with MTU provenance, partial receipt limits, and single-application stock behavior.
+- [x] T047 Add compact 2024 reconciliation and 2026 receipt controls to MTU detail; show human-readable inbound and outbound TUG records on desktop and 360 px mobile.
+- [ ] T048 Run focused/full tests, production build, mobile smoke, migration diff audit, and verify MTU actions never duplicate stock movement.
+
 ## Dependencies
 
 - T003-T006 block feature UI and writes.
@@ -82,3 +90,4 @@
 - T011-T013 depend on master and API foundation.
 - T014-T015 depend on record detail and API foundation.
 - T016-T018 run after implementation tasks.
+- T044-T045 define and protect the new contracts before T046-T047; T048 runs last.

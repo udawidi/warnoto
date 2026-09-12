@@ -13,6 +13,7 @@ function rowToTxn(row) {
     stage: row.stage,
     status: row.status,
     uptId: row.upt_id,
+    mtuRecordId: row.mtu_record_id || data.mtuRecordId || data.mtu_record_id || null,
     docNumbers: data.docNumbers || (row.doc_number ? { tug3: row.doc_number } : {}),
     canonical3: true,
   };
@@ -62,6 +63,10 @@ export async function upsertTug3Transaction(txn) {
     created_at: txn.createdAt || Date.now(),   // kolom bigint (epoch ms), bukan ISO string
     updated_at: Date.now(),
   };
+  // Keep ordinary TUG-3 writes compatible with deployments before the MTU
+  // migration. The optional column is sent only for an explicitly MTU-linked
+  // receipt.
+  if (txn.mtuRecordId || txn.mtu_record_id) row.mtu_record_id = txn.mtuRecordId || txn.mtu_record_id;
   const { data, error } = await supabase.from("tug3_transactions").upsert(row, { onConflict: "id" }).select("id");
   if (error) { console.warn("upsertTug3Transaction gagal:", error.message || error); return false; }
   return (data || []).length > 0;

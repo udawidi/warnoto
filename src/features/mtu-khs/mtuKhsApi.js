@@ -1,5 +1,5 @@
 import { supabase } from "../../supabaseClient.js";
-import { normalizeMtuRecord, filterMtuRecords, isMtuNationalRole } from "./mtuKhsModel.js";
+import { normalizeMtuRecord, filterMtuRecords, isMtuNationalRole, buildMtuTug3Draft } from "./mtuKhsModel.js";
 
 const pageSize = 1000;
 const ACTIVE_MASTER_TABLES = new Set(["mtu_khs_gardu_induk", "mtu_khs_gardu_induk_bay"]);
@@ -86,7 +86,62 @@ export async function loadMtuKhsDocuments({ recordId } = {}) {
 }
 
 export async function loadMtuKhsUsage(recordId) {
-  return fetchPaged("mtu_khs_usage_links", recordId ? { mtu_record_id: recordId, status: "APPROVED" } : { status: "APPROVED" });
+  const links = await fetchPaged("mtu_khs_usage_links", recordId ? { mtu_record_id: recordId, status: "APPROVED" } : { status: "APPROVED" });
+  if (links.error || !links.data?.length || !supabase) return links;
+  const ids = links.data.map(link => link.tug_item_id).filter(Boolean);
+  const { data: items = [], error } = await supabase.from("tug_items")
+    .select("id,qty,katalog_id,transaction_id,snapshot,tug_transactions!inner(id,doc_number,doc_type,status,upt_id,final_approved_at,document)")
+    .in("id", ids);
+  const byId = new Map((items || []).map(item => [String(item.id), item]));
+  return {
+    data: links.data.map(link => {
+      const item = byId.get(String(link.tug_item_id));
+      const transaction = item?.tug_transactions || {};
+      return {
+        ...link,
+        tugItemId: link.tug_item_id,
+        qty: Number(link.qty),
+        docNumber: transaction.doc_number || link.data?.docNumber || "-",
+        docType: transaction.doc_type || link.data?.docType || "-",
+        finalApprovedAt: transaction.final_approved_at || link.data?.finalApprovedAt || null,
+        materialName: item?.snapshot?.name || item?.snapshot?.materialName || "",
+        catalogNumber: item?.snapshot?.katalog || item?.snapshot?.catalogNumber || "",
+      };
+    }),
+    error: error || null,
+  };
+}
+
+export async function loadMtuKhsReconciliation(recordId) {
+  if (!supabase || !recordId) return { data: null, error: new Error("Record MTU tidak valid") };
+  const { data, error } = await supabase.from("mtu_khs_reconciliations").select("*").eq("record_id", recordId).maybeSingle();
+  return { data: data || null, error };
+}
+
+export async function loadMtuKhsStockLinks(recordId) {
+  if (!supabase || !recordId) return { data: [], error: new Error("Record MTU tidak valid") };
+  const { data, error } = await supabase.from("mtu_khs_stock_links")
+    .select("id,mtu_record_id,stock_id,qty,created_by,created_at,updated_by,updated_at,stocks(id,katalog_id,lokasi_id,upt_id,data)")
+    .eq("mtu_record_id", recordId).order("created_at", { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function loadMtuKhsReceipts(recordId) {
+  if (!supabase || !recordId) return { data: [], error: new Error("Record MTU tidak valid") };
+  const { data, error } = await supabase.from("mtu_khs_receipts")
+    .select("id,mtu_record_id,tug3_transaction_id,qty,items,applied_by,applied_at,idempotency_key,tug3_transactions(doc_number,status)")
+    .eq("mtu_record_id", recordId).order("applied_at", { ascending: false });
+  return { data: (data || []).map(item => ({ ...item, docNumber: item.tug3_transactions?.doc_number, status: item.tug3_transactions?.status })), error };
+}
+
+export async function loadMtuKhsLifecycle(recordId) {
+  const [reconciliation, stockLinks, receipts] = await Promise.all([
+    loadMtuKhsReconciliation(recordId), loadMtuKhsStockLinks(recordId), loadMtuKhsReceipts(recordId),
+  ]);
+  return {
+    data: { reconciliation: reconciliation.data, stockLinks: stockLinks.data, receipts: receipts.data },
+    error: reconciliation.error || stockLinks.error || receipts.error || null,
+  };
 }
 
 export async function submitMtuKhsChange({ recordId, expectedVersion = 1, patch, idempotencyKey = `mtu-${Date.now()}`, currentUser }) {
@@ -151,8 +206,40 @@ export async function linkApprovedTugUsage({ recordId, tugItemId, qty }) {
 }
 export async function loadApprovedTugItems() {
   if (!supabase) return { data: [], error: new Error("Supabase belum tersedia") };
-  const { data, error } = await supabase.from("tug_items").select("id,qty,katalog_id,transaction_id,tug_transactions!inner(id,doc_number,status,upt_id)").eq("tug_transactions.status", "FINAL_APPROVED").limit(500);
-  return { data: data || [], error };
+  const { data, error } = await supabase.from("tug_items").select("id,qty,katalog_id,transaction_id,lokasi_id,unit,snapshot,tug_transactions!inner(id,doc_number,doc_type,status,upt_id,final_approved_at,document)").eq("tug_transactions.status", "FINAL_APPROVED").in("tug_transactions.doc_type", ["TUG8", "TUG9"]).limit(500);
+  return { data: (data || []).map(item => {
+    const transaction = item.tug_transactions || {};
+    return {
+      ...item,
+      tugItemId: item.id,
+      qty: Number(item.qty),
+      docNumber: transaction.doc_number || "-",
+      docType: transaction.doc_type || "-",
+      uptId: transaction.upt_id || "",
+      finalApprovedAt: transaction.final_approved_at || null,
+      materialName: item.snapshot?.name || item.snapshot?.materialName || "",
+      catalogNumber: item.snapshot?.katalog || item.snapshot?.catalogNumber || "",
+    };
+  }), error };
+}
+
+export async function saveMtuKhsReconciliation({ recordId, status, note = "" }) {
+  if (!supabase || !recordId || !status) return { data: null, error: new Error("Rekonsiliasi MTU belum lengkap") };
+  return supabase.rpc("mtu_khs_set_reconciliation", { p_record_id: recordId, p_status: status, p_note: note });
+}
+
+export async function linkMtuKhsStock({ recordId, stockId, qty }) {
+  if (!supabase || !recordId || !stockId || !(Number(qty) > 0)) return { data: null, error: new Error("Referensi stok MTU belum lengkap") };
+  return supabase.rpc("mtu_khs_link_stock", { p_record_id: recordId, p_stock_id: stockId, p_qty: Number(qty) });
+}
+
+export async function applyMtuKhsTug3Receipt({ tug3TransactionId, idempotencyKey = `mtu-receipt-${tug3TransactionId}` }) {
+  if (!supabase || !tug3TransactionId) return { data: null, error: new Error("TUG-3 MTU belum lengkap") };
+  return supabase.rpc("mtu_khs_apply_tug3_receipt", { p_tug3_transaction_id: tug3TransactionId, p_idempotency_key: idempotencyKey });
+}
+
+export function createMtuKhsTug3Draft(record, currentUser) {
+  return buildMtuTug3Draft(record, currentUser);
 }
 
 export async function saveMtuKhsMasterRow(table, row) {

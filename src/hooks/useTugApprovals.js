@@ -12,6 +12,7 @@ import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreez
 import { loadMasterTable } from "../lib/masterSync.js";
 import { isDemoMode } from "../lib/demo.js";
 import { CLOUD } from "../lib/cloud.js";
+import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -185,6 +186,33 @@ export function useTugApprovals({
     // commitNewTxn) supaya stok tak berubah di tengah hitung fisik.
     const frozen = findActiveFreezeSession(collectTxnGudangIds("TUG3", txn, lokasiList), opnameList);
     if (frozen) { showToast("🧊 DITOLAK — gudang tujuan sedang Stock Opname. Approve TUG-3 ditunda sampai opname selesai.","error"); return; }
+
+    // MTU-2026 receipts use the reviewed server RPC. It locks the MTU record,
+    // applies each stock row, records provenance and marks the dedicated TUG-3
+    // approved in one transaction. Do not fall through to the legacy client
+    // stock mutation below, or a retry would add the receipt twice.
+    if (txn.mtuRecordId || txn.mtu_record_id) {
+      const receipt = await applyMtuKhsTug3Receipt({ tug3TransactionId: txn.id, idempotencyKey: `mtu-receipt-${txn.id}` });
+      if (receipt.error) { showToast(`Approval TUG-3 MTU gagal: ${receipt.error.message || receipt.error}`, "error"); return false; }
+      const updatedTxn = {
+        ...txn,
+        stage: "APPROVED", status: "APPROVED", requiredApprover: null,
+        approvedByAsman: currentUser.id, approvedAtAsman: Date.now(),
+        mtuReceiptId: receipt.data?.receiptId || txn.mtuReceiptId || null,
+        mtuReceiptAppliedAt: receipt.data?.deduped ? (txn.mtuReceiptAppliedAt || Date.now()) : Date.now(),
+      };
+      const newTxns = txns.map(t => t.id === txn.id ? updatedTxn : t);
+      setTxns(newTxns);
+      const freshStocks = await loadMasterTable("stocks");
+      if (freshStocks) setStocks(freshStocks);
+      const savedOk = await saveToCloud({ txns: newTxns });
+      if (savedOk === false) showToast("TUG-3 final tersimpan di server, tetapi cache transaksi lokal belum tersinkron. Muat ulang sebelum mencoba lagi.", "error");
+      await upsertTug3Transaction(updatedTxn);
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.tug3 || txn.id, { stage: "APPROVED", mtuReceiptId: updatedTxn.mtuReceiptId });
+      showToast(`✅ ${txn.docNumbers?.tug3 || txn.id} DISETUJUI FINAL! Penerimaan MTU masuk ke Data Stok.`);
+      notify({ eventType: "COMPLETION", docType: "TUG3", docNumber: txn.docNumbers?.tug3 || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
+      return true;
+    }
 
     // Same incoming-material logic as TUG-10 approval: bump existing Data Stok
     // row or auto-create new Master Katalog + Data Stok entry.

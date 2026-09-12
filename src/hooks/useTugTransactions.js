@@ -104,7 +104,7 @@ export function useTugTransactions({
   }
 
   // ── Transaction (TUG-9) ──
-  function openNewTxn(docType = "TUG9") {
+  function openNewTxn(docType = "TUG9", preset = null) {
     const canonicalUptId = currentUserUptId || currentUser?.uptId || "";
     const base = {
       docType,
@@ -154,10 +154,15 @@ export function useTugTransactions({
       });
     } else if (docType === "TUG3") {
       setTug3ExpandedIdx(0);
+      const defaultTug3Item = { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"", sapStatus:STATUS_SAP[0] };
+      const tug3Preset = preset && typeof preset === "object" ? preset : {};
+      const presetItems = Array.isArray(tug3Preset.stockItems) && tug3Preset.stockItems.length
+        ? tug3Preset.stockItems.map((item) => ({ ...defaultTug3Item, ...item }))
+        : [defaultTug3Item];
       setTxnForm({
         ...base,
         uptId: canonicalUptId,
-        stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"", sapStatus:STATUS_SAP[0] }],
+        stockItems: [defaultTug3Item],
         gudangTujuanId: "", // scope Lokasi Tujuan per-item ke gudang ini
         tanggalDiterima: "", dariSupplier: "", denganKirim: "Dikirim Langsung",
         noSuratJalan: "", tglSuratJalan: "",
@@ -170,6 +175,10 @@ export function useTugTransactions({
         hasilPemeriksaan: "Barang Diterima Sesuai Pengadaan",
         fotoKendaraan: null, fotoSimKtp: null, fotoSuratJalanImg: null, fotoKontrak: null,
         fotoMaterial: [],
+        ...tug3Preset,
+        docType: "TUG3",
+        uptId: tug3Preset.uptId || canonicalUptId,
+        stockItems: presetItems,
       });
     } else if (docType === "TUG5") {
       setTug5ExpandedIdx(0); setTug5MaterialPage(0);

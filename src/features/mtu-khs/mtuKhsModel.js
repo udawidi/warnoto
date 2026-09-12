@@ -8,6 +8,13 @@ export const MTU_KHS_LIFECYCLE_LABEL = {
   PLANNED_ARRIVAL: "Rencana Kedatangan",
   CANCELLED: "Dibatalkan",
 };
+export const MTU_KHS_RECONCILIATION_STATUS = ["BELUM_DICEK", "BELUM_TUG", "SEBAGIAN", "SUDAH_TUG"];
+export const MTU_KHS_RECONCILIATION_LABEL = {
+  BELUM_DICEK: "Belum dicek",
+  BELUM_TUG: "Belum proses TUG",
+  SEBAGIAN: "Sebagian proses TUG",
+  SUDAH_TUG: "Sudah proses TUG",
+};
 export const MTU_KHS_DOCUMENT_TYPES = ["DRAWING", "CATALOG", "TPG", "TYPE_TEST", "SCHEMATIC", "NAMEPLATE", "OTHER"];
 export const MTU_KHS_DRAWING_FOLDERS = {
   UNINDO: "https://drive.google.com/drive/folders/1ITLAMr8wipKTdWviLYRofmAK9b_97yw8",
@@ -114,6 +121,44 @@ export function normalizeMtuCode(value) {
 export function normalizeMtuYear(value) {
   const match = String(value ?? "").match(/20\d{2}/);
   return match ? Number(match[0]) : null;
+}
+
+export function normalizeMtuReconciliationStatus(value) {
+  return MTU_KHS_RECONCILIATION_STATUS.includes(String(value || "").toUpperCase())
+    ? String(value).toUpperCase() : "BELUM_DICEK";
+}
+
+export function validateMtuStockReference(record, stock) {
+  const expectedCatalog = record?.katalogId || record?.katalog_id;
+  const stockCatalog = stock?.katalogId || stock?.katalog_id;
+  return {
+    valid: !!record?.id && normalizeMtuYear(record?.procurementYear ?? record?.year) === 2024
+      && record?.sifatPekerjaan !== "SUPERVISI" && !!expectedCatalog && stockCatalog === expectedCatalog
+      && (record?.uptId || record?.upt_id) === (stock?.uptId || stock?.upt_id),
+    reason: !expectedCatalog ? "Katalog MTU belum dipetakan" : stockCatalog !== expectedCatalog ? "Katalog stok berbeda" : (record?.uptId || record?.upt_id) !== (stock?.uptId || stock?.upt_id) ? "UPT stok berbeda" : "",
+  };
+}
+
+export function buildMtuTug3Draft(record, currentUser = {}) {
+  const normalized = normalizeMtuRecord(record);
+  const receiptRows = Array.isArray(record?.receipts) ? record.receipts : null;
+  const receiptSummary = record?.receiptSummary || record?.receipt_summary || null;
+  const hasReceiptData = receiptRows !== null || receiptSummary != null || record?.receivedQty != null || record?.received_qty != null;
+  const receivedQty = receiptRows
+    ? receiptRows.reduce((sum, receipt) => sum + (Number(receipt?.qty) || 0), 0)
+    : Number(record?.receivedQty ?? record?.received_qty ?? receiptSummary?.receivedQty ?? receiptSummary?.received_qty ?? 0) || 0;
+  const qty = Math.max(0, (Number(normalized.qty) || 0) - (hasReceiptData ? receivedQty : 0));
+  return {
+    docType: "TUG3",
+    mtuRecordId: normalized.id || null,
+    uptId: normalized.uptId || currentUser.uptId || "",
+    gudangTujuanId: normalized.gudangId || "",
+    dariSupplier: normalized.vendor || "",
+    judulKontrak: normalized.noKontrak || normalized.contractDetailNumber || "",
+    stockItems: [{ katalogMode: "existing", katalogId: normalized.katalogId || "", qty, hargaSatuan: 0, lokasiTujuanId: "", sapStatus: "SAP — Persediaan" }],
+    namaPekerjaan: `Penerimaan MTU KHS ${normalized.procurementYear || ""}`.trim(),
+    lokasiPekerjaan: normalized.giName || normalized.location || "",
+  };
 }
 
 export function physicalQuantity(record) {
