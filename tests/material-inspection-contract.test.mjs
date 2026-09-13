@@ -2,17 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-const [syncSource, componentSource, permsSource, schemaSource, appSource] = await Promise.all([
+const [syncSource, componentSource, permsSource, schemaSource, appSource, scopeSource] = await Promise.all([
   readFile(new URL("../src/lib/materialInspectionSync.js", import.meta.url), "utf8"),
   readFile(new URL("../src/components/InspeksiMaterialCadangTab.jsx", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/perms.js", import.meta.url), "utf8"),
   readFile(new URL("../supabase/schema.sql", import.meta.url), "utf8"),
   readFile(new URL("../App.jsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/inspectionScope.mjs", import.meta.url), "utf8"),
 ]);
 
 test("inspection persistence is dedicated and never routes through saveToCloud/full sync", () => {
   assert.doesNotMatch(componentSource, /saveToCloud/);
-  assert.doesNotMatch(syncSource, /syncMasterTable|upsert\(/);
+  assert.doesNotMatch(syncSource, /syncMasterTable/);
+  assert.match(syncSource, /from\("material_inspection_drafts"\)[\s\S]*upsert\(/);
   assert.match(appSource, /loadMaterialInspections\(\)/);
   assert.match(appSource, /tab==="inspeksiMaterial"/);
 });
@@ -87,6 +89,9 @@ test("RPC validates batch size, duplicates, unknown stock, and caller role", () 
   // Identitas material diambil dari stocks, bukan dari input client.
   assert.match(rpc, /select v_batch_id, s\.id, s\.katalog_id, s\.lokasi_id/);
   assert.match(rpc, /join stocks s on s\.id = e\.value->>'stock_id'/);
+  assert.match(rpc, /s\.lokasi_id is null[\s\S]*?s\.upt_id is distinct from v_actor_upt/);
+  assert.match(rpc, /pelaksanaLogistikId/);
+  assert.match(rpc, /v_header_data/);
 });
 
 test("data v1 migration is idempotent and only touches unbatched rows", () => {
@@ -106,4 +111,40 @@ test("batch client validates item count, duplicate stock, exactly two photos, an
   // Legacy v1 tetap ada sampai UI baru siap.
   assert.match(syncSource, /\/\/ LEGACY v1 — keep until UI migration done/);
   assert.match(appSource, /loadMaterialInspectionBatches\(\)/);
+});
+
+test("inspection picker supports partial catalog/name/barcode search, scan handoff, and unlocated UPT stock", () => {
+  assert.match(componentSource, /matchesMaterialSearch\(\[label, opt\.stock\.barcode, opt\.stock\.kodeBarcode\], pickerQuery\)/);
+  assert.match(componentSource, /extractKatalogIdFromScan\(code\)/);
+  assert.match(componentSource, /normalizeKatalog\(code\)/);
+  assert.match(componentSource, /openScanner\(\{ onDetect: code =>/);
+  assert.match(scopeSource, /stock\.lokasiId \? scopedLokasiIds\.has\(stock\.lokasiId\) :/);
+  assert.match(componentSource, /opt\.lokasi \? opt\.lokasi\.gudangId === activeGudangId : opt\.stock\.uptId ===/);
+});
+
+test("logistik picker is limited to ADMIN/TL in the current UPT and history feeds maintenance suggestions", () => {
+  assert.match(componentSource, /logistikCandidates = useMemo/);
+  assert.match(componentSource, /\["ADMIN", "TL"\]\.includes\(u\.role\)/);
+  assert.match(componentSource, /\(u === currentUser \? currentUserUptId : u\.uptId\) === currentUserUptId/);
+  assert.match(componentSource, /pelaksanaLogistikId/);
+  assert.match(componentSource, /pemeliharaanSuggestions/);
+  assert.match(componentSource, /materialInspectionBatches.*currentUserUptId/);
+});
+
+test("draft lifecycle keeps photo URLs, dirty baseline, and writer-only controls safe", () => {
+  assert.match(componentSource, /setDraftPhotoUrls\(urls \|\| \{\}\)/);
+  assert.match(componentSource, /async function loadDraft\(draft\)/);
+  assert.match(componentSource, /async function removeDraft\(draft\)/);
+  assert.match(componentSource, /function createNewInspection\(\)/);
+  assert.match(componentSource, /Perubahan inspeksi belum disimpan/);
+  assert.match(componentSource, /inspectionFormSnapshot/);
+  assert.match(componentSource, /photo instanceof File && urls\[index\]/);
+  assert.match(componentSource, /if \(!writer\) \{ setDrafts\(\[\]\);/);
+  assert.match(componentSource, /showToast\(`BA Inspeksi \$\{created\.nomorBa\} tersimpan\.\$\{cleanupWarning\}`\);/);
+  assert.doesNotMatch(componentSource, /onClick=\{async \(\) => \{ const h = d\.header/);
+});
+
+test("draft save rejects an empty payload even when the UI has default logistik", () => {
+  assert.match(syncSource, /const hasDraftContent = items\.length > 0/);
+  assert.match(syncSource, /if \(!hasDraftContent\) throw new Error\("Isi draft belum ada\."\)/);
 });

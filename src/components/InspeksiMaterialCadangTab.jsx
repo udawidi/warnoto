@@ -15,12 +15,15 @@ import {
 } from "@phosphor-icons/react";
 import {
   createMaterialInspectionBatch,
+  loadMaterialInspectionDrafts,
+  saveMaterialInspectionDraft,
+  deleteMaterialInspectionDraft,
   loadInspectionPhotoUrls,
   MATERIAL_INSPECTION_MAX_PHOTOS,
   MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH,
 } from "../lib/materialInspectionSync.js";
 import { getInspectionIdentity, getInspectionScope } from "../lib/inspectionScope.mjs";
-import { matchesMaterialSearch } from "../lib/sap.js";
+import { matchesMaterialSearch, extractKatalogIdFromScan, normalizeKatalog } from "../lib/sap.js";
 
 const KONDISI = ["BAIK", "RUSAK_RINGAN", "RUSAK_BERAT", "PERLU_KALIBRASI"];
 const KELAYAKAN = ["READY", "MAINTENANCE", "RETEST", "ATTB_RECOMMENDED"];
@@ -49,7 +52,7 @@ function emptyItem(stock, katalog, lokasi) {
     lokasiId: stock.lokasiId || null,
     noKatalog: katalog?.katalog || katalog?.noKatalog || "",
     namaBarang: katalog?.name || stock.name || "",
-    lokasiNama: lokasi?.kode || lokasi?.nama || "",
+    lokasiNama: lokasi?.kode || lokasi?.nama || "Tanpa lokasi",
     qtyStok: stock.qty || 1,
     satuan: katalog?.satuan || stock.satuan || "BH",
     jenisMtu: katalog?.jenisMtu || "",
@@ -57,25 +60,44 @@ function emptyItem(stock, katalog, lokasi) {
     statusKelayakan: "READY",
     keteranganVisual: "",
     catatan: "",
-    checklist: { kebersihan: true, bebasKarat: true, bebasBocor: true, kemasanBaik: true },
+    checklist: { kebersihan: "BELUM_DINILAI", bebasKarat: "BELUM_DINILAI", bebasBocor: "BELUM_DINILAI", kemasanBaik: "BELUM_DINILAI" },
     photos: [],
   };
 }
 
 // ponytail: object URL leak bounded per session; revoke on URL list change.
-function usePhotoPreviews(photos) {
+function usePhotoPreviews(photos, photoUrls = {}) {
   const urls = useMemo(
-    () => photos.map(file => (file instanceof File ? URL.createObjectURL(file) : "")),
-    [photos],
+    () => photos.map(file => (file instanceof File ? URL.createObjectURL(file) : (typeof file === "string" ? (photoUrls[file] || "") : ""))),
+    [photos, photoUrls],
   );
   useEffect(() => {
-    return () => { urls.forEach(url => { if (url) URL.revokeObjectURL(url); }); };
-  }, [urls]);
+    return () => {
+      photos.forEach((photo, index) => {
+        if (photo instanceof File && urls[index]) URL.revokeObjectURL(urls[index]);
+      });
+    };
+  }, [photos, urls]);
   return urls;
 }
 
+function photoSnapshot(photo) {
+  if (photo instanceof File) return { name: photo.name, size: photo.size, type: photo.type, lastModified: photo.lastModified };
+  return photo;
+}
+
+function inspectionFormSnapshot({ items, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan }) {
+  return JSON.stringify({
+    items: items.map(item => ({ ...item, photos: (item.photos || []).map(photoSnapshot) })),
+    selectedGudangId,
+    pelaksanaLogistik,
+    pelaksanaLogistikId,
+    pelaksaraPemeliharaan,
+  });
+}
+
 function itemComplete(item) {
-  return item.photos.length === MATERIAL_INSPECTION_MAX_PHOTOS;
+  return item.photos.length === MATERIAL_INSPECTION_MAX_PHOTOS && CHECKLIST_KEYS.every(([key]) => ["SESUAI", "TIDAK_SESUAI"].includes(item.checklist?.[key]));
 }
 
 function pelaksaraDisplay(x) {
@@ -116,6 +138,7 @@ export function InspeksiMaterialCadangTab({
   sty,
   showToast,
   isMobile,
+  openScanner,
 }) {
   const [view, setView] = useState("form");
   const [items, setItems] = useState([]);
@@ -124,13 +147,20 @@ export function InspeksiMaterialCadangTab({
   const [searchOpen, setSearchOpen] = useState(true);
   const [expandedItemIndex, setExpandedItemIndex] = useState(null);
   const [pelaksanaLogistik, setPelaksanaLogistik] = useState(currentUser?.name || "");
+  const [pelaksanaLogistikId, setPelaksanaLogistikId] = useState(currentUser?.id || "");
   const [pelaksaraPemeliharaan, setPelaksaraPemeliharaan] = useState([]);
   const [pelaksaraDraft, setPelaksaraDraft] = useState("");
+  const pemeliharaanSuggestions = useMemo(() => [...new Set((materialInspectionBatches || []).filter(b => !currentUserUptId || b.uptId === currentUserUptId).flatMap(b => Array.isArray(b.pelaksaraPemeliharaan) ? b.pelaksaraPemeliharaan : [b.pelaksaraPemeliharaan]).filter(Boolean))], [materialInspectionBatches, currentUserUptId]);
+  const logistikCandidates = useMemo(() => { const all = [...users, currentUser].filter(u => u && ["ADMIN", "TL"].includes(u.role) && (u === currentUser ? currentUserUptId : u.uptId) === currentUserUptId); return [...new Map(all.map(u => [u.id, u])).values()]; }, [users, currentUser, currentUserUptId]);
   const [saving, setSaving] = useState(false);
   const [lastSavedBa, setLastSavedBa] = useState(null);
   const [expandedBatchId, setExpandedBatchId] = useState(null);
   const [batchPhotoUrls, setBatchPhotoUrls] = useState({});
   const [printBatch, setPrintBatch] = useState(null);
+  const [drafts, setDrafts] = useState([]);
+  const [activeDraftId, setActiveDraftId] = useState(null);
+  const [dirtyBaseline, setDirtyBaseline] = useState("");
+  const [draftPhotoUrls, setDraftPhotoUrls] = useState({});
   const pickerSearchRef = useRef(null);
   const writer = ["ADMIN", "TL"].includes(currentUser?.role) && can(currentUser, "aksi.buatInspeksiMaterial", rolePerms);
   const inspectionScope = useMemo(() => getInspectionScope({
@@ -162,7 +192,7 @@ export function InspeksiMaterialCadangTab({
   const scopedGudangList = baGudangIds ? inspectionScope.gudangList.filter(g => baGudangIds.has(g.id)) : inspectionScope.gudangList;
   const scopedLokasiList = baGudangIds ? inspectionScope.lokasiList.filter(l => baGudangIds.has(l.gudangId)) : inspectionScope.lokasiList;
   const scopedLokasiIds = new Set(scopedLokasiList.map(l => l.id));
-  const scopedStocks = baGudangIds ? inspectionScope.stocks.filter(s => scopedLokasiIds.has(s.lokasiId)) : inspectionScope.stocks;
+  const scopedStocks = baGudangIds ? inspectionScope.stocks.filter(s => s.lokasiId ? scopedLokasiIds.has(s.lokasiId) : s.uptId === baUptFilter) : inspectionScope.stocks;
   const scopedBatches = baGudangIds ? inspectionScope.materialInspectionBatches.filter(b => baGudangIds.has(b.gudangId)) : inspectionScope.materialInspectionBatches;
 
   const today = todayJakarta();
@@ -186,8 +216,8 @@ export function InspeksiMaterialCadangTab({
     if (!items.length) return null;
     const first = items[0];
     const lokasi = scopedLokasiList.find(l => l.id === first.lokasiId);
-    return lokasi?.gudangId || null;
-  }, [items, scopedLokasiList]);
+    return lokasi?.gudangId || selectedGudangId || null;
+  }, [items, scopedLokasiList, selectedGudangId]);
 
   const lockedGudang = useMemo(
     () => scopedGudangList.find(g => g.id === lockedGudangId) || null,
@@ -202,16 +232,26 @@ export function InspeksiMaterialCadangTab({
     const alreadySelected = new Set(items.map(it => it.stockId));
     return cadangStockOptions
       .filter(opt => !alreadySelected.has(opt.stock.id))
-      .filter(opt => opt.lokasi?.gudangId === activeGudangId)
+      .filter(opt => opt.lokasi ? opt.lokasi.gudangId === activeGudangId : opt.stock.uptId === scopedGudangList.find(g => g.id === activeGudangId)?.uptId)
       .filter(opt => {
         const label = `${opt.katalog?.katalog || ""} ${opt.katalog?.name || ""} ${opt.stock.name || ""}`;
-        return matchesMaterialSearch([label], pickerQuery);
+        return matchesMaterialSearch([label, opt.stock.barcode, opt.stock.kodeBarcode], pickerQuery);
       })
       .slice(0, 50);
   }, [cadangStockOptions, items, activeGudangId, pickerQuery]);
 
   const completeCount = items.filter(itemComplete).length;
   const formInvalid = !items.length || items.some(it => !itemComplete(it)) || !pelaksanaLogistik.trim() || !pelaksaraPemeliharaan.length;
+  const stateSnapshot = () => inspectionFormSnapshot({ items, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan });
+  const hasFormContent = items.length > 0 || pelaksaraPemeliharaan.length > 0 || !!selectedGudangId;
+  const isDirty = activeDraftId ? stateSnapshot() !== dirtyBaseline : hasFormContent;
+
+  useEffect(() => {
+    if (!writer) { setDrafts([]); return undefined; }
+    let active = true;
+    loadMaterialInspectionDrafts().then(rows => { if (active) setDrafts(rows || []); }).catch(() => {});
+    return () => { active = false; };
+  }, [writer]);
 
   useEffect(() => {
     if (activeGudangId && pickerSearchRef.current) pickerSearchRef.current.focus();
@@ -232,7 +272,7 @@ export function InspeksiMaterialCadangTab({
   function addItem(stockId) {
     const opt = cadangStockOptions.find(o => o.stock.id === stockId);
     if (!opt) return;
-    if (items.length && opt.lokasi?.gudangId !== lockedGudangId) {
+    if (items.length && opt.lokasi?.gudangId && opt.lokasi.gudangId !== lockedGudangId) {
       showToast("Satu BA hanya untuk satu gudang.", "error");
       return;
     }
@@ -271,7 +311,6 @@ export function InspeksiMaterialCadangTab({
 
   function addPhotos(index, files) {
     const incoming = Array.from(files || []);
-    let nowComplete = false;
     setItems(prev => prev.map((it, i) => {
       if (i !== index) return it;
       const combined = [...it.photos, ...incoming];
@@ -279,10 +318,8 @@ export function InspeksiMaterialCadangTab({
         showToast("Maksimal dua foto per material.", "error");
         return it;
       }
-      if (combined.length === MATERIAL_INSPECTION_MAX_PHOTOS) nowComplete = true;
       return { ...it, photos: combined };
     }));
-    if (nowComplete) setExpandedItemIndex(cur => (cur === index ? null : cur));
   }
 
   function removePhoto(index, photoIndex) {
@@ -295,8 +332,102 @@ export function InspeksiMaterialCadangTab({
     setPelaksaraPemeliharaan([]);
     setPelaksaraDraft("");
     setSelectedGudangId("");
+    setPelaksanaLogistik(currentUser?.name || "");
+    setPelaksanaLogistikId(currentUser?.id || "");
     setPickerQuery("");
     setSearchOpen(true);
+    setActiveDraftId(null);
+    setDraftPhotoUrls({});
+    setDirtyBaseline("");
+  }
+
+  function collectValidationErrors() {
+    const errors = [];
+    if (!items.length) errors.push("Minimal satu material harus diperiksa.");
+    if (!lockedGudangId) errors.push("Gudang inspeksi wajib dipilih.");
+    if (!pelaksanaLogistik.trim()) errors.push("Pelaksana Logistik wajib diisi.");
+    if (!pelaksaraPemeliharaan.length) errors.push("Pelaksara Pemeliharaan wajib diisi.");
+    items.forEach((it, i) => {
+      const missing = CHECKLIST_KEYS.filter(([key]) => !["SESUAI", "TIDAK_SESUAI"].includes(it.checklist?.[key])).map(([, label]) => label);
+      if (missing.length) errors.push(`Material ${i + 1}: checklist belum dinilai (${missing.join(", ")}).`);
+      if (it.photos.length !== MATERIAL_INSPECTION_MAX_PHOTOS) errors.push(`Material ${i + 1}: wajib tepat ${MATERIAL_INSPECTION_MAX_PHOTOS} foto.`);
+    });
+    return errors;
+  }
+
+  function buildHeader() { return { inspectorId: currentUser.id, inspectorName: currentUser.name || currentUser.username || "Pemeriksa", uptId: inspectionIdentity.uptId, gudangId: lockedGudangId, tanggal: today, pelaksanaLogistik: pelaksanaLogistik.trim(), pelaksanaLogistikId, pelaksaraPemeliharaan, managerUpt: inspectionIdentity.managerUpt, namaUpt: inspectionIdentity.namaUpt, namaGudang: lockedGudang?.nama || "", inspectionFormVersion: 2 }; }
+  function buildPayloadItems() { return items.map(it => ({ ...it, qtyStok: Number(it.qtyStok) || 1 })); }
+
+  async function saveDraft() {
+    if (!hasFormContent) { showToast("Isi draft belum ada.", "error"); return; }
+    setSaving(true);
+    try {
+      const saved = await saveMaterialInspectionDraft({ draft: { id: activeDraftId, ownerId: currentUser.id, uptId: inspectionIdentity.uptId, gudangId: lockedGudangId, header: buildHeader(), items: buildPayloadItems() }, header: buildHeader(), items: buildPayloadItems(), photoFilesPerItem: items.map(it => it.photos) });
+      setActiveDraftId(saved.id); setDrafts(prev => [saved, ...prev.filter(d => d.id !== saved.id)]);
+      const nextItems = (saved.items || items).map((it, i) => ({ ...it, photos: it.photoPaths || it.photos || [] }));
+      const paths = nextItems.flatMap(it => it.photos.filter(p => typeof p === "string"));
+      const urls = paths.length ? await loadInspectionPhotoUrls(paths) : {};
+      setDraftPhotoUrls(urls || {}); setItems(nextItems); setDirtyBaseline(inspectionFormSnapshot({ items: nextItems, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan })); showToast("Draft inspeksi tersimpan.");
+    } catch (e) { showToast(e.message || "Gagal menyimpan draft.", "error"); } finally { setSaving(false); }
+  }
+
+  async function cancelInspection() {
+    if (isDirty && !window.confirm("Batalkan perubahan inspeksi ini?")) return;
+    resetForm(); setView("drafts");
+  }
+
+  async function loadDraft(draft) {
+    if (isDirty && !window.confirm("Perubahan inspeksi belum disimpan. Muat draft lain dan buang perubahan?")) return;
+    const header = draft.header || {};
+    const gudangId = draft.gudangId || header.gudangId || "";
+    const loadedItems = (draft.items || []).map(item => ({ ...item, photos: Array.isArray(item.photoPaths) ? item.photoPaths : [] }));
+    const paths = loadedItems.flatMap(item => item.photos).filter(path => typeof path === "string");
+    const urls = paths.length ? await loadInspectionPhotoUrls(paths) : {};
+    const nextPelaksanaLogistik = header.pelaksanaLogistik || "";
+    const nextPelaksanaLogistikId = header.pelaksanaLogistikId || "";
+    const nextPelaksara = Array.isArray(header.pelaksaraPemeliharaan) ? header.pelaksaraPemeliharaan : [];
+    setDraftPhotoUrls(urls || {});
+    setItems(loadedItems);
+    setSelectedGudangId(gudangId);
+    setPelaksanaLogistik(nextPelaksanaLogistik);
+    setPelaksanaLogistikId(nextPelaksanaLogistikId);
+    setPelaksaraPemeliharaan(nextPelaksara);
+    setActiveDraftId(draft.id);
+    setDirtyBaseline(inspectionFormSnapshot({ items: loadedItems, selectedGudangId: gudangId, pelaksanaLogistik: nextPelaksanaLogistik, pelaksanaLogistikId: nextPelaksanaLogistikId, pelaksaraPemeliharaan: nextPelaksara }));
+    setView("form");
+  }
+
+  async function removeDraft(draft) {
+    if (!window.confirm("Hapus draft ini?")) return;
+    try {
+      await deleteMaterialInspectionDraft(draft.id);
+      setDrafts(prev => prev.filter(item => item.id !== draft.id));
+      if (activeDraftId === draft.id) resetForm();
+      showToast("Draft inspeksi dihapus.");
+    } catch (error) {
+      showToast(error.message || "Gagal menghapus draft inspeksi.", "error");
+    }
+  }
+
+  function createNewInspection() {
+    if (isDirty && !window.confirm("Perubahan inspeksi belum disimpan. Buat inspeksi baru dan buang perubahan?")) return;
+    resetForm();
+    setView("form");
+  }
+
+  async function saveBatch() {
+    if (!writer || saving) return;
+    const errors = collectValidationErrors();
+    if (errors.length) { showToast(errors.join(" "), "error"); setExpandedItemIndex(Math.max(0, items.findIndex(it => CHECKLIST_KEYS.some(([k]) => !["SESUAI", "TIDAK_SESUAI"].includes(it.checklist?.[k])) || it.photos.length !== MATERIAL_INSPECTION_MAX_PHOTOS))); return; }
+    if (!window.confirm(`Simpan BA inspeksi untuk ${items.length} material? BA final tidak dapat diedit.`)) return;
+    setSaving(true);
+    try {
+      const created = await createMaterialInspectionBatch({ header: buildHeader(), items: buildPayloadItems(), photoFilesPerItem: items.map(it => it.photos) });
+      onInspectionBatchCreated(created); setLastSavedBa(created);
+      let cleanupWarning = "";
+      if (activeDraftId) { try { await deleteMaterialInspectionDraft(activeDraftId, { retainPaths: true }); } catch (cleanupError) { cleanupWarning = " Draft lama belum terhapus."; } }
+      resetForm(); setView("history"); showToast(`BA Inspeksi ${created.nomorBa} tersimpan.${cleanupWarning}`);
+    } catch (error) { showToast(error.message || "Gagal menyimpan BA inspeksi.", "error"); } finally { setSaving(false); }
   }
 
   function addPelaksara() {
@@ -308,65 +439,6 @@ export function InspeksiMaterialCadangTab({
 
   function removePelaksara(name) {
     setPelaksaraPemeliharaan(prev => prev.filter(n => n !== name));
-  }
-
-  async function saveBatch() {
-    if (!writer) return;
-    if (!items.length) { showToast("Minimal satu material harus diperiksa.", "error"); return; }
-    if (!pelaksanaLogistik.trim()) { showToast("Pelaksana Logistik wajib diisi.", "error"); return; }
-    if (!pelaksaraPemeliharaan.length) { showToast("Pelaksara Pemeliharaan wajib diisi.", "error"); return; }
-    for (const [i, it] of items.entries()) {
-      if (it.photos.length !== MATERIAL_INSPECTION_MAX_PHOTOS) {
-        showToast(`Material baris ${i + 1} wajib punya tepat ${MATERIAL_INSPECTION_MAX_PHOTOS} foto.`, "error");
-        return;
-      }
-    }
-    setSaving(true);
-    try {
-      const header = {
-        inspectorId: currentUser.id,
-        inspectorName: currentUser.name || currentUser.username || "Pemeriksa",
-        uptId: inspectionIdentity.uptId,
-        gudangId: lockedGudangId,
-        tanggal: today,
-        pelaksanaLogistik: pelaksanaLogistik.trim(),
-        pelaksaraPemeliharaan: pelaksaraPemeliharaan,
-        managerUpt: inspectionIdentity.managerUpt,
-        namaUpt: inspectionIdentity.namaUpt,
-        namaGudang: lockedGudang?.nama || "",
-      };
-      const payloadItems = items.map(it => ({
-        stockId: it.stockId,
-        katalogId: it.katalogId,
-        lokasiId: it.lokasiId,
-        noKatalog: it.noKatalog,
-        namaBarang: it.namaBarang,
-        lokasiNama: it.lokasiNama,
-        qtyStok: Number(it.qtyStok) || 1,
-        satuan: it.satuan,
-        jenisMtu: it.jenisMtu,
-        kondisi: it.kondisi,
-        statusKelayakan: it.statusKelayakan,
-        keteranganVisual: it.keteranganVisual,
-        catatan: it.catatan,
-        checklist: it.checklist,
-      }));
-      const created = await createMaterialInspectionBatch({
-        header,
-        items: payloadItems,
-        photoFilesPerItem: items.map(it => it.photos),
-      });
-      onInspectionBatchCreated(created);
-      setLastSavedBa(created);
-      resetForm();
-      setView("history");
-      showToast(`BA Inspeksi ${created.nomorBa} tersimpan.`);
-    } catch (error) {
-      console.error("Simpan BA inspeksi gagal:", error);
-      showToast(error.message || "Gagal menyimpan BA inspeksi.", "error");
-    } finally {
-      setSaving(false);
-    }
   }
 
   async function printBa(batch) {
@@ -385,6 +457,7 @@ export function InspeksiMaterialCadangTab({
 
   const tabs = [
     { id: "form", label: "Buat Inspeksi" },
+    ...(writer ? [{ id: "drafts", label: `Draft Saya (${drafts.length})` }] : []),
     { id: "history", label: "History BA" },
   ];
 
@@ -423,7 +496,7 @@ export function InspeksiMaterialCadangTab({
       {/* Sub-tab switch — segmented control navy aktif (grid 2 kolom biar rata di HP), sticky saat scroll */}
       <div className="no-print" style={{
         display: "grid",
-        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+        gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))`,
         gap: 6,
         background: C.bg,
         borderRadius: 14,
@@ -456,6 +529,21 @@ export function InspeksiMaterialCadangTab({
           </button>
         ))}
       </div>
+
+      {view === "drafts" && writer && (
+        <div className="no-print" style={{ ...sty.card, display: "grid", gap: 10 }}>
+          <div style={{ fontWeight: 800 }}>Draft Saya</div>
+          {!drafts.length && <span style={{ color: C.muted }}>Belum ada draft inspeksi.</span>}
+          {drafts.map(d => <div key={d.id} style={{ display: "flex", gap: 8, justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.border}`, padding: "10px 0" }}>
+            <span>{d.updatedAt ? new Date(d.updatedAt).toLocaleString("id-ID") : "Draft"} · {(d.items || []).length} material</span>
+            <span style={{ display: "flex", gap: 6 }}>
+              <button type="button" className="approval-btn--primary" onClick={() => loadDraft(d)}>Lanjutkan</button>
+              <button type="button" className="approval-btn--danger" onClick={() => removeDraft(d)}>Hapus</button>
+            </span>
+          </div>)}
+          <button type="button" className="approval-btn--primary" onClick={createNewInspection}>＋ Buat inspeksi baru</button>
+        </div>
+      )}
 
       {view === "form" && writer && (
         <div className="no-print" style={{ ...sty.card, display: "grid", gap: 18 }}>
@@ -495,7 +583,8 @@ export function InspeksiMaterialCadangTab({
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(220px,1fr))", gap: 12, alignItems: "start" }}>
             <div>
               <label style={labelStyle(C)}>Pelaksana Logistik *</label>
-              <input style={{ ...sty.input, marginTop: 4 }} value={pelaksanaLogistik} onChange={e => setPelaksanaLogistik(e.target.value)} placeholder="Nama pelaksana logistik" />
+              <select style={{ ...sty.select, marginTop: 4 }} value={pelaksanaLogistikId} onChange={e => { const u = logistikCandidates.find(x => x.id === e.target.value); setPelaksanaLogistikId(e.target.value); setPelaksanaLogistik(u?.name || u?.username || ""); }}><option value="">— Pilih pelaksana —</option>{logistikCandidates.map(u => <option key={u.id} value={u.id}>{u.name || u.username}</option>)}</select>
+              {pelaksanaLogistik && <small style={{ color: C.muted }}>Akun tersimpan: {pelaksanaLogistik}</small>}
             </div>
             <div>
               <label style={labelStyle(C)}>Pelaksara Pemeliharaan *</label>
@@ -503,10 +592,12 @@ export function InspeksiMaterialCadangTab({
                 <input
                   style={{ ...sty.input, flex: 1 }}
                   value={pelaksaraDraft}
+                  list="inspeksi-pemeliharaan-history"
                   onChange={e => setPelaksaraDraft(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addPelaksara(); } }}
                   placeholder="Nama pelaksara pemeliharaan"
                 />
+                <datalist id="inspeksi-pemeliharaan-history">{pemeliharaanSuggestions.map(name => <option key={name} value={name} />)}</datalist>
                 <button type="button" onClick={addPelaksara} className="approval-btn--cancel" style={{ minHeight: 44 }}>Tambah</button>
               </div>
               {pelaksaraPemeliharaan.length > 0 && (
@@ -588,6 +679,7 @@ export function InspeksiMaterialCadangTab({
                         value={pickerQuery}
                         onChange={e => setPickerQuery(e.target.value)}
                       />
+                      {typeof openScanner === "function" && <button type="button" title="Scan barcode" style={{ ...sty.btn("ghost", "sm"), marginRight: 4 }} onClick={() => openScanner({ onDetect: code => { const id = extractKatalogIdFromScan(code); const katalog = katalogList.find(k => k.id === id); setPickerQuery(katalog?.katalog || normalizeKatalog(code)); setSearchOpen(true); } })}><Camera size={16} /> Scan</button>}
                       {pickerQuery && (
                         <button type="button" onClick={() => setPickerQuery("")} style={{
                           border: "none", background: "transparent", color: C.muted, cursor: "pointer",
@@ -673,6 +765,7 @@ export function InspeksiMaterialCadangTab({
                     onAddPhotos={files => addPhotos(index, files)}
                     onRemovePhoto={pi => removePhoto(index, pi)}
                     onRemove={() => removeItem(index)}
+                    photoUrls={draftPhotoUrls}
                   />
                 ))}
               </div>
@@ -707,13 +800,15 @@ export function InspeksiMaterialCadangTab({
               <button
                 type="button"
                 className="approval-btn--primary"
-                disabled={saving || formInvalid}
+                disabled={saving}
                 onClick={saveBatch}
                 style={{ minHeight: 44 }}
               >
                 <CheckCircle size={16} weight="fill" aria-hidden="true" />
                 {saving ? "Menyimpan…" : "Simpan BA Inspeksi"}
               </button>
+              <button type="button" className="approval-btn--ghost" disabled={saving} onClick={saveDraft}>Simpan Draft</button>
+              <button type="button" className="approval-btn--danger" disabled={saving} onClick={cancelInspection}>Batal Inspeksi</button>
             </div>
           </div>
         </div>
@@ -849,9 +944,10 @@ function ChipReadonly({ label, value, muted, C }) {
   );
 }
 
-function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate, onChecklist, onAddPhotos, onRemovePhoto, onRemove }) {
-  const previews = usePhotoPreviews(item.photos);
+function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate, onChecklist, onAddPhotos, onRemovePhoto, onRemove, photoUrls }) {
+  const previews = usePhotoPreviews(item.photos, photoUrls);
   const complete = itemComplete(item);
+  const checklistComplete = CHECKLIST_KEYS.every(([key]) => ["SESUAI", "TIDAK_SESUAI"].includes(item.checklist?.[key]));
   return (
     <div style={{
       border: `1.5px solid ${expanded ? C.accent : C.border}`, borderRadius: 14, overflow: "hidden",
@@ -877,7 +973,7 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
           boxShadow: `inset 0 0 0 1px ${complete ? C.green : C.yellow}33`,
         }}>
           {complete ? <CheckCircle size={14} weight="fill" /> : <Camera size={14} weight="fill" />}
-          {complete ? "Lengkap" : `Foto ${item.photos.length}/2`}
+          {complete ? "Lengkap" : (item.photos.length === MATERIAL_INSPECTION_MAX_PHOTOS && !checklistComplete ? "Checklist belum lengkap" : `Foto ${item.photos.length}/2`)}
         </span>
         <CaretDown
           size={18}
@@ -928,18 +1024,21 @@ function ItemCard({ item, index, expanded, isMobile, C, sty, onToggle, onUpdate,
           <MicroStep title="Checklist Visual" C={C}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {CHECKLIST_KEYS.map(([key, label]) => {
-                const on = item.checklist[key];
+                const value = item.checklist[key];
+                const on = value === "SESUAI";
+                const bad = value === "TIDAK_SESUAI";
                 return (
-                  <button key={key} type="button" onClick={() => onChecklist(key, !on)} style={{
+                  <div key={key} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: C.text }}>{label}</span>
+                  <button type="button" onClick={() => onChecklist(key, "SESUAI")} style={{
                     display: "inline-flex", alignItems: "center", gap: 6,
                     padding: "8px 12px", minHeight: isMobile ? 44 : 36, borderRadius: 999, cursor: "pointer",
-                    fontSize: 13, fontWeight: 700, border: `1.5px solid ${on ? C.green : C.border}`,
+                    fontSize: 12, fontWeight: 700, border: `1.5px solid ${on ? C.green : C.border}`,
                     background: on ? "#dcfce7" : "transparent", color: on ? C.green : C.muted,
                     transition: "all .12s",
-                  }}>
-                    {on ? <CheckCircle size={15} weight="fill" /> : <span style={{ width: 15, height: 15, borderRadius: "50%", border: `1.5px solid ${C.border}`, display: "inline-block" }} />}
-                    {label}
-                  </button>
+                  }}>✓ Sesuai</button>
+                  <button type="button" onClick={() => onChecklist(key, "TIDAK_SESUAI")} style={{ padding: "8px 12px", minHeight: isMobile ? 44 : 36, borderRadius: 999, cursor: "pointer", fontSize: 12, fontWeight: 700, border: `1.5px solid ${bad ? C.red : C.border}`, background: bad ? "#fee2e2" : "transparent", color: bad ? C.red : C.muted }}>✕ Tidak sesuai</button>
+                  </div>
                 );
               })}
             </div>

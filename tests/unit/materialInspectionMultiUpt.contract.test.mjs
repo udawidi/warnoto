@@ -11,6 +11,10 @@ const migrationSource = await readFile(
   new URL("../../supabase/migrations/20260802_material_inspection_multi_upt_security.sql", import.meta.url),
   "utf8",
 );
+const followupMigrationSource = await readFile(
+  new URL("../../supabase/migrations/20260913b_material_inspection_unlocated_executor.sql", import.meta.url),
+  "utf8",
+);
 const clientSource = await readFile(new URL("../../src/supabaseClient.js", import.meta.url), "utf8");
 
 const uptList = [
@@ -112,4 +116,21 @@ test("migration rejects forged cross-UPT header, gudang, and stock paths; RLS sc
 test("non-E2E client guard also rejects a non-canonical production Supabase host", () => {
   assert.match(clientSource, /if \(!E2E_MODE && SUPABASE_URL\)/);
   assert.doesNotMatch(clientSource, /if \(import\.meta\.env\.DEV && !E2E_MODE && SUPABASE_URL\)/);
+});
+
+test("follow-up RPC permits unlocated stock only within actor UPT and snapshots logistik server-side", () => {
+  assert.match(followupMigrationSource, /create or replace function public\.create_material_inspection_batch\(p_items jsonb, p_header jsonb\)/);
+  assert.match(followupMigrationSource, /s\.lokasi_id is null[\s\S]*?s\.upt_id is distinct from v_actor_upt/);
+  assert.match(followupMigrationSource, /s\.lokasi_id is not null[\s\S]*?g\.id <> v_gudang or g\.upt_id <> v_actor_upt/);
+  assert.match(followupMigrationSource, /v_logistik_requested/);
+  assert.match(followupMigrationSource, /role in \('ADMIN', 'TL'\)[\s\S]*?upt_id = v_actor_upt/);
+  assert.match(followupMigrationSource, /jsonb_build_object\([\s\S]*?'pelaksanaLogistikId', v_logistik_id[\s\S]*?'pelaksanaLogistik', v_logistik_name/);
+  assert.match(followupMigrationSource, /insert into public\.material_inspection_batches[\s\S]*?v_header_data/);
+  assert.match(followupMigrationSource, /v_count < 1 or v_count > 10/);
+  assert.match(followupMigrationSource, /count\(distinct e\.value->>'stock_id'\)/);
+  assert.match(followupMigrationSource, /not exists \(select 1 from public\.stocks s/);
+  assert.match(followupMigrationSource, /returns jsonb[\s\S]*?security definer set search_path = public/);
+  assert.match(followupMigrationSource, /revoke all on function public\.create_material_inspection_batch\(jsonb, jsonb\) from public/);
+  assert.match(followupMigrationSource, /grant execute on function public\.create_material_inspection_batch\(jsonb, jsonb\) to authenticated/);
+  assert.doesNotMatch(followupMigrationSource, /drop table|delete from public\.stocks|update public\.stocks/);
 });

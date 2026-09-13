@@ -41,7 +41,7 @@ export function getInspectionScope({
   return {
     gudangList: scopedGudangList,
     lokasiList: scopedLokasiList,
-    stocks: stocks.filter(stock => scopedLokasiIds.has(stock.lokasiId)),
+    stocks: stocks.filter(stock => stock.lokasiId ? scopedLokasiIds.has(stock.lokasiId) : (isNational || scopedGudangList.some(g => g.uptId === stock.uptId))),
     materialInspectionBatches: materialInspectionBatches.filter(batch =>
       isNational || scopedGudangUptById.get(batch?.gudangId) === batch?.uptId
     ),
