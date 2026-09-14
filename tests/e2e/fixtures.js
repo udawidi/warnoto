@@ -118,8 +118,9 @@ const EXPECTED_OFFLINE_CONSOLE_ERRORS = [
 const test = base.extend({
   actorProfile: [E2E_PROFILE, { option:true }],
   cloudOverrides: [{}, { option:true }],
+  preserveSessionStorageOnReload: [false, { option:true }],
   expectedConsoleErrorPrefixes: [[], { option:true }],
-  isolatedPage: async ({ page, context, actorProfile, cloudOverrides, expectedConsoleErrorPrefixes }, use) => {
+  isolatedPage: async ({ page, context, actorProfile, cloudOverrides, preserveSessionStorageOnReload, expectedConsoleErrorPrefixes }, use) => {
     const forbiddenRequests = [];
     const pageErrors = [];
     const consoleErrors = [];
@@ -130,16 +131,17 @@ const test = base.extend({
       if (expectedConsoleErrorPrefixes.some(prefix => message.text().startsWith(prefix))) return;
       consoleErrors.push(message.text());
     });
-    await context.addInitScript(({ profile, cloud }) => {
+    await context.addInitScript(({ profile, cloud, preserveSessionStorageOnReload }) => {
       localStorage.clear();
-      sessionStorage.clear();
+      if (!preserveSessionStorageOnReload || !sessionStorage.getItem("__warnoto_e2e_session_seeded")) sessionStorage.clear();
+      if (preserveSessionStorageOnReload) sessionStorage.setItem("__warnoto_e2e_session_seeded", "1");
       localStorage.setItem("sb-e2e-auth-token", JSON.stringify({ e2e: true }));
       localStorage.setItem("warnoto_profile_cache_v3", JSON.stringify({ endpoint: undefined, profile }));
       localStorage.setItem("warnoto_theme", "light");
       Object.entries(cloud).forEach(([key, value]) => {
         localStorage.setItem(`warnoto_${key}`, JSON.stringify(value));
       });
-    }, { profile:actorProfile, cloud:{ ...CLOUD_FIXTURES, ...cloudOverrides } });
+    }, { profile:actorProfile, cloud:{ ...CLOUD_FIXTURES, ...cloudOverrides }, preserveSessionStorageOnReload });
 
     await context.route("**/*", async route => {
       const url = new URL(route.request().url());

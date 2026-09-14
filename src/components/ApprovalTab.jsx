@@ -53,6 +53,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const pagedTxns = showTug ? visibleTxns.slice((tugPage-1)*approvalPageSize, tugPage*approvalPageSize) : [];
   const pagedCapacityImports = showCap ? pendingCapacityImports.slice((capPage-1)*approvalPageSize, capPage*approvalPageSize) : [];
   const pagedLokasiChanges = showLokasi ? pendingLokasiChanges.slice((lokasiPage-1)*approvalPageSize, lokasiPage*approvalPageSize) : [];
+  const tug10StageOf = t => t.stage || (t.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : t.status === "PENDING" ? "PENDING_TL" : t.status);
   function renderPager(page, setPage, totalItems) {
     if (totalItems <= approvalPageSize) return null;
     const totalPages = Math.max(1, Math.ceil(totalItems/approvalPageSize));
@@ -88,6 +89,10 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
       if (t.stage==="PENDING_TL") return "Menunggu TL Logistik";
       if (t.stage==="PENDING_MANAGER") return "Menunggu Manager (TUG-4)";
       if (t.stage==="PENDING_ASMAN") return "Menunggu Asman Final";
+    }
+    if (t.docType==="TUG10") {
+      if (tug10StageOf(t)==="PENDING_TL") return "Menunggu TL Logistik";
+      if (tug10StageOf(t)==="PENDING_ASMAN") return "Menunggu Asman Final";
     }
     return "PENDING";
   }
@@ -222,7 +227,12 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTxn(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
                   : <><button className="approval-btn--approve" onClick={()=>t.canonical ? setReviewingTxn(t) : approveTxn(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>{t.canonical ? "Periksa Transaksi" : "Setujui"}</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
-              {t.docType==="TUG10" && (
+              {t.docType==="TUG10" && tug10StageOf(t)==="PENDING_TL" && hasRole(currentUser, "TL","SUPERADMIN") && (
+                rejectingId===t.id
+                  ? <><button className="approval-btn--danger" onClick={()=>{rejectTxn(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
+                  : <><button className="approval-btn--approve" onClick={()=>{setTug10Previewed(false);setTug10ReviewTxn(t);}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Periksa & Teruskan ke Asman</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
+              )}
+              {t.docType==="TUG10" && tug10StageOf(t)==="PENDING_ASMAN" && hasRole(currentUser, "ASMAN","SUPERADMIN") && (
                 rejectingId===t.id
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTxn(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
                   : <><button className="approval-btn--approve" onClick={()=>{setTug10Previewed(false);setTug10ReviewTxn(t);}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui — Stok Masuk</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
@@ -264,7 +274,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               )}
               {/* TL/SUPERADMIN bisa perbaiki file ajuan admin yang salah input, tanpa reject-recreate */}
               {/* TUG-3 hanya editable in-place di stage PENDING_TL; stage MENUNGGU_TUG4/PENDING_ASMAN kalau diedit akan renumber+regress (isEditInPlace cuma cek PENDING_TL) */}
-              {hasRole(currentUser, "TL","SUPERADMIN") && t.status==="PENDING" && rejectingId!==t.id && ["TUG3","TUG5","TUG8","TUG9","TUG10"].includes(t.docType) && (t.docType!=="TUG3" || t.stage==="PENDING_TL") && (
+              {hasRole(currentUser, "TL","SUPERADMIN") && t.status==="PENDING" && rejectingId!==t.id && ["TUG3","TUG5","TUG8","TUG9","TUG10"].includes(t.docType) && (t.docType!=="TUG3" || t.stage==="PENDING_TL") && (t.docType!=="TUG10" || tug10StageOf(t)==="PENDING_TL") && (
                 <button className="approval-btn--cancel" onClick={()=>{
                   if (t.docType==="TUG3") editDraftTug3?.(t);
                   else if (t.docType==="TUG10") editTug10?.(t);
@@ -496,8 +506,11 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
       {tug10ReviewTxn && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
           <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM APPROVAL FINAL</div>
+            <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM KEPUTUSAN APPROVAL</div>
             <h3 style={{fontSize:17,fontWeight:800,margin:"4px 0 10px"}}>Penerimaan TUG-10 / {tug10ReviewTxn.docNumbers?.tug10}</h3>
+            <div style={{background:tug10ReviewTxn.stage==="PENDING_TL"?"#eff6ff":"#fefce8",border:`1px solid ${tug10ReviewTxn.stage==="PENDING_TL"?"#bfdbfe":"#fde68a"}`,borderRadius:10,padding:"8px 10px",fontSize:12,color:tug10ReviewTxn.stage==="PENDING_TL"?"#1d4ed8":"#92400e",marginBottom:12}}>
+              {tug10ReviewTxn.stage==="PENDING_TL" ? "Tahap TL: teruskan ke Asman setelah data benar. Stok belum berubah." : "Tahap Asman final: persetujuan ini akan menambah stok."}
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,fontSize:12,marginBottom:14}}>
               <div><b>Nomor</b><br/>{tug10ReviewTxn.docNumbers?.tug10 || "-"}</div>
               <div><b>UPT</b><br/>{uptList.find(u=>u.id===tug10ReviewTxn.uptId)?.nama || "-"}</div>
@@ -528,7 +541,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
             </details>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug10ReviewTxn(null)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} disabled={!tug10Previewed} onClick={()=>{approveTxn(tug10ReviewTxn);setTug10ReviewTxn(null);}}>✓ Setujui — Stok Masuk</button>
+              <button style={{...sty.btn("primary"),flex:2}} disabled={!tug10Previewed} onClick={()=>{approveTxn(tug10ReviewTxn);setTug10ReviewTxn(null);}}>{tug10ReviewTxn.stage==="PENDING_TL" ? "✓ Teruskan ke Asman" : "✓ Setujui — Stok Masuk"}</button>
             </div>
             {!tug10Previewed && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
           </div>

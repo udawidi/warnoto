@@ -7,10 +7,15 @@ import { processTxnPhotos } from "./supabaseSync.js";
 
 function rowToTxn(row) {
   const data = row.data || {};
+  // Backfill the explicit stage for pending rows created before the two-stage
+  // TUG-10 flow. Existing approved history remains approved and untouched.
+  const stage = row.stage || data.stage || (row.status === "PENDING"
+    ? (data.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : "PENDING_TL")
+    : row.status);
   return {
     ...data,
     id: row.id,
-    stage: row.stage,
+    stage,
     status: row.status,
     uptId: row.upt_id,
     docNumbers: data.docNumbers || (row.doc_number ? { tug10: row.doc_number } : {}),

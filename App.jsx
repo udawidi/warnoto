@@ -117,6 +117,7 @@ import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
 import { loadTug10Transactions, upsertTug10Transaction } from "./src/lib/tug10Sync.js";
+import { readTugRoute, writeTugRoute, TUG_ROUTE_DEFAULTS, TUG_ROUTE_OPTIONS } from "./src/lib/tugRoute.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
 import { loadMaterialInspections, loadMaterialInspectionBatches } from "./src/lib/materialInspectionSync.js";
@@ -495,7 +496,7 @@ export default function PLNWarehouse() {
   const [topN, setTopN] = useState(10);
   const [pemakaianMode, setPemakaianMode] = useState("frekuensi"); // "frekuensi" | "qty"
   const [tugExpanded, setTugExpanded] = useState(false); // sidebar accordion state for TUG
-  const [tugSubTab, setTugSubTab] = useState("TUG3"); // "TUG3" | "TUG10" (penerimaan) or "TUG9" | "TUG8" (pengeluaran)
+  const [tugSubTab, setTugSubTab] = useState(() => readTugRoute().subtab); // "TUG3" | "TUG10" (penerimaan) or "TUG9" | "TUG8" (pengeluaran)
   const [masterExpanded, setMasterExpanded] = useState(false); // sidebar accordion state for Master Data
   // opnameExpanded/opnameSubTab dipindah ke useStockOpname (2026-08-10).
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth <= 768);
@@ -1902,6 +1903,7 @@ export default function PLNWarehouse() {
   function clearLocalAuthState() {
     stocksBootstrapUserIdRef.current = null;
     try { sessionStorage.removeItem("warnoto_tab"); } catch {}
+    try { sessionStorage.removeItem("warnoto_tug_route"); } catch {}
     try { localStorage.removeItem(PROFILE_CACHE_KEY); localStorage.removeItem(LEGACY_PROFILE_CACHE_KEY); } catch {}
     try { localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY); } catch {}
     try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
@@ -2084,6 +2086,12 @@ export default function PLNWarehouse() {
     if (tugGroup !== "permintaan") setTugGroup("permintaan");
     if (tugSubTab !== "TUG5") setTugSubTab("TUG5");
   }, [currentUser, tugGroup, tugSubTab]);
+
+  useEffect(() => {
+    const allowed = TUG_ROUTE_OPTIONS[tugGroup] || TUG_ROUTE_OPTIONS.penerimaan;
+    if (!allowed.includes(tugSubTab)) setTugSubTab(TUG_ROUTE_DEFAULTS[tugGroup] || "TUG3");
+    else writeTugRoute(tugGroup, tugSubTab);
+  }, [tugGroup, tugSubTab]);
 
   // Refresh transaksi TUG canonical dari server tiap kali tab Approval dibuka.
   // tug_transactions TIDAK punya realtime subscription (beda dari stocks) dan cuma
@@ -2977,6 +2985,35 @@ export default function PLNWarehouse() {
       }
       tug10ApprovalInFlightRef.current.add(txn.id);
       try {
+      const approvalStage = txn.stage || (txn.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : txn.status === "PENDING" ? "PENDING_TL" : txn.status);
+      // TUG-10 is a two-stage receipt: TL checks the data first, then Asman
+      // performs the final approval that changes stock.
+      if (approvalStage === "PENDING_TL") {
+        if (!hasRole(currentUser, "TL") && currentUser.role !== "SUPERADMIN") { showToast("Hanya TL Logistik yang bisa memeriksa TUG-10.", "error"); return false; }
+        const forwardedTxn = { ...txn, stage: "PENDING_ASMAN", status: "PENDING", requiredApprover: "ASMAN", approvedByTL: currentUser.id, approvedAtTL: Date.now() };
+        const newTxns = txns.map(t => t.id === txn.id ? forwardedTxn : t);
+        setTxns(newTxns);
+        const savedOk = await saveToCloud({ txns: newTxns });
+        if (savedOk === false) {
+          setTxns(txns);
+          showToast("TUG-10 gagal diteruskan ke Asman. Perubahan dibatalkan; coba lagi.", "error");
+          return false;
+        }
+        if (!(await upsertTug10Transaction(forwardedTxn))) {
+          setTxns(txns);
+          try { await saveToCloud({ txns }); } catch {}
+          showToast("TUG-10 gagal disimpan ke database. Status tetap menunggu TL; coba lagi.", "error");
+          return false;
+        }
+        logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.[dKey] || txn.id, { stage: "PENDING_ASMAN" });
+        showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} diteruskan ke Asman. Stok belum berubah.`);
+        enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
+        return true;
+      }
+      if (approvalStage !== "PENDING_ASMAN") {
+        showToast("Transaksi TUG-10 belum berada di tahap approval yang valid.", "error");
+        return false;
+      }
       // Incoming material (return to warehouse): for each line item, either
       // increase qty on an existing Data Stok row, or auto-create a new
       // Master Katalog entry + new Data Stok row. Status maps to Jenis Barang via
@@ -3178,11 +3215,22 @@ export default function PLNWarehouse() {
       } catch (err) { showToast(`Penolakan belum dijalankan: ${err?.message||err}`, "error"); return false; }
     }
     const rejectedTxn = {...txn, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    const previousTxns = txns;
     const newTxns = txns.map(t => t.id===txn.id ? rejectedTxn : t);
     setTxns(newTxns);
-    await saveToCloud({txns: newTxns});
+    const cacheSaved = await saveToCloud({txns: newTxns});
+    if (txn.docType === "TUG10" && cacheSaved === false) {
+      setTxns(previousTxns);
+      showToast("TUG-10 gagal disimpan. Penolakan dibatalkan; coba lagi.", "error");
+      return false;
+    }
     if (txn.docType === "TUG10") {
-      upsertTug10Transaction(rejectedTxn).catch(err => console.warn("upsertTug10Transaction (reject) gagal:", err));
+      if (!(await upsertTug10Transaction(rejectedTxn))) {
+        setTxns(previousTxns);
+        try { await saveToCloud({ txns: previousTxns }); } catch {}
+        showToast("TUG-10 gagal disimpan ke database. Penolakan dibatalkan; coba lagi.", "error");
+        return false;
+      }
     }
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers[docKeyOf(txn)], {stage: txn.stage||null, alasan: reason});
     showToast(`❌ ${txn.docNumbers[docKeyOf(txn)]} DITOLAK.`, "error");

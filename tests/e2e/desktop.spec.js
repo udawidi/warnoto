@@ -45,6 +45,28 @@ test.describe("WARNOTO desktop preservation smoke", () => {
     });
   });
 
+  test.describe("TUG route persistence", () => {
+    test.use({ preserveSessionStorageOnReload:true });
+
+    test("refresh keeps the last TUG submenu active", async ({ isolatedPage:page }) => {
+      test.setTimeout(60_000);
+      await openApp(page);
+      await openRoute(page, {
+        tab:"transaction",
+        menuPath:["TUG", "Barang Masuk"],
+        actions:[{ role:"tab", name:/Barang Kembali/ }],
+        readySelector:".tug-page",
+      });
+      const tug10Tab = page.getByRole("tab", { name:/Barang Kembali/ });
+      await expect(tug10Tab).toHaveAttribute("aria-selected", "true");
+
+      await page.reload({ waitUntil:"domcontentloaded" });
+      await expect(page.locator(".app-shell")).toHaveAttribute("data-current-tab", "transaction");
+      await expect(page.locator(".tug-page")).toBeVisible();
+      await expect(page.getByRole("tab", { name:/Barang Kembali/ })).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
   test.describe("Data Stok photo detail", () => {
     test.use({
       cloudOverrides: {

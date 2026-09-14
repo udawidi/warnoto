@@ -11,6 +11,7 @@ import { upsertTug10Transaction, deleteTug10Transaction } from "../lib/tug10Sync
 import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
+import { readTugRoute } from "../lib/tugRoute.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -80,7 +81,7 @@ export function useTugTransactions({
   const [txnForm, setTxnForm] = useState(null);
   const [editingDraftTxnId, setEditingDraftTxnId] = useState(null); // non-null = sedang edit draft TUG-9 hasil adopt ULTG
   const editingTxnRef = useRef(null); // txn asli yang sedang diedit (dipakai saveTxn cek .canonical utk routing amend)
-  const [tugGroup, setTugGroup] = useState("penerimaan");
+  const [tugGroup, setTugGroup] = useState(() => readTugRoute().group);
   const [tug5ExpandedIdx, setTug5ExpandedIdx] = useState(0); // index baris material TUG-5 yang sedang terbuka penuh (baris lain collapse)
   const [tug5MaterialPage, setTug5MaterialPage] = useState(0); // 5 item per halaman, max 10 (2 halaman)
   const [tug3ExpandedIdx, setTug3ExpandedIdx] = useState(0); // index baris barang TUG-3 yang sedang terbuka penuh (baris lain collapse), pola sama tug5ExpandedIdx
@@ -629,6 +630,17 @@ export function useTugTransactions({
     // update in-place — pertahankan nomor dok & progress approval (pola sama TUG-3/5).
     const isEditInPlace10 = docType === "TUG10" && replacedDraft?.status === "PENDING";
     const keepExistingDocs10 = (isDraft10 || isEditInPlace10) && !!replacedDraft?.docNumbers?.[docKey];
+    const nextTug10Stage = isDraft10
+      ? "DRAFT"
+      : isEditInPlace10
+        ? (targetStage === "PENDING_ASMAN" ? "PENDING_ASMAN" : "PENDING_TL")
+        : (targetStage === "PENDING_ASMAN" || requiredApprover === "ASMAN" ? "PENDING_ASMAN" : "PENDING_TL");
+    const tlApproved = nextTug10Stage === "PENDING_ASMAN"
+      ? (isEditInPlace10 ? (replacedDraft?.approvedByTL || currentUser.id) : currentUser.id)
+      : (isEditInPlace10 ? (replacedDraft?.approvedByTL || null) : null);
+    const tlApprovedAt = nextTug10Stage === "PENDING_ASMAN"
+      ? (isEditInPlace10 ? (replacedDraft?.approvedAtTL || Date.now()) : Date.now())
+      : (isEditInPlace10 ? (replacedDraft?.approvedAtTL || null) : null);
     const nt = {
       ...draftBase,
       id: replacedDraft?.id || txnId,
@@ -644,8 +656,10 @@ export function useTugTransactions({
       canonicalId: canonicalSubmission?.id || null,
       canonicalVersion: canonicalSubmission?.version || null,
       identitySnapshot: canonicalSubmission?.identitySnapshot || null,
-      stage: isDraft10 ? "DRAFT" : (isEditInPlace10 ? replacedDraft?.stage : (canonicalSubmission?.stage || undefined)),
-      requiredApprover: isEditInPlace10 ? (replacedDraft?.requiredApprover ?? requiredApprover) : requiredApprover,
+      stage: nextTug10Stage,
+      requiredApprover: nextTug10Stage === "PENDING_TL" ? "TL" : nextTug10Stage === "PENDING_ASMAN" ? "ASMAN" : null,
+      approvedByTL: tlApproved,
+      approvedAtTL: tlApprovedAt,
       approvedBy: isEditInPlace10 ? (replacedDraft?.approvedBy ?? null) : null,
       approvedAt: isEditInPlace10 ? (replacedDraft?.approvedAt ?? null) : null,
       asmanAutoApproved: isEditInPlace10 ? !!replacedDraft?.asmanAutoApproved : false,
@@ -663,12 +677,22 @@ export function useTugTransactions({
         : t.tug8DraftId === replaceDraftId ? { ...t, tug8DraftId:txnId } : t)
       : draftReplaced;
     const newSeq = (canonicalSubmission && !canonicalSubmission.unavailable) || keepExistingDocs10 ? docSeq : seq + 1;
+    const previousTxns = txns;
+    const previousSeq = docSeq;
     setTxns(newTxns); setDocSeq(newSeq); setTxnModal(false); setEditingDraftTxnId(null);
     setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
-    await saveToCloud({txns: newTxns, docSeq: newSeq});
+    const cacheSaved = await saveToCloud({txns: newTxns, docSeq: newSeq});
+    if (docType === "TUG10" && cacheSaved === false) {
+      setTxns(previousTxns); setDocSeq(previousSeq);
+      showToast("TUG-10 gagal disimpan ke cache. Perubahan dibatalkan; coba lagi.", "error");
+      return;
+    }
     if (docType === "TUG10") {
       if (!(await upsertTug10Transaction(nt))) {
+        setTxns(previousTxns); setDocSeq(previousSeq);
+        try { await saveToCloud({ txns: previousTxns, docSeq: previousSeq }); } catch {}
         showToast("⚠️ Gagal simpan TUG-10 ke database (transaksi belum tersimpan permanen) — cek koneksi & coba lagi.", "error");
+        return;
       }
     }
     canonicalActionKeysRef.current = null;
@@ -719,7 +743,8 @@ export function useTugTransactions({
 
   // ── Draft TUG-10 (Barang Kembali) — sama pola dengan draft TUG-3 di atas ──
   function editDraftTug10(txn) {
-    setTxnForm({ ...txn });
+    const stage = txn.stage || (txn.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : txn.status === "PENDING" ? "PENDING_TL" : "DRAFT");
+    setTxnForm({ ...txn, stage });
     setEditingDraftTxnId(txn.id);
     editingTxnRef.current = txn;
     setTug10Collapsed({});

@@ -563,8 +563,8 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 
             <div style={sty.stickyFooter}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}}>Batal</button>
-              <button disabled={savingTxn} style={{...sty.btn("ghost"),flex:1,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn("DRAFT")}>💾 Simpan Draft</button>
-              <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1,cursor:savingTxn?"wait":"pointer"}} onClick={()=>saveTxn("PENDING")}>{savingTxn?"⏳ Menyimpan...":"📤 Ajukan TUG-10"}</button>
+              <button disabled={savingTxn} style={{...sty.btn("ghost"),flex:1,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn(txnForm.stage==="PENDING_TL" ? "PENDING_TL" : "DRAFT")}>{txnForm.stage==="PENDING_TL" ? "💾 Simpan Perbaikan" : "💾 Simpan Draft"}</button>
+              <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1,cursor:savingTxn?"wait":"pointer"}} onClick={()=>saveTxn(txnForm.stage==="PENDING_TL" ? "PENDING_ASMAN" : "PENDING_TL")}>{savingTxn?"⏳ Menyimpan...":txnForm.stage==="PENDING_TL"?"📤 Ajukan ke Asman":"📤 Ajukan TUG-10"}</button>
             </div>
           </div>
         </div>
