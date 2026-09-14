@@ -499,7 +499,9 @@ function addLiveSearchFields(row, fields) {
 
 export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _legacyRows = [], context = {}) {
   const { dateFrom, dateTo, katalogId, jenisBarang, sapStatus } = filter;
-  const docTypes = [...new Set(["TUG9", "TUG8", "TUG10", "TUG3", "TUG5", ...(filter.docTypes || [])])];
+  const docTypes = Array.isArray(filter.docTypes) && filter.docTypes.length > 0
+    ? [...new Set(filter.docTypes)]
+    : ["TUG9", "TUG8", "TUG10", "TUG3", "TUG5"];
   // TUG-15 canonical: history archive lama tidak pernah menjadi input laporan.
   const source = filter.source || "ALL";
   const searchText = filter.searchText || "";

@@ -1,6 +1,6 @@
 // Komponen ApprovalHubTab — wrapper tab "Approval" (chip filter + seksi + riwayat),
 // dipindah dari App.jsx (refactor batch 2e). Membungkus pemanggilan <ApprovalTab/>.
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { fmtDate } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole, getScopeUptIds, inScopeUpt } from "../lib/roles.js";
@@ -56,6 +56,8 @@ export function ApprovalHubTab({
   const opnameCount = hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0;
   const stockCountCount = hasRole(currentUser, "ASMAN", "TL") ? stockCountPendingCount : 0;
   const [selectedStockCount, setSelectedStockCount] = useState(() => new Set()); // key `${sessionId}_${itemId}`
+  const [historyTugFilter, setHistoryTugFilter] = useState("ALL");
+  useEffect(() => { setApprovalHistoryPage(1); }, [historyTugFilter]);
   const total = tugCount+capCount+lokasiCount+stokCount+alatBeratCount+opnameCount+stockCountCount;
   const chips = [
     {id:"ALL", icon:"▦", label:"Semua", count:total},
@@ -367,10 +369,11 @@ export function ApprovalHubTab({
       {(()=>{
         const docKeyMap = {TUG3:"tug3",TUG5:"tug5",TUG7:"tug7",TUG8:"tug8",TUG9:"tug9",TUG10:"tug10"};
         const histTUG = txns.filter(t=>t.status==="APPROVED"||t.status==="REJECTED").map(t=>({
-          id:`TUG-${t.id}`, type:"TUG", decision:t.status,
+          id:`TUG-${t.id}`, type:"TUG", docType:t.docType, decision:t.status,
           title:`${t.docType||"TUG"} • ${t.docNumbers?.[docKeyMap[t.docType]] || t.id}`,
-          decidedBy: t.status==="REJECTED" ? t.rejectedBy : t.approvedBy,
-          decidedAt: t.status==="REJECTED" ? t.rejectedAt : t.approvedAt,
+          decidedBy: t.status==="REJECTED" ? t.rejectedBy : (t.approvedBy || t.approvedByAsman),
+          decidedAt: t.status==="REJECTED" ? t.rejectedAt : (t.approvedAt || t.approvedAtAsman),
+          uptId:t.uptId, requestedBy:t.createdBy,
           items: (t.stockItems||[]).map(si=>({label: si.namaBaru || katalogList.find(k=>k.id===si.katalogId)?.name || "Item", qty: si.qty})),
         }));
         const scopedHistTug = historyScope === null ? histTUG : histTUG.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope));
@@ -378,7 +381,12 @@ export function ApprovalHubTab({
         // Filter jenis (chip filter atas) juga berlaku ke riwayat — sebelumnya diabaikan.
         const typeFilterMap = {TUG:["TUG"], ALAT_BERAT:["HEAVY_EQUIPMENT_LOAN"], OPNAME:["OPNAME"], STOCK_COUNT:["STOCK_COUNT"], STOK:["STOCK_MOVE","STOCK_EDIT","STOCK_DELETE"], LOKASI:["LOKASI"], KAPASITAS:["KAPASITAS"]};
         const byType = approvalTypeFilter==="ALL" ? combinedAll : combinedAll.filter(h=>(typeFilterMap[approvalTypeFilter]||[approvalTypeFilter]).includes(h.type));
-        const mine = approvalHistoryMineOnly ? byType.filter(h=>h.decidedBy===currentUser.id) : byType;
+        const historyTugTypes = ["TUG3","TUG5","TUG7","TUG8","TUG9","TUG10"];
+        const historyTugCounts = historyTugTypes.map(docType=>({docType,count:byType.filter(h=>h.type==="TUG"&&h.docType===docType).length}));
+        const subtypeFiltered = (approvalTypeFilter!=="ALL" && approvalTypeFilter!=="TUG") || historyTugFilter === "ALL"
+          ? byType
+          : byType.filter(h=>h.type==="TUG" && h.docType===historyTugFilter);
+        const mine = approvalHistoryMineOnly ? subtypeFiltered.filter(h=>h.decidedBy===currentUser.id) : subtypeFiltered;
         const q = approvalHistorySearch.trim().toLowerCase();
         const searched = q ? mine.filter(h => h.title?.toLowerCase().includes(q) || h.items?.some(it=>it.label?.toLowerCase().includes(q))) : mine;
         const fromMs = approvalHistoryDateFrom ? new Date(approvalHistoryDateFrom+"T00:00:00").getTime() : null;
@@ -396,6 +404,9 @@ export function ApprovalHubTab({
         return (
           <div style={{...sty.card,marginTop:16}}>
             <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📜 Riwayat Approval ({filtered.length})</div>
+            {(approvalTypeFilter==="ALL"||approvalTypeFilter==="TUG") && <div className="approval-tug-filters" role="group" aria-label="Filter riwayat tipe TUG">
+              {[{docType:"ALL",label:"Semua TUG",count:byType.filter(h=>h.type==="TUG").length}, ...historyTugCounts.map(x=>({docType:x.docType,label:x.docType==="TUG3"?"TUG-3/4":x.docType.replace("TUG","TUG-"),count:x.count}))].map(({docType,label,count})=><button className="approval-tug-filter" type="button" key={docType} aria-pressed={historyTugFilter===docType} onClick={()=>setHistoryTugFilter(docType)} style={{borderColor:historyTugFilter===docType?C.accent:C.border,background:historyTugFilter===docType?C.accent:(C.surface||"white"),color:historyTugFilter===docType?"white":C.muted,fontWeight:historyTugFilter===docType?700:500}}>{label} ({count})</button>)}
+            </div>}
             <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:12}}>
               <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,cursor:"pointer"}}>
                 <input type="checkbox" checked={approvalHistoryMineOnly} onChange={e=>setApprovalHistoryMineOnly(e.target.checked)}/>

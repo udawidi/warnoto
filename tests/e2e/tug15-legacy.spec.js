@@ -355,6 +355,27 @@ test("row mapping canonicalizes inbound catalog ID mismatch to stock catalog", a
   expect(result).toEqual({ ids:["K-STOCK","K-STOCK"], saldo:0 });
 });
 
+test("docTypes filter is authoritative and SAP override stays consistent", async ({ isolatedPage:page }) => {
+  await openApp(page);
+  const result = await page.evaluate(async () => {
+    const { buildMutasiRows } = await import("/src/lib/supabaseSync.js");
+    const katalog = [
+      { id:"K-SAP", katalog:"SAP-1", name:"Material SAP", satuan:"PCS", sapStatus:"SAP" },
+      { id:"K-NONSAP", katalog:"NS-1", name:"Material Non-SAP", satuan:"PCS", sapStatus:"SAP" },
+    ];
+    const stocks = [{ id:"S-NONSAP", katalogId:"K-NONSAP", lokasiId:"L-1", sapStatus:"Non-SAP" }];
+    const base = { dateFrom:"", dateTo:"", katalogId:"ALL", jenisBarang:"ALL", sapStatus:"ALL", source:"ALL", searchText:"" };
+    const txns = [
+      { id:"IN-3", docType:"TUG3", status:"APPROVED", stage:"APPROVED", approvedAt:2, docNumbers:{ tug3:"IN-3" }, stockItems:[{ katalogMode:"existing", katalogId:"K-SAP", qty:2, sapStatus:"SAP" }] },
+      { id:"OUT-9", docType:"TUG9", status:"APPROVED", approvedAt:1, docNumbers:{ tug9:"OUT-9" }, stockItems:[{ stockId:"S-NONSAP", qty:1 }] },
+    ];
+    const rows3 = buildMutasiRows(txns, katalog, stocks, {...base, docTypes:["TUG3"]}, [{id:"L-1",kode:"L-1"}], []);
+    const rows9 = buildMutasiRows(txns, katalog, stocks, {...base, docTypes:["TUG9"]}, [{id:"L-1",kode:"L-1"}], []);
+    return { types3:rows3.map(r=>r.docType), types9:rows9.map(r=>r.docType).filter(type=>type!=="-"), nonSap:rows9.find(r=>r.sapStatus==="Non-SAP") && {sapStatus:rows9.find(r=>r.sapStatus==="Non-SAP").sapStatus,sapLabel:rows9.find(r=>r.sapStatus==="Non-SAP").sapLabel}, sapLabel:rows3.find(r=>r.docType==="TUG3")?.sapLabel };
+  });
+  expect(result).toEqual({ types3:["TUG3"], types9:["TUG9"], nonSap:{sapStatus:"Non-SAP",sapLabel:"Non-SAP"}, sapLabel:"SAP — Persediaan" });
+});
+
 test("legacy outgoing does not create Migrasi Data baseline", async ({ isolatedPage:page }) => {
   await openApp(page);
   const result = await page.evaluate(async () => {

@@ -61,6 +61,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Approval dan Laporan TUG dirapikan (2026-09-14).** Antrean approval tetap tanpa filter tambahan; filter jenis TUG hanya ada di Riwayat Approval dan mencakup TUG-3/4, TUG-5, TUG-7, TUG-8, TUG-9, serta TUG-10. Riwayat TL TUG-3/4 kembali terbaca dari field approval TL/Asman yang benar. Menu TUG > Laporan kini memiliki filter jenis TUG dengan hitungan sesuai hasil aktual serta chip Semua/SAP/Non-SAP; label status memakai bentuk rinci `SAP — Persediaan/Cadang/Pre Memory` atau `Non-SAP`. Akar bug `buildMutasiRows` diperbaiki agar `filter.docTypes` benar-benar authoritative. Verifikasi localhost, unit test 4/4, E2E fokus 1/1, build, dan diff-check lulus. Tanpa migration/dependensi baru.
+
 - **Approval TUG-10 berjenjang + persistensi menu TUG selesai (2026-09-14, belum push saat entri ini ditulis).** Ajuan Admin kini diperiksa TL lalu diteruskan ke Asman; perbaikan TL tidak lagi meregresi transaksi menjadi draft Admin; preview wajib di kedua tahap; stok hanya berubah saat Asman final. Menu group/subtab TUG terakhir disimpan per-tab browser lewat `sessionStorage`, dibersihkan saat logout, dan tidak menyimpan form yang belum disimpan. Test fokus 11/11, browser reload TUG-10 1/1, build, dan diff-check lulus. Tanpa migration/dependensi baru.
 
 - **Lifecycle stok/TUG MTU KHS selesai dan diterapkan ke production (2026-09-13).** UI 2024/2026, pemetaan katalog via approval, provenance TUG-3, penerimaan parsial/idempoten, serta referensi final TUG-8/9 sudah terintegrasi. Panel Rekonsiliasi TUG 2024 hanya tampil di tab Pengeluaran TUG-8/9; panel Drawing hanya tampil di Ringkasan. Migration production berhasil dalam satu transaksi; 3 RPC baru dan kolom provenance terverifikasi. Test penuh 224/224, test lifecycle 8/8, build dan diff-check lulus. Smoke Playwright responsif mengalami timeout runner pada 4 proyek; kontrak CSS mobile 360 px lulus unit test.
@@ -573,10 +575,12 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-1. Smoke test production TUG-10: Admin ajukan → TL perbaiki/simpan/teruskan → Asman final; pastikan stok tidak berubah di TL dan bertambah sekali di Asman. Refresh saat TUG-10 aktif harus tetap di TUG-10.
-2. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
-3. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
-4. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
+1. Smoke test production Riwayat Approval sebagai TL: pastikan TUG-3/4, TUG-8, TUG-9, dan TUG-10 muncul serta filter jenis hanya memengaruhi riwayat.
+2. Smoke test production TUG > Laporan: filter tiap jenis TUG dan SAP/Non-SAP; pastikan hitungan chip sama dengan jumlah hasil dan label status konsisten.
+3. Smoke test production TUG-10: Admin ajukan → TL perbaiki/simpan/teruskan → Asman final; pastikan stok tidak berubah di TL dan bertambah sekali di Asman. Refresh saat TUG-10 aktif harus tetap di TUG-10.
+4. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
+5. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
+6. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
 
 **VERIFIKASI BROWSER pasca-deploy fix material (2026-09-10):** pastikan TUG-3 `209`/`213` menampilkan nama material; Kartu Gantung `4191468` dapat dibuka dan halaman belakang menampilkan baseline Migrasi Data 101 BH; Data Stok RAK-G menampilkan tiga material TUG-10 `220` dengan qty 6/74/1.
 
@@ -670,6 +674,8 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - `node --test tests/unit/heavyEquipmentPhoto.test.mjs tests/unit/stockLocationApproval.test.mjs`
 - `npx playwright test tests/e2e/heavy-equipment.spec.js --project=desktop-smoke --workers=1`
 - `npx playwright test tests/e2e/tug15-legacy.spec.js --project=desktop-smoke --project=tug15-mobile --workers=1`
+- `node --test tests/unit/approvalTugFilter.contract.test.mjs tests/unit/tug10ApprovalFlow.contract.test.mjs`
+- `npx playwright test tests/e2e/tug15-legacy.spec.js --project=desktop-smoke --grep "docTypes filter is authoritative" --workers=1`
 - `node --test tests/unit/maturityDrive.security.contract.test.mjs`
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
@@ -678,5 +684,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-13 Codex: **Lifecycle stok/TUG MTU diterapkan; posisi panel Rekonsiliasi dan Drawing dirapikan per tab, test/build lulus, lalu dipush ke main.**
 - 2026-09-14 Codex: **Alur TUG-10 Admin→TL→Asman dan persistensi submenu TUG selesai; test/build lulus, siap dipush ke main.**
+- 2026-09-14 Codex: **Riwayat Approval dan filter Laporan TUG/SAP dirapikan; verifikasi localhost, test, dan build lulus.**

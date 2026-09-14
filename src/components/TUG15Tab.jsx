@@ -7,6 +7,8 @@ import { buildMutasiRows, loadLegacyHistoryArchive, resolveLegacyPrivateUrl, syn
 import { bolehTulisKatalog } from "../lib/roles.js";
 import { buildMonitoringWorkbook, buildTUG15ReportModel } from "../lib/tug15Report.js";
 
+const REPORT_TUG_TYPES = ["TUG3","TUG5","TUG8","TUG9","TUG10"];
+
 export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter, lokasiList, gudangList, currentUser }) {
   const [legacy, setLegacy] = useState({ rows:[], documents:[], loading:true, error:null });
   const autoSyncedRef = useRef(false);
@@ -30,9 +32,11 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
   }, []);
 
   const rows = buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, legacy.rows, { gudangList });
+  const typeCountRows = useMemo(() => buildMutasiRows(txns, katalogList, stocks, {...filter, docTypes:REPORT_TUG_TYPES}, lokasiList, legacy.rows, { gudangList }), [txns, katalogList, stocks, filter, lokasiList, legacy.rows, gudangList]);
+  const typeCounts = useMemo(() => Object.fromEntries(REPORT_TUG_TYPES.map(docType => [docType, buildMutasiRows(txns, katalogList, stocks, {...filter, docTypes:[docType]}, lokasiList, legacy.rows, { gudangList }).length])), [txns, katalogList, stocks, filter, lokasiList, legacy.rows, gudangList]);
   const allHistoryRows = useMemo(() => buildMutasiRows(txns, katalogList, stocks, {
     ...filter, dateFrom:"", dateTo:"", katalogId:"ALL", jenisBarang:"ALL", sapStatus:"ALL", source:"ALL", searchText:"",
-    docTypes:["TUG9","TUG8","TUG10","TUG3","TUG5"],
+    docTypes:REPORT_TUG_TYPES,
   }, lokasiList, legacy.rows, { gudangList }), [txns, katalogList, stocks, filter, lokasiList, legacy.rows, gudangList]);
   const selectedHistoryRows = useMemo(() => historyItem
     ? allHistoryRows.filter(row => row.materialKey === historyItem.materialKey).sort((a,b)=>(b.ts||0)-(a.ts||0))
@@ -167,11 +171,9 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
         <div className="tug15-filter-grid" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
           <div>
             <label style={sty.label}>Kategori SAP</label>
-            <select style={sty.select} value={filter.sapStatus||"ALL"} onChange={e=>setFilter(f=>({...f,sapStatus:e.target.value}))}>
-              <option value="ALL">Semua (SAP + Non-SAP)</option>
-              <option value="SAP">Material SAP</option>
-              <option value="Non-SAP">Material Non-SAP</option>
-            </select>
+            <div className="approval-tug-filters" role="group" aria-label="Filter kategori SAP">
+              {[{id:"ALL",label:"Semua"},{id:"SAP",label:"SAP"},{id:"Non-SAP",label:"Non-SAP"}].map(option=><button className="approval-tug-filter" type="button" key={option.id} aria-pressed={(filter.sapStatus||"ALL")===option.id} onClick={()=>setFilter(f=>({...f,sapStatus:option.id}))} style={{borderColor:(filter.sapStatus||"ALL")===option.id?C.accent:C.border,background:(filter.sapStatus||"ALL")===option.id?C.accent:"white",color:(filter.sapStatus||"ALL")===option.id?"white":C.muted}}>{option.label}</button>)}
+            </div>
           </div>
           <div>
             <label style={sty.label}>Jenis Barang</label>
@@ -188,9 +190,15 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
             </select>
           </div>
         </div>
+        <div>
+          <label style={sty.label}>Jenis TUG</label>
+          <div className="approval-tug-filters" role="group" aria-label="Filter jenis TUG">
+            {[{id:"ALL",label:"Semua TUG",count:typeCountRows.length}, ...REPORT_TUG_TYPES.map(docType=>({id:docType,label:docType==="TUG3"?"TUG-3/4":docType.replace("TUG","TUG-"),count:typeCounts[docType]}))].map(option=>{const active=option.id==="ALL" ? REPORT_TUG_TYPES.every(type=>filter.docTypes?.includes(type)) : filter.docTypes?.length===1 && filter.docTypes[0]===option.id; return <button className="approval-tug-filter" type="button" key={option.id} aria-pressed={active} onClick={()=>setFilter(f=>({...f,docTypes:option.id==="ALL"?REPORT_TUG_TYPES:[option.id]}))} style={{borderColor:active?C.accent:C.border,background:active?C.accent:"white",color:active?"white":C.muted}}>{option.label} ({option.count})</button>;})}
+          </div>
+        </div>
         <div className="tug15-action-row" style={{display:"flex",gap:10,alignItems:"center"}}>
           <div className="tug15-action-summary" style={{display:"flex",gap:10,alignItems:"center"}}>
-            <button style={{...sty.btn("ghost","sm")}} onClick={()=>setFilter({dateFrom:"",dateTo:"",katalogId:"ALL",jenisBarang:"ALL",sapStatus:"ALL",source:"ALL",searchText:"",docTypes:["TUG9","TUG8","TUG10","TUG3","TUG5"]})}>↺ Reset Filter</button>
+            <button style={{...sty.btn("ghost","sm")}} onClick={()=>setFilter({dateFrom:"",dateTo:"",katalogId:"ALL",jenisBarang:"ALL",sapStatus:"ALL",source:"ALL",searchText:"",docTypes:REPORT_TUG_TYPES})}>↺ Reset Filter</button>
             <span style={{fontSize:12,color:C.muted}}>{rows.length} baris ditemukan</span>
           </div>
         </div>
@@ -244,7 +252,7 @@ export function TUG15Tab({ txns, katalogList, stocks, sty, C, filter, setFilter,
                     <td data-label="Sumber" style={{padding:"5px 8px"}}><span style={{padding:"2px 7px",borderRadius: 14,fontSize:12,fontWeight:700,background:r.source==="LAMA"?"#fef3c7":"#dbeafe",color:r.source==="LAMA"?"#92400e":"#1d4ed8"}}>{r.sourceLabel||"Baru"}</span></td>
                     <td data-label="No Katalog" style={{padding:"5px 8px",fontFamily:"monospace",fontSize:12}}>{r.katalog}</td>
                     <td data-label="Deskripsi" className="mobile-card-table__title" style={{padding:"5px 8px",fontWeight:600,maxWidth:160,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{r.deskripsi}</td>
-                    <td data-label="Status SAP" style={{padding:"5px 8px"}}><span style={{padding:"2px 6px",borderRadius: 14,fontSize:12,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{r.sapStatus}</span></td>
+                    <td data-label="Status SAP" style={{padding:"5px 8px"}}><span style={{padding:"2px 6px",borderRadius: 14,fontSize:12,fontWeight:700,background:sapBs.bg,color:sapBs.fg}}>{r.sapLabel}</span></td>
                     <td data-label="Jenis" style={{padding:"5px 8px",fontSize:12}}>{r.jenisBarang||"-"}</td>
                     <td data-label="Satuan" style={{padding:"5px 8px",textAlign:"center"}}>{r.satuan}</td>
                     <td data-label="Saldo Awal" style={{padding:"5px 8px",textAlign:"center",color:C.muted}}>{r.affectsSaldo===false?"—":fmtNum(r.saldoAwal)}</td>

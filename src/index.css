@@ -782,6 +782,12 @@
 .approval-empty__icon { display: grid; width: 48px; height: 48px; margin: 0 auto 12px; place-items: center; border-radius: 14px; background: #dcfce7; color: #15803d; font-size: 24px; font-weight: 900; box-shadow: inset 0 0 0 1px #86efac; }
 
 /* Tombol aksi Approval — korporat modern (dipakai ApprovalTab) */
+.approval-tug-filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+.approval-tug-filter { min-height:44px; padding:6px 12px; border:1px solid; border-radius:14px; font-size:12px; cursor:pointer; white-space:nowrap; }
+@media (max-width: 640px) {
+  .approval-tug-filters { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+  .approval-tug-filter { flex:0 0 auto; }
+}
 .approval-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .approval-actions button {
   flex: 0 1 auto; min-height: 38px; padding: 8px 18px;
