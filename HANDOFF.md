@@ -62,6 +62,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Edit kapasitas, foto privat sub-gudang, dan redesign menu Kapasitas selesai (`6ca0f7a`, 2026-09-15).** Luas terpakai otomatis dari total lima komposisi dengan batas gabungan 100%; simpan memakai upsert satu baris DB-first dan foto tidak masuk Google Sheet. Detail/Edit memakai satu modal, foto tampil di Detail, dan UI Apple-like responsif terverifikasi pada 360/390/412/768 px. Migration bounds dan foto aktif di production self-host: `foto_path` nullable, bucket `warehouse-capacity-photos` privat, baca untuk authenticated, upload/hapus untuk ADMIN/TL/SUPERADMIN, tanpa policy UPDATE. Data tetap 44 baris dan invalid 0. Verifikasi: unit 270/270, responsive E2E 12/12, build production, localhost, dan graphify lulus.
+
 - **Kebocoran teks encoding pada keterangan TUG-10 selesai diperbaiki (2026-09-15).** Mojibake `â€”` dan 11 teks rusak lain di `src/lib/supabaseSync.js` sudah dinormalisasi ke Unicode yang benar. Guard `tests/unit/encoding.contract.test.mjs` memindai source runtime dan menggagalkan test bila pola mojibake umum muncul kembali. Seluruh 264 unit test dan build production lulus.
 
 - **Tiga panduan pengguna corporate PLN selesai dan sudah di-push (`2698fac`, 2026-09-15).** Dokumen terpisah untuk Stock Opname (12 halaman), Stock Count (8 halaman), dan Pengisian Maturity Level (12 halaman) tersedia dalam format DOCX dan PDF di `docs/user-guides/`. Seluruh panduan memakai screenshot aplikasi dengan data contoh, penanda tahapan, troubleshooting, dan checklist. Render visual 32 halaman sudah diperiksa; audit aksesibilitas menghasilkan 0 temuan tingkat tinggi.
@@ -584,14 +586,15 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-1. Jalankan wizard alokasi stok lama lalu smoke test TUG-8/9 untuk satu katalog dengan minimal dua kontrak/penyedia; pastikan pemilihan lot dan sisa tiap sumber benar.
-2. Pastikan pengeluaran dari tiap lot mengurangi sisa kontrak yang dipilih dan snapshot sumber tetap terlihat setelah refresh.
-3. Smoke test production Riwayat Approval sebagai TL: buka detail TUG-3/4, TUG-8, TUG-9, TUG-10, serta approval non-TUG; pastikan metadata/material/lokasi/sumber/catatan lengkap dan tampilan tetap compact.
-4. Review tiga panduan di `docs/user-guides/` dan Penilaian Maturity production; catat koreksi istilah, tahapan, atau screenshot.
-5. Smoke test production TUG-10: Admin ajukan → TL perbaiki/simpan/teruskan → Asman final; pastikan stok tidak berubah di TL dan bertambah sekali di Asman. Refresh saat TUG-10 aktif harus tetap di TUG-10.
-6. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
-7. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
-8. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
+1. Smoke test production Kapasitas: upload, tampilkan, ganti, lalu hapus satu foto sub-gudang; pastikan refresh tetap benar dan Google Sheet tidak berubah karena foto.
+2. Jalankan wizard alokasi stok lama lalu smoke test TUG-8/9 untuk satu katalog dengan minimal dua kontrak/penyedia; pastikan pemilihan lot dan sisa tiap sumber benar.
+3. Pastikan pengeluaran dari tiap lot mengurangi sisa kontrak yang dipilih dan snapshot sumber tetap terlihat setelah refresh.
+4. Smoke test production Riwayat Approval sebagai TL: buka detail TUG-3/4, TUG-8, TUG-9, TUG-10, serta approval non-TUG; pastikan metadata/material/lokasi/sumber/catatan lengkap dan tampilan tetap compact.
+5. Review tiga panduan di `docs/user-guides/` dan Penilaian Maturity production; catat koreksi istilah, tahapan, atau screenshot.
+6. Smoke test production TUG-10: Admin ajukan → TL perbaiki/simpan/teruskan → Asman final; pastikan stok tidak berubah di TL dan bertambah sekali di Asman. Refresh saat TUG-10 aktif harus tetap di TUG-10.
+7. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
+8. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
+9. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
 
 **VERIFIKASI BROWSER pasca-deploy fix material (2026-09-10):** pastikan TUG-3 `209`/`213` menampilkan nama material; Kartu Gantung `4191468` dapat dibuka dan halaman belakang menampilkan baseline Migrasi Data 101 BH; Data Stok RAK-G menampilkan tiga material TUG-10 `220` dengan qty 6/74/1.
 

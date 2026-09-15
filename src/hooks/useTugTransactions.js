@@ -12,6 +12,7 @@ import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 import { readTugRoute } from "../lib/tugRoute.js";
 import { isLegacySourceAllocation } from "../lib/sap.js";
+import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -38,6 +39,7 @@ function tug3MissingForSubmit(tf, katalogList = []) {
     if (!(si.qty > 0)) missing.push(`Barang #${n}: jumlah`);
     if (si.hargaSatuan===undefined || si.hargaSatuan===null || si.hargaSatuan==="") missing.push(`Barang #${n}: harga satuan`);
     if (!si.lokasiTujuanId) missing.push(`Barang #${n}: lokasi tujuan`);
+    if (!si.fotoBarang) missing.push(`Barang #${n}: foto barang`);
   });
   return missing;
 }
@@ -419,11 +421,19 @@ export function useTugTransactions({
     // Upload foto base64 ke Storage dulu → blob transaksi jadi ringan. Gagal upload
     // (offline) → foto tetap base64 + _fotoPending; transaksi & dokumen tetap jadi,
     // auto-sync menyusul saat online (syncPendingTxnPhotos).
-    let txnId = `${docType}-${uid().slice(-6)}`;
+    // Edit draft/PENDING memakai ID transaksi yang sama supaya path Storage stabil.
+    let txnId = replaceDraftId || `${docType}-${uid().slice(-6)}`;
     const _hasFoto = formData && ([formData.fotoKendaraan,formData.fotoSimKtp,formData.fotoSuratPengembalian,formData.fotoBAPengembalian,formData.fotoSuratJalanImg,formData.fotoKontrak].some(_isDataUrl) || (formData.fotoMaterial||[]).some(fm=>_isDataUrl(fm?.img)) || (formData.stockItems||[]).some(si=>_isDataUrl(si.fotoNameplate)||_isDataUrl(si.fotoBarangRetur)||_isDataUrl(si.fotoBarang)));
     if (_hasFoto) setSavingInfo({ label: "Mengunggah foto...", done: 0, total: 0 });
     const { data: _fd, pending: _pend } = await processTxnPhotos(formData, txnId, (done, total) => setSavingInfo({ label: "Mengunggah foto...", done, total }));
     formData = _fd;
+    const receiptSubmit = ["TUG3", "TUG10"].includes(docType) && targetStage !== "DRAFT";
+    if (receiptSubmit) {
+      const missingStored = missingReceiptPhotos({ ...formData, id: txnId, docType }, { requireStored: true });
+      if (missingStored.length) {
+        throw new Error(`Foto wajib belum tersimpan di Storage: ${missingStored.map(x => x.label).join(", ")}`);
+      }
+    }
     if (_pend.length && ["TUG8", "TUG9"].includes(docType) && targetStage !== "DRAFT") {
       throw new Error("Foto TUG-8/TUG-9 belum aman di Storage. Periksa koneksi lalu ajukan ulang; dokumen resmi belum dibuat.");
     }

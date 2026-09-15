@@ -7,8 +7,9 @@ import { ROLES, hasRole } from "../lib/roles.js";
 import { statusMaterialBadgeStyle, resolveSapLabel, formatKontrakSumber } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
+import { PhotoSlot } from "./PhotoSlot.jsx";
 
-export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, approveTUG3_TL, rejectTUG3_TL }) {
+export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, users, sty, C, approveTxn, rejectTxn, currentUser, uptList, submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik, konfirmasiDraftTUG8, gudangCapacityImports, approveCapacityImport, rejectCapacityImport, approveLokasiChange, rejectLokasiChange, ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, heavyEquipmentPendingCount, opnamePendingCount=0, stockCountPendingCount=0, approvalTypeFilter="ALL", approvalPageSize=10, prepareReview, deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, approveTUG3_TL, rejectTUG3_TL, handleImg }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Form, setTug7Form] = useState({});
@@ -23,7 +24,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
     // Sama seperti TUG3Tab.jsx openTug4Modal — status SAP/Non-SAP per barang diputuskan
     // di sini (TL, tahap TUG-4), default dibawa dari pilihan form TUG-3.
     const itemSapStatus = txn.stockItems.map(si => si.sapStatus==="Non-SAP" ? "Non-SAP" : "SAP");
-    setTug4Form({ timMutuId:"", lokasiPenyerahan: uptList.find(u=>u.id===txn.uptId)?.nama || "", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
+    setTug4Form({ timMutuId:"", lokasiPenyerahan: uptList.find(u=>u.id===txn.uptId)?.nama || "", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus, stockItems:(txn.stockItems||[]).map(si=>({...si})) });
     setTug4Modal(txn);
   }
   const [rejectingCapId, setRejectingCapId] = useState(null);
@@ -435,6 +436,20 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                   </div>
                 );
               })}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Foto Barang per Item * (dapat dilengkapi di TUG-4)</label>
+              {tug4Modal.stockItems.map((si, idx) => (
+                <div key={`photo-${idx}`} style={{marginTop:8}}>
+                  <PhotoSlot
+                    label={`Barang #${idx + 1}`}
+                    value={tug4Form.stockItems?.[idx]?.fotoBarang || si.fotoBarang}
+                    onChange={img=>setTug4Form(f=>({ ...f, stockItems:(f.stockItems || tug4Modal.stockItems).map((item,i)=>i===idx ? {...item, fotoBarang:img} : item) }))}
+                    onRemove={()=>setTug4Form(f=>({ ...f, stockItems:(f.stockItems || tug4Modal.stockItems).map((item,i)=>i===idx ? {...item, fotoBarang:null} : item) }))}
+                    handleImg={handleImg} sty={sty} C={C}
+                  />
+                </div>
+              ))}
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>

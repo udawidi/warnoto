@@ -121,6 +121,7 @@ import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
 import { loadMaterialInspections, loadMaterialInspectionBatches } from "./src/lib/materialInspectionSync.js";
 import { getMaterialAkanHabis, buildMonthlySeriesByKatalog, computeProcurementList, getTopStockByQty, getTotalPerSatuan } from "./src/lib/analytics.js";
+import { missingReceiptPhotos } from "./src/lib/receiptPhoto.js";
 
 // Turn this on only after the reviewed self-host migration is installed. It
 // makes TUG-8/9 fail closed rather than silently reverting to browser storage.
@@ -2344,10 +2345,6 @@ export default function PLNWarehouse() {
     if (!stockForm.lokasiId) { showToast("Pilih lokasi dari Master Lokasi!","error"); return; }
     // Foto Nameplate + Foto Keseluruhan wajib diisi, kecuali data hasil import SAP (PEMAT) —
     // data lama itu akan disinkronkan fotonya saat proses import PEMAT berikutnya, bukan di sini.
-    if (!stockForm.id?.startsWith("STK-SAP-")) {
-      if (!stockForm.fotoNameplate) { showToast("Foto Nameplate wajib diupload!","error"); return; }
-      if (!stockForm.fotoKeseluruhan) { showToast("Foto Keseluruhan wajib diupload!","error"); return; }
-    }
     // prevent duplicate katalog+lokasi combo (except when editing that same row)
     const dup = stocks.find(s => s.katalogId===stockForm.katalogId && s.lokasiId===stockForm.lokasiId && s.id!==stockForm.id);
     if (dup) { showToast("Kombinasi barang + lokasi ini sudah ada! Edit baris yang sudah ada saja.","error"); return; }
@@ -3010,6 +3007,11 @@ export default function PLNWarehouse() {
       tug10ApprovalInFlightRef.current.add(txn.id);
       try {
       const approvalStage = txn.stage || (txn.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : txn.status === "PENDING" ? "PENDING_TL" : txn.status);
+      const missingReceiptPhoto = missingReceiptPhotos(txn, { requireStored: true });
+      if (missingReceiptPhoto.length) {
+        showToast(`Approval TUG-10 diblokir: ${missingReceiptPhoto.map(x => x.label).join(", ")}. Lengkapi foto di transaksi.`, "error");
+        return false;
+      }
       // TUG-10 is a two-stage receipt: TL checks the data first, then Asman
       // performs the final approval that changes stock.
       if (approvalStage === "PENDING_TL") {
@@ -3090,9 +3092,8 @@ export default function PLNWarehouse() {
             const alreadyApplied = Number(existingRow._tug10Applied?.[effectKey]) || 0;
             const qtyToApply = Math.max(0, qty - alreadyApplied);
             if (!qtyToApply) return;
-            // fix bug-2 (identik TUG-3): foto retur ikut fotoKeseluruhan (kolom Foto DataStokTab),
-            // jangan timpa foto lama kalau baris sudah punya.
-            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
+            // Foto retur terbaru menjadi Foto Keseluruhan dan thumbnail stok.
+            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, img: si.fotoBarangRetur, fotoKeseluruhan: si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
             touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
@@ -3118,7 +3119,7 @@ export default function PLNWarehouse() {
             const alreadyApplied = Number(existingRow2._tug10Applied?.[effectKey]) || 0;
             const qtyToApply = Math.max(0, qty - alreadyApplied);
             if (!qtyToApply) return;
-            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
+            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, img: si.fotoBarangRetur, fotoKeseluruhan: si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
             touchedStockIds.add(existingRow2.id);
           } else {
             const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
@@ -4651,6 +4652,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             submitTUG4DanLampiran={submitTUG4DanLampiran}
             approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
             approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
+            handleImg={handleImg}
           />
         )}
 

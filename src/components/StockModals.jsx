@@ -71,7 +71,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 </label>
               </div>
               <div>
-                <label style={sty.label}>Foto Nameplate {!stockForm.id?.startsWith("STK-SAP-") && "*"}</label>
+                <label style={sty.label}>Foto Nameplate (opsional)</label>
                 {stockForm.fotoNameplate && <img src={resolveStockPhotoUrl(stockForm.fotoNameplate)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoNameplate))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
@@ -79,7 +79,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 </label>
               </div>
               <div>
-                <label style={sty.label}>Foto Keseluruhan {!stockForm.id?.startsWith("STK-SAP-") && "*"}</label>
+                <label style={sty.label}>Foto Keseluruhan (opsional)</label>
                 {stockForm.fotoKeseluruhan && <img src={resolveStockPhotoUrl(stockForm.fotoKeseluruhan)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoKeseluruhan))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar

@@ -5,6 +5,7 @@ import { fmtDate } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
 import { resolveSapLabel } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
+import { PhotoSlot } from "./PhotoSlot.jsx";
 
 export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, uptList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview }) {
   const [rejectingId, setRejectingId] = useState(null);
@@ -31,7 +32,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
     // Status SAP/Non-SAP diputuskan di sini (TL, TUG-4) — default dibawa dari pilihan
     // di form TUG-3, TL boleh menimpanya per barang sebelum submit ke Asman.
     const itemSapStatus = txn.stockItems.map(si => si.sapStatus==="Non-SAP" ? "Non-SAP" : "SAP");
-    setTug4Form({ timMutuId:"", lokasiPenyerahan: uptList.find(u=>u.id===txn.uptId)?.nama || "", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus });
+    setTug4Form({ timMutuId:"", lokasiPenyerahan: uptList.find(u=>u.id===txn.uptId)?.nama || "", noSPK:"", tglSPK:"", hasilPemeriksaan:"Barang Diterima Sesuai Pengadaan", itemSapStatus, stockItems:(txn.stockItems||[]).map(si=>({...si})) });
     setTug4Modal(txn);
   }
 
@@ -184,6 +185,20 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   </div>
                 );
               })}
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Foto Barang per Item * (dapat dilengkapi di TUG-4)</label>
+              {tug4Modal.stockItems.map((si, idx) => (
+                <div key={`photo-${idx}`} style={{marginTop:8}}>
+                  <PhotoSlot
+                    label={`Barang #${idx + 1}`}
+                    value={tug4Form.stockItems?.[idx]?.fotoBarang || si.fotoBarang}
+                    onChange={img=>setTug4Form(f=>({ ...f, stockItems:(f.stockItems || tug4Modal.stockItems).map((item,i)=>i===idx ? {...item, fotoBarang:img} : item) }))}
+                    onRemove={()=>setTug4Form(f=>({ ...f, stockItems:(f.stockItems || tug4Modal.stockItems).map((item,i)=>i===idx ? {...item, fotoBarang:null} : item) }))}
+                    handleImg={handleImg} sty={sty} C={C}
+                  />
+                </div>
+              ))}
             </div>
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug4Modal(null)}>Batal</button>

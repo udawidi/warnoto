@@ -12,6 +12,7 @@ import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreez
 import { loadMasterTable } from "../lib/masterSync.js";
 import { CLOUD } from "../lib/cloud.js";
 import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
+import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -110,6 +111,8 @@ export function useTugApprovals({
   async function approveTUG3_TL(txn) {
     if (!hasRole(currentUser, "TL")) { showToast("Hanya TL Logistik yang bisa menyetujui TUG-3 Karantina.","error"); return; }
     if (txn.stage !== "PENDING_TL") { showToast("Transaksi ini tidak dalam tahap menunggu TL.","error"); return; }
+    const missingPhoto = missingReceiptPhotos(txn, { requireStored: true });
+    if (missingPhoto.length) { showToast(`TUG-3 belum dapat diteruskan: ${missingPhoto.map(x => x.label).join(", ")}. Lengkapi foto di form transaksi.`, "error"); return false; }
     // BUG 7 fix: requiredApprover tetap "TL" di tahap MENUNGGU_TUG4 (TL yang isi form
     // TUG-4), baru pindah ke "ASMAN" saat submitTUG4DanLampiran — sebelumnya langsung
     // "ASMAN" di sini bikin item muncul prematur di antrean Asman padahal TUG-4 belum diisi.
@@ -140,15 +143,22 @@ export function useTugApprovals({
     // Foto lampiran (fotoKendaraan/fotoSimKtp/fotoSuratJalanImg/fotoKontrak) masuk sebagai
     // base64 dari PhotoSlot — upload ke Storage dulu (jalur sama commitNewTxn) supaya baris
     // DB tidak menyimpan blob base64. Gagal upload → tetap base64 + toast.
-    const { data: uploadedData, pending } = await processTxnPhotos(data, txn.id, () => {});
+    const { data: uploadedData, pending } = await processTxnPhotos({ ...data, stockItems: data.stockItems || txn.stockItems }, txn.id, () => {});
     if (pending.length) showToast(`⚠️ ${pending.length} foto lampiran belum terunggah (sinyal?). Data tetap tersimpan; foto disinkron otomatis saat online.`, "info");
     // Status SAP/Non-SAP per barang DIPUTUSKAN di sini (TL, tahap TUG-4), bukan lagi
     // di form TUG-3 — data.itemSapStatus (array "SAP"/"Non-SAP" per index, opsional)
     // menimpa si.sapStatus; label lengkap (Persediaan/Cadang by digit) diresolusi nanti
     // di approveTUG3Final_Asman lewat resolveSapLabel.
+    const uploadedItems = uploadedData.stockItems || txn.stockItems;
     const stockItems = data.itemSapStatus
-      ? txn.stockItems.map((si, idx) => data.itemSapStatus[idx] ? { ...si, sapStatus: data.itemSapStatus[idx] } : si)
-      : txn.stockItems;
+      ? uploadedItems.map((si, idx) => data.itemSapStatus[idx] ? { ...si, sapStatus: data.itemSapStatus[idx] } : si)
+      : uploadedItems;
+    const candidate = { ...txn, ...uploadedData, stockItems };
+    const missingPhoto = missingReceiptPhotos(candidate, { requireStored: true });
+    if (missingPhoto.length) {
+      showToast(`TUG-4 belum dapat dikirim: foto wajib belum tersimpan (${missingPhoto.map(x => x.label).join(", ") || "periksa upload"}).`, "error");
+      return false;
+    }
     const newTxns = txns.map(t => t.id===txn.id ? { ...t, ...uploadedData, stockItems, stage:"PENDING_ASMAN", requiredApprover:"ASMAN" } : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
@@ -174,6 +184,8 @@ export function useTugApprovals({
   async function approveTUG3Final_Asman(txn) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menyetujui TUG-3 Final.","error"); return; }
     if (txn.stage !== "PENDING_ASMAN") { showToast("Transaksi ini tidak dalam tahap menunggu Asman.","error"); return; }
+    const missingPhoto = missingReceiptPhotos(txn, { requireStored: true });
+    if (missingPhoto.length) { showToast(`Approval TUG-3 diblokir: ${missingPhoto.map(x => x.label).join(", ")}.`, "error"); return false; }
     const missingKatalog = (txn.stockItems || []).some(si =>
       si.katalogMode === "existing" && !katalogList.some(k => k.id === si.katalogId)
     );
@@ -288,7 +300,7 @@ export function useTugApprovals({
           const alreadyApplied = Number(existingRow._tug3Applied?.[effectKey]) || 0;
           const qtyToApply = Math.max(0, qtyMasuk - alreadyApplied);
           if (!qtyToApply) return;
-          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, sourceLot, kontrakRefs: [kontrakEntry], _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
+          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: fotoBarang, fotoKeseluruhan: fotoBarang, sourceLot, kontrakRefs: [kontrakEntry], _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
@@ -312,7 +324,7 @@ export function useTugApprovals({
           const alreadyApplied = Number(existingRow2._tug3Applied?.[effectKey]) || 0;
           const qtyToApply = Math.max(0, qtyMasuk - alreadyApplied);
           if (!qtyToApply) return;
-          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, sourceLot:sourceLot2, kontrakRefs: [kontrakEntry], _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
+          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: fotoBarang, fotoKeseluruhan: fotoBarang, sourceLot:sourceLot2, kontrakRefs: [kontrakEntry], _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
           touchedStockIds.add(existingRow2.id);
         } else {
           const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;

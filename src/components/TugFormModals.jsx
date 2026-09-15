@@ -727,7 +727,7 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                   </select>
                 </div>
                 <div style={{marginTop:8,maxWidth:220}}>
-                  <PhotoSlot label="Foto Barang" value={si.fotoBarang} onChange={img=>updateItemRow(idx,"fotoBarang",img)} onRemove={()=>updateItemRow(idx,"fotoBarang",null)} handleImg={handleImg} sty={sty} C={C}/>
+                  <PhotoSlot label="Foto Barang *" value={si.fotoBarang} onChange={img=>updateItemRow(idx,"fotoBarang",img)} onRemove={()=>updateItemRow(idx,"fotoBarang",null)} handleImg={handleImg} sty={sty} C={C}/>
                 </div>
               </div>
               );
