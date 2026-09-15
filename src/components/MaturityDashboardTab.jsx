@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
@@ -65,6 +65,54 @@ export function MaturityDashboardTab({
   MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, MATURITY_WORKFLOW_COLOR,
   users = [], uptList = [],
 }) {
+  const [maturityExit, setMaturityExit] = useState(null);
+  const [maturityDirty, setMaturityDirty] = useState(false);
+  const [maturityUploading, setMaturityUploading] = useState(false);
+  const maturityUploadingRef = useRef(false);
+  const lastDraftSavedAt = useRef(maturityDraftSavedAt);
+  useEffect(() => { maturityUploadingRef.current = maturityUploading; }, [maturityUploading]);
+  useEffect(() => {
+    if (maturityDraftSavedAt && maturityDraftSavedAt !== lastDraftSavedAt.current) setMaturityDirty(false);
+    lastDraftSavedAt.current = maturityDraftSavedAt;
+  }, [maturityDraftSavedAt]);
+  const [maturityExiting, setMaturityExiting] = useState(false);
+  const maturityUploadErrorRef = useRef("");
+  useEffect(() => {
+    setMaturityDirty(false);
+    setMaturityExit(null);
+    setMaturityUploading(false);
+    maturityUploadingRef.current = false;
+    maturityUploadErrorRef.current = "";
+  }, [maturityAuditModal?.id]);
+  useEffect(() => {
+    if (!maturityExit || maturityExiting) return;
+    const handleEscape = event => { if (event.key === "Escape") setMaturityExit(null); };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [maturityExit, maturityExiting]);
+  const requestMaturityExit = () => {
+    if (!maturityDirty && !maturityUploading && !maturityUploadErrorRef.current) { setMaturityAuditModal(null); return; }
+    setMaturityExit(true);
+  };
+  const confirmMaturityExit = async () => {
+    if (maturityExiting) return;
+    setMaturityExiting(true);
+    try {
+      while (maturityUploadingRef.current) await new Promise(resolve => setTimeout(resolve, 100));
+      if (maturityUploadErrorRef.current) {
+        setMaturityExit(null);
+        showToast?.(maturityUploadErrorRef.current, "error");
+        return;
+      }
+      const saved = await autosaveMaturityDraft?.();
+      if (saved === false) {
+        setMaturityExit(null);
+        showToast?.("Perubahan belum tersimpan. Periksa koneksi lalu coba lagi.", "error");
+        return;
+      }
+      setMaturityExit(null); setMaturityDirty(false); setMaturityAuditModal(null);
+    } finally { setMaturityExiting(false); }
+  };
             const [exportingSheetId, setExportingSheetId] = useState(null); // id audit yang lagi export ke Google Sheet
             const [exportingPptxId, setExportingPptxId] = useState(null); // id audit yang lagi export ke PPT
             const canExportSheet = hasRole(currentUser, "ADMIN", "TL") || canSwitchMaturityUpt;
@@ -628,7 +676,7 @@ export function MaturityDashboardTab({
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       {maturityAuditModal && (
-                        <button style={sty.btn("ghost")} onClick={() => setMaturityAuditModal(null)}>← Kembali ke Daftar</button>
+                        <button style={sty.btn("ghost")} onClick={requestMaturityExit} disabled={maturityExiting}>← Kembali ke Daftar</button>
                       )}
                     </div>
                   </div>
@@ -637,7 +685,6 @@ export function MaturityDashboardTab({
                     return (
                       <MaturityAuditEditor
                         maturityAuditModal={maturityAuditModal}
-                        setMaturityAuditModal={setMaturityAuditModal}
                         currentUser={currentUser}
                         hasRole={hasRole}
                         C={C}
@@ -647,6 +694,10 @@ export function MaturityDashboardTab({
                         setMaturityAuditForm={setMaturityAuditForm}
                         maturityAuditEvidence={maturityAuditEvidence}
                         setMaturityAuditEvidence={setMaturityAuditEvidence}
+                        onRequestExit={requestMaturityExit}
+                        onDirtyChange={setMaturityDirty}
+                        onUploadingChange={setMaturityUploading}
+                        onUploadErrorChange={message => { maturityUploadErrorRef.current = message; }}
                         maturityWarehouseType={maturityWarehouseType}
                         setMaturityWarehouseType={setMaturityWarehouseType}
                         maturityAspectReviews={maturityAspectReviews}
@@ -876,6 +927,16 @@ export function MaturityDashboardTab({
                   uptId={selectedMaturityUptId} users={users} uptList={uptList}
                   askConfirmDelete={askConfirmDelete} />
               )}
+              {maturityExit && <div role="dialog" aria-modal="true" aria-labelledby="maturity-exit-title" aria-describedby="maturity-exit-description" style={{ position:"fixed", inset:0, zIndex:1000, display:"grid", placeItems:"center", background:"rgba(15,23,42,.42)" }}>
+                <div style={{ background:C.surface, borderRadius:14, padding:24, width:"min(440px, calc(100% - 32px))", boxShadow:"0 16px 48px rgba(0,0,0,.24)" }}>
+                  <h3 id="maturity-exit-title" style={{ margin:"0 0 8px", color:C.text }}>Keluar dari Input?</h3>
+                  <p id="maturity-exit-description" style={{ margin:"0 0 20px", color:C.muted }}>Perubahan akan disimpan sebelum kembali ke daftar.</p>
+                  <div className="approval-actions">
+                    <button className="approval-btn--cancel" autoFocus onClick={()=>setMaturityExit(null)} disabled={maturityExiting}>Tidak, Tetap di Input</button>
+                    <button className="approval-btn--primary" onClick={confirmMaturityExit} disabled={maturityExiting}>{maturityExiting ? "Menyimpan..." : "Ya, Simpan & Keluar"}</button>
+                  </div>
+                </div>
+              </div>}
             </div>
             );
 }

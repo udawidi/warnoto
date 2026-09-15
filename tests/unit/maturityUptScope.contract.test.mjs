@@ -129,3 +129,21 @@ test("UI maturity discope pakai id UPT, bukan kecocokan nama", () => {
   assert.doesNotMatch(dashSource, /maturityAudits\.slice\(/);
   assert.doesNotMatch(dashSource, /maturityAudits\.filter\(a => a\.status === "FINAL"\)/);
 });
+
+test("keluar input maturity menunggu upload dan simpan draft", () => {
+  assert.match(dashSource, /if \(!maturityDirty && !maturityUploading && !maturityUploadErrorRef\.current\) \{ setMaturityAuditModal\(null\); return; \}/);
+  assert.match(dashSource, /while \(maturityUploadingRef\.current\)/);
+  assert.match(dashSource, /if \(maturityUploadErrorRef\.current\)[\s\S]{0,180}return;/);
+  assert.match(dashSource, /const saved = await autosaveMaturityDraft\?\.\(\);[\s\S]{0,180}if \(saved === false\)/);
+  assert.match(dashSource, /Tidak, Tetap di Input/);
+  assert.match(dashSource, /Ya, Simpan &amp; Keluar|Ya, Simpan & Keluar/);
+  assert.match(editorSource, /className="approval-btn--cancel" onClick=\{onRequestExit\}>Batal<\/button>/);
+  assert.doesNotMatch(dashSource, /Kembali ke Daftar<\/button>[\s\S]{0,20}setMaturityAuditModal\(null\)/);
+  assert.match(hookSource, /autosaveWaiters\.current\.push\(resolve\)/);
+  assert.match(hookSource, /assessmentsWithActive\(form, ev, warehouseType\)/);
+  assert.match(hookSource, /latestSnapshot !== savedSnapshot\) autosaveDirty\.current = true/);
+  assert.match(hookSource, /const result = await autosaveMaturityDraft\(\);[\s\S]{0,180}return result;/);
+  assert.match(hookSource, /if \(!autosaveDirty\.current\) setMaturityDraftSavedAt\(Date\.now\(\)\)/);
+  assert.match(editorSource, /setMaturityAuditEvidence\(previous =>/);
+  assert.match(editorSource, /disabled=\{maturityAuditSaving \|\| hasActiveUpload\}[\s\S]{0,120}Simpan Draft/);
+});

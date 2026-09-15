@@ -279,7 +279,6 @@ function PusatScoreControls({ C, aspectId, itemId, value, setAspectItemScore, di
 
 export function MaturityAuditEditor({
   maturityAuditModal,
-  setMaturityAuditModal,
   currentUser,
   hasRole,
   C,
@@ -307,13 +306,19 @@ export function MaturityAuditEditor({
   maturityAuditSaving,
   calculateItemLevel,
   selectedUpt,
-  askConfirmDelete
+  askConfirmDelete,
+  onRequestExit, onDirtyChange, onUploadingChange, onUploadErrorChange
 }) {
   const isTablet = useIsTablet();
   const [internalActiveAspectId, setInternalActiveAspectId] = useState(null);
   const [uploadingItems, setUploadingItems] = useState({});
+  const hasActiveUpload = Object.values(uploadingItems).some(Boolean);
   const [uploadError, setUploadError] = useState("");
   const [viewerFile, setViewerFile] = useState(null);
+  useEffect(() => {
+    onUploadingChange?.(hasActiveUpload);
+    return () => onUploadingChange?.(false);
+  }, [hasActiveUpload, onUploadingChange]);
   const activeAspectId = propsActiveAspectId ?? internalActiveAspectId;
   const setActiveAspectId = (id) => {
     setInternalActiveAspectId(id);
@@ -355,6 +360,7 @@ export function MaturityAuditEditor({
   useEffect(() => {
     if (autosaveFirstRun.current) { autosaveFirstRun.current = false; return; }
     if (skipAutosaveAfterWarehouseSwitch.current) { skipAutosaveAfterWarehouseSwitch.current = false; return; }
+    onDirtyChange?.(true);
     if (!canScoreUPT || !audit.id || !autosaveMaturityDraft) return;
     const timer = setTimeout(() => { autosaveMaturityDraft(); }, 1500);
     return () => clearTimeout(timer);
@@ -757,6 +763,7 @@ export function MaturityAuditEditor({
                                   if (files.length === 0) return;
 
                                   setUploadError("");
+                                  onUploadErrorChange?.("");
                                   setUploadingItems(prev => ({ ...prev, [eviItem.id]: true }));
                                   try {
                                     const uploadedFiles = [];
@@ -772,12 +779,15 @@ export function MaturityAuditEditor({
                                       }));
                                     }
                                     const newFiles = uploadedFiles.map(res => ({ ...res, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath }));
-                                    const cur = maturityAuditEvidence[activeAspect.id] || [];
-                                    const nextEvidence = { ...maturityAuditEvidence, [activeAspect.id]: [...cur, ...newFiles] };
-                                    setMaturityAuditEvidence(nextEvidence);
+                                    setMaturityAuditEvidence(previous => ({
+                                      ...previous,
+                                      [activeAspect.id]: [...(previous[activeAspect.id] || []), ...newFiles],
+                                    }));
                                   } catch (err) {
                                     console.warn("Upload evidence Maturity gagal:", err);
-                                    setUploadError(err?.message || "Upload evidence Maturity gagal.");
+                                    const message = err?.message || "Upload evidence Maturity gagal.";
+                                    setUploadError(message);
+                                    onUploadErrorChange?.(message);
                                   } finally {
                                     setUploadingItems(prev => ({ ...prev, [eviItem.id]: false }));
                                     e.target.value = "";
@@ -1372,12 +1382,12 @@ export function MaturityAuditEditor({
               {isEdit && audit.id && deleteMaturityAudit && hasRole(currentUser, "ADMIN", "SUPERADMIN", "TL") && (
                 <button className="approval-btn--danger" style={{ marginRight: "auto" }} onClick={() => deleteMaturityAudit(audit.id)}>Hapus Audit Ini</button>
               )}
-              <button className="approval-btn--cancel" onClick={() => setMaturityAuditModal(null)}>Batal</button>
+              <button className="approval-btn--cancel" onClick={onRequestExit}>Batal</button>
               {canScoreUPT && (
-                <button className="approval-btn--cancel" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
+                <button className="approval-btn--cancel" disabled={maturityAuditSaving || hasActiveUpload} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
               )}
               {canScoreUPT && (
-                <button className="approval-btn--primary" disabled={maturityAuditSaving} onClick={() => {
+                <button className="approval-btn--primary" disabled={maturityAuditSaving || hasActiveUpload} onClick={() => {
                   if (!allItemsChecked) {
                     askConfirmDelete?.({
                       title: "Masih Ada Item Belum Di-Check",

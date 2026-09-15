@@ -54,12 +54,17 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   const selectedMaturityUptId = uptIdByNama(selectedMaturityUpt);
   const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
   const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments: createMaturityWarehouseAssessments() });
+  const maturityAuditFormRef = useRef(maturityAuditForm);
+  maturityAuditFormRef.current = maturityAuditForm;
   const [maturityWarehouseType, setMaturityWarehouseTypeState] = useState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
+  const maturityWarehouseTypeRef = useRef(maturityWarehouseType);
+  maturityWarehouseTypeRef.current = maturityWarehouseType;
   const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
   const [maturityDraftSavedAt, setMaturityDraftSavedAt] = useState(null);
   // ponytail: in-flight/dirty flags via ref (bukan state) — tak perlu re-render, cukup gate concurrency
   const autosaveInFlight = useRef(false);
   const autosaveDirty = useRef(false);
+  const autosaveWaiters = useRef([]);
   const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // active warehouse: {aspekId: [{url,name,size,itemId,...}]}
   const maturityAuditEvidenceRef = useRef(maturityAuditEvidence);
   maturityAuditEvidenceRef.current = maturityAuditEvidence;
@@ -81,10 +86,10 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   function assessmentFor(type, source = maturityAuditForm) {
     return source?.warehouseAssessments?.[type] || { aspekScores: {}, evidence: {}, aiAnalysis: {} };
   }
-  function assessmentsWithActive(form = maturityAuditForm, evidence = maturityAuditEvidence) {
+  function assessmentsWithActive(form = maturityAuditForm, evidence = maturityAuditEvidence, warehouseType = maturityWarehouseType) {
     const next = { ...createMaturityWarehouseAssessments(), ...(form?.warehouseAssessments || {}) };
-    next[maturityWarehouseType] = {
-      ...assessmentFor(maturityWarehouseType, form),
+    next[warehouseType] = {
+      ...assessmentFor(warehouseType, form),
       aspekScores: form?.aspekScores || {}, evidence: evidence || {}, aiAnalysis: form?.aiAnalysis || {},
     };
     return next;
@@ -472,15 +477,22 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // pemanggil (komponen), bukan guardMaturityWrite, supaya kegagalan izin tak
   // memicu toast berulang saat mengetik.
   async function autosaveMaturityDraft(evidenceOverride) {
-    if (!maturityAuditModal?.id) return;
-    if (autosaveInFlight.current) { autosaveDirty.current = true; return; }
+    if (!maturityAuditModal?.id) return false;
+    if (autosaveInFlight.current) {
+      autosaveDirty.current = true;
+      return new Promise(resolve => autosaveWaiters.current.push(resolve));
+    }
     autosaveInFlight.current = true;
+    let currentResult = false;
     try {
       const ev = evidenceOverride || maturityAuditEvidenceRef.current;
       const audit = maturityAuditModal;
       const isExistingAudit = maturityAudits.some(item => item.id === audit.id);
       const { isNew: _isNew, ...auditData } = audit;
-      const warehouseAssessments = assessmentsWithActive(maturityAuditForm, ev);
+      const form = maturityAuditFormRef.current;
+      const warehouseType = maturityWarehouseTypeRef.current;
+      const warehouseAssessments = assessmentsWithActive(form, ev, warehouseType);
+      const savedSnapshot = JSON.stringify({ warehouseAssessments, catatanUPT: form.catatanUPT, catatanUIT: form.catatanUIT, catatanPusat: form.catatanPusat, fileUrl: form.fileUrl, fileNama: form.fileNama });
       const scoreResult = calcMaturityScore(warehouseAssessments);
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
@@ -500,11 +512,11 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         warehouseAssessments,
         aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores,
         evidence: warehouseAssessments.PERSEDIAAN.evidence,
-        catatanUPT: maturityAuditForm.catatanUPT,
-        catatanUIT: maturityAuditForm.catatanUIT,
-        catatanPusat: maturityAuditForm.catatanPusat,
-        fileUrl: maturityAuditForm.fileUrl,
-        fileNama: maturityAuditForm.fileNama,
+        catatanUPT: form.catatanUPT,
+        catatanUIT: form.catatanUIT,
+        catatanPusat: form.catatanPusat,
+        fileUrl: form.fileUrl,
+        fileNama: form.fileNama,
         aiAnalysis: warehouseAssessments.PERSEDIAAN.aiAnalysis || {},
         createdAt,
         createdBy: auditData.createdBy || currentUser.id,
@@ -513,14 +525,29 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         history: auditData.history || [], // tidak append — bukan aksi tahap
       };
       const saved = await upsertMaturityAudit(entry);
-      if (!saved) return; // diam-diam — retry alami di siklus autosave berikutnya
+      if (!saved) return false; // diam-diam — retry alami di siklus autosave berikutnya
       setMaturityAudits(current => isExistingAudit ? current.map(a => a.id === entry.id ? entry : a) : [entry, ...current]);
       // Sinkronkan id/isNew ke modal supaya autosave berikutnya jadi UPDATE, bukan CREATE (hindari duplikat 23505)
       setMaturityAuditModal(prev => (prev && prev.id === entry.id) ? { ...prev, ...entry, isNew: false } : prev);
-      setMaturityDraftSavedAt(Date.now());
+      const latestForm = maturityAuditFormRef.current;
+      const latestAssessments = assessmentsWithActive(latestForm, maturityAuditEvidenceRef.current, maturityWarehouseTypeRef.current);
+      const latestSnapshot = JSON.stringify({ warehouseAssessments: latestAssessments, catatanUPT: latestForm.catatanUPT, catatanUIT: latestForm.catatanUIT, catatanPusat: latestForm.catatanPusat, fileUrl: latestForm.fileUrl, fileNama: latestForm.fileNama });
+      if (latestSnapshot !== savedSnapshot) autosaveDirty.current = true;
+      // Jangan laporkan "tersimpan" sebelum perubahan yang datang saat request
+      // berjalan ikut disimpan oleh putaran berikutnya.
+      if (!autosaveDirty.current) setMaturityDraftSavedAt(Date.now());
+      currentResult = true;
+      return true;
     } finally {
       autosaveInFlight.current = false;
-      if (autosaveDirty.current) { autosaveDirty.current = false; autosaveMaturityDraft(); }
+      if (autosaveDirty.current) {
+        autosaveDirty.current = false;
+        const result = await autosaveMaturityDraft();
+        autosaveWaiters.current.splice(0).forEach(resolve => resolve(result));
+        return result;
+      } else {
+        autosaveWaiters.current.splice(0).forEach(resolve => resolve(currentResult));
+      }
     }
   }
   async function deleteMaturityAudit(id) {
