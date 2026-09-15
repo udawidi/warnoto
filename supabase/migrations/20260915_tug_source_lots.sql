@@ -98,7 +98,9 @@ begin
   if marker->>'idempotencyKey'=p_idempotency_key then return marker; end if;
   select count(distinct coalesce(value->>'supplier','') || '|' || coalesce(value->>'docNo','') || '|' || coalesce(value->>'noKontrak','')) into contract_count
     from jsonb_array_elements(case when jsonb_typeof(d->'kontrakRefs')='array' then d->'kontrakRefs' else '[]'::jsonb end);
-  return_count := case when jsonb_typeof(d->'_tug10Applied')='object' then jsonb_object_length(d->'_tug10Applied') else 0 end;
+  -- PostgreSQL 17 does not provide jsonb_object_length; count object keys instead.
+  return_count := case when jsonb_typeof(d->'_tug10Applied')='object'
+    then (select count(*) from jsonb_object_keys(d->'_tug10Applied')) else 0 end;
   if coalesce(d->'sourceLot'->>'status','') <> 'NEEDS_SOURCE_ALLOCATION'
      and not (contract_count > 1 or return_count > 1 or (contract_count > 0 and return_count > 0)
        or (return_count > 0 and coalesce(d->>'source','') not in ('TUG10','TUG10_RETURN','item','dupKatalog'))) then

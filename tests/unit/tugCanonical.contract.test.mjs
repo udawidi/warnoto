@@ -265,7 +265,7 @@ test("source-lot proposal keeps text stock IDs and blocks legacy output", () => 
   assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_MULTI_SOURCE_LOT/i);
   assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_NOT_REQUIRED/i);
   assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_INVALID_KIND/i);
-  assert.match(sourceLotMigration, /jsonb_object_length\(d->'_tug10Applied'\)/i);
+  assert.match(sourceLotMigration, /jsonb_object_keys\(d->'_tug10Applied'\)/i);
   assert.match(sourceLotMigration, /contract_count > 0 and return_count > 0/i);
   assert.match(sourceLotMigration, /value->>'supplier'.*value->>'docNo'.*value->>'noKontrak'/is);
 });
