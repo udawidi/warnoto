@@ -13,8 +13,8 @@ const SURFACES = [
   surface("stock", "stock", ["Data Stok"], ".stock-page"),
 
   ...[
-    ["capacity-summary", /Ringkasan Kapasitas/],
-    ["capacity-data", /Data Kapasitas Gudang/],
+    ["capacity-summary", /Ringkasan/],
+    ["capacity-data", /Data Kapasitas/],
     ["capacity-map", /Peta Utilisasi/],
   ].map(([slug, name]) => surface(slug, "kapasitasGudang", ["Kapasitas Gudang"], ".capacity-page", [{ role:"tab", name }])),
 

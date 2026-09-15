@@ -249,6 +249,7 @@ const WAREHOUSE_CAPACITY_FIELDS = [
   ["waktu_update", "waktuUpdate"],
   ["keterangan", "keterangan"],
   ["link_gudang", "linkGudang"],
+  ["foto_path", "fotoPath"],
   ["matched_gudang_id", "matchedGudangId"],
   ["mapping_status", "mappingStatus"],
   ["import_batch_id", "importBatchId"],
@@ -262,7 +263,12 @@ const WAREHOUSE_CAPACITY_NUM_NOTNULL = new Set([
 // KapasitasGudangTab/KapasitasGudangImportTab.
 function warehouseCapacityRowToItem(row) {
   const item = { id: row.id };
-  for (const [col, key] of WAREHOUSE_CAPACITY_FIELDS) item[key] = row[col];
+  for (const [col, key] of WAREHOUSE_CAPACITY_FIELDS) {
+    // foto_path was added by a proposed migration. Keep old self-host rows
+    // writable while that migration is waiting for approval.
+    if (col === "foto_path" && !Object.prototype.hasOwnProperty.call(row, col)) continue;
+    item[key] = row[col];
+  }
   // matchedLokasiId ada di object JS (selalu null, tidak pernah dibaca) tapi tidak
   // punya kolom DB — kembalikan null supaya bentuk object konsisten dengan komponen.
   item.matchedLokasiId = null;
@@ -274,6 +280,9 @@ function warehouseCapacityRowToItem(row) {
 function warehouseCapacityItemToRow(item) {
   const row = { id: item.id };
   for (const [col, key] of WAREHOUSE_CAPACITY_FIELDS) {
+    // undefined means the caller has no photo column yet; null is an explicit
+    // delete after the photo migration is available.
+    if (col === "foto_path" && !Object.prototype.hasOwnProperty.call(item, key)) continue;
     let v = item[key];
     if (WAREHOUSE_CAPACITY_NUM_NOTNULL.has(col)) {
       const n = Number(v);
@@ -318,6 +327,15 @@ export async function syncWarehouseCapacity(list) {
     const { error: delErr } = await supabase.from("warehouse_capacity").delete().in("id", toDelete);
     if (delErr) { console.error(`syncWarehouseCapacity delete: ${delErr.message}`, delErr); return false; }
   }
+  return true;
+}
+
+export async function syncWarehouseCapacityRows(rows) {
+  if (!supabase) return false;
+  const payload = rows.map(warehouseCapacityItemToRow).map(row => ({ ...row, updated_at: new Date().toISOString() }));
+  if (!payload.length) return true;
+  const { error } = await supabase.from("warehouse_capacity").upsert(payload, { onConflict: "id" });
+  if (error) { console.error(`syncWarehouseCapacityRows upsert: ${error.message}`, error); return false; }
   return true;
 }
 

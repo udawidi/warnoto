@@ -26,7 +26,7 @@ import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentSt
 import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, ATTB_FIELDS_BY_JENIS, ATTB_ALASAN_PENGHAPUSBUKUAN, ATTB_WAKTU_USULAN_OPTIONS, ATTB_CORE_FIELDS, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, parseAttbCurrency, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "./src/lib/attb.js";
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
-import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, deleteMasterTableRow, loadWarehouseCapacity, syncWarehouseCapacity, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, deleteMasterTableRow, loadWarehouseCapacity, syncWarehouseCapacity, syncWarehouseCapacityRows, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
 import { getDefaultMaturityAuditHistory, loadMaturityAssessments, loadMaturityAudits, loadMaturityAuditHistory, loadMaturity5SAssessments, upsertMaturityAssessments, upsertMaturityAudits } from "./src/lib/maturitySync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
@@ -1970,14 +1970,21 @@ export default function PLNWarehouse() {
   // (Fase A3, Kapasitas Gudang). `updated` sudah dihitung ulang (sisaLuasM2/
   // persentaseTerpakai/statusKapasitas) oleh KapasitasGudangTab sebelum dikirim ke sini.
   async function saveCapacityRow(updated) {
-    if (!hasRole(currentUser, "ADMIN","TL","SUPERADMIN")) { showToast("Tidak punya akses edit kapasitas.","error"); return; }
-    const newList = gudangCapacityList.map(r => r.id===updated.id ? updated : r);
+    if (!hasRole(currentUser, "ADMIN","TL","SUPERADMIN")) { showToast("Tidak punya akses edit kapasitas.","error"); return false; }
+    const ok = await syncWarehouseCapacityRows([updated]);
+    if (!ok) { showToast("Gagal menyimpan data kapasitas.", "error"); return false; }
+    const currentList = stateRef.current.gudangCapacityList || gudangCapacityList;
+    const newList = currentList.some(r => r.id === updated.id)
+      ? currentList.map(r => r.id===updated.id ? updated : r)
+      : [...currentList, updated];
+    stateRef.current.gudangCapacityList = newList;
     setGudangCapacityList(newList);
-    await saveToCloud({ gudangCapacityList: newList });
+    CLOUD.set("pln_gudang_capacity_v1", newList);
     logAudit(currentUser, "UPDATE", "warehouse_capacity", updated.id, {
-      luasLahanM2: updated.luasLahanM2, luasTerpakaiM2: updated.luasTerpakaiM2, statusKapasitas: updated.statusKapasitas,
+      ...updated,
     });
     showToast("Data kapasitas berhasil diperbarui.","success");
+    return true;
   }
 
   // Kelola Akun + ganti password mandiri → dipindah ke src/hooks/useAccountAdmin.js

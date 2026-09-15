@@ -592,10 +592,25 @@ create table if not exists warehouse_capacity (
   waktu_update text,
   keterangan text,
   link_gudang text,
+  foto_path text,
   matched_gudang_id text,
   mapping_status text not null default 'UNMATCHED' check (mapping_status in ('UNMATCHED','AUTO_SUGGESTED','CONFIRMED')),
   import_batch_id text,
-  updated_at timestamptz default now()
+  updated_at timestamptz default now(),
+  constraint warehouse_capacity_bounds_check check (
+    luas_lahan_m2 >= 0 and luas_terpakai_m2 >= 0
+    and luas_terpakai_m2 <= luas_lahan_m2 + 0.000001
+    and abs(sisa_luas_m2 - (luas_lahan_m2 - luas_terpakai_m2)) <= 0.000001
+    and persentase_terpakai between 0 and 1
+    and abs(persentase_terpakai - case when luas_lahan_m2 = 0 then 0 else luas_terpakai_m2 / luas_lahan_m2 end) <= 0.000001
+    and coalesce(persediaan_pct, 0) between 0 and 1
+    and coalesce(cadang_pct, 0) between 0 and 1
+    and coalesce(pre_memory_pct, 0) between 0 and 1
+    and coalesce(attb_pct, 0) between 0 and 1
+    and coalesce(lainnya_pct, 0) between 0 and 1
+    and coalesce(persediaan_pct, 0) + coalesce(cadang_pct, 0) + coalesce(pre_memory_pct, 0) + coalesce(attb_pct, 0) + coalesce(lainnya_pct, 0) <= 1.000001
+    and status_kapasitas = case when persentase_terpakai >= 0.90 then 'KRITIS' when persentase_terpakai >= 0.75 then 'WASPADA' else 'AMAN' end
+  )
 );
 
 alter table warehouse_capacity enable row level security;
@@ -603,6 +618,24 @@ drop policy if exists "Authenticated read warehouse_capacity" on warehouse_capac
 drop policy if exists "Authenticated write warehouse_capacity" on warehouse_capacity;
 create policy "Authenticated read warehouse_capacity" on warehouse_capacity for select using (auth.role() = 'authenticated');
 create policy "Authenticated write warehouse_capacity" on warehouse_capacity for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- Foto privat per record warehouse_capacity. URL signed dibuat aplikasi saat Detail dibuka.
+insert into storage.buckets (id, name, public)
+values ('warehouse-capacity-photos', 'warehouse-capacity-photos', false)
+on conflict (id) do update set public = false;
+drop policy if exists "Authenticated read warehouse capacity photos" on storage.objects;
+drop policy if exists "Capacity editors upload warehouse photos" on storage.objects;
+drop policy if exists "Capacity editors delete warehouse photos" on storage.objects;
+create policy "Authenticated read warehouse capacity photos" on storage.objects
+  for select using (bucket_id = 'warehouse-capacity-photos' and auth.role() = 'authenticated');
+create policy "Capacity editors upload warehouse photos" on storage.objects
+  for insert with check (bucket_id = 'warehouse-capacity-photos' and exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role in ('ADMIN', 'TL', 'SUPERADMIN')
+  ));
+create policy "Capacity editors delete warehouse photos" on storage.objects
+  for delete using (bucket_id = 'warehouse-capacity-photos' and exists (
+    select 1 from public.profiles p where p.id = auth.uid() and p.role in ('ADMIN', 'TL', 'SUPERADMIN')
+  ));
 
 -- ────────────────────────────────────────────────────────────
 -- 11. WAREHOUSE_CAPACITY_IMPORTS — riwayat batch import + antrian approval
