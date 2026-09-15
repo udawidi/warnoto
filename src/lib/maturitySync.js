@@ -1,5 +1,4 @@
 import { supabase } from "../supabaseClient.js";
-import { isDemoMode } from "./demo.js";
 
 // Maturity memakai tabel khusus, bukan `warnoto_state` atau pola master generik.
 // Kolom yang sering difilter disimpan typed; detail form tetap disimpan di `data`.
@@ -199,7 +198,6 @@ async function loadRows(table, mapRow) {
 }
 
 async function upsertRow(table, row) {
-  if (isDemoMode()) return true;
   if (!supabase) return false;
   const { error } = await supabase.from(table).upsert(row, { onConflict: "id" });
   if (error) {
@@ -210,7 +208,6 @@ async function upsertRow(table, row) {
 }
 
 async function upsertRows(table, rows) {
-  if (isDemoMode()) return true;
   if (!supabase || rows.length === 0) return rows.length === 0;
   const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
   if (error) {
@@ -224,7 +221,6 @@ async function upsertRows(table, rows) {
 // dengan 0 baris terhapus. Tanpa `.select()` penghapusan yang ditolak akan
 // terlihat sukses dan barisnya hilang dari UI padahal masih ada di server.
 async function deleteRow(table, id) {
-  if (isDemoMode()) return true;
   if (!supabase) return false;
   const { data, error } = await supabase.from(table).delete().eq("id", id).select("id");
   if (error) {
@@ -239,7 +235,6 @@ async function deleteRow(table, id) {
 }
 
 async function insertRow(table, row, mapRow) {
-  if (isDemoMode()) return mapRow(row);
   if (!supabase) return null;
   const { data, error } = await supabase.from(table).insert(row).select().single();
   if (error) {
@@ -292,7 +287,6 @@ export async function loadAspectReviews(auditId) {
 }
 
 export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, state, note, reviewedBy, finalScore }) {
-  if (isDemoMode()) return true;
   if (!supabase) return null;
   const row = {
     audit_id: auditId,

@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-14
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-15
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -60,6 +60,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Penilaian Maturity dual-gudang dan menu eviden selesai, belum push (2026-09-15).** Penilaian mengikuti PROGNOSA kolom V/X: Persediaan 28 aspek, ATTB/MRWI 8 aspek, bobot gabungan 75/25, dan nilai `N/A` tidak dinilai. Mode Demo TUG serta tombol Sinkronkan Drive yang tidak dipakai sudah dibersihkan. Validasi Form 5S selalu membaca Gudang Persediaan. Menu eviden memakai judul ringkas tanpa nomor ganda; 19 subpoin menjadi panduan manual “Yang harus diperiksa checker”, sedangkan 10 dokumen tambahan menjadi item/folder upload normal. Aspek 2.5 menerima jalur `ND reward` atau paket `ND kegiatan + foto`; alias legacy menjaga file/review lama tanpa memindahkan Drive. Panel PROGNOSA kolom J tidak ditampilkan ulang; Catatan Evidence kolom K dirender sebagai daftar bernomor/subhuruf. AI tetap metadata-only dan memasukkan kriteria manual ke konteks. Tidak ada perubahan schema, dependency, atau Edge Function. Verifikasi: unit test 256/256, build, E2E desktop+360 px 2/2, diff-check, graphify, dan localhost HTTP 200 lulus.
 
 - **Approval dan Laporan TUG dirapikan (2026-09-14).** Antrean approval tetap tanpa filter tambahan; filter jenis TUG hanya ada di Riwayat Approval dan mencakup TUG-3/4, TUG-5, TUG-7, TUG-8, TUG-9, serta TUG-10. Riwayat TL TUG-3/4 kembali terbaca dari field approval TL/Asman yang benar. Menu TUG > Laporan kini memiliki filter jenis TUG dengan hitungan sesuai hasil aktual serta chip Semua/SAP/Non-SAP; label status memakai bentuk rinci `SAP — Persediaan/Cadang/Pre Memory` atau `Non-SAP`. Akar bug `buildMutasiRows` diperbaiki agar `filter.docTypes` benar-benar authoritative. Verifikasi localhost, unit test 4/4, E2E fokus 1/1, build, dan diff-check lulus. Tanpa migration/dependensi baru.
 
@@ -575,12 +577,13 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-1. Smoke test production Riwayat Approval sebagai TL: pastikan TUG-3/4, TUG-8, TUG-9, dan TUG-10 muncul serta filter jenis hanya memengaruhi riwayat.
-2. Smoke test production TUG > Laporan: filter tiap jenis TUG dan SAP/Non-SAP; pastikan hitungan chip sama dengan jumlah hasil dan label status konsisten.
-3. Smoke test production TUG-10: Admin ajukan → TL perbaiki/simpan/teruskan → Asman final; pastikan stok tidak berubah di TL dan bertambah sekali di Asman. Refresh saat TUG-10 aktif harus tetap di TUG-10.
-4. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
-5. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
-6. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
+1. Review localhost di kantor sebelum push: cek menu Penilaian Maturity untuk Persediaan dan ATTB/MRWI, khususnya aspek 2.1, 2.5, 3.4, 3.6, 4.3, 5.1, dan 5.2; pastikan slot upload, panduan checker, Catatan Evidence, serta jalur alternatif 2.5 sesuai praktik audit.
+2. Smoke test production Riwayat Approval sebagai TL: pastikan TUG-3/4, TUG-8, TUG-9, dan TUG-10 muncul serta filter jenis hanya memengaruhi riwayat.
+3. Smoke test production TUG > Laporan: filter tiap jenis TUG dan SAP/Non-SAP; pastikan hitungan chip sama dengan jumlah hasil dan label status konsisten.
+4. Smoke test production TUG-10: Admin ajukan → TL perbaiki/simpan/teruskan → Asman final; pastikan stok tidak berubah di TL dan bertambah sekali di Asman. Refresh saat TUG-10 aktif harus tetap di TUG-10.
+5. Smoke test `pln.warnoto.com` setelah deploy: TL mengubah status TUG 2024, tautkan stok UPT+katalog sama, dan Pengadaan memetakan katalog 2026.
+6. Uji satu penerimaan parsial MTU 2026 melalui TUG-3/4 sampai final Asman; pastikan stok bertambah sekali dan sisa penerimaan berkurang.
+7. Petakan 37 record STR hanya setelah nomor katalog sumber tersedia; jangan menebak katalog.
 
 **VERIFIKASI BROWSER pasca-deploy fix material (2026-09-10):** pastikan TUG-3 `209`/`213` menampilkan nama material; Kartu Gantung `4191468` dapat dibuka dan halaman belakang menampilkan baseline Migrasi Data 101 BH; Data Stok RAK-G menampilkan tiga material TUG-10 `220` dengan qty 6/74/1.
 
@@ -684,5 +687,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-14 Codex: **Alur TUG-10 Admin→TL→Asman dan persistensi submenu TUG selesai; test/build lulus, siap dipush ke main.**
 - 2026-09-14 Codex: **Riwayat Approval dan filter Laporan TUG/SAP dirapikan; verifikasi localhost, test, dan build lulus.**
+- 2026-09-15 Codex: **Maturity dual-gudang dan redesign eviden/catatan selesai; test, build, E2E, dan localhost lulus; commit lokal menunggu review kantor sebelum push.**

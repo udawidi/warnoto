@@ -1596,9 +1596,6 @@
   .dashboard-default-saldo > div > div { padding: 10px !important; }
 }
 
-/* Mode Demo per-tab (TUG trial) — lihat src/lib/demo.js. */
-.demo-banner { display: flex; align-items: center; gap: 10px; position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 9999; padding: 8px 14px; border-radius: 999px; background: #b45309; color: #fff; font-size: 12px; font-weight: 750; box-shadow: 0 10px 26px -12px rgba(180,83,9,.7); }
-.demo-banner button { border: 1px solid rgba(255,255,255,.6); border-radius: 999px; padding: 4px 12px; background: rgba(255,255,255,.15); color: #fff; font-size: 12px; font-weight: 750; cursor: pointer; }
 
 /* Targeted phone layout for legacy inline-style surfaces. Keep tables locally scrollable. */
 @media (max-width: 768px) {
@@ -1682,17 +1679,6 @@
   .tug15-export-actions button { width: 100%; min-height: 44px; white-space: normal; line-height: 1.25; }
   .tug15-export-actions button:first-child { grid-column: 1/-1; }
 
-  .demo-banner {
-    right: 12px;
-    bottom: max(12px,env(safe-area-inset-bottom));
-    left: 12px;
-    width: auto;
-    max-width: none;
-    justify-content: space-between;
-    transform: none;
-    border-radius: 14px;
-  }
-  .demo-banner button { min-height: 44px; flex: 0 0 auto; }
 }
 
 /* Mobile information architecture: dense desktop tables become readable cards. */

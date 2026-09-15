@@ -3,18 +3,20 @@ import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
+import { normalizeMaturityAudit, countCompletedEvidenceParents } from "../lib/maturityWarehouse.js";
 
 // Progres kelengkapan evidence audit — nol fetch Drive, murni hitung dari
 // audit.evidence yg sudah ter-load (pola sama dgn MaturityAuditSystem.jsx:175).
 function auditProgress(audit) {
-  const evidence = audit?.evidence || {};
+  const normalized = normalizeMaturityAudit(audit);
+  const evidence = normalized?.warehouseAssessments?.PERSEDIAAN?.evidence || normalized?.evidence || {};
   let filledItems = 0, totalItems = 0;
   const aspekLengkap = [], aspekKurang = [];
   const perCategory = AUDIT_CATEGORIES.map(cat => ({ label: cat.label, filled: 0, total: 0 }));
   const catIndex = Object.fromEntries(AUDIT_CATEGORIES.map((c, i) => [c.id, i]));
   AUDIT_ASPECTS.forEach(a => {
     const req = a.requiredEvidence.length;
-    const got = (evidence[a.id] || []).length;
+    const got = countCompletedEvidenceParents(a, evidence[a.id] || []);
     const min = Math.min(got, req);
     filledItems += min;
     totalItems += req;
@@ -50,7 +52,8 @@ export function MaturityDashboardTab({
   auditListPage, setAuditListPage,
   maturityAuditForm, setMaturityAuditForm,
   maturityAuditEvidence, setMaturityAuditEvidence,
-  maturityAspectReviews, setAspectReview,
+  maturityWarehouseType, setMaturityWarehouseType,
+    maturityAspectReviews, setAspectReview, setAspectItemScore,
   expandedAspek, setExpandedAspek,
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
@@ -98,8 +101,9 @@ export function MaturityDashboardTab({
               : (row.upt || "UPT Surabaya") === selectedMaturityUpt;
             const uptAudits = maturityAudits.filter(isSelectedUpt);
             const latestAudit = uptAudits[0] || null;
-            const calcResult = latestAudit ? calcMaturityScore(latestAudit.aspekScores || {}, latestAudit.evidence || {}, latestAudit.aiAnalysis || {}) : { itemA: 0, itemB: 0, total: 0, level: 1 };
-            const evidenceCount = latestAudit?.evidence ? Object.values(latestAudit.evidence).flat().length : 0;
+            const normalizedLatest = latestAudit ? normalizeMaturityAudit(latestAudit) : null;
+            const calcResult = normalizedLatest ? calcMaturityScore(normalizedLatest.warehouseAssessments || {}) : { itemA: 0, itemB: 0, total: 0, level: 1 };
+            const evidenceCount = normalizedLatest?.warehouseAssessments ? Object.values(normalizedLatest.warehouseAssessments).flatMap(a => Object.values(a.evidence || {})).flat().length : 0;
             const statusLabel = latestAudit ? (MATURITY_WORKFLOW_LABEL[latestAudit.status] || latestAudit.status) : "Belum Ada Audit";
             const statusColor = latestAudit ? (MATURITY_WORKFLOW_COLOR[latestAudit.status] || "#64748b") : "#64748b";
             const uptAuditHistory = maturityAuditHistory
@@ -139,6 +143,11 @@ export function MaturityDashboardTab({
                   <div style={{ fontSize: 13, color: "rgba(219,234,254,.82)", fontWeight: 500, marginTop: 4 }}>
                     Terakhir diperbarui: {latestAudit ? fmtDate(latestAudit.updatedAt || latestAudit.createdAt) : "—"}
                   </div>
+                  {latestAudit && calcResult.warehouseScores && <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 8, color: "#dbeafe", fontSize: 12, fontWeight: 700 }}>
+                    <span>Persediaan {calcResult.warehouseScores.persediaan.score.toFixed(2)}</span>
+                    <span>ATTB/MRWI {calcResult.warehouseScores.attbMrwi.score.toFixed(2)}</span>
+                    <span>Gabungan {calcResult.total.toFixed(2)}</span>
+                  </div>}
                 </div>
 
                 <div style={{
@@ -638,8 +647,11 @@ export function MaturityDashboardTab({
                         setMaturityAuditForm={setMaturityAuditForm}
                         maturityAuditEvidence={maturityAuditEvidence}
                         setMaturityAuditEvidence={setMaturityAuditEvidence}
+                        maturityWarehouseType={maturityWarehouseType}
+                        setMaturityWarehouseType={setMaturityWarehouseType}
                         maturityAspectReviews={maturityAspectReviews}
                         setAspectReview={setAspectReview}
+                        setAspectItemScore={setAspectItemScore}
                         expandedAspek={expandedAspek}
                         setExpandedAspek={setExpandedAspek}
                         activeAspectId={activeAspectId}

@@ -8,12 +8,13 @@ function djb2(str) {
   return h.toString(36);
 }
 
-export function hashAspectSnapshot(evidenceList, scoreObj) {
+export function hashAspectSnapshot(evidenceList, scoreObj, context = {}) {
   const evPart = (evidenceList || [])
     .map(e => `${e.id}:${e.name || ""}:${e.size || 0}`)
     .sort()
     .join("|");
-  return djb2(`${evPart}::${scoreObj?.upt || 0}`);
+  const manualCriteria = JSON.stringify(context.manualCriteria || []).slice(0, 4000);
+  return djb2(`${evPart}::${scoreObj?.upt || 0}::${manualCriteria}`);
 }
 
 const FALLBACK_RESULT = {
@@ -44,9 +45,10 @@ export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { on
         messages: [
           { role: "system", content: "Kamu adalah auditor maturity gudang PLN yang objektif. Nilai HANYA berdasarkan KELENGKAPAN & kesesuaian NAMA dokumen evidence yang terupload dibanding evidence wajib & rubrik level — kamu TIDAK membaca isi dokumen. Karena tak bisa melihat isi, kamu DILARANG menyatakan ada/tidaknya tanda tangan, stempel, tanggal, atau isi dokumen — jangan pernah bilang dokumen 'tidak bertanda tangan' maupun 'sudah bertanda tangan'. Jawab HANYA JSON valid, tanpa teks lain." },
           { role: "user", content: `Aspek: ${aspect.id} ${aspect.title}
-Evidence wajib: ${JSON.stringify(aspect.requiredEvidence)}
+Evidence wajib dari PROGNOSA kolom J: ${JSON.stringify(aspect.sourceEvidence || aspect.requiredEvidence)}
 Rubrik level:\n${aspect.levels.join(" ").slice(0, 800)}
-Catatan: ${JSON.stringify(aspect.catatan)}
+Catatan evidence dari PROGNOSA kolom K: ${JSON.stringify(aspect.sourceNote ?? aspect.catatan)}
+Kriteria isi yang wajib diverifikasi checker secara manual (AI tidak boleh mengklaim terpenuhi): ${JSON.stringify(aspect.requiredEvidence.flatMap(item => [...(item.manualCriteria || []), ...(item.displayDetails || [])].map(label => ({ item: item.label, label }))))}
 Skor UPT saat ini: ${scoreObj?.upt || 0}
 Nama evidence yang terupload (isi TIDAK dibaca, nilai dari kelengkapan & nama saja): ${namaEvidence.length ? JSON.stringify(namaEvidence) : "(tidak ada evidence terupload)"}
 

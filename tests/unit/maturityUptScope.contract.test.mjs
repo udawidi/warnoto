@@ -44,10 +44,9 @@ test("delete maturity yang ditolak RLS tidak dianggap sukses", () => {
   assert.match(syncSource, /if \(!data \|\| data\.length === 0\)[\s\S]{0,160}return false/);
 });
 
-test("tulis maturity diblokir di mode demo dan digate per jenjang", () => {
+test("tulis maturity tetap digate per jenjang setelah mode demo dihapus", () => {
   const guard = hookSource.slice(hookSource.indexOf("function guardMaturityWrite("), hookSource.indexOf("async function saveMaturityAssessment("));
-  // Demo paling depan, sebelum pengecekan role apa pun.
-  assert.ok(guard.indexOf("isDemoMode()") < guard.indexOf("REVIEW_UIT"));
+  assert.ok(guard.indexOf("status === \"REVIEW_UIT\"") >= 0);
   // hasRole() dipakai di kedua jenjang supaya SUPERADMIN ikut lolos — sama seperti
   // can_review_maturity_uit()/can_review_maturity_pusat() yang juga memuat
   // SUPERADMIN (audit macet di meja UIT/Pusat harus bisa ditolong).

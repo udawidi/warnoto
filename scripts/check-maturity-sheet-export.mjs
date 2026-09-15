@@ -11,7 +11,10 @@ const templateBytes = new Uint8Array(readFileSync(templatePath));
 const templateStylesLen = unzipSync(templateBytes)["xl/styles.xml"].length;
 
 const { base64, filename } = buildMaturitySheetFromBytes(templateBytes, {
-  scoresByAspek: { "1.1": 4, "3.4": 3 },
+  scoresByWarehouse: {
+    PERSEDIAAN: { "1.1": 4, "3.4": 3 },
+    ATTB_MRWI: { "3.4": 2 },
+  },
   tahun: 2026,
   namaUpt: "UPT Surabaya",
 });
@@ -43,7 +46,7 @@ assert.notEqual(ws["Y4"]?.t, "n", "1.1 col24 tidak ada di template, jangan dibua
 
 // Sel nilai ganda (3.4 -> dua tipe gudang -> col23(X) & col24(Y))
 assert.equal(v("X24"), 3, "3.4 col23 harus terisi skor 3");
-assert.equal(v("Y24"), 3, "3.4 col24 harus terisi skor sama (3)");
+assert.equal(v("Y24"), 2, "3.4 col24 harus terisi skor ATTB/MRWI yang terpisah (2)");
 
 // Aspek tanpa skor (1.2 / row5) dibiarkan apa adanya (nilai awal template = 0)
 assert.equal(v("X5"), 0, "1.2 tanpa skor harus tetap nilai template, bukan ditulis ulang");

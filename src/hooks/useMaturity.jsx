@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { uid, fmtDateOnly } from "../lib/utils.js";
 import { CLOUD } from "../lib/cloud.js";
-import { isDemoMode } from "../lib/demo.js";
 import { logAudit } from "../lib/audit.js";
 import { hasRole } from "../lib/roles.js";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
@@ -13,6 +12,13 @@ import {
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
 import { exportMaturitySheet } from "../lib/maturityDrive.js";
+import {
+  MATURITY_WAREHOUSE_TYPES, MATURITY_SHARED_ASPECTS,
+  createMaturityWarehouseAssessments, normalizeMaturityAudit,
+  calculateMaturityDualScore, maturityAspectKey, isMaturityAspectApplicable,
+  countCompletedEvidenceParents, countRequiredEvidenceUnits,
+  canonicalMaturityItemId, maturityItemIdsForReview, selectedMaturityRequiredItems,
+} from "../lib/maturityWarehouse.js";
 
 // Sama persis dengan readCachedList() di App.jsx — duplikasi 1 baris di sini
 // lebih murah & lebih aman (hindari circular import App.jsx <-> hook) daripada
@@ -47,13 +53,14 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Master UPT bisa berbeda ejaan dengan nama yang tersimpan di baris audit.
   const selectedMaturityUptId = uptIdByNama(selectedMaturityUpt);
   const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
-  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{} });
+  const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments: createMaturityWarehouseAssessments() });
+  const [maturityWarehouseType, setMaturityWarehouseTypeState] = useState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
   const [maturityAuditSaving, setMaturityAuditSaving] = useState(false);
   const [maturityDraftSavedAt, setMaturityDraftSavedAt] = useState(null);
   // ponytail: in-flight/dirty flags via ref (bukan state) — tak perlu re-render, cukup gate concurrency
   const autosaveInFlight = useRef(false);
   const autosaveDirty = useRef(false);
-  const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // {aspekId: [{url,name,size,itemId,...}]}
+  const [maturityAuditEvidence, setMaturityAuditEvidence] = useState({}); // active warehouse: {aspekId: [{url,name,size,itemId,...}]}
   const maturityAuditEvidenceRef = useRef(maturityAuditEvidence);
   maturityAuditEvidenceRef.current = maturityAuditEvidence;
   // Review paralel per-aspek (UIT Check/Reject sebelum UPT kirim semua aspek):
@@ -71,6 +78,28 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     return (uptList.length ? uptList : DEFAULT_UPT_LIST).find(item => item.nama === nama)?.id || "";
   }
 
+  function assessmentFor(type, source = maturityAuditForm) {
+    return source?.warehouseAssessments?.[type] || { aspekScores: {}, evidence: {}, aiAnalysis: {} };
+  }
+  function assessmentsWithActive(form = maturityAuditForm, evidence = maturityAuditEvidence) {
+    const next = { ...createMaturityWarehouseAssessments(), ...(form?.warehouseAssessments || {}) };
+    next[maturityWarehouseType] = {
+      ...assessmentFor(maturityWarehouseType, form),
+      aspekScores: form?.aspekScores || {}, evidence: evidence || {}, aiAnalysis: form?.aiAnalysis || {},
+    };
+    return next;
+  }
+  function setMaturityWarehouseType(type) {
+    if (!Object.values(MATURITY_WAREHOUSE_TYPES).includes(type) || type === maturityWarehouseType) return;
+    const nextAssessments = assessmentsWithActive();
+    const target = nextAssessments[type] || { aspekScores: {}, evidence: {}, aiAnalysis: {} };
+    setMaturityWarehouseTypeState(type);
+    setMaturityAuditForm(form => ({ ...form, warehouseAssessments: nextAssessments, aspekScores: target.aspekScores || {}, aiAnalysis: target.aiAnalysis || {} }));
+    setMaturityAuditEvidence(target.evidence || {});
+    setActiveAspectId(null);
+    setAspectPage(1);
+  }
+
   // Gate tulis Maturity — cerminan persis policy "Maturity audits update by stage":
   // pelaku ditentukan oleh status BARIS SAAT INI, bukan status tujuan.
   //   DRAFT/SELF_ASSESSMENT/REVISION → ADMIN/TL UPT-nya (can_write_maturity_upt)
@@ -82,7 +111,6 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // "server tidak dapat dihubungi".
   // `status` null = aksi di luar jenjang audit (asesmen/5S/hapus) → tetap ADMIN/TL.
   function guardMaturityWrite(aksi, status = null) {
-    if (isDemoMode()) { showToast(`Mode demo: ${aksi} tidak disimpan ke server.`, "error"); return false; }
     if (status === "REVIEW_UIT") {
       if (hasRole(currentUser, "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT")) return true; // hasRole = SUPERADMIN ikut lolos (lihat can_review_maturity_uit)
       showToast(`Audit ada di tahap Review UIT — hanya Admin / Asman / Manager Logistik UIT yang boleh ${aksi}.`, "error");
@@ -213,10 +241,17 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       showToast(`⚠️ UPT ini sudah punya audit bulan ini (dibuat ${fmtDateOnly(existingAudit.createdAt)}). Audit baru cuma bisa dibuat 1x per bulan.`, "error");
       return;
     }
-    const scores = {};
-    AUDIT_ASPECTS.forEach(a => { scores[a.id] = { upt:0, uit:0, pusat:0 }; });
-    setMaturityAuditForm({ aspekScores: scores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{} });
-    setMaturityAuditEvidence(mergeCurrentMonth5SEvidence({}, selectedMaturityUpt));
+    const warehouseAssessments = createMaturityWarehouseAssessments();
+    Object.keys(warehouseAssessments).forEach(type => AUDIT_ASPECTS.forEach(a => {
+      if (type === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN || ["3.4", "3.5", "3.6", "3.7", "4.3", "4.4", "5.2", "5.4"].includes(a.id)) {
+        warehouseAssessments[type].aspekScores[a.id] = { upt:0, uit:0, pusat:0 };
+      }
+    }));
+    setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
+    const evidence = mergeCurrentMonth5SEvidence({}, selectedMaturityUpt);
+    warehouseAssessments.PERSEDIAAN.evidence = evidence;
+    setMaturityAuditForm({ aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments });
+    setMaturityAuditEvidence(evidence);
     setMaturityAspectReviews({}); // audit baru — belum ada review tersimpan
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
     setActiveAspectId(null);
@@ -228,8 +263,14 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setMaturitySubTab("pelaksanaan");
   }
   function openMaturityAudit(audit) {
-    setMaturityAuditForm({ aspekScores: JSON.parse(JSON.stringify(audit.aspekScores || {})), catatanUPT: audit.catatanUPT || "", catatanUIT: audit.catatanUIT || "", catatanPusat: audit.catatanPusat || "", fileUrl: audit.fileUrl || "", fileNama: audit.fileNama || "", aiAnalysis: JSON.parse(JSON.stringify(audit.aiAnalysis || {})) });
-    setMaturityAuditEvidence(mergeCurrentMonth5SEvidence(JSON.parse(JSON.stringify(audit.evidence || {})), audit.upt));
+    const normalized = normalizeMaturityAudit(audit);
+    const assessments = JSON.parse(JSON.stringify(normalized.warehouseAssessments || createMaturityWarehouseAssessments()));
+    const active = assessments.PERSEDIAAN || { aspekScores: {}, evidence: {}, aiAnalysis: {} };
+    const evidence = mergeCurrentMonth5SEvidence(active.evidence || {}, normalized.upt);
+    active.evidence = evidence;
+    setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
+    setMaturityAuditForm({ aspekScores: active.aspekScores || {}, catatanUPT: normalized.catatanUPT || "", catatanUIT: normalized.catatanUIT || "", catatanPusat: normalized.catatanPusat || "", fileUrl: normalized.fileUrl || "", fileNama: normalized.fileNama || "", aiAnalysis: active.aiAnalysis || {}, warehouseAssessments: assessments });
+    setMaturityAuditEvidence(evidence);
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
     setActiveAspectId(null);
     setAspectPage(1);
@@ -244,34 +285,39 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // UIT/Pusat Check/Reject satu ITEM evidence (bukan seluruh aspek) — paralel
   // dgn UPT yang masih mengunggah item lain (tabel terpisah, tidak menyentuh
   // baris maturity_audits). Key state lokal: "aspectId::itemId".
-  async function setAspectReview(aspectId, itemId, state, note = "") {
+  async function setAspectReview(aspectId, itemId, state, note = "", warehouseType = maturityWarehouseType) {
     const audit = maturityAuditModal;
     if (!audit?.id) return;
     const uptName = audit.upt || selectedMaturityUpt || "UPT Surabaya";
     const uptId = audit.uptId || uptIdByNama(uptName) || null;
     const reviewedBy = currentUser?.name || currentUser?.username || currentUser?.id || null;
-    const saved = await upsertAspectReview({ auditId: audit.id, aspectId, itemId, uptId, state, note, reviewedBy });
+    const typedAspectId = maturityAspectKey(warehouseType, aspectId);
+    const saved = await upsertAspectReview({ auditId: audit.id, aspectId: typedAspectId, itemId, uptId, state, note, reviewedBy });
     if (!saved) {
       showToast("Review item tidak tersimpan karena server tidak dapat dihubungi.", "error");
       return;
     }
-    setMaturityAspectReviews(current => ({ ...current, [`${aspectId}::${itemId}`]: saved }));
-    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${aspectId}:${itemId}`, { state });
+    setMaturityAspectReviews(current => ({ ...current, [`${typedAspectId}::${itemId}`]: saved }));
+    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${typedAspectId}:${itemId}`, { state });
   }
   // Nilai final Pusat 1 ITEM evidence (1-5) — merge dengan review existing
   // (state/note UIT tidak boleh terhapus oleh upsert ini). Setelah tersimpan,
   // agregasi ke aspekScores[aspek].pusat = mean(finalScore item non-auto aspek
   // itu), hanya kalau SEMUA item non-auto aspek sudah dinilai (else biarkan
   // 0 → calcMaturityScore jatuh ke fallback uit/upt/rasio).
-  async function setAspectItemScore(aspectId, itemId, score) {
+  async function setAspectItemScore(aspectId, itemId, score, warehouseType = maturityWarehouseType) {
     const audit = maturityAuditModal;
     if (!audit?.id) return;
-    const key = `${aspectId}::${itemId}`;
-    const existing = maturityAspectReviews[key] || {};
+    const typedAspectId = maturityAspectKey(warehouseType, aspectId);
+    const key = `${typedAspectId}::${itemId}`;
+    const reviewIds = maturityItemIdsForReview(itemId);
+    const existing = reviewIds.map(id => maturityAspectReviews[`${typedAspectId}::${id}`]).find(Boolean)
+      || (warehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewIds.map(id => maturityAspectReviews[`${aspectId}::${id}`]).find(Boolean) : undefined)
+      || {};
     const uptName = audit.upt || selectedMaturityUpt || "UPT Surabaya";
     const uptId = audit.uptId || uptIdByNama(uptName) || null;
     const reviewedBy = existing.reviewedBy || currentUser?.name || currentUser?.username || currentUser?.id || null;
-    const saved = await upsertAspectReview({ auditId: audit.id, aspectId, itemId, uptId, state: existing.state || "PENDING", note: existing.note || "", reviewedBy, finalScore: score });
+    const saved = await upsertAspectReview({ auditId: audit.id, aspectId: typedAspectId, itemId, uptId, state: existing.state || "PENDING", note: existing.note || "", reviewedBy, finalScore: score });
     if (!saved) {
       showToast("Nilai item tidak tersimpan karena server tidak dapat dihubungi.", "error");
       return;
@@ -281,22 +327,26 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     const aspect = AUDIT_ASPECTS.find(a => a.id === aspectId);
     if (aspect) {
       const evidence = maturityAuditEvidenceRef.current;
-      const scorable = aspect.requiredEvidence.filter(item => {
-        const files = (evidence[aspectId] || []).filter(f => f.itemId === item.id);
+      const scorable = selectedMaturityRequiredItems(aspect, evidence[aspectId] || []).filter(item => {
+        const files = (evidence[aspectId] || []).filter(f => canonicalMaturityItemId(f.itemId) === item.id);
         return !(files.length > 0 && files.every(f => f.auto === true)); // exclude item auto-filled Form 5S
       });
-      const scores = scorable.map(item => nextReviews[`${aspectId}::${item.id}`]?.finalScore);
+      const scores = scorable.map(item => nextReviews[`${typedAspectId}::${item.id}`]?.finalScore);
       if (scorable.length > 0 && scores.every(s => s != null)) {
         const mean = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
         setMaturityAuditForm(f => ({ ...f, aspekScores: { ...f.aspekScores, [aspectId]: { ...(f.aspekScores[aspectId] || {}), pusat: mean } } }));
       }
     }
-    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${aspectId}:${itemId}`, { finalScore: score });
+    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${typedAspectId}:${itemId}`, { finalScore: score });
   }
   // Skor akhir: getScore pilih pusat>uit>upt(rasio bukti), rata 5 kategori,
   // A = avg(5 kategori)*0.75 + B = avg(sarana_prasarana,k3,teknologi)*0.25;
   // level dibucket dari threshold 1.5 / 2.5 / 3.5 / 4.5.
   function calcMaturityScore(scores = {}, evidence = {}, aiAnalysis = {}) {
+    if (scores?.PERSEDIAAN || scores?.ATTB_MRWI) {
+      const dual = calculateMaturityDualScore(AUDIT_ASPECTS, scores, calculateItemLevel);
+      return { c1: dual.persediaan.categories.tata_kelola || 0, c2: dual.persediaan.categories.tenaga_kerja || 0, c3: dual.persediaan.categories.sarana_prasarana || 0, c4: dual.persediaan.categories.k3 || 0, c5: dual.persediaan.categories.teknologi || 0, itemA: dual.itemA, itemB: dual.itemB, total: dual.total, score: dual.score, level: dual.level, aspectScores: dual.persediaan.aspectScores, warehouseScores: dual };
+    }
     const getAspectScore = (a) => {
       const centerscore = scores[a.id]?.pusat || 0;
       if (centerscore > 0) return centerscore;
@@ -306,8 +356,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       if (uptscore > 0) return uptscore;
       const aiLevel = Math.round(aiAnalysis?.[a.id]?.result?.estimasiLevel || 0);
       if (aiLevel >= 1 && aiLevel <= 5) return aiLevel;
-      const uploadedCount = (evidence[a.id] || []).length;
-      return calculateItemLevel(uploadedCount, a.requiredEvidence.length);
+      const uploadedCount = countCompletedEvidenceParents(a, evidence[a.id] || []);
+      return calculateItemLevel(uploadedCount, countRequiredEvidenceUnits(a));
     };
     const getCatAvg = (catId) => {
       const catAspects = AUDIT_ASPECTS.filter(a => a.category === catId);
@@ -348,8 +398,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       // canonical agar audit baru tetap masuk sebagai CREATE, bukan UPDATE.
       const isExistingAudit = maturityAudits.some(item => item.id === audit?.id);
       const { isNew: _isNew, ...auditData } = audit || {};
-      const scores = maturityAuditForm.aspekScores;
-      const scoreResult = calcMaturityScore(scores, maturityAuditEvidence, maturityAuditForm.aiAnalysis);
+      const warehouseAssessments = assessmentsWithActive();
+      const scoreResult = calcMaturityScore(warehouseAssessments);
       const level = scoreResult.level;
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
@@ -365,14 +415,16 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         level,
         score: Number(scoreResult.total.toFixed(2)),
         periodKey,
-        aspekScores: scores,
-        evidence: maturityAuditEvidence,
+        formatVersion: 2,
+        warehouseAssessments,
+        aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores,
+        evidence: warehouseAssessments.PERSEDIAAN.evidence,
         catatanUPT: maturityAuditForm.catatanUPT,
         catatanUIT: maturityAuditForm.catatanUIT,
         catatanPusat: maturityAuditForm.catatanPusat,
         fileUrl: maturityAuditForm.fileUrl,
         fileNama: maturityAuditForm.fileNama,
-        aiAnalysis: maturityAuditForm.aiAnalysis || {},
+        aiAnalysis: warehouseAssessments.PERSEDIAAN.aiAnalysis || {},
         createdAt,
         createdBy: auditData.createdBy || currentUser.id,
         updatedAt: Date.now(),
@@ -428,8 +480,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const audit = maturityAuditModal;
       const isExistingAudit = maturityAudits.some(item => item.id === audit.id);
       const { isNew: _isNew, ...auditData } = audit;
-      const scores = maturityAuditForm.aspekScores;
-      const scoreResult = calcMaturityScore(scores, ev, maturityAuditForm.aiAnalysis);
+      const warehouseAssessments = assessmentsWithActive(maturityAuditForm, ev);
+      const scoreResult = calcMaturityScore(warehouseAssessments);
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
       const periodKey = auditData.periodKey || `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
@@ -444,14 +496,16 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         level: scoreResult.level,
         score: Number(scoreResult.total.toFixed(2)),
         periodKey,
-        aspekScores: scores,
-        evidence: ev,
+        formatVersion: 2,
+        warehouseAssessments,
+        aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores,
+        evidence: warehouseAssessments.PERSEDIAAN.evidence,
         catatanUPT: maturityAuditForm.catatanUPT,
         catatanUIT: maturityAuditForm.catatanUIT,
         catatanPusat: maturityAuditForm.catatanPusat,
         fileUrl: maturityAuditForm.fileUrl,
         fileNama: maturityAuditForm.fileNama,
-        aiAnalysis: maturityAuditForm.aiAnalysis || {},
+        aiAnalysis: warehouseAssessments.PERSEDIAAN.aiAnalysis || {},
         createdAt,
         createdBy: auditData.createdBy || currentUser.id,
         updatedAt: Date.now(),
@@ -503,14 +557,15 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   }
   async function exportMaturityAuditExcel(audit) {
     const XLSX = await import("xlsx");
-    const rows = [["Aspek ID", "Deskripsi", "Skor UPT", "Skor UIT", "Skor Pusat", "Evidence"]];
-    AUDIT_ASPECTS.forEach(a => {
-      const s = audit.aspekScores?.[a.id] || {};
-      const evi = audit.evidence?.[a.id] || [];
-      const uploadedCount = evi.length;
-      const uptScore = calculateItemLevel(uploadedCount, a.requiredEvidence.length);
-      rows.push([a.id, a.title, uptScore, s.uit || 0, s.pusat || 0, evi.map(e => e.name).join("; ") || "—"]);
-    });
+    const normalized = normalizeMaturityAudit(audit);
+    const assessments = normalized.warehouseAssessments || createMaturityWarehouseAssessments();
+    const rows = [["Gudang", "Aspek ID", "Deskripsi", "Skor UPT", "Skor UIT", "Skor Pusat", "Evidence"]];
+    Object.entries(assessments).forEach(([type, assessment]) => AUDIT_ASPECTS.forEach(a => {
+      if (!assessment.aspekScores?.[a.id] && !assessment.evidence?.[a.id]) return;
+      const s = assessment.aspekScores?.[a.id] || {};
+      const evi = assessment.evidence?.[a.id] || [];
+      rows.push([type, a.id, a.title, calculateItemLevel(countCompletedEvidenceParents(a, evi), countRequiredEvidenceUnits(a)), s.uit || 0, s.pusat || 0, evi.map(e => e.name).join("; ") || "—"]);
+    }));
     rows.push([]);
     rows.push(["Level Akhir", MATURITY_LEVELS[audit.level] || "—"]);
     rows.push(["Status", MATURITY_WORKFLOW_LABEL[audit.status] || audit.status]);
@@ -528,10 +583,11 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // per-aspek ke folder Drive khusus. Fase 1: manual, tanpa tabel/skema baru.
   async function exportMaturityGoogleSheet(audit) {
     try {
-      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {}, audit.aiAnalysis || {});
+      const normalized = normalizeMaturityAudit(audit);
+      const scoreResult = calcMaturityScore(normalized.warehouseAssessments || {});
       const tahun = new Date(audit.createdAt || Date.now()).getFullYear();
       const namaUpt = audit.upt || selectedMaturityUpt;
-      const { base64, filename } = await buildMaturitySheet({ scoresByAspek: scoreResult.aspectScores, tahun, namaUpt });
+      const { base64, filename } = await buildMaturitySheet({ scoresByWarehouse: { PERSEDIAAN: scoreResult.warehouseScores?.persediaan?.aspectScores || {}, ATTB_MRWI: scoreResult.warehouseScores?.attbMrwi?.aspectScores || {} }, tahun, namaUpt });
       const result = await exportMaturitySheet({ base64, filename, namaUpt });
       showToast("Google Sheet Maturity berhasil dibuat.");
       return result;
@@ -550,11 +606,15 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const PptxGenJS = (await import("pptxgenjs")).default;
       const pptx = new PptxGenJS();
       const NAVY = "1E3A5F", BLUE = "2563EB", GRAY = "64748B";
-      const scoreResult = calcMaturityScore(audit.aspekScores || {}, audit.evidence || {}, audit.aiAnalysis || {});
+      const normalized = normalizeMaturityAudit(audit);
+      const warehouseAssessments = normalized.warehouseAssessments || createMaturityWarehouseAssessments();
+      const scoreResult = calcMaturityScore(warehouseAssessments);
       const namaUpt = audit.upt || selectedMaturityUpt || "UPT";
       const tahun = new Date(audit.createdAt || Date.now()).getFullYear();
-      const aiAnalysis = audit.aiAnalysis || {};
-      const catScoreOrder = { tata_kelola: "c1", tenaga_kerja: "c2", sarana_prasarana: "c3", k3: "c4", teknologi: "c5" };
+      const warehouseConfigs = [
+        { type: MATURITY_WAREHOUSE_TYPES.PERSEDIAAN, label: "Persediaan", score: scoreResult.warehouseScores?.persediaan, assessment: warehouseAssessments.PERSEDIAAN || {} },
+        { type: MATURITY_WAREHOUSE_TYPES.ATTB_MRWI, label: "ATTB/MRWI", score: scoreResult.warehouseScores?.attbMrwi, assessment: warehouseAssessments.ATTB_MRWI || {} },
+      ];
       const catLevel = v => Math.max(1, Math.min(5, Math.round(v)));
 
       // Slide 1 — Cover
@@ -563,50 +623,66 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       cover.addText("Audit Maturity Gudang", { x: 0.5, y: 1.3, w: 9, h: 0.8, fontSize: 32, bold: true, color: "FFFFFF" });
       cover.addText(namaUpt, { x: 0.5, y: 2.1, w: 9, h: 0.6, fontSize: 22, color: "CBD5E1" });
       cover.addText(`Periode: ${tahun}`, { x: 0.5, y: 2.7, w: 9, h: 0.4, fontSize: 14, color: "94A3B8" });
-      cover.addText(`Level ${audit.level || scoreResult.level} — ${MATURITY_LEVELS[audit.level || scoreResult.level] || "—"}`, { x: 0.5, y: 3.4, w: 9, h: 0.5, fontSize: 20, bold: true, color: "FFFFFF" });
+      cover.addText(`Level ${scoreResult.level} — ${MATURITY_LEVELS[scoreResult.level] || "—"}`, { x: 0.5, y: 3.4, w: 9, h: 0.5, fontSize: 20, bold: true, color: "FFFFFF" });
       cover.addText(`Skor Total: ${scoreResult.total.toFixed(2)} | Status: ${MATURITY_WORKFLOW_LABEL[audit.status] || audit.status || "—"}`, { x: 0.5, y: 3.9, w: 9, h: 0.4, fontSize: 14, color: "CBD5E1" });
 
-      // Slide 2 — Ringkasan 5 kategori
+      // Slide 2 — subtotal per gudang dan ringkasan kategori
       const sum = pptx.addSlide();
-      sum.addText("Ringkasan 5 Kategori", { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: NAVY });
-      const sumRows = [[
-        { text: "Kategori", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
-        { text: "Skor Rata", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+      sum.addText("Ringkasan Dua Gudang", { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: NAVY });
+      const subtotalRows = [[
+        { text: "Gudang", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        { text: "Subtotal", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        { text: "Bobot", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
         { text: "Level", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
       ]];
-      AUDIT_CATEGORIES.forEach(cat => {
-        const v = scoreResult[catScoreOrder[cat.id]] || 0;
-        sumRows.push([cat.label, v.toFixed(2), `${catLevel(v)} — ${MATURITY_LEVELS[catLevel(v)] || "—"}`]);
+      warehouseConfigs.forEach((warehouse, index) => {
+        const value = warehouse.score?.score || 0;
+        subtotalRows.push([warehouse.label, value.toFixed(2), index === 0 ? "75%" : "25%", `${catLevel(value)} — ${MATURITY_LEVELS[catLevel(value)] || "—"}`]);
       });
-      sum.addTable(sumRows, { x: 0.4, y: 0.9, w: 9, colW: [3.5, 2, 3.5], fontSize: 12, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
+      subtotalRows.push(["Gabungan", scoreResult.total.toFixed(2), "100%", `${scoreResult.level} — ${MATURITY_LEVELS[scoreResult.level] || "—"}`]);
+      sum.addTable(subtotalRows, { x: 0.4, y: 0.9, w: 9, colW: [3.1, 1.7, 1.5, 2.7], fontSize: 12, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
+
+      const sumRows = [[
+        { text: "Gudang", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        { text: "Kategori", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+        { text: "Skor Rata", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
+      ]];
+      warehouseConfigs.forEach(warehouse => AUDIT_CATEGORIES.forEach(cat => {
+        const v = warehouse.score?.categories?.[cat.id] || 0;
+        sumRows.push([warehouse.label, cat.label, `${v.toFixed(2)} — ${MATURITY_LEVELS[catLevel(v)] || "—"}`]);
+      }));
+      sum.addTable(sumRows, { x: 0.4, y: 3.1, w: 9, colW: [2.2, 3.5, 3.3], fontSize: 10, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
 
       // Slide per kategori — tabel aspek + insight AI ringkas
       AUDIT_CATEGORIES.forEach(cat => {
         const slide = pptx.addSlide();
         slide.addText(cat.label, { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 20, bold: true, color: NAVY });
-        const aspects = AUDIT_ASPECTS.filter(a => a.category === cat.id);
+        const aspects = warehouseConfigs.flatMap(warehouse => AUDIT_ASPECTS
+          .filter(a => a.category === cat.id && isMaturityAspectApplicable(a.id, warehouse.type))
+          .map(aspect => ({ aspect, warehouse })));
         const rows = [[
+          { text: "Gudang", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
           { text: "Aspek", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
           { text: "UPT", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
           { text: "UIT", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
           { text: "Pusat", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
           { text: "AI Est.", options: { bold: true, fill: { color: BLUE }, color: "FFFFFF" } },
         ]];
-        aspects.forEach(a => {
-          const s = audit.aspekScores?.[a.id] || {};
-          const ai = aiAnalysis[a.id]?.result;
-          rows.push([`${a.id} ${a.title}`, s.upt || "—", s.uit || "—", s.pusat || "—", ai?.estimasiLevel != null ? String(ai.estimasiLevel) : "—"]);
+        aspects.forEach(({ aspect: a, warehouse }) => {
+          const s = warehouse.assessment.aspekScores?.[a.id] || {};
+          const ai = warehouse.assessment.aiAnalysis?.[a.id]?.result;
+          rows.push([warehouse.label, `${a.id} ${a.title}`, s.upt || "—", s.uit || "—", s.pusat || "—", ai?.estimasiLevel != null ? String(ai.estimasiLevel) : "—"]);
         });
-        slide.addTable(rows, { x: 0.4, y: 0.85, w: 9, colW: [4.4, 1.15, 1.15, 1.15, 1.15], fontSize: 10, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
+        slide.addTable(rows, { x: 0.4, y: 0.85, w: 9, colW: [1.2, 3.3, 1.1, 1.1, 1.1, 1.1], fontSize: 9, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
 
         // Insight AI ringkas — hanya aspek yang punya aiAnalysis, di bawah tabel
         const insightLines = aspects
-          .map(a => ({ a, ai: aiAnalysis[a.id]?.result }))
+          .map(({ aspect: a, warehouse }) => ({ a, warehouse, ai: warehouse.assessment.aiAnalysis?.[a.id]?.result }))
           .filter(x => x.ai)
           .map(({ a, ai }) => {
             const gap = (ai.gap || [])[0];
             const rekom = (ai.rekomendasi || [])[0];
-            return `${a.id}: ${ai.alasanPenilaian || "—"}${gap ? ` | Gap: ${gap}` : ""}${rekom ? ` | Rekom: ${rekom}` : ""}`;
+            return `${warehouse.label} ${a.id}: ${ai.alasanPenilaian || "—"}${gap ? ` | Gap: ${gap}` : ""}${rekom ? ` | Rekom: ${rekom}` : ""}`;
           });
         if (insightLines.length) {
           const yStart = 0.85 + 0.35 * (aspects.length + 1) / 2 + 0.3; // perkiraan tinggi tabel
@@ -619,12 +695,12 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       rec.addText("Rekomendasi Menyeluruh", { x: 0.4, y: 0.3, w: 9, h: 0.5, fontSize: 22, bold: true, color: NAVY });
       const allRekom = [];
       const allMenuju = [];
-      AUDIT_ASPECTS.forEach(a => {
-        const ai = aiAnalysis[a.id]?.result;
+      warehouseConfigs.forEach(warehouse => AUDIT_ASPECTS.filter(a => isMaturityAspectApplicable(a.id, warehouse.type)).forEach(a => {
+        const ai = warehouse.assessment.aiAnalysis?.[a.id]?.result;
         if (!ai) return;
-        (ai.rekomendasi || []).forEach(r => allRekom.push(`${a.id}: ${r}`));
-        (ai.menujuLevelMaksimal || []).forEach(m => allMenuju.push(`${a.id}: ${m.poin ? `[${m.poin}] ` : ""}${m.aksi || ""}`));
-      });
+        (ai.rekomendasi || []).forEach(r => allRekom.push(`${warehouse.label} ${a.id}: ${r}`));
+        (ai.menujuLevelMaksimal || []).forEach(m => allMenuju.push(`${warehouse.label} ${a.id}: ${m.poin ? `[${m.poin}] ` : ""}${m.aksi || ""}`));
+      }));
       let y = 0.9;
       if (allRekom.length) {
         rec.addText("Rekomendasi:", { x: 0.4, y, w: 9, h: 0.3, fontSize: 13, bold: true, color: BLUE });
@@ -669,6 +745,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     selectedMaturityUptId,
     maturityAuditModal, setMaturityAuditModal,
     maturityAuditForm, setMaturityAuditForm,
+    maturityWarehouseType, setMaturityWarehouseType,
     maturityAuditSaving, setMaturityAuditSaving,
     maturityDraftSavedAt,
     autosaveMaturityDraft,

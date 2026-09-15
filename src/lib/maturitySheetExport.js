@@ -103,17 +103,18 @@ function bytesToBase64(bytes) {
 // Patch langsung XML zip (bukan XLSX.write) supaya styling/fill/border/lebar
 // kolom template tetap utuh — SheetJS community edition membuang semua itu
 // saat menulis ulang workbook.
-export function buildMaturitySheetFromBytes(bytes, { scoresByAspek = {}, tahun, namaUpt }) {
+export function buildMaturitySheetFromBytes(bytes, { scoresByAspek = {}, scoresByWarehouse = {}, tahun, namaUpt }) {
   const zip = unzipSync(bytes);
   const sheetEntry = resolveSheetEntry(zip);
   const rowMap = buildAspekRowMap(bytes);
 
   let xml = strFromU8(zip[sheetEntry]);
   for (const [aspekId, row] of Object.entries(rowMap)) {
-    const score = scoresByAspek[aspekId];
-    if (score == null) continue; // belum dinilai, biarkan nilai template apa adanya
-    xml = patchCell(xml, `X${row}`, score);
-    xml = patchCell(xml, `Y${row}`, score);
+    const persediaanScore = scoresByWarehouse?.PERSEDIAAN?.[aspekId] ?? scoresByAspek[aspekId];
+    const legacyScore = Object.keys(scoresByWarehouse || {}).length === 0 ? scoresByAspek[aspekId] : undefined;
+    const attbScore = scoresByWarehouse?.ATTB_MRWI?.[aspekId] ?? legacyScore;
+    if (persediaanScore != null) xml = patchCell(xml, `X${row}`, persediaanScore);
+    if (attbScore != null) xml = patchCell(xml, `Y${row}`, attbScore);
   }
   zip[sheetEntry] = strToU8(xml);
 

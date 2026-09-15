@@ -30,17 +30,8 @@ async function request(action, body = {}, { formData = null, responseType = "jso
   return result;
 }
 
-export const ensureMaturityDriveTree = payload => request("ensure-tree", payload);
 export const exportMaturitySheet = payload => request("export-sheet", payload);
-export const syncMaturityDrive = payload => request("sync", payload);
-export const loadMaturityDriveEvidence = auditId => request("sync", { auditId, scanDrive: false });
-export const assignMaturityDriveEvidence = payload => request("assign", payload);
 export const unlinkMaturityDriveEvidence = payload => request("unlink", payload);
-
-export async function backfillMaturityEvidence({ limit = 15, uptId } = {}) {
-  const result = await request("backfill", { limit, uptId });
-  return { processed: result.processed || 0, ok: result.ok_count || 0, failed: result.failed || 0, remaining: result.remaining || 0 };
-}
 
 export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
   const formData = new FormData();

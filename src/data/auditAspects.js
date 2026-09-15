@@ -1,3 +1,5 @@
+import { MATLEV_SOURCE, MATLEV_MANUAL_CRITERIA, MATLEV_EVIDENCE_SPLITS } from "./matlevSource.js";
+
 export const AUDIT_CATEGORIES = [
   { id: "tata_kelola", label: "Tata Kelola", desc: "1. Tata Kelola Gudang", key: "tata_kelola_gudang" },
   { id: "tenaga_kerja", label: "Tenaga Kerja", desc: "2. Manajemen Tenaga Kerja", key: "manajemen_tenaga_kerja" },
@@ -256,7 +258,7 @@ export const AUDIT_ASPECTS = [
     id: "2.1",
     category: "tenaga_kerja",
     title: "Kolaborasi Antar Fungsi Logistik dan Akuntansi",
-    subtext: "Tenaga Kerja • SDM Gudang • 4 evidence wajib",
+    subtext: "Tenaga Kerja • SDM Gudang • 5 evidence wajib",
     requiredEvidence: [
       { id: "so_undangan", label: "Undangan / Notulen rapat terkait jadwal pelaksanaan stock opname" },
       { id: "so_ba", label: "BA Stock Opname (inventarisasi material) / PID" },
@@ -345,7 +347,7 @@ export const AUDIT_ASPECTS = [
     id: "2.5",
     category: "tenaga_kerja",
     title: "Adanya Budaya Reward atau Ide Inovasi",
-    subtext: "Tenaga Kerja • Reward/Inovasi • 2 evidence wajib",
+    subtext: "Tenaga Kerja • Reward/Inovasi • 1 jalur evidence wajib",
     requiredEvidence: [
       { id: "rwd_nd", label: "Informasi berupa ND/Surat penyampaian reward kinerja pengelolaan logistik dari Unit Induk" },
       { id: "rwd_foto", label: "ND/Surat pelaksanaan kegiatan reward beserta Foto Pelaksanaan kegiatan" }
@@ -489,7 +491,7 @@ export const AUDIT_ASPECTS = [
     id: "3.6",
     category: "sarana_prasarana",
     title: "Pemilahan Material Usang/Rusak (Scrap/Ex-Bongkaran)",
-    subtext: "Sarana Prasarana • Material Ex-Ops • 3 evidence wajib (Sampling 3 Material)",
+    subtext: "Sarana Prasarana • Material Ex-Ops • 6 evidence wajib (Sampling 3 Material)",
     requiredEvidence: [
       { id: "cls_4cluster", label: "Foto dari setiap cluster: Cluster ATTB Standby, Cluster ATTB Perbaikan, Cluster ATTB Garansi/Asuransi, Cluster ATTB Usul Hapus" },
       { id: "cls_foto_penyimpanan", label: "Foto Penyimpanan Material berdasarkan cluster" },
@@ -680,7 +682,7 @@ export const AUDIT_ASPECTS = [
     id: "5.1",
     category: "teknologi",
     title: "Penyampaian Laporan Rutin Logistik dan Pergudangan",
-    subtext: "Teknologi/SI • Integrasi Data Material • 3 evidence wajib",
+    subtext: "Teknologi/SI • Integrasi Data Material • 4 evidence wajib",
     requiredEvidence: [
       { id: "it_ams_pdf", label: "PDF Surat Penyampaian AMS dari UPT per bulan / Notulen Konsolidasi Data Logistik (periode semester hingga waktu pelaksanaan assessment)" },
       { id: "it_tableau_material", label: "Screenshoot kesesuaian data material internal unit (spreadsheet) dan data Tableau: a) Material Persediaan pada Dashboard Material Persediaan (3 sampling material), b) Material Cadang pada dashboard monitoring material cadang (3 sampling material)" },
@@ -768,3 +770,81 @@ export const AUDIT_ASPECTS = [
     aiNote: "Validasi apakah BA Inspeksi menggunakan format resmi dari aplikasi AGO-MIMS, bukan format manual."
   }
 ];
+
+// PROGNOSA applicability: V = Persediaan, X = ATTB/MRWI. Keep the existing
+// labels/rubrics intact; the source evidence text is exposed for audit/export
+// consumers while legacy item IDs remain stable for review rows.
+const ATTB_MRWI_ASPECTS = new Set(["3.4", "3.5", "3.6", "3.7", "4.3", "4.4", "5.2", "5.4"]);
+const PERSEDIAAN_EXCLUDED = new Set(["3.5", "3.6", "3.7", "5.4"]);
+const MATLEV_STATIC_PARENT_LABELS = {
+  "2.3": [
+    "Struktur Organisasi / Daftar Pengelola Gudang (termasuk foto dari pengelola gudang tersebut) yang di tandatangani oleh Manajer UPT",
+    "Struktur Organisasi terupdate = apabila terdapat perubahan personil pengelola gudang, maka harus diupdate",
+    "Pengelola Gudang yang menjadi mandatory sebagai berikut:",
+  ],
+};
+const MATLEV_DISPLAY_LABELS = {
+  "1.8::rak_melintang": "Susunan rak dan lorong gudang",
+  "1.9::ref_doc_manual": "Dokumen referensi metode penyimpanan material",
+  "2.2::inspeksi_ba": "Berita Acara Visual Inspeksi MTU",
+  "2.3::pengelola_struktur": "Struktur organisasi/daftar pengelola gudang",
+  "2.3::pengelola_update": "Pembaruan struktur organisasi pengelola gudang",
+  "2.3::pengelola_mandatory": "Daftar peran wajib pengelola gudang",
+  "2.4::cert_logistik": "Bukti kompetensi dan masa tugas pegawai logistik",
+  "3.4::eval_notulen": "Notulen evaluasi tata kelola material",
+  "3.5::exops_tug10": "TUG 10/pengembalian material ex-operasi",
+  "4.2::k3_sk_tim": "SK tim tanggap darurat tahun berjalan",
+  "4.5::k3_5s_chk": "Hasil Form Checklist 5S",
+  "5.1::it_ams_pdf": "Surat penyampaian AMS/Notulen Konsolidasi Data Logistik",
+  "5.2::it_ams_kapasitas": "Surat penyampaian AMS/Notulen Konsolidasi Data Logistik",
+  "5.2::it_tableau_gudang": "Kesesuaian data kapasitas dan komposisi gudang",
+  "5.3::it_smar_dash": "Screenshot penerimaan material di SMAR",
+};
+const MATLEV_DISPLAY_DETAILS = {
+  "1.9::ref_doc_manual": ["Lampirkan salah satu: Manual Book, Buku Kajian Umur Maksimum Material Cadang, atau Proses Bisnis Penyimpanan Material."],
+  "2.2::inspeksi_ba": ["Ditandatangani HAR dan LOG.", "Ditandatangani Manajer UPT sebagai pihak mengetahui.", "Menggunakan format BA terlampir."],
+  "2.3::pengelola_struktur": ["Mencantumkan foto pengelola gudang.", "Ditandatangani Manajer UPT."],
+  "2.3::pengelola_update": ["Sudah diperbarui jika ada perubahan personel pengelola gudang."],
+  "2.4::cert_logistik": ["Pegawai bertugas di fungsi logistik minimal 1 tahun berdasarkan SK/Surat Penugasan."],
+  "4.5::k3_5s_chk": ["Diisi melalui menu Form Pengisian 5S; hasil periode berjalan terhubung otomatis."],
+  "5.3::it_smar_dash": ["Gunakan sampling satu GI/gudang dalam UPT.", "Pastikan jumlah delivery order yang sukses diterima sesuai."],
+};
+for (const aspect of AUDIT_ASPECTS) {
+  aspect.warehouseTypes = ATTB_MRWI_ASPECTS.has(aspect.id)
+    ? (PERSEDIAAN_EXCLUDED.has(aspect.id) ? ["ATTB_MRWI"] : ["PERSEDIAAN", "ATTB_MRWI"])
+    : ["PERSEDIAAN"];
+  const source = MATLEV_SOURCE[aspect.id];
+  if (source) {
+    aspect.sourceEvidence = source.requiredEvidence;
+    aspect.sourceNote = source.catatan;
+    aspect.prognosa = { persediaan: source.persediaan, attbMrwi: source.attbMrwi };
+    const staticLabels = MATLEV_STATIC_PARENT_LABELS[aspect.id];
+    if (staticLabels) {
+      const ids = ["pengelola_struktur", "pengelola_update", "pengelola_mandatory"];
+      aspect.requiredEvidence = staticLabels.map((label, index) => ({ id: ids[index], label }));
+    }
+    const sourceItems = staticLabels || source.requiredEvidence
+      .replace(/\r/g, "")
+      .split(/(?=^\s*\d+[.)]\s)/m)
+      .map(item => item.trim())
+      .filter(item => /^\d+[.)]\s/.test(item))
+      .map(item => item.replace(/^\d+[.)]\s*/, ""));
+    if (sourceItems.length === aspect.requiredEvidence.length) {
+      aspect.requiredEvidence = aspect.requiredEvidence.map((item, index) => ({ ...item, label: sourceItems[index] }));
+    }
+    const manualCriteria = MATLEV_MANUAL_CRITERIA[aspect.id] || {};
+    const splits = MATLEV_EVIDENCE_SPLITS[aspect.id] || {};
+    aspect.requiredEvidence = aspect.requiredEvidence.flatMap(item => {
+      const split = splits[item.id];
+      if (split) return split.map(child => ({ ...child, legacyIds: [item.id] }));
+      const criteria = manualCriteria[item.id];
+      const key = `${aspect.id}::${item.id}`;
+      const displayDetails = MATLEV_DISPLAY_DETAILS[key];
+      return [{ ...item, label: MATLEV_DISPLAY_LABELS[key] || item.label, ...(criteria ? { manualCriteria: criteria } : {}), ...(displayDetails ? { displayDetails } : {}) }];
+    });
+    if (aspect.id === "2.5") {
+      const nd = aspect.requiredEvidence.find(item => item.id === "rwd_nd");
+      if (nd) { nd.alternativeGroup = "reward"; nd.alternativePath = "unit"; }
+    }
+  }
+}

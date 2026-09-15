@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { hasRole, ROLES } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
-import { isDemoMode } from "../lib/demo.js";
 import { logAudit } from "../lib/audit.js";
 import { generateDocNumbers, generateReservasiDocNo, uid } from "../lib/utils.js";
 import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
@@ -306,11 +305,7 @@ export function useTugTransactions({
         await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
         return;
       }
-      // Canonical TUG8/9 (tugCanonical.js) selalu menulis ke RPC server sungguhan,
-      // tidak ada jalur simulasi mode demo untuk dokumen resmi ini — blokir di sini
-      // (pola sama dengan larangan mode demo lain di file ini) daripada diam-diam
-      // menulis data uji ke server produksi.
-      if (isDemoMode()) { showToast("Mode demo: TUG-8/TUG-9 (dokumen resmi) tidak bisa dibuat di sini — akan menulis ke server sungguhan. Nonaktifkan mode demo untuk transaksi ini.","error"); return; }
+      // Canonical TUG8/9 (tugCanonical.js) selalu menulis ke RPC server sungguhan.
       if (!txnForm.penerimaNama.trim()) { showToast("Nama Penerima wajib diisi!","error"); return; }
       if (docType === "TUG8" && !txnForm.unitTujuan?.trim()) { showToast("Unit/Sektor Tujuan wajib diisi untuk TUG-8!","error"); return; }
       const submittedItems = txnForm.stockItems || [];
@@ -366,9 +361,7 @@ export function useTugTransactions({
     }
 
     if (docType === "TUG3") {
-      // TUG-3/4 tidak punya jalur simulasi mode demo — sama seperti TUG8/9 (dokumen
-      // resmi, RPC canonical/blob server sungguhan), jangan diam-diam "berhasil".
-      if (isDemoMode()) { showToast("Mode demo: TUG-3 tidak disimpan ke server.","error"); return; }
+      // TUG-3/4 menyimpan dokumen resmi ke server.
       if (targetStage === "DRAFT") {
         // Draft: simpan apa adanya (boleh belum lengkap), tanpa nomor dokumen.
         await commitNewTxn(docType, { ...txnForm, stockItems: attachTug3KatalogSnapshots(txnForm.stockItems, katalogList) }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
@@ -720,7 +713,6 @@ export function useTugTransactions({
     setTxnModal(true);
   }
   async function submitDraftTug3(txn) {
-    if (isDemoMode()) { showToast("Mode demo: TUG-3 tidak disimpan ke server.","error"); return; }
     const missingTug3 = tug3MissingForSubmit(txn, katalogList);
     if (missingTug3.length) { showToast(`Belum lengkap — ${missingTug3.join(", ")}`,"error"); return; }
     const validItems = (txn.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { supabase, usernameToAuthEmail } from "../supabaseClient.js";
 import { ROLES } from "../lib/roles.js";
-import { isDemoMode } from "../lib/demo.js";
 import { logAudit } from "../lib/audit.js";
 
 // Domain "Manajemen Akun/User" (kelola akun ADMIN + ganti password mandiri) —
@@ -42,7 +41,6 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
   // upt_id yang salah secara semantik untuk peran nasional.
   function isNationalRole(f) { return f.role === "ADMIN_LOG_PUSAT"; }
   async function submitAkunEdit() {
-    if (isDemoMode()) { showToast("Mode demo: manajemen akun dinonaktifkan.","error"); return; }
     const f = akunForm;
     if (!f.name?.trim()) { showToast("Nama lengkap wajib diisi.","error"); return; }
     if (!f.jabatan?.trim()) { showToast("Jabatan wajib diisi.","error"); return; }
@@ -68,7 +66,6 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
     showToast("✅ Akun berhasil diperbarui!");
   }
   async function submitAkunBaru() {
-    if (isDemoMode()) { showToast("Mode demo: manajemen akun dinonaktifkan.","error"); return; }
     const f = akunForm;
     if (!f.username?.trim()) { showToast("Username wajib diisi.","error"); return; }
     if (!f.password || f.password.length < 6) { showToast("Password minimal 6 karakter.","error"); return; }
@@ -104,7 +101,6 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
     setGantiPasswordModal(true);
   }
   async function submitGantiPassword() {
-    if (isDemoMode()) { showToast("Mode demo: ganti password dinonaktifkan.","error"); return; }
     const f = gantiPasswordForm;
     if (!f.oldPassword) { showToast("Password lama wajib diisi.","error"); return; }
     if (!f.newPassword || f.newPassword.length < 6) { showToast("Password baru minimal 6 karakter.","error"); return; }
@@ -131,7 +127,6 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
   // Lewat Edge Function service_role (pola sama admin-create-user), bukan
   // langsung dari browser karena admin.mfa.deleteFactor butuh service_role key.
   async function resetMfa(u) {
-    if (isDemoMode()) { showToast("Mode demo: reset 2FA dinonaktifkan.","error"); return; }
     if (!window.confirm(`Reset verifikasi 2 langkah untuk ${u.name}? User akan diminta scan ulang QR saat login berikutnya.`)) return;
     const { data, error } = await supabase.functions.invoke("admin-reset-mfa", { body: { userId: u.id } });
     if (error || !data?.ok) { showToast(data?.error || error?.message || "Gagal mereset verifikasi 2 langkah.","error"); return; }

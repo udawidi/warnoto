@@ -10,7 +10,6 @@ import { supabase } from "../supabaseClient.js";
 import { roleTier } from "../lib/roles.js";
 import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 import { loadMasterTable } from "../lib/masterSync.js";
-import { isDemoMode } from "../lib/demo.js";
 import { CLOUD } from "../lib/cloud.js";
 import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
 
@@ -220,7 +219,7 @@ export function useTugApprovals({
     // lalu gagal menyimpan transaksi dedicated.
     let approvalKatalog = katalogList;
     let approvalStocks = stocks;
-    if (supabase && !isDemoMode()) {
+    if (supabase) {
       const [serverStocks, serverKatalog] = await Promise.all([loadMasterTable("stocks"), loadMasterTable("katalog")]);
       if (!serverStocks || !serverKatalog) {
         showToast("Approval TUG-3 gagal: data server belum terbaca. Coba lagi.", "error");

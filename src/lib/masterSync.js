@@ -2,7 +2,6 @@
 // + decode Plus Code alamat. Dipindah dari App.jsx (refactor Fase 3f).
 import { supabase } from "../supabaseClient.js";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./openLocationCode.js";
-import { isDemoMode } from "./demo.js";
 import { mapStockScopeRow } from "./stockScope.js";
 
 // Satpam, Tim Mutu, UIT, UPT, Gudang, Lokasi dulu hanya tersimpan di
@@ -125,7 +124,6 @@ export async function loadMasterTable(table) {
 
 // extraCols(item) => kolom tambahan per baris (FK/status) di luar id & data, opsional
 export async function syncMasterTable(table, list, extraCols) {
-  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!supabase) return false;
   // Dedupe by id (keep-last) sebelum di-upsert: Postgres upsert().onConflict("id") GAGAL TOTAL
   // (error 21000, "ON CONFLICT DO UPDATE command cannot affect row a second time within one
@@ -182,7 +180,6 @@ export async function syncMasterTable(table, list, extraCols) {
 // di syncMasterTable (PENGAMANAN KRITIS terhadap wipe massal) tidak relevan di sini:
 // `rows` kosong cuma berarti tidak ada yang perlu ditulis → return true.
 export async function syncMasterTableRows(table, rows, extraCols) {
-  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!supabase) return false;
   if (!rows?.length) return true; // tidak ada baris berubah → tidak ada yang perlu ditulis
   // Dedupe by id (keep-last) — sama seperti syncMasterTable: upsert().onConflict("id")
@@ -209,7 +206,6 @@ export async function syncMasterTableRows(table, rows, extraCols) {
 // hapus Data Stok). Jangan menggantikan syncMasterTable() untuk kasus bulk delete,
 // karena rekonsiliasi penuh tetap diperlukan di sana.
 export async function deleteMasterTableRow(table, id) {
-  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!supabase || !id) return false;
   const { error } = await supabase.from(table).delete().eq("id", id);
   if (error) { console.error(`deleteMasterTableRow delete(${table}, ${id}): ${error.message}`, error); return false; }
@@ -302,7 +298,6 @@ export async function loadWarehouseCapacity() {
 
 // Mirip syncMasterTable, tapi upsert ke kolom-kolom typed asli (bukan wrap `data` jsonb).
 export async function syncWarehouseCapacity(list) {
-  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!supabase) return false;
   // Dedupe by id (keep-last) — samakan dengan syncMasterTable (hindari error 21000 upsert).
   const dedupedList = [...new Map(list.map(item => [item.id, item])).values()];
@@ -404,7 +399,6 @@ export async function loadWarehouseCapacityImports() {
 
 // Mirip syncMasterTable, tapi upsert ke kolom-kolom typed asli (bukan wrap `data` jsonb).
 export async function syncWarehouseCapacityImports(list) {
-  if (isDemoMode()) return true; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!supabase) return false;
   // Dedupe by id (keep-last) — samakan dengan syncMasterTable (hindari error 21000 upsert).
   const dedupedList = [...new Map(list.map(item => [item.id, item])).values()];

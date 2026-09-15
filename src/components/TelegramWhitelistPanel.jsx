@@ -1,7 +1,6 @@
 // Panel Kelola Whitelist User Bot Telegram (Admin) — CRUD tg_allowed_users. Dipindah Fase 4b.
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient.js";
-import { isDemoMode } from "../lib/demo.js";
 
 // Panel kelola whitelist user Bot Telegram (Admin only) — CRUD langsung ke tabel
 // tg_allowed_users, menggantikan alur manual sebelumnya (form PDF + Supabase Dashboard).
@@ -32,7 +31,6 @@ export function TelegramWhitelistPanel({ sty, C, currentUser, uptList }) {
   useEffect(() => { loadUsers(); }, []);
 
   async function addUser() {
-    if (isDemoMode()) { alert("Mode demo: perubahan tidak disimpan."); return; }
     const uid = form.telegram_user_id.trim();
     if (!/^\d+$/.test(uid)) { alert("User ID Telegram harus berupa angka (didapat dari bot @userinfobot di Telegram, bukan @username)."); return; }
     if (!form.display_name.trim()) { alert("Nama wajib diisi."); return; }
@@ -58,13 +56,11 @@ export function TelegramWhitelistPanel({ sty, C, currentUser, uptList }) {
   }
 
   async function toggleActive(u) {
-    if (isDemoMode()) { alert("Mode demo: perubahan tidak disimpan."); return; }
     await supabase.from("tg_allowed_users").update({is_active: !u.is_active}).eq("id", u.id);
     loadUsers();
   }
 
   async function removeUser(u) {
-    if (isDemoMode()) { alert("Mode demo: perubahan tidak disimpan."); return; }
     if (!confirm(`Hapus akses "${u.display_name}" dari whitelist Telegram? Setelah dihapus, user ini harus didaftarkan ulang untuk bisa akses bot lagi.`)) return;
     await supabase.from("tg_allowed_users").delete().eq("id", u.id);
     loadUsers();

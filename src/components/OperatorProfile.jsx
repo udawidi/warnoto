@@ -3,7 +3,6 @@
 // disimpan di sini — ikut akun (currentUser.name), read-only.
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient.js";
-import { isDemoMode } from "../lib/demo.js";
 import { compressImage } from "../lib/supabaseSync.js";
 import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
 
@@ -32,7 +31,7 @@ export function OperatorProfile({ currentUser, sty, C }) {
   const [status, setStatus] = useState(null); // {type:"success"|"error", msg}
 
   useEffect(() => {
-    if (!currentUser?.id || isDemoMode()) { setLoading(false); return; }
+    if (!currentUser?.id) { setLoading(false); return; }
     let cancelled = false;
     supabase.from("operator_profile").select("*").eq("user_id", currentUser.id).single()
       .then(({ data }) => {
@@ -59,7 +58,6 @@ export function OperatorProfile({ currentUser, sty, C }) {
   }
 
   async function saveProfile() {
-    if (isDemoMode()) { setStatus({ type: "error", msg: "Mode demo: perubahan tidak disimpan." }); return; }
     setSaving(true);
     setStatus(null);
     const { error } = await supabase.from("operator_profile").upsert({

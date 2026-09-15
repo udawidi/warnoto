@@ -20,6 +20,27 @@ const NOTE_CANDIDATE_SURFACES = ["master-warehouse", "master-migration", "master
 test.describe("Mode ringkas HP", () => {
   test.describe.configure({ timeout:180_000 });
 
+  test("audit maturity dua gudang tetap dapat dipakai pada lebar 360 px", async ({ isolatedPage:page }) => {
+    await openApp(page);
+    await openRoute(page, { tab:"maturity", menuPath:["Penilaian Maturity"], readySelector:'.app-shell[data-current-tab="maturity"]' });
+    await page.getByRole("button", { name:"Pelaksanaan Audit", exact:true }).click();
+    await page.getByRole("button", { name:"+ Audit Baru", exact:true }).first().click();
+
+    const persediaan = page.getByRole("tab", { name:"Gudang Persediaan", exact:true });
+    const attb = page.getByRole("tab", { name:"Gudang ATTB/MRWI", exact:true });
+    await expect(persediaan).toBeVisible();
+    await expect(attb).toBeVisible();
+    await attb.click();
+    await expect(page.locator(".maturity-aspect-row")).toHaveCount(4);
+    await expect(page.getByRole("button", { name:"Tata Kelola", exact:true })).toHaveCount(0);
+    await page.locator(".maturity-aspect-row").filter({ hasText:"3.4" }).click();
+    const manualCriteria = page.getByText("Yang harus diperiksa checker", { exact:true }).locator("xpath=..");
+    await expect(manualCriteria.locator('ol[type="a"] > li')).toHaveCount(3);
+
+    const metrics = await page.evaluate(() => ({ scrollWidth:document.documentElement.scrollWidth, clientWidth:document.documentElement.clientWidth }));
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  });
+
   test("mobile-card-table row: td tersembunyi lalu terbuka saat focus", async ({ isolatedPage:page }) => {
     let found = false;
     for (const surface of ROW_CANDIDATE_SURFACES) {

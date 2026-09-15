@@ -6,7 +6,6 @@
 // (tabel dedicated {id,...} langsung, BUKAN blob master jsonb).
 import { useState, useEffect } from "react";
 import { supabase } from "../supabaseClient.js";
-import { isDemoMode } from "../lib/demo.js";
 import { hasRole } from "../lib/roles.js";
 
 export function NotifRecipientPanel({ sty, C, currentUser, uptList, showToast }) {
@@ -45,7 +44,6 @@ export function NotifRecipientPanel({ sty, C, currentUser, uptList, showToast })
   useEffect(() => { loadItems(); }, []);
 
   async function addItem() {
-    if (isDemoMode()) { alert("Mode demo: perubahan tidak disimpan."); return; }
     const target = form.target.trim();
     if (!target) { alert("Target (nomor WA / chat ID Telegram) wajib diisi."); return; }
     if (!form.label.trim()) { alert("Label wajib diisi."); return; }
@@ -70,13 +68,11 @@ export function NotifRecipientPanel({ sty, C, currentUser, uptList, showToast })
   }
 
   async function toggleActive(r) {
-    if (isDemoMode()) { alert("Mode demo: perubahan tidak disimpan."); return; }
     await supabase.from("notif_recipients").update({active: !r.active}).eq("id", r.id);
     loadItems();
   }
 
   async function removeItem(r) {
-    if (isDemoMode()) { alert("Mode demo: perubahan tidak disimpan."); return; }
     if (!confirm(`Hapus penerima notifikasi "${r.label}"?`)) return;
     await supabase.from("notif_recipients").delete().eq("id", r.id);
     loadItems();

@@ -2,7 +2,6 @@ import { useState } from "react";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
 import { logAudit } from "../lib/audit.js";
-import { isDemoMode } from "../lib/demo.js";
 import { compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "../lib/supabaseSync.js";
 import {
   normalizeHeavyEquipmentRecord,
@@ -75,7 +74,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
       : { statusAlat: updates.statusAlat ?? alat.statusAlat };
     // URL lama bukan perubahan foto. Ini menghindari metadata foto berubah hanya
     // karena TL/Admin membuka lalu menyimpan status alat.
-    const needsPhotoStorage = _isDataUrl(updates.foto) && !isDemoMode();
+    const needsPhotoStorage = _isDataUrl(updates.foto);
     // Foto lama berbentuk data URL (dari sebelum migrasi Storage) harus ikut
     // dipindahkan pada penyimpanan berikutnya, walau pengguna tidak memilih file baru.
     const isPhotoChanged = updates.foto !== alat.foto || needsPhotoStorage;
@@ -92,7 +91,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
       }
     }
     if (isPhotoChanged && !_isDataUrl(updates.foto)) upd = { ...upd, foto: updates.foto || null };
-    if (_isDataUrl(upd.suratIzinAlat) && !isDemoMode()) {
+    if (_isDataUrl(upd.suratIzinAlat)) {
       const result = await uploadSuratIzin(upd.suratIzinAlat, equipmentId, showToast);
       if (!result.ok) return false;
       upd = { ...upd, suratIzinAlat: result.url };
@@ -112,14 +111,14 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     if (!form?.upt || !form?.nama?.trim() || !form?.lokasi?.trim()) { showToast("UPT, nama, dan lokasi wajib diisi.", "error"); return false; }
     const now = Date.now();
     let item = normalizeHeavyEquipmentRecord({ ...form, id:`HE-${uid().slice(-8)}`, availabilityStatus:"TERSEDIA", createdAt:now, createdBy:currentUser.id, updatedAt:now, updatedBy:currentUser.id, source:"Input Admin Gudang" });
-    if (_isDataUrl(item.foto) && !isDemoMode()) {
+    if (_isDataUrl(item.foto)) {
       let compressedPhoto;
       try { compressedPhoto = await compressImage(item.foto, {maxBytes:1_000_000}); }
       catch (e) { showToast(getHeavyEquipmentProcessingErrorMessage(e), "error"); return false; }
       try { item = { ...item, foto: await _withTimeout(uploadPhotoToStorage(compressedPhoto, "tug-photos", `alat-berat/${item.id}.jpg`), 30_000, "unggah foto") }; }
       catch (e) { console.warn("Upload foto alat berat gagal:", item.id, e?.message||e); showToast(getHeavyEquipmentUploadErrorMessage(e), "error"); return false; }
     }
-    if (_isDataUrl(item.suratIzinAlat) && !isDemoMode()) {
+    if (_isDataUrl(item.suratIzinAlat)) {
       const result = await uploadSuratIzin(item.suratIzinAlat, item.id, showToast);
       if (!result.ok) return false;
       item = { ...item, suratIzinAlat: result.url };

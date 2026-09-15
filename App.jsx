@@ -11,7 +11,6 @@ import { CLOUD } from "./src/lib/cloud.js";
 import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.js";
 import { approveStockLocationMove, rejectStockLocationMove } from "./src/lib/stockLocationApproval.js";
 import { applyStockRealtimeEvent, applyStockRealtimeEvents, stockListsEqual } from "./src/lib/stockRealtime.js";
-import { isDemoMode, enterDemoMode, exitDemoMode } from "./src/lib/demo.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "./src/lib/normalizeKatalogCode.js";
 import { expandMonthlySeriesFromMap, tsbMonthlyForecast } from "./src/lib/tsbForecast.js";
 import { logAudit } from "./src/lib/audit.js";
@@ -90,7 +89,7 @@ import { Tug5FormModal, Tug98FormModal, Tug10FormModal, Tug3FormModal } from "./
 import { ScanPickerModal } from "./src/components/ScanPickerModal.jsx";
 import { BarcodeScanner } from "./src/components/BarcodeScanner.jsx";
 import { DashboardRingkasanBlock } from "./src/components/DashboardRingkasanBlock.jsx";
-import { DemoBannerAndToast } from "./src/components/DemoBannerAndToast.jsx";
+import { AppOverlays } from "./src/components/AppOverlays.jsx";
 import { AppHeaderBar } from "./src/components/AppHeaderBar.jsx";
 import { DashboardTabRouter } from "./src/components/DashboardTabRouter.jsx";
 import { TransactionHubTab } from "./src/components/TransactionHubTab.jsx";
@@ -307,6 +306,9 @@ async function streamSSEDeltas(body, onDelta) {
 // MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════
 export default function PLNWarehouse() {
+  // Remove the retired demo switch left by older browser tabs before any data
+  // effect runs. Production writes must never be short-circuited by stale state.
+  useEffect(() => { try { sessionStorage.removeItem("warnoto_demo"); } catch {} }, []);
   const [currentUser, setCurrentUser] = useState(readCachedProfile);
   const [authLoading, setAuthLoading] = useState(() => !readCachedProfile()); // true hanya kalau belum ada cache profil
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
@@ -363,6 +365,7 @@ export default function PLNWarehouse() {
     selectedMaturityUptId,
     maturityAuditModal, setMaturityAuditModal,
     maturityAuditForm, setMaturityAuditForm,
+    maturityWarehouseType, setMaturityWarehouseType,
     maturityAuditSaving, setMaturityAuditSaving,
     maturityAuditEvidence, setMaturityAuditEvidence,
     maturityAspectReviews, setAspectReview, setAspectItemScore,
@@ -1508,8 +1511,8 @@ export default function PLNWarehouse() {
     ]);
     setLastSaved(Date.now());
     setCloudSaving(false);
-    // CLOUD.set() bisa gagal senyap (offline/quota) atau no-op di mode demo (selalu resolve
-    // true) — ditemukan bug nyata: toast "tersimpan" tetap muncul padahal transaksi TUG
+    // CLOUD.set() bisa gagal senyap (offline/quota). Ditemukan bug nyata: toast
+    // "tersimpan" tetap muncul padahal transaksi TUG
     // tidak persist. Cek eksplisit hasil simpan txns supaya kegagalan TIDAK senyap.
     if (txnsSaveOk === false) {
       showToast("Gagal menyimpan transaksi ke penyimpanan — coba lagi.", "error");
@@ -1568,7 +1571,7 @@ export default function PLNWarehouse() {
     // sendiri, jadi simpan utuh. Masuk failedLabels supaya kegagalan TIDAK senyap.
     const mcWriterUpt = stateRef.current.currentUser?.uptId || null;
     const mcWriterUit = stateRef.current.currentUser?.uitId || stateRef.current.uptList.find(u => u.id === mcWriterUpt)?.uitId || null;
-    if ((overrides.materialCadangData !== undefined || overrides.materialCadangHealthData !== undefined || overrides.materialCadangAiInsights !== undefined) && supabase && !isDemoMode() && mcWriterUpt) {
+    if ((overrides.materialCadangData !== undefined || overrides.materialCadangHealthData !== undefined || overrides.materialCadangAiInsights !== undefined) && supabase && mcWriterUpt) {
       syncTasks.push({ label: "Material Cadang", promise: supabase.from("material_cadang_state")
         .upsert({ upt_id: mcWriterUpt, uit_id: mcWriterUit, data: mcd, health: mch, ai: mcai, updated_at: new Date().toISOString() }, { onConflict: "upt_id" })
         .then(({ error }) => { if (error) console.error("upsert material_cadang_state:", error.message); return !error; }) });
@@ -1608,7 +1611,7 @@ export default function PLNWarehouse() {
     // Supabase tiap kali berubah, pola sama seperti heavy_equipment (schema.sql section 22).
     // Probe read-only dulu. Sebelum migration kolom upt_id belum ada; jangan
     // mengirim kolom typed karena PostgREST akan menolak seluruh upsert (PGRST204).
-    const stockScopeLive = !isDemoMode() && (overrides.opnameList !== undefined || overrides.stockCountList !== undefined)
+    const stockScopeLive = (overrides.opnameList !== undefined || overrides.stockCountList !== undefined)
       ? await stockScopeColumnsAvailable(supabase)
       : false;
     const stockScopeContext = { profiles: stateRef.current.users, currentUser: stateRef.current.currentUser };
@@ -2118,7 +2121,7 @@ export default function PLNWarehouse() {
   }, [tab, currentUser]);
 
   // Simpan tab aktif ke sessionStorage supaya refresh halaman tetap di menu yang
-  // sama (per-tab-browser, sama seperti pola Mode Demo di src/lib/demo.js).
+  // sama (per-tab-browser).
   useEffect(() => {
     try { sessionStorage.setItem("warnoto_tab", tab); } catch {}
   }, [tab]);
@@ -2204,7 +2207,6 @@ export default function PLNWarehouse() {
     setMaraSearch("");
   }
   async function uploadMaraToDB(file) {
-    if (isDemoMode()) { showToast("Mode demo: import tidak disimpan.", "info"); return; }
     if (!supabase) { showToast("Supabase tidak terhubung","error"); return; }
     if (!file) return;
     setMaraUploadLoading(true);
@@ -2380,7 +2382,7 @@ export default function PLNWarehouse() {
   // GET /stocks lambat → snapshot realtime gagal → "koneksi realtime terputus").
   // Melempar kalau upload gagal — pemanggil WAJIB membatalkan simpan, bukan fallback base64.
   async function uploadStockFoto(katalogId, field, img, uptId) {
-    if (!_isDataUrl(img) || isDemoMode()) return img; // sudah URL Storage / mode demo (tidak menulis Storage)
+    if (!_isDataUrl(img)) return img; // sudah URL Storage
     const kode = String(katalogId || "tanpa-katalog").replace(/^KAT-/, "");
     // Folder per-UPT supaya foto stok antar-UPT tidak saling menimpa (dulu hardcode
     // "upt-surabaya/" → dua UPT dgn katalog sama menulis path yang sama). Foto lama di
@@ -3025,7 +3027,7 @@ export default function PLNWarehouse() {
       let approvalKatalog = katalogList;
       let approvalStocks = stocks;
       let approvalAttb = attbList;
-      if (supabase && !isDemoMode()) {
+      if (supabase) {
         const [serverStocks, serverKatalog] = await Promise.all([
           loadMasterTable("stocks"),
           loadMasterTable("katalog"),
@@ -3040,7 +3042,7 @@ export default function PLNWarehouse() {
         approvalKatalog = serverKatalog;
         if (serverAttb) approvalAttb = serverAttb;
       }
-      if (supabase && !isDemoMode() && !txn.uptId) {
+      if (supabase && !txn.uptId) {
         showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — UPT transaksi tidak tersedia.`, "error");
         return false;
       }
@@ -3266,7 +3268,6 @@ export default function PLNWarehouse() {
   // embedding Cohere. Batasi transaksi ke 6 bulan terakhir supaya knowledge
   // base tidak membengkak tanpa batas dari histori lama.
   async function syncRagChunks(silent = false, onProgress) {
-    if (isDemoMode()) return; // mode demo: rag_chunks dibaca bot Telegram, jangan disentuh
     if (!supabase) { if (!silent) showToast("Supabase belum terkonfigurasi.", "error"); return; }
     if (!silent) setRagSyncing(true);
     try {
@@ -3395,7 +3396,6 @@ export default function PLNWarehouse() {
   }
 
   async function syncWarnotoState(silent = false) {
-    if (isDemoMode()) return; // mode demo: warnoto_state dibaca bot Telegram, jangan disentuh
     if (!supabase) return;
     try {
       const state_data = buildWarnotoStateSnapshot();
@@ -3413,7 +3413,6 @@ export default function PLNWarehouse() {
   // browser, tidak bisa diakses proses server-side sama sekali. "Whole list is the truth"
   // (upsert + hapus yang sudah tidak ada), sama pola dengan sync master data lain.
   async function syncStocksSnapshot(silent = false) {
-    if (isDemoMode()) return; // mode demo: stocks_snapshot dibaca cron malam bot, jangan disentuh
     if (!supabase) return;
     try {
       const rows = enrichedStocks.map(s => {
@@ -4261,7 +4260,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
   return (
     <div className="app-shell" data-current-tab={tab} style={{display:"flex",minHeight:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:C.bg,color:C.text}}>
-      <DemoBannerAndToast
+      <AppOverlays
         C={C} sty={sty} currentUser={currentUser} isMobile={isMobile}
         toast={toast} savingInfo={savingInfo}
         scannerOpen={scannerOpen} handleScanResult={handleScanResult} setScannerOpen={setScannerOpen}
@@ -4558,6 +4557,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               setMaturityAuditForm={setMaturityAuditForm}
               maturityAuditEvidence={maturityAuditEvidence}
               setMaturityAuditEvidence={setMaturityAuditEvidence}
+              maturityWarehouseType={maturityWarehouseType}
+              setMaturityWarehouseType={setMaturityWarehouseType}
               maturityAspectReviews={maturityAspectReviews}
               setAspectReview={setAspectReview}
               setAspectItemScore={setAspectItemScore}

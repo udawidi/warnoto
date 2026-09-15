@@ -6,7 +6,6 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient.js";
 import { ROLES } from "../lib/roles.js";
 import { PERM_MENUS, PERM_AKSI, MATRIX_ROLES, effectivePerm, defaultPerm } from "../lib/perms.js";
-import { isDemoMode } from "../lib/demo.js";
 import { logAudit } from "../lib/audit.js";
 
 const ALL_ROWS = [
@@ -43,7 +42,6 @@ export function PermMatrixPage({ sty, C, currentUser, rolePerms, reloadRolePerms
   }
 
   async function saveAll() {
-    if (isDemoMode()) { showToast?.("Mode demo: perubahan izin tidak disimpan.", "error"); return; }
     if (!supabase || changedRoles.length === 0) return;
     setSaving(true);
     const by = currentUser?.username || currentUser?.name || null;
@@ -65,7 +63,6 @@ export function PermMatrixPage({ sty, C, currentUser, rolePerms, reloadRolePerms
   }
 
   async function resetRole(role) {
-    if (isDemoMode()) { showToast?.("Mode demo: perubahan izin tidak disimpan.", "error"); return; }
     if (!supabase) return;
     setSaving(true);
     const { error } = await supabase.from("role_permissions").upsert(

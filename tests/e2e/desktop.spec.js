@@ -206,8 +206,24 @@ test.describe("WARNOTO desktop preservation smoke", () => {
     await page.getByRole("button", { name:"+ Audit Baru", exact:true }).first().click();
     await page.locator(".maturity-aspect-row").first().click();
     await expect(page.locator('input[type="file"]:not(:disabled)')).toHaveCount(7);
+    await page.getByText("Lokasi folder & format file", { exact:true }).first().click();
     await expect(page.getByText(/Maks\. 25 MB per berkas/).first()).toBeVisible();
-    await expect(page.getByRole("button", { name:"Sinkronkan Drive", exact:false })).toBeVisible();
+    await expect(page.getByRole("button", { name:"Sinkronkan Drive", exact:false })).toHaveCount(0);
+    await expect(page.getByText(/Rincian sumber PROGNOSA/)).toHaveCount(0);
+    await expect(page.getByRole("tab", { name:"Gudang Persediaan", exact:true })).toBeVisible();
+    await expect(page.getByRole("tab", { name:"Gudang ATTB/MRWI", exact:true })).toBeVisible();
+
+    await page.getByRole("button", { name:"Kembali ke Daftar Aspek", exact:true }).click();
+    await page.getByRole("button", { name:"Sarana Prasarana", exact:true }).click();
+    await page.locator(".maturity-aspect-row").filter({ hasText:"3.4" }).click();
+    const manualCriteria = page.getByText("Yang harus diperiksa checker", { exact:true }).locator("xpath=..");
+    await expect(manualCriteria.locator('ol[type="a"] > li')).toHaveCount(3);
+
+    await page.getByRole("button", { name:"Kembali ke Daftar Aspek", exact:true }).click();
+    await page.getByRole("button", { name:"K3", exact:true }).click();
+    await page.locator(".maturity-aspect-row").filter({ hasText:"4.3" }).click();
+    await expect(page.getByText(/Area gudang tertutup yang termonitor CCTV/).first()).toBeVisible();
+    await expect(page.getByText("Cluster ATTB Usul Hapus", { exact:true })).toBeVisible();
   });
 
   test("Form 5S exposes an empty persistent-history view without a database fixture", async ({ isolatedPage:page }) => {

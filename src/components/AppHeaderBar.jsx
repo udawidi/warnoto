@@ -1,7 +1,6 @@
 import React from "react";
 import { SidebarIcon } from "./SidebarIcon.jsx";
 import { ROLES } from "../lib/roles.js";
-import { isDemoMode, enterDemoMode, exitDemoMode } from "../lib/demo.js";
 
 export function AppHeaderBar({ C, sty, currentUser, isMobile, setMobileMenuOpen, pageMeta, accountMenuRef, theme, setTheme, accountMenuOpen, setAccountMenuOpen, UPT, openGantiPassword, loggingOut, handleLogout }) {
   return (
@@ -37,7 +36,6 @@ export function AppHeaderBar({ C, sty, currentUser, isMobile, setMobileMenuOpen,
             </div>
             <div className="app-account__unit">{UPT}</div>
             <button role="menuitem" onClick={()=>{setAccountMenuOpen(false);openGantiPassword();}}><SidebarIcon name="key" size={17}/><span>Ganti Password</span></button>
-            <button role="menuitem" onClick={()=>{setAccountMenuOpen(false);isDemoMode()?exitDemoMode():enterDemoMode();}}><span aria-hidden="true">🧪</span><span>{isDemoMode()?"Keluar Mode Demo":"Mode Demo (TUG)"}</span></button>
             {/* Menu SENGAJA tidak ditutup di sini: dibiarkan terbuka supaya label "Keluar..." + disabled
                 terlihat selama signOut() berjalan (bisa lambat di server self-host). Saat logout sukses
                 seluruh header unmount ke form login; kalau gagal, finally di handleLogout mengaktifkan tombol lagi. */}

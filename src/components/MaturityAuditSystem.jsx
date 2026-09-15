@@ -2,17 +2,15 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRight, CaretLeft, Sparkle, CheckCircle, Info, Trash } from "@phosphor-icons/react";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import {
-  assignMaturityDriveEvidence,
-  backfillMaturityEvidence,
   downloadMaturityDriveEvidence,
   openMaturityDriveEvidence,
-  syncMaturityDrive,
   unlinkMaturityDriveEvidence,
   uploadForm5SPhoto,
   uploadMaturityDriveEvidence,
 } from "../lib/maturityDrive.js";
 import { buildForm5SHTML } from "../lib/docBuilders.js";
 import { analyzeMaturityAspect, hashAspectSnapshot } from "../lib/maturityAi.js";
+import { MATURITY_WAREHOUSE_TYPES, MATURITY_WAREHOUSE_LABELS, isMaturityAspectApplicable, maturityAspectKey, canonicalMaturityItemId, maturityItemIdsForReview, evaluateMaturityWarehouseGate, isCurrentForm5SSaved, countCompletedEvidenceParents, countRequiredEvidenceUnits, parseMaturityAuditText } from "../lib/maturityWarehouse.js";
 
 // =========================================================================
 // CONSTANTS & ICONS
@@ -46,6 +44,26 @@ function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AuditTextBlock({ value, C }) {
+  const blocks = parseMaturityAuditText(value);
+  return <div style={{ display: "flex", flexDirection: "column", gap: 8, color: C.muted, fontSize: 12, lineHeight: 1.55, minWidth: 0 }}>
+    {blocks.map((block, blockIndex) => block.type === "list" ? (
+      <ol key={`list-${blockIndex}`} start={Number(block.items[0]?.marker) || undefined} style={{ margin: 0, paddingLeft: 22 }}>
+        {block.items.map(item => <li key={item.key} style={{ padding: "3px 0 3px 3px", overflowWrap: "anywhere" }}>
+          {item.text}
+          {item.children.length > 0 && <ol type="a" style={{ margin: "5px 0 0", paddingLeft: 22 }}>
+            {item.children.map(child => <li key={child.key} style={{ padding: "2px 0 2px 3px", overflowWrap: "anywhere" }}>{child.text}</li>)}
+          </ol>}
+        </li>)}
+      </ol>
+    ) : block.type === "heading" ? (
+      <strong key={block.key} style={{ color: C.text, overflowWrap: "anywhere" }}>{block.text.replace(/:$/, "")}</strong>
+    ) : (
+      <p key={block.key} style={{ margin: 0, overflowWrap: "anywhere" }}>{block.text}</p>
+    ))}
+  </div>;
 }
 
 // Tier tablet (820/834/1024px) — breakpoint global App.jsx hanya punya isMobile,
@@ -271,6 +289,8 @@ export function MaturityAuditEditor({
   setMaturityAuditForm,
   maturityAuditEvidence,
   setMaturityAuditEvidence,
+  maturityWarehouseType = MATURITY_WAREHOUSE_TYPES.PERSEDIAAN,
+  setMaturityWarehouseType,
   maturityAspectReviews = {},
   setAspectReview,
   setAspectItemScore,
@@ -293,11 +313,6 @@ export function MaturityAuditEditor({
   const [internalActiveAspectId, setInternalActiveAspectId] = useState(null);
   const [uploadingItems, setUploadingItems] = useState({});
   const [uploadError, setUploadError] = useState("");
-  const [syncingDrive, setSyncingDrive] = useState(false);
-  const [backfillMsg, setBackfillMsg] = useState("");
-  const [backfilling, setBackfilling] = useState(false);
-  const [unassignedFiles, setUnassignedFiles] = useState([]);
-  const [assignmentTargets, setAssignmentTargets] = useState({});
   const [viewerFile, setViewerFile] = useState(null);
   const activeAspectId = propsActiveAspectId ?? internalActiveAspectId;
   const setActiveAspectId = (id) => {
@@ -308,6 +323,19 @@ export function MaturityAuditEditor({
   const isEdit = maturityAuditModal !== "new";
   const audit = isEdit ? maturityAuditModal : {};
   const currentUptName = selectedUpt || audit.upt || "UPT Surabaya";
+  const warehouseAspects = useMemo(() => AUDIT_ASPECTS.filter(a => isMaturityAspectApplicable(a.id, maturityWarehouseType)), [maturityWarehouseType]);
+  const warehouseAssessments = useMemo(() => {
+    const nested = maturityAuditForm?.warehouseAssessments || {};
+    return {
+      ...nested,
+      [maturityWarehouseType]: {
+        ...(nested[maturityWarehouseType] || {}),
+        aspekScores: maturityAuditForm?.aspekScores || {},
+        evidence: maturityAuditEvidence || {},
+        aiAnalysis: maturityAuditForm?.aiAnalysis || {},
+      },
+    };
+  }, [maturityAuditForm, maturityAuditEvidence, maturityWarehouseType]);
   // Jenjang UPT → UIT → Pusat, cerminan policy "Maturity audits update by stage".
   // ASMAN/MANAGER read-only (MANAGER terikat 1 UPT, bukan Pusat).
   const isUPT = hasRole(currentUser, "ADMIN", "TL");
@@ -323,16 +351,18 @@ export function MaturityAuditEditor({
   // Autosave draft UPT (evidence + skor) — debounce, skip run pertama (mount) biar
   // tidak autosave tanpa perubahan nyata.
   const autosaveFirstRun = useRef(true);
+  const skipAutosaveAfterWarehouseSwitch = useRef(false);
   useEffect(() => {
     if (autosaveFirstRun.current) { autosaveFirstRun.current = false; return; }
+    if (skipAutosaveAfterWarehouseSwitch.current) { skipAutosaveAfterWarehouseSwitch.current = false; return; }
     if (!canScoreUPT || !audit.id || !autosaveMaturityDraft) return;
     const timer = setTimeout(() => { autosaveMaturityDraft(); }, 1500);
     return () => clearTimeout(timer);
   }, [maturityAuditForm.aspekScores, maturityAuditEvidence, maturityAuditForm.aiAnalysis]);
   // Gate "Kirim Hasil ke UIT": wajib Form 5S sudah disimpan pada bulan berjalan
-  const chk5S = maturityAuditEvidence?.["4.5"]?.find(f => f.id === "k3_5s_chk");
   const now = new Date();
-  const form5SSavedThisMonth = chk5S?.savedAt && new Date(chk5S.savedAt).getMonth() === now.getMonth() && new Date(chk5S.savedAt).getFullYear() === now.getFullYear();
+  const persediaanEvidence = maturityAuditForm?.warehouseAssessments?.[MATURITY_WAREHOUSE_TYPES.PERSEDIAAN]?.evidence || {};
+  const form5SSavedThisMonth = isCurrentForm5SSaved(persediaanEvidence, now);
 
   // Analisis AI per-aspek — LAZY (hanya saat halaman aspek dibuka, bukan di load
   // daftar) + CACHE by hash(evidence+skor) supaya evidence/skor tak berubah tidak
@@ -344,7 +374,7 @@ export function MaturityAuditEditor({
     const evidenceList = maturityAuditEvidence[aspectId] || [];
     if (!aspect || evidenceList.length === 0) return;
     const scoreObj = maturityAuditForm.aspekScores[aspectId];
-    const hash = hashAspectSnapshot(evidenceList, scoreObj);
+    const hash = hashAspectSnapshot(evidenceList, scoreObj, { manualCriteria: aspect.requiredEvidence.flatMap(item => [...(item.manualCriteria || []), ...(item.displayDetails || [])]) });
     if (!force && maturityAuditForm.aiAnalysis?.[aspectId]?.hash === hash) return;
     setAiAnalysisRunning(prev => ({ ...prev, [aspectId]: { i: 0, total: evidenceList.length } }));
     analyzeMaturityAspect(aspect, evidenceList, scoreObj, {
@@ -375,32 +405,33 @@ export function MaturityAuditEditor({
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+    transition: "background-color .2s ease, border-color .2s ease, box-shadow .2s ease",
     outline: "none",
     boxShadow: active ? `0 4px 10px ${color}40` : "none"
   });
 
-  const getScore = (item, roleType) => {
+  const getScore = (item, roleType, assessment = { aspekScores: maturityAuditForm.aspekScores, evidence: maturityAuditEvidence, aiAnalysis: maturityAuditForm.aiAnalysis }) => {
     if (roleType === "pusat") {
-      const pScore = maturityAuditForm.aspekScores[item.id]?.pusat;
+      const pScore = assessment.aspekScores?.[item.id]?.pusat;
       if (pScore > 0) return pScore;
     }
     if (roleType === "uit" || roleType === "pusat") {
-      const uScore = maturityAuditForm.aspekScores[item.id]?.uit;
+      const uScore = assessment.aspekScores?.[item.id]?.uit;
       if (uScore > 0) return uScore;
     }
-    const uptScore = maturityAuditForm.aspekScores[item.id]?.upt;
+    const uptScore = assessment.aspekScores?.[item.id]?.upt;
     if (uptScore > 0) return uptScore;
-    const aiLevel = Math.round(maturityAuditForm.aiAnalysis?.[item.id]?.result?.estimasiLevel || 0);
+    const aiLevel = Math.round(assessment.aiAnalysis?.[item.id]?.result?.estimasiLevel || 0);
     if (aiLevel >= 1 && aiLevel <= 5) return aiLevel;
-    const uploadedCount = (maturityAuditEvidence[item.id] || []).length;
-    return calculateItemLevel(uploadedCount, item.requiredEvidence.length);
+    const uploadedCount = countCompletedEvidenceParents(item, assessment.evidence?.[item.id] || []);
+    return calculateItemLevel(uploadedCount, countRequiredEvidenceUnits(item));
   };
 
-  const getCategoryScore = (catId, roleType) => {
-    const catItems = AUDIT_ASPECTS.filter(a => a.category === catId);
+  const getCategoryScore = (catId, roleType, type = maturityWarehouseType) => {
+    const catItems = AUDIT_ASPECTS.filter(a => a.category === catId && isMaturityAspectApplicable(a.id, type));
     if (catItems.length === 0) return 0;
-    const sum = catItems.reduce((acc, item) => acc + getScore(item, roleType), 0);
+    const assessment = warehouseAssessments[type] || {};
+    const sum = catItems.reduce((acc, item) => acc + getScore(item, roleType, assessment), 0);
     return sum / catItems.length;
   };
 
@@ -411,60 +442,36 @@ export function MaturityAuditEditor({
   const scoreCat3 = getCategoryScore("sarana_prasarana", activeRoleType);
   const scoreCat4 = getCategoryScore("k3", activeRoleType);
   const scoreCat5 = getCategoryScore("teknologi", activeRoleType);
-
-  const matlevScoreA = ((scoreCat1 + scoreCat2 + scoreCat3 + scoreCat4 + scoreCat5) / 5) * 0.75;
-  const matlevScoreB = ((scoreCat3 + scoreCat4 + scoreCat5) / 3) * 0.25;
+  const persediaanRaw = AUDIT_CATEGORIES.reduce((sum, category) => sum + getCategoryScore(category.id, activeRoleType, MATURITY_WAREHOUSE_TYPES.PERSEDIAAN), 0) / AUDIT_CATEGORIES.length;
+  const attbCategoryIds = ["sarana_prasarana", "k3", "teknologi"];
+  const attbRaw = attbCategoryIds.reduce((sum, categoryId) => sum + getCategoryScore(categoryId, activeRoleType, MATURITY_WAREHOUSE_TYPES.ATTB_MRWI), 0) / attbCategoryIds.length;
+  const matlevScoreA = persediaanRaw * 0.75;
+  const matlevScoreB = attbRaw * 0.25;
   const matlevTotalScore = matlevScoreA + matlevScoreB;
 
   const overallScoreVal = matlevTotalScore;
 
-  const completedAspectsCount = AUDIT_ASPECTS.filter(
-    a => (maturityAuditEvidence[a.id] || []).length >= a.requiredEvidence.length
-  ).length;
-  // Evidence dianggap lengkap bila SEMUA aspek sudah memenuhi jumlah bukti wajib.
-  const incompleteAspectsCount = AUDIT_ASPECTS.length - completedAspectsCount;
-  const evidenceComplete = incompleteAspectsCount === 0;
-  // Gate "Kirim Hasil ke Pusat": SEMUA item evidence non-auto harus sudah
-  // di-Check UIT (item auto-filled dari Form 5S dianggap auto-checked).
-  const allItemsChecked = AUDIT_ASPECTS.every(a => a.requiredEvidence.every(item => {
-    const files = maturityAuditEvidence[a.id]?.filter(f => f.itemId === item.id) || [];
-    if (files.length > 0 && files.every(f => f.auto === true)) return true; // auto-filled, skip
-    return maturityAspectReviews[`${a.id}::${item.id}`]?.state === "CHECKED";
-  }));
-  // Gate "Finalisasi & Simpan" Pusat: SEMUA item evidence non-auto sudah dapat nilai final 1-5.
-  const allItemsScored = AUDIT_ASPECTS.every(a => a.requiredEvidence.every(item => {
-    const files = maturityAuditEvidence[a.id]?.filter(f => f.itemId === item.id) || [];
-    if (files.length > 0 && files.every(f => f.auto === true)) return true; // auto-filled, skip
-    return (maturityAspectReviews[`${a.id}::${item.id}`]?.finalScore ?? null) != null;
-  }));
+  const completedAspectsCount = warehouseAspects.filter(aspect => countCompletedEvidenceParents(aspect, maturityAuditEvidence[aspect.id] || []) === countRequiredEvidenceUnits(aspect)).length;
+  const gate = evaluateMaturityWarehouseGate(AUDIT_ASPECTS, warehouseAssessments, maturityAspectReviews);
+  const evidenceComplete = gate.evidenceComplete;
+  const allItemsChecked = gate.allItemsChecked;
+  const allItemsScored = gate.allItemsScored;
+  const incompleteRequirementCount = gate.missingEvidence.length + gate.missingSubpoints.length;
 
-  const uitReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.uit || 0) > 0).length;
-  const pusatReviewedCount = AUDIT_ASPECTS.filter(a => (maturityAuditForm.aspekScores[a.id]?.pusat || 0) > 0).length;
+  const uitReviewedCount = warehouseAspects.filter(a => (maturityAuditForm.aspekScores[a.id]?.uit || 0) > 0).length;
+  const pusatReviewedCount = warehouseAspects.filter(a => (maturityAuditForm.aspekScores[a.id]?.pusat || 0) > 0).length;
 
-  const activeCategory = AUDIT_CATEGORIES.find(c => c.id === expandedAspek) || AUDIT_CATEGORIES[0];
+  const warehouseCategories = AUDIT_CATEGORIES.filter(category => warehouseAspects.some(aspect => aspect.category === category.id));
+  const activeCategory = warehouseCategories.find(c => c.id === expandedAspek) || warehouseCategories[0] || AUDIT_CATEGORIES[0];
   const activeCategoryIdx = AUDIT_CATEGORIES.findIndex(c => c.id === expandedAspek) + 1;
 
-  const categoryAspects = AUDIT_ASPECTS.filter(a => a.category === activeCategory.id);
+  const categoryAspects = warehouseAspects.filter(a => a.category === activeCategory.id);
   const pageSize = 5;
   const totalPages = Math.ceil(categoryAspects.length / pageSize);
   const paginatedAspects = categoryAspects.slice((aspectPage - 1) * pageSize, aspectPage * pageSize);
 
-  const activeAspect = AUDIT_ASPECTS.find(a => a.id === activeAspectId);
+  const activeAspect = warehouseAspects.find(a => a.id === activeAspectId);
   const categoryOrder = Math.max(1, AUDIT_CATEGORIES.findIndex(category => category.id === activeCategory.id) + 1);
-
-  const applySyncedEvidence = useCallback((evidence = []) => {
-    setMaturityAuditEvidence(previous => {
-      const automatic = Object.fromEntries(Object.entries(previous).map(([aspectId, files]) => [
-        aspectId, (files || []).filter(file => file?.auto || file?.source === "Form Pengisian 5S"),
-      ]));
-      const manual = evidence.reduce((next, file) => {
-        const files = next[file.aspectId] || [];
-        next[file.aspectId] = [...files.filter(existing => existing.driveFileId !== file.driveFileId && existing.id !== file.id), file];
-        return next;
-      }, {});
-      return { ...automatic, ...Object.fromEntries(Object.keys(manual).map(aspectId => [aspectId, [...(automatic[aspectId] || []), ...manual[aspectId]]])) };
-    });
-  }, [setMaturityAuditEvidence]);
 
   const drivePayload = useCallback((overrides = {}) => ({
     auditId: audit.id,
@@ -473,43 +480,9 @@ export function MaturityAuditEditor({
     categoryId: activeCategory.id,
     categoryLabel: activeCategory.label,
     categoryOrder,
+    warehouseType: maturityWarehouseType,
     ...overrides,
-  }), [audit.id, audit.createdAt, currentUptName, activeCategory, categoryOrder]);
-
-  const handleDriveSync = async () => {
-    if (!audit.id) {
-      setUploadError("Audit belum memiliki ID. Tutup lalu buat ulang audit sebelum sinkronisasi Drive.");
-      return;
-    }
-    setSyncingDrive(true); setUploadError("");
-    try {
-      const result = await syncMaturityDrive(drivePayload({ scanDrive: true }));
-      applySyncedEvidence(result.evidence);
-      setUnassignedFiles(result.unassigned || []);
-    } catch (error) {
-      setUploadError(error?.message || "Sinkronisasi Google Drive gagal.");
-    } finally { setSyncingDrive(false); }
-  };
-
-  // Backfill sekali-jalan: pindahkan evidence lama (belum punya storage_path,
-  // masih baca lambat dari Drive) ke storage self-host. Loop sampai remaining=0.
-  const handleBackfill = async () => {
-    setBackfilling(true); setBackfillMsg("Memindahkan evidence lama...");
-    try {
-      let remaining = 1;
-      let totalOk = 0;
-      while (remaining > 0) {
-        const result = await backfillMaturityEvidence({ limit: 15 });
-        totalOk += result.ok;
-        remaining = result.remaining;
-        setBackfillMsg(`Dipindahkan ${totalOk}, sisa ${remaining}...`);
-        if (result.processed === 0) break; // jaga-jaga kalau ada yang selalu gagal
-      }
-      setBackfillMsg(`Selesai. ${totalOk} evidence dipindahkan ke self-host.`);
-    } catch (error) {
-      setBackfillMsg(error?.message || "Backfill gagal.");
-    } finally { setBackfilling(false); }
-  };
+  }), [audit.id, audit.createdAt, currentUptName, activeCategory, categoryOrder, maturityWarehouseType]);
 
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -521,14 +494,6 @@ export function MaturityAuditEditor({
           <p style={{ fontSize: 13, color: "rgba(219,234,254,.82)", margin: "5px 0 0", lineHeight: 1.45 }}>Area kerja pengelolaan kelengkapan bukti fisik dan penilaian skor kematangan.</p>
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexShrink: 0 }}>
-          {hasRole(currentUser, "SUPERADMIN") && (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-              <button type="button" onClick={handleBackfill} disabled={backfilling} style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid rgba(255,255,255,.45)", color: "#fff", background: "rgba(255,255,255,.14)", fontWeight: 700, fontSize: 12, cursor: backfilling ? "wait" : "pointer" }}>
-                {backfilling ? "Memindahkan..." : "Backfill evidence lama"}
-              </button>
-              {backfillMsg && <span style={{ fontSize: 11, color: "rgba(219,234,254,.82)" }}>{backfillMsg}</span>}
-            </div>
-          )}
           {canScoreUPT && maturityDraftSavedAt && (
             <span style={{ fontSize: 13, color: "rgba(219,234,254,.82)" }}>
               Tersimpan otomatis {new Date(maturityDraftSavedAt).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}
@@ -541,6 +506,19 @@ export function MaturityAuditEditor({
       </div>
 
       <div>
+        <div role="tablist" aria-label="Jenis gudang" style={{ display: "flex", gap: 8, overflowX: "auto", padding: "4px 0 14px", WebkitOverflowScrolling: "touch" }}>
+          {Object.values(MATURITY_WAREHOUSE_TYPES).map(type => (
+            <button key={type} type="button" role="tab" aria-selected={maturityWarehouseType === type} onClick={() => {
+              if (type === maturityWarehouseType) return;
+              skipAutosaveAfterWarehouseSwitch.current = true;
+              setMaturityWarehouseType?.(type);
+              const firstCategory = AUDIT_CATEGORIES.find(category => AUDIT_ASPECTS.some(aspect => aspect.category === category.id && isMaturityAspectApplicable(aspect.id, type)));
+              setExpandedAspek(firstCategory?.id || AUDIT_CATEGORIES[0].id);
+            }} style={{ minHeight: 44, minWidth: isMobile ? 190 : 210, padding: "0 16px", borderRadius: 10, border: `1px solid ${maturityWarehouseType === type ? C.accent : C.border}`, background: maturityWarehouseType === type ? `${C.accent}15` : C.surface, color: maturityWarehouseType === type ? C.accent : C.text, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+              {MATURITY_WAREHOUSE_LABELS[type]}
+            </button>
+          ))}
+        </div>
         {/* Metric Cards Grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 20 }}>
           <div style={{ ...sty.card, display: "flex", alignItems: "center", gap: 14 }}>
@@ -559,9 +537,9 @@ export function MaturityAuditEditor({
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <span style={{ fontSize: 13, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Kelengkapan Dokumen</span>
-              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{completedAspectsCount}/{AUDIT_ASPECTS.length} Aspek</strong>
+              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{completedAspectsCount}/{warehouseAspects.length} Aspek</strong>
               <div style={{ height: 4, background: C.border, borderRadius: 10, marginTop: 4, overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${(completedAspectsCount / AUDIT_ASPECTS.length) * 100}%`, background: C.accent, borderRadius: 10 }} />
+                <div style={{ height: "100%", width: `${warehouseAspects.length ? (completedAspectsCount / warehouseAspects.length) * 100 : 0}%`, background: C.accent, borderRadius: 10 }} />
               </div>
             </div>
           </div>
@@ -571,7 +549,7 @@ export function MaturityAuditEditor({
             </div>
             <div style={{ minWidth: 0 }}>
               <span style={{ fontSize: 13, color: C.muted, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>Progress Review</span>
-              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{uitReviewedCount}/{AUDIT_ASPECTS.length}</strong>
+              <strong style={{ fontSize: 20, fontWeight: 800, color: C.text, display: "block", marginTop: 2, fontVariantNumeric: "tabular-nums", letterSpacing: "-.2px" }}>{uitReviewedCount}/{warehouseAspects.length}</strong>
               <span style={{ fontSize: 13, color: C.muted }}>{pusatReviewedCount} Disetujui Pusat</span>
             </div>
           </div>
@@ -580,7 +558,7 @@ export function MaturityAuditEditor({
         {/* Aspect Detail / Upload Screen */}
         {activeAspectId && activeAspect ? (() => {
           const aspectFiles = maturityAuditEvidence[activeAspect.id] || [];
-          const uploadedCount = aspectFiles.length;
+          const uploadedCount = countCompletedEvidenceParents(activeAspect, aspectFiles);
           const calculatedLevel = getScore(activeAspect, "pusat");
           const statusSkorUIT = maturityAuditForm.aspekScores[activeAspect.id]?.uit || 0;
           const statusSkorPusat = maturityAuditForm.aspekScores[activeAspect.id]?.pusat || 0;
@@ -632,54 +610,33 @@ export function MaturityAuditEditor({
                         <div style={{ fontSize: 13, color: "#dbeafe", marginTop: 2 }}>Berkas tersimpan di Google Drive; ID dan metadata evidence dicatat secara canonical.</div>
                       </div>
                     </div>
-                    <button type="button" onClick={handleDriveSync} disabled={syncingDrive || !audit.id} style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,.45)", color: "#fff", background: "rgba(255,255,255,.14)", fontWeight: 700, cursor: syncingDrive ? "wait" : "pointer" }}>
-                      {syncingDrive ? "Menyinkronkan..." : "↻ Sinkronkan Drive"}
-                    </button>
                   </div>
                   {uploadError && <div role="alert" style={{ padding: "10px 12px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13, fontWeight: 700 }}>{uploadError}</div>}
 
-                  {unassignedFiles.length > 0 && (
-                    <div style={{ border: `1px solid ${C.yellow}66`, background: `${C.yellow}12`, borderRadius: 10, padding: "12px 14px" }}>
-                      <strong style={{ display: "block", color: C.text, fontSize: 13 }}>Berkas Belum Terhubung ({unassignedFiles.length})</strong>
-                      <span style={{ display: "block", marginTop: 3, color: C.muted, fontSize: 12 }}>Berkas ini ditemukan pada root/periode/UPT/kategori/aspek dan belum memengaruhi skor.</span>
-                      {unassignedFiles.map(file => {
-                        const selectedItemId = assignmentTargets[file.driveFileId] || activeAspect.requiredEvidence[0]?.id || "";
-                        const targetItem = activeAspect.requiredEvidence.find(item => item.id === selectedItemId);
-                        return <div key={file.driveFileId} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 9, fontSize: 12 }}>
-                          <span style={{ flex: 1, minWidth: 0, color: C.text, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.name}</span>
-                          <select aria-label="Tetapkan evidence ke item audit" value={selectedItemId} onChange={event => setAssignmentTargets(previous => ({ ...previous, [file.driveFileId]: event.target.value }))} style={{ minWidth: 0, flex: 1, fontSize: isMobile ? 16 : 12, minHeight: isMobile ? 44 : undefined }}>
-                            {activeAspect.requiredEvidence.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
-                          </select>
-                          <button type="button" onClick={async () => {
-                            if (!targetItem) return;
-                            setUploadingItems(previous => ({ ...previous, [`assign-${file.driveFileId}`]: true })); setUploadError("");
-                            try {
-                              const result = await assignMaturityDriveEvidence(drivePayload({ unassignedId: file.id, aspectId: activeAspect.id, aspectTitle: activeAspect.title, itemId: targetItem.id, itemLabel: targetItem.label }));
-                              applySyncedEvidence([...(Object.values(maturityAuditEvidence).flat().filter(existing => !existing?.auto)), result.evidence]);
-                              setUnassignedFiles(previous => previous.filter(candidate => candidate.driveFileId !== file.driveFileId));
-                            } catch (error) { setUploadError(error?.message || "Berkas tidak dapat dihubungkan."); }
-                            finally { setUploadingItems(previous => ({ ...previous, [`assign-${file.driveFileId}`]: false })); }
-                          }} disabled={uploadingItems[`assign-${file.driveFileId}`]} style={{ padding: "5px 8px", borderRadius: 10, border: "1px solid #ca8a04", background: "#fff", color: "#854d0e", fontWeight: 800, cursor: "pointer" }}>
-                            {uploadingItems[`assign-${file.driveFileId}`] ? "Menghubungkan..." : "Hubungkan"}
-                          </button>
-                        </div>;
-                      })}
+                  {activeAspect.requiredEvidence.some(item => item.alternativeGroup) && (
+                    <div role="note" style={{ padding: "10px 12px", borderRadius: 10, background: `${C.accent}08`, border: `1px solid ${C.accent}22`, color: C.text, fontSize: 12, lineHeight: 1.5 }}>
+                      <strong>Pilih satu jalur evidence.</strong> Pilihan A cukup satu dokumen. Pilihan B wajib melengkapi semua dokumen berlabel Pilihan B.
                     </div>
                   )}
 
                   {activeAspect.requiredEvidence.map((eviItem, eviIdx) => {
-                    const itemFiles = aspectFiles.filter(f => f.itemId === eviItem.id);
+                    const itemFiles = aspectFiles.filter(f => canonicalMaturityItemId(f.itemId) === eviItem.id);
                     const isUploaded = itemFiles.length > 0;
                     const isAutoFilled = isUploaded && itemFiles.every(f => f.auto === true);
-                    const targetFolderPath = `${currentUptName} / ${activeCategory.label} / Aspek ${activeAspect.id} / ${eviItem.label}`;
+    const targetFolderPath = `${currentUptName} / ${MATURITY_WAREHOUSE_LABELS[maturityWarehouseType]} / ${activeCategory.label} / Aspek ${activeAspect.id} / ${eviItem.label}`;
                     // Review per-item: key komposit "aspectId::itemId". Auto-filled dari Form 5S
                     // dianggap otomatis lolos, tidak perlu Check manual UIT.
-                    const itemReview = maturityAspectReviews[`${activeAspect.id}::${eviItem.id}`];
+                    const reviewKeyIds = maturityItemIdsForReview(eviItem.id);
+                    const itemReview = reviewKeyIds.map(itemId => maturityAspectReviews[`${maturityAspectKey(maturityWarehouseType, activeAspect.id)}::${itemId}`]).find(Boolean)
+                      || (maturityWarehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewKeyIds.map(itemId => maturityAspectReviews[`${activeAspect.id}::${itemId}`]).find(Boolean) : undefined);
                     const itemReviewState = itemReview?.state || "PENDING";
-                    const itemLatestAt = Math.max(0, ...itemFiles.map(f => f.savedAt || f.uploadedAt || f.createdAt || 0));
-                    const itemReviewStale = Boolean(itemReview?.reviewedAt) && itemLatestAt > itemReview.reviewedAt;
-                    const itemReviewColor = itemReviewState === "CHECKED" ? C.green : itemReviewState === "REJECTED" ? "#dc2626" : C.muted;
-                    const itemReviewLabel = itemReviewState === "CHECKED" ? "✓ Checked" : itemReviewState === "REJECTED" ? "✗ Rejected" : "Menunggu Review";
+                    const itemLatestAt = Math.max(0, ...itemFiles.map(f => Number(f.savedAt || f.uploadedAt || f.createdAt || 0) || Date.parse(f.savedAt || f.uploadedAt || f.createdAt || "") || 0));
+                    const itemReviewAt = Number(itemReview?.reviewedAt || 0) || Date.parse(itemReview?.reviewedAt || "") || 0;
+                    const itemReviewStale = Boolean(itemReview?.reviewedAt) && itemLatestAt > itemReviewAt;
+                    const parentReviewLocks = itemReviewState === "CHECKED" && !itemReviewStale;
+                    const itemReviewColor = parentReviewLocks ? C.green : itemReviewState === "REJECTED" ? "#dc2626" : C.muted;
+                    const itemReviewLabel = parentReviewLocks ? "✓ Checked" : itemReviewState === "REJECTED" ? "✗ Rejected" : "Menunggu Review";
+                    const checkerCriteria = [...(eviItem.manualCriteria || []), ...(eviItem.displayDetails || [])];
                     return (
                       <div key={eviItem.id} style={{
                         background: isAutoFilled ? `${C.green}0d` : C.surface,
@@ -690,7 +647,7 @@ export function MaturityAuditEditor({
                         flexDirection: "column",
                         gap: 10,
                         boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
-                        transition: "all 0.2s"
+                        transition: "background-color .2s ease, border-color .2s ease"
                       }}>
                         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 10, width: "100%" }}>
                           <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flex: 1, minWidth: 0 }}>
@@ -713,6 +670,7 @@ export function MaturityAuditEditor({
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                                 <span style={{ fontSize: 13, fontWeight: 800, color: C.text, lineHeight: 1.35, whiteSpace: "normal", wordBreak: "break-word" }}>{eviItem.label}</span>
+                                {eviItem.alternativeGroup && <span style={{ fontSize: 11, fontWeight: 800, padding: "2px 7px", borderRadius: 12, background: `${C.accent}12`, color: C.accent, border: `1px solid ${C.accent}35`, whiteSpace: "nowrap" }}>{eviItem.alternativePath === "unit" ? "Pilihan A" : "Pilihan B"}</span>}
                                 {isAutoFilled && (
                                   <span style={{
                                     fontSize: 12,
@@ -728,24 +686,26 @@ export function MaturityAuditEditor({
                                   </span>
                                 )}
                               </div>
-                              <div style={{
-                                fontSize: 12,
-                                color: C.muted,
-                                marginTop: 5,
-                                whiteSpace: "normal",
-                                wordBreak: "break-word",
-                                minWidth: 0
-                              }}>
-                                📍 {isMobile ? `Aspek ${activeAspect.id} / ${eviItem.label}` : targetFolderPath}
-                              </div>
-                              {canScoreUPT && !isAutoFilled && <span style={{ display: "block", marginTop: 5, fontSize: 12, color: C.muted, whiteSpace: "normal", wordBreak: "break-word" }}>Maks. 25 MB per berkas; foto, PDF, dokumen Office, ZIP/RAR, TXT, atau CSV.</span>}
+                              {checkerCriteria.length > 0 && (
+                                <div style={{ marginTop: 8, padding: "9px 11px", borderRadius: 9, background: `${C.accent}08`, border: `1px solid ${C.accent}22` }}>
+                                  <strong style={{ display: "block", marginBottom: 4, color: C.text, fontSize: 12 }}>Yang harus diperiksa checker</strong>
+                                  <ol type="a" style={{ margin: "0 0 0 20px", padding: 0, color: C.muted, fontSize: 12, lineHeight: 1.5 }}>
+                                    {checkerCriteria.map((criterion, index) => <li key={`${eviItem.id}-manual-${index}`} style={{ padding: "2px 0", overflowWrap: "anywhere" }}>{criterion}</li>)}
+                                  </ol>
+                                </div>
+                              )}
+                              <details style={{ marginTop: 3 }}>
+                                <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: C.muted, fontSize: 12, fontWeight: 700 }}>Lokasi folder &amp; format file</summary>
+                                <div style={{ paddingBottom: 5, color: C.muted, fontSize: 12, lineHeight: 1.5, overflowWrap: "anywhere" }}>📍 {isMobile ? `Aspek ${activeAspect.id} / ${eviItem.label}` : targetFolderPath}</div>
+                                {canScoreUPT && !isAutoFilled && <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5 }}>Maks. 25 MB per berkas; foto, PDF, dokumen Office, ZIP/RAR, TXT, atau CSV.</div>}
+                              </details>
                             </div>
                           </div>
 
-                          {canScoreUPT && !isAutoFilled && itemReviewState === "CHECKED" && (
+                          {canScoreUPT && !isAutoFilled && parentReviewLocks && (
                             <div style={{
                               padding: "0 12px",
-                              height: isMobile ? 40 : 32,
+                              minHeight: 44,
                               borderRadius: 10,
                               background: `${C.green}22`,
                               color: C.green,
@@ -763,12 +723,12 @@ export function MaturityAuditEditor({
                               🔒 Terkunci — sudah di-Check UIT
                             </div>
                           )}
-                          {canScoreUPT && !isAutoFilled && itemReviewState !== "CHECKED" && (
+                          {canScoreUPT && !isAutoFilled && !parentReviewLocks && (
                             <label style={{
                               padding: "0 16px",
-                              height: isMobile ? 40 : 32,
+                              minHeight: 44,
                               borderRadius: 10,
-                              background: uploadingItems[eviItem.id] ? "#fffbeb" : isUploaded ? C.surface : "linear-gradient(135deg, #2563eb, #1d4ed8)",
+                              background: uploadingItems[eviItem.id] ? "#fffbeb" : isUploaded ? C.surface : C.accent,
                               color: uploadingItems[eviItem.id] ? "#b45309" : isUploaded ? C.text : "#ffffff",
                               border: `1.5px solid ${uploadingItems[eviItem.id] ? "#fde68a" : isUploaded ? C.border : "#1d4ed8"}`,
                               fontSize: 12,
@@ -783,7 +743,7 @@ export function MaturityAuditEditor({
                               width: isMobile ? "100%" : "auto",
                               marginLeft: isMobile ? 0 : "auto",
                               boxShadow: isUploaded ? "0 1px 2px rgba(0,0,0,0.05)" : "0 3px 10px rgba(37,99,235,0.25)",
-                              transition: "all 0.15s ease"
+                              transition: "background-color .15s ease, border-color .15s ease, box-shadow .15s ease"
                             }}>
                               <Icons.Upload />
                               <span>{uploadingItems[eviItem.id] ? "⌛ Mengunggah..." : isUploaded ? "+ Tambah / Ganti File" : "Pilih File / Foto"}</span>
@@ -804,18 +764,17 @@ export function MaturityAuditEditor({
                                       uploadedFiles.push(await uploadMaturityDriveEvidence({
                                         file: f,
                                         ...drivePayload({
-                                          aspectId: activeAspect.id,
+                                          aspectId: maturityAspectKey(maturityWarehouseType, activeAspect.id),
                                           aspectTitle: activeAspect.title,
                                           itemId: eviItem.id,
                                           itemLabel: eviItem.label,
                                         })
                                       }));
                                     }
-                                    const newFiles = uploadedFiles.map(res => ({ ...res, folderPath: targetFolderPath }));
+                                    const newFiles = uploadedFiles.map(res => ({ ...res, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath }));
                                     const cur = maturityAuditEvidence[activeAspect.id] || [];
                                     const nextEvidence = { ...maturityAuditEvidence, [activeAspect.id]: [...cur, ...newFiles] };
                                     setMaturityAuditEvidence(nextEvidence);
-                                    if (canScoreUPT && audit.id) autosaveMaturityDraft?.(nextEvidence);
                                   } catch (err) {
                                     console.warn("Upload evidence Maturity gagal:", err);
                                     setUploadError(err?.message || "Upload evidence Maturity gagal.");
@@ -830,7 +789,7 @@ export function MaturityAuditEditor({
                           {canScoreUPT && isAutoFilled && (
                             <div style={{
                               padding: "0 12px",
-                              height: isMobile ? 40 : 32,
+                              minHeight: 44,
                               borderRadius: 10,
                               background: `${C.green}22`,
                               color: C.green,
@@ -853,19 +812,19 @@ export function MaturityAuditEditor({
                         {!isAutoFilled && (
                           <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
-                              <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 14, background: `${itemReviewColor}22`, color: itemReviewColor, border: `1.5px solid ${itemReviewColor}55`, whiteSpace: "nowrap", alignSelf: "flex-start" }}>{itemReviewState === "CHECKED" ? "🔒 " : ""}{itemReviewLabel}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 14, background: `${itemReviewColor}22`, color: itemReviewColor, border: `1.5px solid ${itemReviewColor}55`, whiteSpace: "nowrap", alignSelf: "flex-start" }}>{parentReviewLocks ? "🔒 " : ""}{itemReviewLabel}</span>
                               {itemReviewStale && <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, wordBreak: "break-word" }}>Evidence berubah setelah review — perlu re-review</span>}
                               {itemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
                             </div>
                             {canReviewUIT && isUploaded && (
-                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={setAspectReview} disabled={maturityAuditSaving} isMobile={isMobile} state={itemReviewState} />
+                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={(id, item, state, note) => setAspectReview(id, item, state, note, maturityWarehouseType)} disabled={maturityAuditSaving} isMobile={isMobile} state={itemReviewState} />
                             )}
                           </div>
                         )}
 
                         {canScorePusat && isUploaded && !isAutoFilled && (
                           <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
-                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} value={itemReview?.finalScore ?? null} setAspectItemScore={setAspectItemScore} disabled={maturityAuditSaving} isMobile={isMobile} />
+                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} value={itemReview?.finalScore ?? null} setAspectItemScore={(id, item, score) => setAspectItemScore(id, item, score, maturityWarehouseType)} disabled={maturityAuditSaving} isMobile={isMobile} />
                           </div>
                         )}
 
@@ -875,7 +834,7 @@ export function MaturityAuditEditor({
                               {itemFiles.map((f, fi) => {
                                 const globalIdx = aspectFiles.indexOf(f);
                                 const fullFolderPath = f.folderPath || targetFolderPath;
-                                const canDelete = canScoreUPT && !f.auto && itemReviewState !== "CHECKED";
+                                const canDelete = canScoreUPT && !f.auto && !parentReviewLocks;
                                 const openFile = () => {
                                   if (f.auto && f.url) window.location.hash = f.url.replace(/^#/, "");
                                   else if (f.id) setViewerFile({ id: f.id, name: f.name });
@@ -995,19 +954,13 @@ export function MaturityAuditEditor({
                   })}
                 </div>
 
-                {/* Right Column */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
-                  <div style={{ ...sty.card }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  {/* Right Column */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16, minWidth: 0 }}>
+                    <div style={{ ...sty.card }}>
+                      <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: "0 0 10px 0", display: "flex", alignItems: "center", gap: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                       <Icons.Info /> Catatan Evidence
                     </h4>
-                    <ul style={{ margin: 0, padding: 0, listStyle: "none", fontSize: 13, color: C.muted, lineHeight: 1.5, display: "flex", flexDirection: "column", gap: 6 }}>
-                      {activeAspect.catatan.map((n, ni) => (
-                        <li key={ni} style={{ position: "relative", paddingLeft: 16 }}>
-                          <span style={{ position: "absolute", left: 2, top: 0, color: C.accent, fontWeight: 700 }}>•</span>{n}
-                        </li>
-                      ))}
-                    </ul>
+                    {(activeAspect.sourceNote !== undefined && activeAspect.sourceNote !== "" ? <AuditTextBlock value={activeAspect.sourceNote} C={C} /> : activeAspect.sourceNote === "" ? null : <AuditTextBlock value={(activeAspect.catatan || []).join("\n")} C={C} />)}
                   </div>
 
                   <div style={{ ...sty.card }}>
@@ -1028,7 +981,7 @@ export function MaturityAuditEditor({
                             fontSize: 13,
                             color: isActive ? C.text : C.muted,
                             fontWeight: isActive ? 600 : 400,
-                            transition: "all 0.15s ease"
+                            transition: "background-color .15s ease, border-color .15s ease"
                           }}>
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                               <strong>Level {lvlNum}</strong>
@@ -1173,7 +1126,7 @@ export function MaturityAuditEditor({
           // Category List View
           <div>
             <div className="operations-segments" style={{ marginBottom: 20 }}>
-              {AUDIT_CATEGORIES.map(cat => {
+              {warehouseCategories.map(cat => {
                 const isActive = expandedAspek === cat.id;
                 return (
                   <button
@@ -1197,7 +1150,7 @@ export function MaturityAuditEditor({
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {paginatedAspects.map(aspect => {
                     const aspectAllFiles = maturityAuditEvidence[aspect.id] || [];
-                    const filesCount = aspectAllFiles.length;
+                                const filesCount = countCompletedEvidenceParents(aspect, aspectAllFiles);
                     const reqCount = aspect.requiredEvidence.length;
                     const itemUptScore = calculateItemLevel(filesCount, reqCount);
                     const itemUitScore = maturityAuditForm.aspekScores[aspect.id]?.uit || 0;
@@ -1353,7 +1306,7 @@ export function MaturityAuditEditor({
               <div style={{ ...sty.card, height: "fit-content" }}>
                 <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: "0 0 14px 0", borderBottom: `1px solid ${C.border}`, paddingBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>Skor Per Kategori</h4>
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  {AUDIT_CATEGORIES.map(cat => {
+                  {warehouseCategories.map(cat => {
                     const catScore = getCategoryScore(cat.id, activeRoleType);
                     return (
                       <div key={cat.id}>
@@ -1435,9 +1388,9 @@ export function MaturityAuditEditor({
                     return;
                   }
                   if (!evidenceComplete) {
-                    askConfirmDelete?.({
-                      title: "Evidence Belum Lengkap",
-                      message: `Masih ada ${incompleteAspectsCount} aspek yang bukti wajibnya belum lengkap diunggah.`,
+                      askConfirmDelete?.({
+                        title: "Evidence Belum Lengkap",
+                        message: `Masih ada ${incompleteRequirementCount} persyaratan evidence yang belum lengkap.`,
                       confirmLabel: "Mengerti",
                       variant: "warning",
                     });
@@ -1463,11 +1416,11 @@ export function MaturityAuditEditor({
               {canScorePusat && (
                 <>
                   <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  <button className="approval-btn--approve" disabled={maturityAuditSaving || !allItemsScored} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
+                  <button className="approval-btn--approve" disabled={maturityAuditSaving || !allItemsScored || !allItemsChecked || !evidenceComplete || !form5SSavedThisMonth} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
                 </>
               )}
-              {canScorePusat && !allItemsScored && (
-                <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, alignSelf: "center" }}>Beri nilai semua item dulu sebelum Finalisasi.</span>
+              {canScorePusat && (!allItemsScored || !allItemsChecked || !evidenceComplete) && (
+                <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, alignSelf: "center" }}>Lengkapi berkas, review UIT, dan nilai semua item sebelum Finalisasi.</span>
               )}
             </div>
           </div>
@@ -2191,7 +2144,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "all 0.2s ease"
+                transition: "background-color .2s ease, border-color .2s ease"
               }}>
                 {photo ? (
                   <>

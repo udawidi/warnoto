@@ -6,7 +6,6 @@ import { UIT, UPT, STATUS_RETUR_TO_JENIS } from "../constants.js";
 import { fmtDateOnly } from "./utils.js";
 import { resolveSapLabel } from "./sap.js";
 import { syncMasterTable } from "./masterSync.js";
-import { isDemoMode } from "./demo.js";
 import { normalizeKatalogCode } from "./normalizeKatalogCode.js";
 
 // Marker sync harus mengikuti endpoint. Jangan baca marker global lama: marker
@@ -54,7 +53,6 @@ function saveSyncedKeys(set) {
 }
 
 export async function syncTUG15ToSupabase(rows, katalogList) {
-  if (isDemoMode()) return { katalogCount: 0, historyCount: 0 }; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
   }
@@ -132,7 +130,6 @@ function buildLokasiPublik(katalogId, stocks, lokasiList, subGudangList, gudangL
 const lastSyncedStockQty = new Map(); // katalogId -> qty terakhir di-push
 
 export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
-  if (isDemoMode()) return { katalogCount: 0, stockCount: 0 }; // mode demo: pura-pura sukses, tidak menulis Supabase
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
   }
@@ -221,10 +218,8 @@ export async function uploadPhotoToStorage(dataUrl, bucket, path) {
 // Foto yang gagal upload (mis. offline) dibiarkan base64 & dicatat di `pending`
 // (transaksi tetap tersimpan + dokumen tetap bisa dibuat; disinkron ulang nanti).
 export async function processTxnPhotos(txn, prefix, onProgress) {
-  // Mode demo: jangan upload ke Storage â€” kembalikan txn dengan referensi PERSIS
-  // sama (bukan copy) supaya pemanggil (mis. syncPendingTxnPhotos) yang membandingkan
-  // `data !== x` tidak menganggap ada perubahan & tidak memicu save loop.
-  if (isDemoMode()) return { data: txn, pending: [] };
+  // Tanpa koneksi Storage, kembalikan referensi transaksi yang sama agar caller
+  // tidak menganggap ada perubahan dan memicu save loop.
   if (!supabase) return { data: txn, pending: [] };
   const t = { ...txn };
   const pending = [];
@@ -291,7 +286,6 @@ export async function resolveTxnPrivPhotos(txn) {
 }
 
 export async function syncFotoMaterialToSupabase(stocks, katalogList) {
-  if (isDemoMode()) return { uploadCount: 0 }; // mode demo: pura-pura sukses, tidak upload ke Storage
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
   }
@@ -426,7 +420,7 @@ async function loadLegacyHistoryPages(table, fields, sourceUpt) {
 }
 
 export async function loadLegacyHistoryArchive(sourceUpt = "UPT Surabaya") {
-  if (isDemoMode() || !supabase) return { rows: [], documents: [], error: null };
+  if (!supabase) return { rows: [], documents: [], error: null };
   const archiveFields = "id,source_upt,doc_type,doc_id,item_id,tanggal,jenis_transaksi,no_katalog,nama_material,satuan,qty,unit_lawan,lokasi_kode,catatan,link_foto,foto_barang_url,match_confidence,issue_flags,sync_key";
   const documentFields = "id,source_upt,doc_type,doc_id,foto_surat_jalan_url,foto_sim_ktp_url,foto_kendaraan_url,pdf_url,berita_acara_url,lampiran_url,match_notes";
   const [archiveRes, documentRes] = await Promise.all([
