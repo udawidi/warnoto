@@ -1,34 +1,27 @@
-# Specification Quality Checklist: Riwayat Sumber Kontrak TUG-8/9
+# Specification Quality Checklist: Lot Sumber Material TUG-8/9
 
-**Purpose**: Validate specification completeness and quality before planning
-**Created**: 2026-09-11
+**Purpose**: Validate specification completeness before implementation  
+**Updated**: 2026-09-15  
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
 
-- [x] No implementation details
 - [x] Focused on user value and business needs
-- [x] Written for non-technical stakeholders
 - [x] All mandatory sections completed
+- [x] Terms lot, source, snapshot, and aggregate are consistent
 
 ## Requirement Completeness
 
-- [x] No clarification markers remain
-- [x] Requirements are testable and unambiguous
-- [x] Success criteria are measurable
-- [x] Success criteria are technology-agnostic
-- [x] All acceptance scenarios are defined
-- [x] Edge cases are identified
-- [x] Scope is clearly bounded
-- [x] Dependencies and assumptions identified
+- [x] Explicit source selection and multi-line behavior are defined
+- [x] TUG-3 and TUG-10 lot identities are defined
+- [x] Legacy manual allocation, authorization, atomicity, and idempotency are defined
+- [x] Per-source views and catalog aggregation are defined
+- [x] Migration production gate is explicit
+- [x] Edge cases and measurable success criteria are defined
 
 ## Feature Readiness
 
-- [x] All functional requirements have clear acceptance criteria
-- [x] User scenarios cover primary flows
-- [x] Feature meets measurable outcomes
-- [x] No implementation details leak into specification
-
-## Notes
-
-Validated in one pass. User already selected all-contract display, full historical backfill, and explicit origin labels.
+- [x] All functional requirements have acceptance scenarios or test gates
+- [x] Existing canonical contracts and immutable evidence are protected
+- [x] No clarification markers remain
+- [x] No new dependency or table is required

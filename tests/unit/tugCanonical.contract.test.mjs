@@ -19,6 +19,7 @@ const tug5Tab = read("src/components/TUG5Tab.jsx");
 const tugApprovals = read("src/hooks/useTugApprovals.js");
 const tugTransactions = read("src/hooks/useTugTransactions.js");
 const sourceMigration = read("supabase/migrations/20260911_tug_item_source_history.sql");
+const sourceLotMigration = read("supabase/migrations/20260915_tug_source_lots.sql");
 const schema = read("supabase/schema.sql");
 
 test("canonical TUG migration has one atomic final decision path", () => {
@@ -248,6 +249,25 @@ test("source history is separate from signed item evidence and server-derived", 
   assert.match(sourceMigration, /grant execute on function public\.tug_create_transaction\(jsonb,jsonb,uuid\) to authenticated/i);
   assert.match(sourceMigration, /grant execute on function public\.tug_amend\(uuid,integer,jsonb,jsonb,uuid\) to authenticated/i);
   assert.doesNotMatch(sourceMigration, /using gin \(source_snapshot\)/i);
+});
+
+test("source-lot proposal keeps text stock IDs and blocks legacy output", () => {
+  assert.match(sourceLotMigration, /tug_split_stock_source_lots\(\s*p_stock_id text/i);
+  assert.match(sourceLotMigration, /for update/i);
+  assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_STALE/i);
+  assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_TOTAL_MISMATCH/i);
+  assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_DUPLICATE_KEY/i);
+  assert.match(sourceLotMigration, /TUG_SOURCE_ALLOCATION_REQUIRED/i);
+  assert.match(sourceLotMigration, /p_stock_id \|\| ':LOT:' \|\| md5/i);
+  assert.match(sourceLotMigration, /create trigger tug_items_source_lot_guard/i);
+  assert.match(sourceLotMigration, /d - 'kontrakRefs'/i);
+  assert.match(sourceLotMigration, /lot_data\s*:=\s*jsonb_set\([\s\S]*?kontrakRefs.*?one_contracts/is);
+  assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_MULTI_SOURCE_LOT/i);
+  assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_NOT_REQUIRED/i);
+  assert.match(sourceLotMigration, /TUG_SOURCE_SPLIT_INVALID_KIND/i);
+  assert.match(sourceLotMigration, /jsonb_object_length\(d->'_tug10Applied'\)/i);
+  assert.match(sourceLotMigration, /contract_count > 0 and return_count > 0/i);
+  assert.match(sourceLotMigration, /value->>'supplier'.*value->>'docNo'.*value->>'noKontrak'/is);
 });
 
 test("bootstrap schema mirrors the source-history contract", () => {

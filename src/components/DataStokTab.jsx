@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { JENIS_BARANG, STATUS_SAP_FILTER } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
-import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan } from "../lib/sap.js";
+import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabel, isLegacySourceAllocation, legacySourceCandidates } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
@@ -37,9 +37,31 @@ export function DataStokTab({
   deleteStock,
   setKartuGantungDetail, setPetaMiniDetail,
   stockPageSize, setStockPageSize, stockPageClamped, setStockPage, stockTotalPages,
+  splitStockSourceLots,
 }) {
   const [moveStock, setMoveStock] = useState(null); // {st, lok, gdg} — trigger modal Pindah Blok
+  const [splitTarget, setSplitTarget] = useState(null);
+  const [splitRows, setSplitRows] = useState([]);
+  const [splitRequestKey, setSplitRequestKey] = useState("");
   const searchInputRef = useRef(null);
+
+  function openSourceSplit(st) {
+    const candidates = legacySourceCandidates(st);
+    const rows = (candidates.length ? candidates : [{ key:"INITIAL_STOCK", kind:"INITIAL_STOCK", label:"Stok awal / sumber tidak tercatat", contracts:[] }]).map(candidate => ({ candidate, qty:"" }));
+    setSplitTarget(st); setSplitRows(rows); setSplitRequestKey(`source-split-${st.id}-${Date.now()}`);
+  }
+
+  async function submitSourceSplit() {
+    const invalidQty = splitRows.some(row => row.qty === "" || !Number.isFinite(Number(row.qty)) || Number(row.qty) < 0);
+    if (invalidQty) { showToast("Qty sumber wajib berupa angka nol atau lebih.", "error"); return; }
+    const positiveRows = splitRows.filter(row => Number(row.qty) > 0);
+    if (!positiveRows.length) { showToast("Isi minimal satu sumber dengan qty lebih dari nol.", "error"); return; }
+    const total = splitRows.reduce((sum, row) => sum + Number(row.qty), 0);
+    if (total !== Number(splitTarget?.qty || 0)) { showToast(`Total alokasi harus tepat ${fmtNum(splitTarget?.qty || 0)} ${splitTarget?.unit || "unit"}.`, "error"); return; }
+    const allocations = positiveRows.map(row => ({ ...row.candidate, qty:Number(row.qty) }));
+    const ok = await splitStockSourceLots?.(splitTarget, allocations, splitRequestKey);
+    if (ok) { setSplitTarget(null); setSplitRows([]); setSplitRequestKey(""); }
+  }
 
   function katalogForStock(st) {
     return katalogList.find(k => k.id === st.katalogId) || {
@@ -305,6 +327,7 @@ export function DataStokTab({
                         <td className="stock-mobile-summary" aria-label={`Ringkasan ${st.name}`}>
                           <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{canonicalKatalogCode(st.katalog)||"-"}</span></div>
                           <div className="stock-mobile-summary__description">{st.keteranganBarang || "Keterangan barang belum diisi."}</div>
+                          {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:2}}>Sumber: {sourceLotLabel(st)}</div>}
                           <div className="stock-mobile-summary__meta"><span><MapPin size={14} weight="bold" aria-hidden="true"/> {[gdg?.kode||gdg?.nama, lok?.kode||st.lokasi].filter(Boolean).join(" • ") || "Lokasi belum diisi"}</span><span className={isLow ? "is-critical" : "is-ok"}>{st.jenisBarang==="Non-Stock" ? "Project-Based" : `${fmtNum(st.qty)} ${st.unit}`}</span></div>
                           <div className="stock-mobile-summary__detail" aria-hidden="true">{isAgg ? "Lihat sebaran" : "Detail"} <CaretRight size={11} weight="bold" aria-hidden="true"/></div>
                         </td>
@@ -315,6 +338,7 @@ export function DataStokTab({
                             <span aria-hidden="true" style={{color:"#cbd5e1"}}>•</span>
                             <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:sapBs.fg,flexShrink:0}}/> {sapLabel}</span>
                           </div>
+                          {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:3}}>Sumber: {sourceLotLabel(st)}</div>}
                           {(st.deletePending || st.editPending) && (
                             <div title={[st.deletePending&&"Menunggu approval Hapus", st.editPending&&"Ada perubahan menunggu approval TL"].filter(Boolean).join(" • ")}
                               style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:4,padding:"2px 7px",borderRadius: 10,fontSize:12,fontWeight:700,background:"#fffbeb",color:"#a16207"}}>
@@ -337,6 +361,7 @@ export function DataStokTab({
                         </td>
                         <td data-label="Aksi" onClick={e=>e.stopPropagation()} style={{padding:"8px 10px"}}>
                           <div className="stock-mobile-direct-actions" onClick={e=>e.stopPropagation()}>
+                            {!isAgg && isLegacySourceAllocation(st) && hasRole(currentUser, "TL", "SUPERADMIN") && <button className="table-action-button stock-mobile-action--location" title="Alokasikan sumber" onClick={()=>openSourceSplit(st)}>Alokasi sumber</button>}
                             {!isAgg && <button
                               className="table-action-button stock-mobile-action--location"
                               aria-label="Lokasi"
@@ -353,6 +378,7 @@ export function DataStokTab({
                           </div>
                           <div className="stock-desktop-actions" onClick={e=>e.stopPropagation()}>
                             <div className="table-actions">
+                            {!isAgg && isLegacySourceAllocation(st) && hasRole(currentUser, "TL", "SUPERADMIN") && <button className="table-action-button is-icon" title="Alokasikan sumber" onClick={()=>openSourceSplit(st)}>Alokasi</button>}
                             <button className="table-action-button is-icon" title="Kartu Gantung TUG-2"
                               onClick={()=>setKartuGantungDetail(katalogForStock(st))}><Tag size={16} weight="bold" aria-hidden="true" /></button>
                             {!isAgg && <button
@@ -400,6 +426,22 @@ export function DataStokTab({
                   <button style={{...sty.btn("ghost","sm")}} disabled={stockPageClamped<=1} onClick={()=>setStockPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
                   <span style={{fontSize:12,color:C.muted,padding:"0 6px"}}>Halaman {stockPageClamped} / {stockTotalPages}</span>
                   <button style={{...sty.btn("ghost","sm")}} disabled={stockPageClamped>=stockTotalPages} onClick={()=>setStockPage(p=>Math.min(stockTotalPages,p+1))}>Berikutnya →</button>
+                </div>
+              </div>
+            )}
+            {splitTarget && (
+              <div role="dialog" aria-modal="true" aria-label="Alokasi sumber stok" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:20}}>
+                <div style={{...sty.card,width:540,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+                  <div style={sty.modalHeader}><span style={{fontWeight:800}}>Alokasi Sumber Material</span><button type="button" onClick={()=>setSplitTarget(null)} style={{background:"transparent",border:0,color:"white",fontSize:24}}>×</button></div>
+                  <div style={{fontSize:12,color:C.muted,marginBottom:12}}>Pisahkan saldo gabungan berdasarkan kontrak. Total alokasi harus sama dengan saldo saat ini ({fmtNum(splitTarget.qty)} {splitTarget.unit || "unit"}).</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {splitRows.map((row, index) => <div key={row.candidate.key} style={{display:"grid",gridTemplateColumns:"1fr 100px",gap:8,alignItems:"center"}}>
+                      <div style={{fontSize:12}}><b>{row.candidate.label}</b><br/><span style={{color:C.muted}}>{row.candidate.kind}</span></div>
+                      <input aria-label={`Qty sumber ${index+1}`} style={sty.input} type="number" min="0" inputMode="decimal" value={row.qty} onChange={e=>setSplitRows(rows=>rows.map((item,i)=>i===index?{...item,qty:e.target.value}:item))}/>
+                    </div>)}
+                  </div>
+                  <div style={{fontSize:12,fontWeight:700,marginTop:12,color:splitRows.reduce((sum,row)=>sum+(Number(row.qty)||0),0)===Number(splitTarget.qty)?C.green:C.red}}>Total alokasi: {fmtNum(splitRows.reduce((sum,row)=>sum+(Number(row.qty)||0),0))} / {fmtNum(splitTarget.qty)} {splitTarget.unit || "unit"}</div>
+                  <div style={sty.stickyFooter}><button type="button" style={{...sty.btn("ghost"),flex:1}} onClick={()=>setSplitTarget(null)}>Batal</button><button type="button" style={{...sty.btn("primary"),flex:1}} onClick={submitSourceSplit}>Simpan Alokasi</button></div>
                 </div>
               </div>
             )}

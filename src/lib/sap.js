@@ -304,6 +304,84 @@ const SOURCE_KIND_LABELS = {
   INITIAL_STOCK: "Stok awal — kontrak tidak tersedia",
 };
 
+// Source lots are deliberately kept on the existing stocks row.  Keep the key
+// deterministic: retries of the same receipt must find the same row, while a
+// different supplier/document must never merge into it.
+const sourcePart = value => String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "-";
+export function sourceLotKey({ kind, uptId = "", lokasiId = "", katalogId = "", supplier = "", contractNo = "", documentNo = "", transactionId = "", itemIndex = 0 }) {
+  if (kind === "TUG10_RETURN") return ["TUG10", transactionId, itemIndex].map(sourcePart).join("|");
+  const identity = contractNo || documentNo;
+  // Supplier alone is not a contract identity: repeated receipts from that
+  // supplier must remain traceable when contract/document fields are absent.
+  if (identity) return ["TUG3", uptId, lokasiId, katalogId, supplier, identity].map(sourcePart).join("|");
+  return ["TUG3", uptId, lokasiId, katalogId, transactionId, itemIndex].map(sourcePart).join("|");
+}
+
+export function getSourceLot(stock) {
+  const lot = stock?.sourceLot || stock?.data?.sourceLot;
+  return lot && typeof lot === "object" ? lot : null;
+}
+
+/** Return deduped source candidates recoverable from pre-lot stock metadata. */
+export function legacySourceCandidates(stock) {
+  const candidates = new Map();
+  const lot = getSourceLot(stock);
+  if (lot?.status === "NEEDS_SOURCE_ALLOCATION" && lot.key) candidates.set(lot.key, {
+    ...lot, key:lot.key, kind:lot.kind || "INITIAL_STOCK", contracts:Array.isArray(lot.contracts) ? lot.contracts.slice(0, 1) : [],
+    label:lot.label || lot.supplier || lot.contractNo || "Sumber legacy",
+  });
+  const refs = Array.isArray(stock?.kontrakRefs) ? stock.kontrakRefs.filter(Boolean)
+    : (Array.isArray(stock?.data?.kontrakRefs) ? stock.data.kontrakRefs.filter(Boolean) : []);
+  refs.forEach(ref => {
+    const key = `TUG3|${ref.supplier || ""}|${ref.docNo || ""}|${ref.noKontrak || ""}`;
+    if (!candidates.has(key)) candidates.set(key, {
+      key, kind:"TUG3_CONTRACT", supplier:ref.supplier || "", contractNo:ref.noKontrak || "",
+      sourceDocumentNo:ref.docNo || ref.suratPesananNo || "", sourceDate:ref.tglMasuk || "", contracts:[ref], label:[ref.supplier, ref.noKontrak, ref.docNo].filter(Boolean).join(" — ") || "Kontrak TUG-3",
+    });
+  });
+  const applied = stock?._tug10Applied || stock?.data?._tug10Applied;
+  if (applied && typeof applied === "object") Object.keys(applied).forEach(effectKey => candidates.set(`TUG10|${effectKey}`, {
+    key:`TUG10|${effectKey}`, kind:"TUG10_RETURN", supplier:"", contractNo:"", sourceDocumentNo:effectKey, sourceDate:"", contracts:[], label:`Retur TUG-10 (${effectKey})`,
+  }));
+  const source = stock?.source || stock?.data?.source || "";
+  if (Object.keys(applied || {}).length && !["TUG10", "TUG10_RETURN", "item", "dupKatalog"].includes(source)) {
+    candidates.set("INITIAL_STOCK", { key:"INITIAL_STOCK", kind:"INITIAL_STOCK", supplier:"", contractNo:"", sourceDocumentNo:"", sourceDate:"", contracts:[], label:"Stok awal / sumber tidak tercatat" });
+  }
+  return [...candidates.values()];
+}
+
+export function isLegacySourceAllocation(stock) {
+  const lot = getSourceLot(stock);
+  if (lot) return lot.status === "NEEDS_SOURCE_ALLOCATION";
+  return legacySourceCandidates(stock).length > 1;
+}
+
+export function sourceLotLabel(stock) {
+  const lot = getSourceLot(stock);
+  if (isLegacySourceAllocation(stock)) return "Perlu alokasi sumber";
+  const refs = stock?.kontrakRefs || stock?.data?.kontrakRefs || [];
+  return formatKontrakSumber(lot || refs, refs) || "Sumber belum dicatat";
+}
+
+export function aggregateStocksByKatalog(stocks = []) {
+  const map = new Map();
+  stocks.forEach(stock => {
+    const key = stock?.katalogId || stock?.katalog;
+    if (!key) return;
+    const row = map.get(key) || { katalogId: key, qty: 0, lots: 0 };
+    row.qty += Number(stock.qty) || 0;
+    row.lots += 1;
+    map.set(key, row);
+  });
+  return [...map.values()];
+}
+
+// New Stock Opname sessions use one item row per canonical stock lot. Legacy
+// sessions keep their existing aggregate item payload in the caller.
+export function sourceLotRowsForCatalog(stocks = [], katalogId) {
+  return (stocks || []).filter(stock => stock?.katalogId === katalogId);
+}
+
 function sourceTime(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (/^\d{10,13}$/.test(String(value || ""))) {
@@ -323,13 +401,17 @@ export function normalizeSourceSnapshot(source, fallbackRefs = []) {
   const unique = new Map();
   refs.forEach(ref => {
     if (!ref || typeof ref !== "object") return;
+    // Snapshot contract identity remains document + contract number; if the
+    // same pair was recorded twice, retain the newest metadata (including
+    // supplier) for backward-compatible history formatting.
     const key = `${ref.docNo || ""}|${ref.noKontrak || ""}`;
     const existing = unique.get(key);
     if (!existing || sourceTime(ref.tglMasuk) > sourceTime(existing.tglMasuk)) unique.set(key, { ...ref });
   });
   const contracts = [...unique.values()].sort((a, b) => sourceTime(b.tglMasuk) - sourceTime(a.tglMasuk));
-  const sourceKind = contracts.length ? "TUG3_CONTRACT" : (raw.sourceKind || "INITIAL_STOCK");
+  const sourceKind = contracts.length ? "TUG3_CONTRACT" : (raw.sourceKind || raw.kind || "INITIAL_STOCK");
   return {
+    lotKey: raw.lotKey || raw.key || null,
     sourceKind,
     contracts,
     provenance: raw.provenance || null,

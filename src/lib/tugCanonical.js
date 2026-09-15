@@ -26,8 +26,9 @@ async function rpc(name, args) {
 }
 
 export function canonicalItem(item = {}) {
+  const { sourceSnapshot: _sourceSnapshot, ...safeItem } = item;
   return {
-    ...item,
+    ...safeItem,
     stockId: item.stockId || null,
     katalogId: item.katalogId || null,
     lokasiId: item.lokasiId || item.lokasiTujuanId || null,
@@ -125,6 +126,7 @@ export function canonicalRowToTxn(row) {
       // Informational provenance lives outside the signed item snapshot. Keep
       // the snake_case DB name at the boundary and expose the app convention.
       sourceSnapshot: i.source_snapshot || i.sourceSnapshot || null,
+      lotKey: (i.source_snapshot || i.sourceSnapshot)?.lotKey || (i.source_snapshot || i.sourceSnapshot)?.key || null,
     })),
     status: row.status === "FINAL_APPROVED" ? "APPROVED" : row.status,
     stage: row.stage,

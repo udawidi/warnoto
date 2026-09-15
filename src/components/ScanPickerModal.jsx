@@ -2,6 +2,7 @@
 // no.katalog WARNOTO tidak unik (paket 5-tuple MARA) & 1 material bisa ada di
 // banyak lokasi, jadi tidak boleh auto-pilih di transaksi (App.jsx applyTxnScan).
 import { fmtNum } from "../lib/ragShared.mjs";
+import { sourceLotLabel } from "../lib/sap.js";
 
 export function ScanPickerModal({ scanPicker, setScanPicker, chooseScanPickerMatch, sty, C, isMobile }) {
   if (!scanPicker) return null;
@@ -20,6 +21,7 @@ export function ScanPickerModal({ scanPicker, setScanPicker, chooseScanPickerMat
               <div style={{fontWeight:700,fontSize:14}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>
               <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.category} • {s.unit}</div>
               <div style={{fontSize:12,color:C.muted,marginTop:2}}>📍 {s.lokasi} • Stok: {fmtNum(s.qty)} {s.unit}</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>Sumber lot: {sourceLotLabel(s)}</div>
             </button>
           ))}
         </div>

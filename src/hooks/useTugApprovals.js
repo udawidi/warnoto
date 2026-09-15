@@ -4,7 +4,7 @@ import { generateDocNumbers, uid } from "../lib/utils.js";
 import { processTxnPhotos } from "../lib/supabaseSync.js";
 import { upsertTug3Transaction } from "../lib/tug3Sync.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
-import { resolveSapLabel } from "../lib/sap.js";
+import { resolveSapLabel, sourceLotKey } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
 import { roleTier } from "../lib/roles.js";
@@ -248,10 +248,9 @@ export function useTugApprovals({
       tglMasuk: Date.now(),
       docNo: txn.docNumbers?.tug3 || "",
     };
-    const appendKontrakRef = (refs) => {
-      const list = refs || [];
-      const dup = list.some(r => r.docNo === kontrakEntry.docNo && r.noKontrak === kontrakEntry.noKontrak);
-      return dup ? list : [...list, kontrakEntry];
+    const sourceLotFor = (si, itemIdx, katalogId, lokasiId) => {
+      const key = sourceLotKey({ kind:"TUG3_CONTRACT", uptId:txn.uptId || currentUserUptId || "", lokasiId, katalogId, supplier:txn.dariSupplier, contractNo:txn.judulKontrak, documentNo:txn.suratPesananNo, transactionId:txn.id, itemIndex:itemIdx });
+      return { key, kind:"TUG3_CONTRACT", supplier:txn.dariSupplier || "", contractNo:txn.judulKontrak || "", sourceDocumentNo:txn.docNumbers?.tug3 || txn.suratPesananNo || "", sourceDate:Date.now(), sourceTransactionId:txn.id, sourceItemIndex:itemIdx, status:"ACTIVE" };
     };
     // Fitur B Bagian 1: katalogId yang barusan bertambah stoknya lewat TUG-3 ini —
     // dipakai untuk flag reaktif reservasi ULTG yang menunggu (lihat newTxns di bawah).
@@ -275,12 +274,13 @@ export function useTugApprovals({
       const qtyMasuk = Number(si.qty) || 0;
       const existingKatalog = si.katalogMode === "existing" ? approvalKatalog.find(k => k.id === si.katalogId) : null;
       const effectKey = `${txn.id}:${itemIdx}`;
+      const sourceLot = sourceLotFor(si, itemIdx, si.katalogId, lokasiId);
       // FIX 2: foto barang diisi dari lampiran TUG-3 (si.fotoBarang, sudah berupa URL
       // Storage sejak commitNewTxn -> processTxnPhotos), bukan lagi null.
       const fotoBarang = si.fotoBarang || null;
       if (si.katalogMode === "existing" && si.katalogId) {
         arrivedKatalogIds.add(si.katalogId);
-        const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===lokasiId);
+        const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===lokasiId && s.sourceLot?.key===sourceLot.key);
         if (existingRow) {
           // Jangan timpa foto lama kalau baris existing sudah punya foto sendiri.
           // fotoKeseluruhan = field kanonik yang dirender sel Foto tabel Data Stok
@@ -288,11 +288,11 @@ export function useTugApprovals({
           const alreadyApplied = Number(existingRow._tug3Applied?.[effectKey]) || 0;
           const qtyToApply = Math.max(0, qtyMasuk - alreadyApplied);
           if (!qtyToApply) return;
-          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs), _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
+          newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, sourceLot, kontrakRefs: [kontrakEntry], _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk } });
+          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), sourceLot, kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk } });
           touchedStockIds.add(newId);
         }
       } else {
@@ -306,16 +306,17 @@ export function useTugApprovals({
           newKatalog.push({ id:katId, katalog:katalogCodeBaru, name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", sapStatus, createdAt:Date.now() });
           touchedKatalogIds.add(katId);
         }
-        const existingRow2 = newStocks.find(s => s.katalogId===katId && s.lokasiId===lokasiId);
+        const sourceLot2 = sourceLotFor(si, itemIdx, katId, lokasiId);
+        const existingRow2 = newStocks.find(s => s.katalogId===katId && s.lokasiId===lokasiId && s.sourceLot?.key===sourceLot2.key);
         if (existingRow2) {
           const alreadyApplied = Number(existingRow2._tug3Applied?.[effectKey]) || 0;
           const qtyToApply = Math.max(0, qtyMasuk - alreadyApplied);
           if (!qtyToApply) return;
-          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, kontrakRefs: appendKontrakRef(s.kontrakRefs), _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
+          newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, img: s.img || fotoBarang, fotoKeseluruhan: s.fotoKeseluruhan || fotoBarang, sourceLot:sourceLot2, kontrakRefs: [kontrakEntry], _tug3Applied: { ...(s._tug3Applied || {}), [effectKey]: Math.max(alreadyApplied, qtyMasuk) } } : s);
           touchedStockIds.add(existingRow2.id);
         } else {
           const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk } });
+          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), sourceLot:sourceLot2, kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]:qtyMasuk } });
           touchedStockIds.add(newStkId);
         }
       }

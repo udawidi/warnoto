@@ -11,6 +11,7 @@ import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 import { readTugRoute } from "../lib/tugRoute.js";
+import { isLegacySourceAllocation } from "../lib/sap.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -314,9 +315,12 @@ export function useTugTransactions({
       }
       const validItems = submittedItems.filter(si => si.stockId && Number(si.qty) > 0);
       if (validItems.length === 0) { showToast("Minimal 1 barang harus dipilih!","error"); return; }
+      const stockIds = validItems.map(si => si.stockId);
+      if (new Set(stockIds).size !== stockIds.length) { showToast("Sumber lot yang sama hanya boleh dipilih satu kali. Tambahkan baris lalu pilih sumber berbeda.", "error"); return; }
       for (const si of validItems) {
         const stock = stateRef.current.enrichedStocks.find(s=>s.id===si.stockId);
         if (!stock) { showToast("Referensi stok tidak ditemukan. Pilih ulang material dari daftar stok.","error"); return; }
+        if (isLegacySourceAllocation(stock)) { showToast("Stok ini memiliki beberapa sumber dan perlu alokasi oleh TL sebelum dikeluarkan.", "error"); return; }
         if (stock && stock.jenisBarang !== "Non-Stock" && stock.qty < si.qty) {
           showToast(`Stok ${stock.name} di ${stock.lokasi} tidak cukup! Tersedia: ${stock.qty} ${stock.unit}`,"error"); return;
         }

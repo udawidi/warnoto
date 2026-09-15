@@ -1,42 +1,60 @@
-# Tasks: Riwayat Sumber Kontrak TUG-8/9
+# Tasks: Lot Sumber Material TUG-8/9
 
 ## Phase 1: Setup
 
-- [X] T001 Add contract expectations for source snapshots in tests/unit/tugCanonical.contract.test.mjs
-- [X] T002 Add formatter behavior tests in tests/unit/tugSourceHistory.test.mjs
+- [X] T001 [P] Add source-lot behavior tests in tests/unit/tugSourceLots.test.mjs
+- [X] T002 [P] Extend server snapshot/RPC contract tests in tests/unit/tugCanonical.contract.test.mjs
 
 ## Phase 2: Foundational
 
-- [X] T003 [US1] Create idempotent source snapshot and backfill migration in supabase/migrations/20260911_tug_item_source_history.sql
-- [X] T004 [US1] Map source_snapshot into canonical stock items in src/lib/tugCanonical.js
-- [X] T005 [US1] Add pure source normalization/formatting helpers in src/lib/sap.js
+- [X] T003 Implement stable source-lot helpers, legacy classification, and catalog aggregation in src/lib/sap.js
+- [X] T004 Create proposed server snapshot and atomic legacy split migration in supabase/migrations/20260915_tug_source_lots.sql
+- [X] T005 Map `lotKey` from immutable canonical snapshot in src/lib/tugCanonical.js
 
-## Phase 3: User Story 1 - Sumber setiap material keluar
+## Phase 3: User Story 1 - Memilih sumber material keluar
 
-- [X] T006 [US1] Render immutable source history in src/components/ApprovalTab.jsx
-- [X] T007 [US1] Render immutable source history in src/components/TransactionHubTab.jsx
-- [X] T008 [US1] Show all live source contracts in the picker in src/components/TugFormModals.jsx
+- [X] T006 [US1] Show active lot source/balance and block legacy multi-source rows in src/components/TugFormModals.jsx
+- [X] T007 [US1] Reject duplicate stock IDs and quantity above selected lot in src/components/TugFormModals.jsx
+- [X] T008 [US1] Route ambiguous catalog scans to explicit lot selection in src/components/ScanPickerModal.jsx
 
-## Phase 4: User Story 2 - Histori lama lengkap
+## Phase 4: User Story 2 - Menjaga sumber penerimaan baru
 
-- [X] T009 [US2] Add production-safe dry-run and post-check SQL in supabase/verify_tug_item_source_history.sql
-- [X] T010 [US2] Verify migration retry, temporal filtering, fallback classes, and unchanged canonical evidence
+- [X] T009 [US2] Write or increment TUG-3 stock by source-lot key in src/hooks/useTugApprovals.js
+- [X] T010 [US2] Write TUG-10 return stock by transaction-item lot key in App.jsx
 
-## Phase 5: Polish & Validation
+## Phase 5: User Story 3 - Mengalokasikan stok gabungan lama
 
-- [X] T011 Run canonical and source unit tests
-- [X] T012 Run npm build and graphify update
-- [X] T013 Review production backup/dry-run, apply migration only after explicit gate, then verify TUG-9 250
+- [X] T011 [US3] Display legacy allocation status and authorized split form in src/components/DataStokTab.jsx
+- [X] T012 [US3] Call split RPC, refresh stock, and surface validation errors in App.jsx
+
+## Phase 6: User Story 4 - Stok dan opname per sumber
+
+- [X] T013 [P] [US4] Display source identity per row in src/components/DataStokTab.jsx
+- [X] T014 [P] [US4] Display source identity per row and preserve catalog totals in src/components/StockOpnameTab.jsx
+- [X] T015 [US4] Verify Stock Count, forecast, and dashboard aggregations across stock-lot callers in App.jsx
+
+## Phase 7: Polish & Validation
+
+- [X] T016 Update source labels in src/components/ApprovalTab.jsx and src/components/TransactionHubTab.jsx
+- [X] T017 Run source-lot and canonical unit/contract tests
+- [X] T018 Run `npm run build`
+- [X] T019 Review migration proposal without applying it to Supabase production
 
 ## Dependencies
 
-T001-T002 precede implementation. T003 precedes T004 and UI work. T004-T005 precede T006-T008. T009-T010 precede production gate T013.
+T001-T005 precede all stories. US1 and US2 may proceed after foundational work. US3 requires T004. US4 requires T003 and incoming lot behavior. Validation follows all stories.
 
 ## Independent Test Criteria
 
-- **US1**: A new or amended TUG-8/TUG-9 item shows server-derived contracts or explicit origin without trusting client metadata.
-- **US2**: Every historical canonical item receives temporal source history without changing signed snapshot, hash, approval, qty, or movements.
+- **US1**: Two sources appear separately and only the selected `stockId` can be submitted within its balance.
+- **US2**: PT A/PT B and TUG-10 items create independent, retry-safe balances.
+- **US3**: TL/SUPERADMIN split preserves exact total; invalid or duplicate requests make no change.
+- **US4**: Per-source detail totals equal catalog-level aggregate totals.
 
 ## Implementation Strategy
 
-Implement migration contract first, then mapping/helper, then three existing UI surfaces. Run dry-run before any production write.
+Reuse exact-stock canonical deduction. Add the minimum metadata and guards around incoming writes, selection, legacy split, and aggregation; add no table or dependency.
+
+## Phase 8: Convergence
+
+- [X] T020 Render and count Stock Opname as one item row per source lot while preserving catalog aggregate reconciliation per FR-011 and US4/AC1

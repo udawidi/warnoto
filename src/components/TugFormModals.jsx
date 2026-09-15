@@ -5,7 +5,7 @@ import { PhotoSlot } from "./PhotoSlot.jsx";
 import { Barcode, Camera } from "@phosphor-icons/react";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { generateReservasiDocNo } from "../lib/utils.js";
-import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, sourceLotLabel, isLegacySourceAllocation } from "../lib/sap.js";
 import { can } from "../lib/perms.js";
 import { ROLES } from "../lib/roles.js";
 import { sortBlokOptions } from "../lib/masterSync.js";
@@ -162,7 +162,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
 export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, visibleGudangList, satpamList, enrichedStocks, tug98Collapsed, setTug98Collapsed, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
   const isDerivedDraft = Boolean(editingDraftTxnId);
   const gudSatpams = satpamList.filter(sp=>sp.gudangId && sp.gudangId===txnForm.gudangId);
-  const gudStocks = enrichedStocks.filter(s=>s.gudangId===txnForm.gudangId);
+  const gudStocks = enrichedStocks.filter(s=>s.gudangId===txnForm.gudangId && Number(s.qty)>0 && !isLegacySourceAllocation(s));
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div role="dialog" aria-modal="true" aria-label={`Formulir ${txnForm.docType.replace("TUG","TUG-")}`} style={{...sty.card,width:680,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -248,7 +248,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
                         getLabel={s=>`${s.name} [${s.katalog}] @ ${s.lokasi}`}
                         getSearchText={s=>`${s.name} ${s.katalog} ${s.lokasi}`}
                         renderOption={s=>{
-                          const kontrakSumber = formatKontrakSumber(s.kontrakRefs);
+                          const kontrakSumber = sourceLotLabel(s);
                           return (
                           <div>
                             <div style={{fontWeight:600}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog}]</span></div>

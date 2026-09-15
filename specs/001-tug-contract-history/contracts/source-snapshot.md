@@ -1,15 +1,29 @@
-# Source Snapshot Contract
+# Source Lot Contracts
 
-RPC publik tidak berubah. `tug_create_transaction(jsonb,jsonb,uuid)` dan `tug_amend(uuid,integer,jsonb,jsonb,uuid)` tetap menerima payload lama.
+RPC canonical publik tetap: `tug_create_transaction(jsonb,jsonb,uuid)`, `tug_amend(uuid,integer,jsonb,jsonb,uuid)`, dan `tug_decide(...)`. `stockItems[].stockId` tetap identitas lot yang dikurangi.
 
-Respons pembacaan canonical menambahkan `sourceSnapshot` pada setiap `stockItems[]`:
+Respons canonical menambahkan snapshot immutable:
 
 ```json
 {
+  "lotKey": "TUG3|upt|lokasi|katalog|pt-a|sp-001",
   "sourceKind": "TUG3_CONTRACT",
-  "contracts": [{ "docNo": "198.TUG-3/...", "supplier": "PT. PERSADA INDAH MUDA", "noKontrak": "PENGGANTIAN ISOLATOR KERAMIK", "tglMasuk": 1787492950009 }],
+  "contracts": [{"docNo":"001.TUG-3/...","supplier":"PT A","noKontrak":"SP-001"}],
   "provenance": "CREATE"
 }
 ```
 
-Client tidak boleh mengirim atau menimpa nilai ini. Snapshot kosong hanya diizinkan selama migrasi belum diterapkan.
+Client tidak boleh mengirim atau menimpa snapshot tersebut.
+
+RPC baru (proposal, belum diterapkan):
+
+```sql
+tug_split_stock_source_lots(
+  p_stock_id text,
+  p_expected_qty numeric,
+  p_allocations jsonb,
+  p_idempotency_key text
+) returns jsonb
+```
+
+Hanya TL pada UPT pemilik stok atau SUPERADMIN. RPC mengunci baris asal, memvalidasi total/keys/qty, mengarsipkan saldo gabungan, membuat lot hasil, dan aman di-retry memakai idempotency key.

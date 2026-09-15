@@ -169,7 +169,7 @@ export function TransactionHubTab({
                       {t.docType!=="TUG10" ? t.stockItems.map((si,idx)=>{
                         const stock = enrichedStocks.find(s=>s.id===si.stockId);
                         const kontrakSumber = formatKontrakSumber(si.sourceSnapshot, stock?.kontrakRefs);
-                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||si.snapshot?.name||"?"} <b>x{si.qty}</b> {stock?.unit||si.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span>{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 Riwayat sumber: {kontrakSumber}</span>}</div>;
+                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||si.snapshot?.name||"?"} <b>x{si.qty}</b> {stock?.unit||si.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span>{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 Sumber lot: {kontrakSumber}</span>}</div>;
                       }) : t.stockItems.map((si,idx)=>{
                         const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);

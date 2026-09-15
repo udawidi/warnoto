@@ -10,6 +10,7 @@ import {
   isPendingHeavyEquipmentLoan, canApproveHeavyEquipmentLoan,
 } from "../lib/heavyEquipment.js";
 import { ApprovalTab } from "./ApprovalTab.jsx";
+import { formatKontrakSumber } from "../lib/sap.js";
 
 export function ApprovalHubTab({
   currentUser, sty, C, isMobile,
@@ -374,7 +375,23 @@ export function ApprovalHubTab({
           decidedBy: t.status==="REJECTED" ? t.rejectedBy : (t.approvedBy || t.approvedByAsman),
           decidedAt: t.status==="REJECTED" ? t.rejectedAt : (t.approvedAt || t.approvedAtAsman),
           uptId:t.uptId, requestedBy:t.createdBy,
-          items: (t.stockItems||[]).map(si=>({label: si.namaBaru || katalogList.find(k=>k.id===si.katalogId)?.name || "Item", qty: si.qty})),
+          requester: users.find(u=>u.id===t.createdBy),
+          approver: users.find(u=>u.id===(t.status==="REJECTED" ? t.rejectedBy : (t.approvedBy || t.approvedByAsman))),
+          upt: uptList.find(u=>u.id===t.uptId),
+          reason: t.rejectionReason || t.rejectReason || t.catatan || t.keterangan,
+          metadata: [
+            ["Pekerjaan", t.namaPekerjaan || t.keteranganUmum], ["Lokasi pekerjaan", t.lokasiPekerjaan || t.lokasiTujuan],
+            ["Supplier", t.dariSupplier], ["Penerima", [t.penerimaNama,t.penerimaJabatan,t.penerimaUnit].filter(Boolean).join(" • ")], ["Unit tujuan", t.unitTujuan || t.uptTujuan],
+            ["Penyerah", [t.menyerahkanNama,t.menyerahkanUnit].filter(Boolean).join(" • ")], ["Tanggal transaksi", (t.tanggalTransaksi || t.tanggalDiterima) ? fmtDate(t.tanggalTransaksi || t.tanggalDiterima) : ""],
+            ["No kendaraan", t.noKendaraan || t.nomorKendaraan], ["Surat jalan", t.noSuratJalan]
+          ].filter(([,value])=>value),
+          items: (t.stockItems||[]).map(si=>{
+            const katalog = katalogList.find(k=>k.id===si.katalogId);
+            const stock = enrichedStocks.find(s=>s.id===si.stockId);
+            const lokasi = lokasiList.find(l=>l.id===(si.lokasiId || si.lokasiGudangId || si.lokasiTujuanId || stock?.lokasiId));
+            const source = si.sourceSnapshot || si.sourceLot || si.data?.sourceLot;
+            return {label: si.namaBaru || katalog?.name || "Item", katalog: katalog?.katalog || si.katalog || si.katalogId, qty: si.qty, satuan: si.unit || si.satuan || stock?.unit || stock?.satuan || katalog?.satuan, lokasi: lokasi?.nama || lokasi?.kode || stock?.lokasi || stock?.lokasiNama, sumber: formatKontrakSumber(source, stock?.kontrakRefs) || "Sumber belum dicatat"};
+          }),
         }));
         const scopedHistTug = historyScope === null ? histTUG : histTUG.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope));
         const combinedAll = [...scopedApprovalHistory, ...scopedHistTug].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt);
@@ -388,7 +405,7 @@ export function ApprovalHubTab({
           : byType.filter(h=>h.type==="TUG" && h.docType===historyTugFilter);
         const mine = approvalHistoryMineOnly ? subtypeFiltered.filter(h=>h.decidedBy===currentUser.id) : subtypeFiltered;
         const q = approvalHistorySearch.trim().toLowerCase();
-        const searched = q ? mine.filter(h => h.title?.toLowerCase().includes(q) || h.items?.some(it=>it.label?.toLowerCase().includes(q))) : mine;
+        const searched = q ? mine.filter(h => [h.title,h.note,h.reason,h.refId,h.requestedAt,h.requester?.name,h.upt?.name,...(h.metadata||[]).flat(),...(h.items||[]).flatMap(it=>[it.label,it.katalog,it.lokasi,it.sumber])].filter(Boolean).join(" ").toLowerCase().includes(q)) : mine;
         const fromMs = approvalHistoryDateFrom ? new Date(approvalHistoryDateFrom+"T00:00:00").getTime() : null;
         const toMs = approvalHistoryDateTo ? new Date(approvalHistoryDateTo+"T23:59:59").getTime() : null;
         const filtered = searched.filter(h => (fromMs===null || h.decidedAt>=fromMs) && (toMs===null || h.decidedAt<=toMs));
@@ -429,6 +446,8 @@ export function ApprovalHubTab({
                 <div style={{fontSize:12,fontWeight:800,color:"#0098da",marginBottom:4}}>{typeLabel[g.type]||g.type} ({g.items.length})</div>
                 {g.items.map(h=>{
                   const decider = users.find(u=>u.id===h.decidedBy);
+                  const requester = h.requester || users.find(u=>u.id===h.requestedBy);
+                  const upt = h.upt || uptList.find(u=>u.id===h.uptId);
                   return (
                     <div key={h.id} style={{padding:"8px 0",borderBottom:`1px solid ${C.border}`}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
@@ -440,13 +459,22 @@ export function ApprovalHubTab({
                           {h.decision==="APPROVED"?"✓ Disetujui":"✕ Ditolak"}
                         </span>
                       </div>
-                      {h.items?.length > 0 && (
+                      {(h.items?.length > 0 || h.metadata?.length > 0 || h.reason || h.note || h.refId || h.requestedAt || h.requestedBy) && (
                         <details style={{marginTop:4}}>
-                          <summary style={{fontSize:12,color:"#0098da",cursor:"pointer"}}>{h.items.length} item</summary>
+                          <summary style={{fontSize:12,color:"#0098da",cursor:"pointer"}}>{h.items?.length || 0} item{h.metadata?.length ? " • Detail transaksi" : ""}</summary>
                           <div style={{marginTop:4,paddingLeft:12}}>
-                            {h.items.map((it,idx)=>(
-                              <div key={idx} style={{fontSize:12,color:C.muted}}>📦 {it.label}{it.qty!=null && <> <b>x{fmtNum(it.qty)}</b></>}</div>
+                            {h.metadata?.length > 0 && <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:"3px 12px",marginBottom:7}}>{h.metadata.map(([label,value])=><div key={label} style={{fontSize:11,color:C.muted}}><b>{label}:</b> {value}</div>)}</div>}
+                            <div style={{display:"grid",gap:5}}>
+                            {(h.items||[]).map((it,idx)=>(
+                              <div key={idx} style={{fontSize:12,color:C.muted,lineHeight:1.35}}>
+                                <div>📦 {it.label}{it.qty!=null && <> <b>x{fmtNum(it.qty)}{it.satuan ? ` ${it.satuan}` : ""}</b></>}</div>
+                                {(it.katalog || it.lokasi || it.sumber) && <div style={{fontSize:11,paddingLeft:18}}> {it.katalog && `Katalog: ${it.katalog}`} {it.lokasi && ` • Lokasi: ${it.lokasi}`} {it.sumber && ` • Sumber: ${it.sumber}`}</div>}
+                              </div>
                             ))}
+                            </div>
+                            <div style={{fontSize:11,color:C.muted,marginTop:7,paddingTop:6,borderTop:`1px solid ${C.border}`}}>
+                              Pengaju: {requester?.name||"-"}{(upt?.nama||upt?.name||upt?.kode) ? ` • UPT: ${upt.nama||upt.name||upt.kode}` : ""}{h.requestedAt ? ` • Diajukan: ${fmtDate(h.requestedAt)}` : ""}{h.refId ? ` • Ref: ${h.refId}` : ""}{(h.reason||h.note) ? ` • Catatan: ${h.reason||h.note}` : ""}
+                            </div>
                           </div>
                         </details>
                       )}

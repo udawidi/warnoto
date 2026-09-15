@@ -17,7 +17,7 @@ import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty, UPT_MAP_COLOR } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
-import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel } from "./src/lib/sap.js";
+import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
@@ -2314,6 +2314,20 @@ export default function PLNWarehouse() {
   }
 
   // ── DATA STOK CRUD (junction: katalog x lokasi, qty/harga/jenis) ──
+  async function splitStockSourceLots(st, allocations, idempotencyKey) {
+    if (!hasRole(currentUser, "TL", "SUPERADMIN")) { showToast("Hanya TL atau SUPERADMIN yang dapat mengalokasikan sumber.", "error"); return; }
+    if (!supabase) { showToast("Alokasi sumber membutuhkan koneksi server.", "error"); return; }
+    if (!Array.isArray(allocations) || allocations.length===0 || allocations.some(a => !a?.key || !(Number(a.qty)>0))) { showToast("Setiap alokasi wajib memiliki key dan qty lebih dari nol.", "error"); return; }
+    const expectedQty = Number(st.qty) || 0;
+    if (allocations.reduce((sum,a)=>sum+Number(a.qty),0) !== expectedQty) { showToast(`Total alokasi harus tepat ${expectedQty} ${st.unit||"unit"}.`, "error"); return; }
+    const normalized = allocations.map(a => ({ ...a, qty:Number(a.qty), status:"ACTIVE" }));
+    const { data, error } = await supabase.rpc("tug_split_stock_source_lots", { p_stock_id:st.id, p_expected_qty:expectedQty, p_allocations:normalized, p_idempotency_key:idempotencyKey || `source-split-${st.id}` });
+    if (error) { showToast(`Alokasi gagal: ${error.message || "server menolak"}`, "error"); return false; }
+    const fresh = await loadMasterTable("stocks");
+    if (fresh) setStocks(fresh);
+    showToast(`Alokasi sumber selesai: ${(data?.lotIds||[]).length} lot dibuat.`);
+    return true;
+  }
   // openAddStock (tombol "+ Tambah Data Stok") dihapus 2026-07-02 — kebijakan bisnis: semua
   // material masuk WAJIB lewat TUG (TUG-3/9/dst), tidak boleh input langsung ke Data Stok.
   // stockModal/saveStock tetap ada, cuma dipakai "edit" sekarang (lihat openEditStock).
@@ -2843,9 +2857,10 @@ export default function PLNWarehouse() {
   // Dipakai handleScanResult (scan kamera) DAN hook useHardwareScanner (scan hardware).
   function applyTxnScan(code, txnIndex) {
     const scannedKatalogId = extractKatalogIdFromScan(code);
-    const matches = scannedKatalogId
+    const matches = (scannedKatalogId
       ? enrichedStocks.filter(s => s.katalogId === scannedKatalogId)
-      : enrichedStocks.filter(s => s.katalog === code);
+      : enrichedStocks.filter(s => s.katalog === code))
+      .filter(s => Number(s.qty) > 0 && !isLegacySourceAllocation(s));
     if (matches.length === 0) {
       showToast(`Kode ${code} tidak ditemukan di database katalog`, "error");
     } else if (matches.length === 1) {
@@ -3060,23 +3075,24 @@ export default function PLNWarehouse() {
         const qty = Number(si.qty) || 0;
         const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
         const effectKey = `${txn.id}:${itemIdx}`;
+        const returnLot = { key: sourceLotKey({ kind:"TUG10_RETURN", transactionId:txn.id, itemIndex:itemIdx }), kind:"TUG10_RETURN", supplier:txn.menyerahkanUnit || "", sourceDocumentNo:txn.docNumbers?.tug10 || txn.id, sourceDate:Date.now(), sourceTransactionId:txn.id, sourceItemIndex:itemIdx, status:"ACTIVE" };
         if (si.katalogMode === "existing" && si.katalogId) {
           // Find an existing Data Stok row for this katalog+location; bump qty if found
-          const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===txn.lokasiTujuanId);
+          const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===txn.lokasiTujuanId && s.sourceLot?.key===returnLot.key);
           if (existingRow) {
             const alreadyApplied = Number(existingRow._tug10Applied?.[effectKey]) || 0;
             const qtyToApply = Math.max(0, qty - alreadyApplied);
             if (!qtyToApply) return;
             // fix bug-2 (identik TUG-3): foto retur ikut fotoKeseluruhan (kolom Foto DataStokTab),
             // jangan timpa foto lama kalau baris sudah punya.
-            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
+            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
             touchedStockIds.add(existingRow.id);
           } else {
             const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
             // Retur TUG-10 masuk sbg Non-SAP dulu (belum terdaftar SAP Persediaan/Cadang) —
             // admin reklasifikasi ke SAP kemudian. Baris existing yang cuma di-bump qty TIDAK diubah sapStatus-nya.
             const kat = approvalKatalog.find(k => k.id === si.katalogId);
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
+            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
             touchedStockIds.add(newId);
           }
         } else {
@@ -3090,16 +3106,16 @@ export default function PLNWarehouse() {
             newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", sapStatus:"Non-SAP", createdAt:Date.now() });
             touchedKatalogIds.add(newKatId);
           }
-          const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId);
+          const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId && s.sourceLot?.key===returnLot.key);
           if (existingRow2) {
             const alreadyApplied = Number(existingRow2._tug10Applied?.[effectKey]) || 0;
             const qtyToApply = Math.max(0, qty - alreadyApplied);
             if (!qtyToApply) return;
-            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
+            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, fotoKeseluruhan: s.fotoKeseluruhan || si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
             touchedStockIds.add(existingRow2.id);
           } else {
             const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
+            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
             touchedStockIds.add(newStkId);
           }
         }
@@ -4040,7 +4056,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const viewStocks = stockViewMode !== "katalog" ? filteredStocks : (() => {
     const groups = new Map();
     for (const s of filteredStocks) {
-      const key = s.katalogId || s.katalog;
+      // Per-Katalog mode remains an aggregate view, but never collapses distinct
+      // source lots into one selectable/detail row.
+      const key = `${s.katalogId || s.katalog}|${s.sourceLot?.key || s.id}`;
       let g = groups.get(key);
       if (!g) { g = { ...s, id:"AGG-"+key, qty:0, minQty:0, lokasiId:undefined, lokasiCount:0, aggMembers:[], deletePending:false, editPending:false }; groups.set(key, g); }
       g.qty += Number(s.qty)||0;
@@ -4432,6 +4450,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             setKartuGantungDetail={setKartuGantungDetail} setPetaMiniDetail={setPetaMiniDetail}
             stockPageSize={stockPageSize} setStockPageSize={setStockPageSize}
             stockPageClamped={stockPageClamped} setStockPage={setStockPage} stockTotalPages={stockTotalPages}
+            splitStockSourceLots={splitStockSourceLots}
           />
         )}
 

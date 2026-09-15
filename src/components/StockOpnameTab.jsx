@@ -7,7 +7,7 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel } from "../lib/sap.js";
+import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel, sourceLotLabel, getSourceLot, sourceLotRowsForCatalog } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
@@ -43,8 +43,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   function handleCloseMove() {
     const kid = moveStock?.st?.katalogId;
-    if (kid) setActiveOpname(prev => prev ? { ...prev, items: prev.items.map(it =>
-      it.katalogId===kid ? { ...it, lokasiBreakdown: buildLokasiBreakdown(stocks.filter(s=>s.katalogId===kid)) } : it) } : prev);
+    const stockId = moveStock?.st?.id;
+    if (kid) setActiveOpname(prev => prev ? { ...prev, items: prev.items.map(it => {
+      // New sessions identify a lot by stockId; old sessions have no stockId.
+      const matches = stockId ? it.stockId === stockId : it.katalogId === kid && !it.stockId;
+      if (!matches) return it;
+      const rows = stockId ? stocks.filter(s => s.id === stockId) : sourceLotRowsForCatalog(stocks, kid);
+      return { ...it, lokasiBreakdown: buildLokasiBreakdown(rows) };
+    }) } : prev);
     setMoveStock(null);
   }
   // Fase 2d: layar hitung lapangan satu-tangan (HP/tablet) — overlay di atas panel ini, z-index
@@ -230,7 +236,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     return katRows.map(s=>{
       const lok = lokasiList?.find(l=>l.id===s.lokasiId);
       const gud = gudangList?.find(g=>g.id===lok?.gudangId);
-      return { lokasiId: s.lokasiId||null, lokasiKode: lok?.kode||null, gudangId: lok?.gudangId||null, gudangKode: gud?.kode||gud?.nama||null, qty: s.qty||0 };
+      return { stockId:s.id, sourceLabel:sourceLotLabel(s), lokasiId: s.lokasiId||null, lokasiKode: lok?.kode||null, gudangId: lok?.gudangId||null, gudangKode: gud?.kode||gud?.nama||null, qty: s.qty||0 };
     });
   }
   // Fase 1c: seed hitungPerLokasi dari qtySistem (default awal — belum benar-benar dihitung
@@ -254,16 +260,22 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const allKids = [...new Set(stocks.map(s=>s.katalogId).filter(Boolean))];
     allKids.forEach(kid=>{
       const kat = katalogList.find(k=>k.id===kid); if(!kat) return;
-      const katRows = stocks.filter(s=>s.katalogId===kid);
-      const qtySistem = katRows.reduce((a,s)=>a+(s.qty||0),0);
+      const katRows = sourceLotRowsForCatalog(stocks, kid);
       const sapRow = sapRows.find(r=>normalizeKatalog(r.katalog)===normalizeKatalog(kat.katalog));
-      const lokasiBreakdown = buildLokasiBreakdown(katRows);
-      items.push({
-        katalogId: kid, namaBarang: kat.name, noKatalog: kat.katalog||"-", satuan: kat.satuan||"-",
-        qtySistem, qtySAP: sapRow?.qty??null,
-        qtsFisik: null, selisih: 0,
-        statusItem: sapRow==null?"TIDAK_ADA_DI_SAP":"SESUAI",
-        keterangan: "", lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown),
+      katRows.forEach((stockRow, rowIndex)=>{
+        const qtySistem = Number(stockRow.qty) || 0;
+        const lokasiBreakdown = buildLokasiBreakdown([stockRow]);
+        items.push({
+          stockId: stockRow.id,
+          sourceLabel: sourceLotLabel(stockRow),
+          sourceLot: getSourceLot(stockRow),
+          katalogId: kid, namaBarang: kat.name, noKatalog: kat.katalog||"-", satuan: kat.satuan||"-",
+          qtySistem, // SAP qty is catalog-level; expose it once to avoid double-counting.
+          qtySAP: rowIndex===0 ? sapRow?.qty??null : null,
+          qtsFisik: null, selisih: 0,
+          statusItem: sapRow==null?"TIDAK_ADA_DI_SAP":"SESUAI",
+          keterangan: "", lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown),
+        });
       });
     });
 
@@ -287,13 +299,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       .filter(Boolean).map(kid=>{
         const kat = katalogList.find(k=>k.id===kid);
         if(!kat) return null;
-        const katRows = stocks.filter(s=>s.katalogId===kid);
-        const qtySistem = katRows.reduce((a,s)=>a+(s.qty||0),0);
-        const lokasiBreakdown = buildLokasiBreakdown(katRows);
-        return { katalogId:kid, namaBarang:kat.name, noKatalog:kat.katalog||"-", satuan:kat.satuan||"-",
-          qtySistem, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
-          lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown) };
-      }).filter(Boolean);
+        return sourceLotRowsForCatalog(stocks, kid).map(stockRow=>{
+          const qtySistem = Number(stockRow.qty) || 0;
+          const lokasiBreakdown = buildLokasiBreakdown([stockRow]);
+          return { stockId:stockRow.id, sourceLabel:sourceLotLabel(stockRow), sourceLot:getSourceLot(stockRow),
+            katalogId:kid, namaBarang:kat.name, noKatalog:kat.katalog||"-", satuan:kat.satuan||"-",
+            qtySistem, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
+            lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown) };
+        });
+      }).filter(Boolean).flat();
   }
 
   // Fase 1e: kelompokkan item hasil parse PID per gudang (dari lokasi PERTAMA di
@@ -417,7 +431,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Non-SAP kosong. Fallback kode katalog untuk item SAP-only tanpa baris stok.
   function itemSapLabel(item) {
     if (item.katalogId) {
-      const s = (stocks||[]).find(s=>s.katalogId===item.katalogId);
+      const s = (stocks||[]).find(s=>item.stockId ? s.id===item.stockId : s.katalogId===item.katalogId);
       if (s) return stockSapLabel(s);
     }
     return resolveSapLabel(item.noKatalog);
@@ -902,11 +916,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {item.lokasiBreakdown && item.lokasiBreakdown.length>0 && (
                             <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
                               {item.lokasiBreakdown.slice(0,3).map((b,bi)=>{
-                                const st = !isReadOnly && b.lokasiId ? stocks.find(s=>s.katalogId===item.katalogId && s.lokasiId===b.lokasiId) : null;
+                                const st = !isReadOnly && b.stockId ? stocks.find(s=>s.id===b.stockId) : null;
                                 return (
                                   <span key={bi} onClick={st ? ()=>setMoveStock({ st, lok: lokasiList.find(l=>l.id===st.lokasiId)||null, gdg: gudangList.find(g=>g.id===st.gudangId)||null }) : undefined}
                                     title={st ? "Ubah lokasi" : undefined}
-                                    style={{fontSize:12,padding:"1px 6px",borderRadius:999,background:"#f1f5f9",color:C.muted,fontWeight:600,cursor:st?"pointer":"default"}}>{b.lokasiKode||"?"} ({b.qty})</span>
+                                    style={{fontSize:12,padding:"1px 6px",borderRadius:999,background:"#f1f5f9",color:C.muted,fontWeight:600,cursor:st?"pointer":"default"}}>{b.lokasiKode||"?"} · {b.sourceLabel} ({b.qty})</span>
                                 );
                               })}
                               {item.lokasiBreakdown.length>3 && <span style={{fontSize:12,color:C.muted}}>+{item.lokasiBreakdown.length-3} lagi</span>}

@@ -125,7 +125,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
     return (t.stockItems||[]).map((si,i)=>{
       const stock = stocks.find(s=>s.id===si.stockId);
       const kontrakSumber = formatKontrakSumber(si.sourceSnapshot, stock?.kontrakRefs);
-      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||si.snapshot?.name||"?"} <b>x{si.qty}</b> {stock?.unit||si.unit}{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 Riwayat sumber: {kontrakSumber}</span>}</div>;
+      return <div key={i} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||si.snapshot?.name||"?"} <b>x{si.qty}</b> {stock?.unit||si.unit}{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 Sumber lot: {kontrakSumber}</span>}</div>;
     });
   }
 

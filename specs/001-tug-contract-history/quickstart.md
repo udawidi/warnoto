@@ -1,9 +1,10 @@
 # Quickstart Validation
 
-1. Jalankan contract/unit tests sumber dan canonical.
-2. Jalankan rehearsal PostgreSQL untuk create, amend, temporal filter, fallback, dan retry migration.
-3. Jalankan `npm run build`.
-4. Dry-run production harus menunjukkan seluruh TUG-3 resolved dan nol unmatched.
-5. Setelah apply migration, query seluruh TUG-8/TUG-9: tidak ada `source_snapshot` kosong.
-6. Buka TUG-9 `250.TUG-9/LOG.00.02/SBYA/IX/2026`: tiga alat menunjukkan kontrak TUG-3 198; Micro Ohm menunjukkan TUG-3 202.
-7. Pastikan hash dokumen, qty stok, approval, dan stock movements tidak berubah.
+1. Jalankan `node --test tests/unit/tugSourceLots.test.mjs tests/unit/tugSourceHistory.test.mjs tests/unit/tugCanonical.contract.test.mjs`.
+2. Jalankan `npm run build`.
+3. Buat dua penerimaan TUG-3 katalog/lokasi sama: PT A qty 3 dan PT B qty 4. Pastikan dua lot tampil.
+4. Buat TUG-8/9 qty 2 dari PT A. Setelah final, pastikan PT A=1 dan PT B=4.
+5. Scan katalog yang mempunyai dua lot. Pastikan picker sumber terbuka dan tidak memilih otomatis.
+6. Verifikasi Data Stok dan Stock Opname menampilkan dua baris; Stock Count/forecast tetap total 5.
+7. Pada database uji, split stok legacy qty 7 menjadi 3+4. Ulangi idempotency key yang sama dan pastikan tidak ada lot tambahan.
+8. Jangan apply `20260915_tug_source_lots.sql` ke Supabase production sebelum persetujuan user.

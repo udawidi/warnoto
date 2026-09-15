@@ -1,21 +1,25 @@
-# Research: Riwayat Sumber Kontrak TUG-8/9
+# Research: Lot Sumber Material TUG-8/9
 
-## Decision: Snapshot informatif terpisah
+## Decision: Gunakan baris `stocks` sebagai lot
 
-`source_snapshot` berada di luar `tug_items.snapshot` agar backfill tidak mengubah hash dan bukti approval lama.
+Canonical TUG-8/TUG-9 sudah mengunci dan mengurangi satu `stock_id`. Memisahkan penerimaan menjadi beberapa baris stok membuat saldo per sumber akurat tanpa tabel atau signature RPC baru.
 
-**Alternatives considered**: Menambah `kontrakRefs` ke snapshot signed ditolak karena memerlukan penandatanganan ulang histori; membaca stok hidup ditolak karena histori dapat berubah setelah transaksi.
+## Decision: Pemilihan sumber eksplisit
 
-## Decision: Derivasi server-side
+Tidak ada FIFO. Picker menampilkan semua lot aktif. Kebutuhan lintas sumber dipecah menjadi beberapa baris transaksi agar audit dan pengurangan saldo tidak ambigu.
 
-RPC mengambil sumber dari baris `stocks`, bukan payload client. Signature RPC tetap.
+## Decision: Identitas sumber stabil dalam `stocks.data.sourceLot`
 
-**Alternatives considered**: Snapshot client ditolak karena bisa dipalsukan; tabel baru ditolak karena satu kolom JSON existing lebih kecil dan RLS `tug_items` sudah tersedia.
+TUG-3 memakai kombinasi UPT/lokasi, katalog, penyedia, dan identitas kontrak/dokumen. Jika referensi kontrak kosong, gunakan transaksi dan indeks item. TUG-10 memakai transaksi dan indeks item. Kunci disimpan saat lot dibuat dan tidak dihitung ulang dari label tampilan.
 
-## Decision: Bukan FIFO
+## Decision: Snapshot tetap server-authoritative
 
-Semua kontrak yang tersedia pada waktu transaksi disimpan sebagai riwayat informatif. Tidak ada klaim batch mana yang benar-benar keluar.
+`tug_items.source_snapshot` tetap di luar `tug_items.snapshot` dan hash canonical. Helper database mengambil metadata dari baris lot yang dipilih dan menambahkan `lotKey`; payload client tidak dipercaya.
 
-## Decision: Backfill temporal dan idempoten
+## Decision: Stok lama dibagi atomik
 
-Kontrak TUG-3 dicocokkan dengan katalog canonical + lokasi + UPT. Histori item hanya mengambil kontrak yang waktunya tidak melewati waktu transaksi.
+RPC `tug_split_stock_source_lots` mengunci baris lama, memeriksa peran/UPT, expected qty, total alokasi, keunikan kunci, dan idempotency key. Marker hasil dan ID lot tersimpan pada baris asli sehingga retry mengembalikan hasil yang sama tanpa tabel baru.
+
+## Decision: Pisahkan tampilan detail dan agregasi
+
+Data Stok dan Stock Opname memakai baris lot. Stock Count, forecast, dan ringkasan menjumlahkan qty semua lot per katalog sehingga angka bisnis tidak berubah.

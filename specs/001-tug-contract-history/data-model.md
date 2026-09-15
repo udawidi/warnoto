@@ -1,20 +1,31 @@
 # Data Model
 
+## `stocks.data.sourceLot`
+
+```json
+{
+  "key": "TUG3|upt|lokasi|katalog|supplier|contract",
+  "kind": "TUG3_CONTRACT",
+  "supplier": "PT A",
+  "contractNo": "SP-001",
+  "sourceDocumentNo": "001.TUG-3/...",
+  "sourceDate": 1787492950009,
+  "sourceTransactionId": "uuid",
+  "sourceItemIndex": 0,
+  "status": "ACTIVE"
+}
+```
+
+`kind`: `TUG3_CONTRACT`, `TUG10_RETURN`, `SAP_MIGRATION`, atau `INITIAL_STOCK`. `key` immutable dan unik secara logis dalam katalog/lokasi.
+
+## Legacy state
+
+Baris tanpa `sourceLot` dan lebih dari satu referensi kontrak diperlakukan sebagai `NEEDS_SOURCE_ALLOCATION`. Setelah split, qty baris asal menjadi 0 dan `sourceLotSplit` menyimpan idempotency key serta ID lot hasil. Baris hasil menyalin identitas katalog/lokasi dan masing-masing memiliki satu sumber.
+
 ## TUG Item Source Snapshot
 
-Kolom baru `tug_items.source_snapshot` adalah JSON object:
+`tug_items.source_snapshot` menyimpan `{lotKey, sourceKind, contracts, sourceDocumentNo, provenance}`. Nilai diturunkan database dari `stock_id` saat create/amend dan immutable untuk histori.
 
-- `sourceKind`: `TUG3_CONTRACT`, `SAP_MIGRATION`, `TUG10_RETURN`, atau `INITIAL_STOCK`.
-- `contracts`: array referensi kontrak, terbaru ke terlama, dedupe berdasarkan `docNo` dan `noKontrak`.
-- `provenance`: `CREATE`, `AMEND`, atau `HISTORICAL_BACKFILL`.
+## Allocation RPC Input
 
-Snapshot bersifat informatif, server-derived, dan tidak menjadi bagian hash dokumen canonical.
-
-## Contract Reference
-
-- `docNo`, `supplier`, `noKontrak`, `tglMasuk`
-- `suratPesananNo`, `suratPesananTgl`, `amandemenNo`
-
-## Source Classification
-
-Prioritas: kontrak TUG-3 valid, marker retur TUG-10, baseline/import SAP, lalu stok awal.
+`tug_split_stock_source_lots(stock_id text, expected_qty numeric, allocations jsonb, idempotency_key text)` menerima allocation dengan `qty`, `key`, `kind`, dan metadata sumber. Qty harus positif, key unik, total tepat sama dengan qty terkunci.
