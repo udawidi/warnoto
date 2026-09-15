@@ -62,7 +62,7 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
 
   const headers = { ...(await authHeaders()), "Content-Type": "application/json" };
 
-  // 1. Upsert katalog yang dipakai (FK target â€” harus ada dulu sebelum insert history)
+  // 1. Upsert katalog yang dipakai (FK target — harus ada dulu sebelum insert history)
   const katalogIds = [...new Set(newRows.map(r=>r.katalogId))];
   const katalogPayload = katalogIds.map(kid => {
     const kat = katalogList.find(k=>k.id===kid);
@@ -70,7 +70,7 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
   });
   // ignore-duplicates (bukan merge-duplicates): baris katalog yang sudah ada
   // (disinkron lewat syncMasterTable("katalog",...) di jalur utama) TIDAK BOLEH
-  // ditimpa payload minimal di sini â€” kalau di-merge, field data jsonb lengkap
+  // ditimpa payload minimal di sini — kalau di-merge, field data jsonb lengkap
   // (merk/type/keterangan/dst) bisa hilang, cuma menyisakan 4 field ini.
   // Insert ini murni jaga-jaga FK (katalog_id di tug15_history) untuk id yang
   // belum sempat tersinkron dari jalur utama.
@@ -83,7 +83,7 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
 
   // 2. Insert baris mutasi (MASUK & KELUAR jadi baris terpisah sesuai skema tug15_history).
   // sync_key dibuat dari isi transaksi (bukan random) + upsert on_conflict=sync_key dengan
-  // ignore-duplicates â€” supaya kalau cache lokal kebetulan kosong/di-reset dan baris yang sama
+  // ignore-duplicates — supaya kalau cache lokal kebetulan kosong/di-reset dan baris yang sama
   // terkirim ulang (atau ada race antar tab), Supabase sendiri yang menolak duplikatnya,
   // bukan cuma mengandalkan cache di localStorage.
   const historyPayload = [];
@@ -105,7 +105,7 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
   return { katalogCount: katalogPayload.length, historyCount: historyPayload.length };
 }
 
-// â”€â”€â”€ SUPABASE SYNC (Data Stok â†’ stock_current) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── SUPABASE SYNC (Data Stok → stock_current) ─────────────────────────────
 // Push qty stok terkini (dijumlah per katalog dari semua lokasi) supaya job
 // training bisa hitung estimasi_hari_sampai_habis = qty_saat_ini / rata2 prediksi harian.
 // Rincian lokasi fisik satu katalog untuk halaman scan publik. Tabel gudang/lokasi
@@ -193,7 +193,7 @@ export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
   return { katalogCount: katalogPayload.length, stockCount: stockPayload.length };
 }
 
-// Balapan promise vs timeout â€” kalau promise belum selesai dalam `ms`, reject
+// Balapan promise vs timeout — kalau promise belum selesai dalam `ms`, reject
 // dengan pesan yang jelas (dipakai supaya upload foto yang macet tidak
 // menggantung proses simpan transaksi selamanya).
 export function _withTimeout(promise, ms, label) {
@@ -203,7 +203,7 @@ export function _withTimeout(promise, ms, label) {
   ]);
 }
 
-// Upload satu foto base64 ke Storage â†’ kembalikan URL publik (atau penanda "priv:"
+// Upload satu foto base64 ke Storage → kembalikan URL publik (atau penanda "priv:"
 // untuk bucket privat). Dipakai foto transaksi TUG maupun foto Data Stok.
 export async function uploadPhotoToStorage(dataUrl, bucket, path) {
   const blob = dataUrlToBlob(dataUrl);
@@ -214,7 +214,7 @@ export async function uploadPhotoToStorage(dataUrl, bucket, path) {
     : supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }
 
-// Upload semua foto base64 sebuah transaksi ke Storage â†’ ganti jadi URL/penanda.
+// Upload semua foto base64 sebuah transaksi ke Storage → ganti jadi URL/penanda.
 // Foto yang gagal upload (mis. offline) dibiarkan base64 & dicatat di `pending`
 // (transaksi tetap tersimpan + dokumen tetap bisa dibuat; disinkron ulang nanti).
 export async function processTxnPhotos(txn, prefix, onProgress) {
@@ -276,7 +276,7 @@ export async function resolvePrivPhoto(marker) {
   } catch { return marker; }
 }
 
-// SIM/KTP "priv:<path>" â†’ signed URL (1 jam) untuk ditampilkan/dicetak.
+// SIM/KTP "priv:<path>" → signed URL (1 jam) untuk ditampilkan/dicetak.
 export async function resolveTxnPrivPhotos(txn) {
   if (!supabase || !txn || typeof txn.fotoSimKtp !== "string" || !txn.fotoSimKtp.startsWith("priv:")) return txn;
   try {
@@ -302,7 +302,7 @@ export async function syncFotoMaterialToSupabase(stocks, katalogList) {
     if (synced[kat.id] === fingerprint) continue;
 
     // Foto hasil migrasi AppSheet sudah berupa URL Storage (bukan base64 data URL).
-    // Tidak perlu di-upload ulang â€” cukup pakai URL-nya langsung sebagai
+    // Tidak perlu di-upload ulang — cukup pakai URL-nya langsung sebagai
     // fotoKeseluruhanUrl (dipakai halaman scan QR). Tanpa guard ini, dataUrlToBlob
     // akan error karena img bukan format "data:...;base64,".
     if (!/^data:/i.test(img)) {
@@ -330,7 +330,7 @@ export async function syncFotoMaterialToSupabase(stocks, katalogList) {
 
     const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/material-photos/${path}`;
     // Kirim seluruh objek `kat` (state React, sudah lengkap) + fotoKeseluruhanUrl
-    // sebagai `data` jsonb â€” BUKAN payload minimal â€” supaya merge-duplicates di
+    // sebagai `data` jsonb — BUKAN payload minimal — supaya merge-duplicates di
     // sini tidak menghapus field lain (merk/type/keterangan/dst) milik baris ini.
     const katRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
       method: "POST",
@@ -383,7 +383,7 @@ export async function compressImage(input, { maxBytes = 1_000_000, maxDim = 1600
       quality -= 0.1;
       dataUrl = canvas.toDataURL("image/jpeg", quality);
     }
-    // Masih kegedean di kualitas minimum â†’ kecilkan dimensi lalu ulang.
+    // Masih kegedean di kualitas minimum → kecilkan dimensi lalu ulang.
     if (bytesOf(dataUrl) > maxBytes && Math.max(width, height) > 800) {
       return compressImage(dataUrl, { maxBytes, maxDim: Math.round(Math.max(width, height) * 0.75) });
     }
@@ -628,7 +628,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           masuk: si.qty||0, keluar: 0,
           upt: "UPT Surabaya",
           tugBaDoc: `TUG-10 / ${docNo}`,
-          keterangan: `${t.namaPekerjaan||"-"} â€” ${si.statusMaterial||""}`,
+          keterangan: `${t.namaPekerjaan||"-"} — ${si.statusMaterial||""}`,
           tanggalMutasi: tanggal, ts,
           katalogId: kat?.id||"-",
           sapStatus: sp.sapStatus,

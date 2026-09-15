@@ -62,6 +62,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Kebocoran teks encoding pada keterangan TUG-10 selesai diperbaiki (2026-09-15).** Mojibake `â€”` dan 11 teks rusak lain di `src/lib/supabaseSync.js` sudah dinormalisasi ke Unicode yang benar. Guard `tests/unit/encoding.contract.test.mjs` memindai source runtime dan menggagalkan test bila pola mojibake umum muncul kembali. Seluruh 264 unit test dan build production lulus.
+
 - **Tiga panduan pengguna corporate PLN selesai dan sudah di-push (`2698fac`, 2026-09-15).** Dokumen terpisah untuk Stock Opname (12 halaman), Stock Count (8 halaman), dan Pengisian Maturity Level (12 halaman) tersedia dalam format DOCX dan PDF di `docs/user-guides/`. Seluruh panduan memakai screenshot aplikasi dengan data contoh, penanda tahapan, troubleshooting, dan checklist. Render visual 32 halaman sudah diperiksa; audit aksesibilitas menghasilkan 0 temuan tingkat tinggi.
 
 - **Saldo material per sumber kontrak dan Riwayat Approval detail selesai, sudah di-push (`09a85b0`, 2026-09-15); migration production sudah aktif.** Picker TUG-8/9 menampilkan lot sumber, saldo dikeluarkan dari kontrak yang dipilih, Stock Opname menghitung per lot, dan snapshot sumber menjaga histori. Riwayat Approval tetap clean/compact melalui panel detail yang memuat metadata transaksi, material, lokasi, sumber, pemohon, UPT, dan catatan. Migration diterapkan ke self-host dengan satu transaksi; fungsi, trigger, grant, dan preflight terverifikasi. Data tetap: stok 717, transaksi 32, item 47. Unit test terkait 18/18 lulus.
@@ -693,5 +695,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-15 Codex: **Maturity dual-gudang dan redesign eviden/catatan selesai; test, build, E2E, dan localhost lulus; commit lokal menunggu review kantor sebelum push.**
 - 2026-09-15 Codex: **Saldo per sumber kontrak, detail Riwayat Approval, dan tiga panduan corporate sudah di-push; migration lot production sudah diterapkan dan terverifikasi.**
+- 2026-09-15 Codex: **Mojibake pada keterangan TUG-10 dibersihkan dan guard encoding source ditambahkan; seluruh unit test dan build lulus.**
