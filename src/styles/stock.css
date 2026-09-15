@@ -21,6 +21,68 @@
 [data-theme="dark"] .stock-view-switch.is-on .stock-view-switch__label:last-of-type { color: #93c5fd; }
 .stock-detail-keterangan { grid-column: 1 / -1; line-height: 1.45; }
 
+/* Stock Opname SAP-first: dense command surface, with one mobile-safe geometry. */
+.opname-panel { min-width: 0; overflow: hidden; border-radius: 16px !important; }
+.opname-panel button, .opname-panel select, .opname-panel input { box-sizing: border-box; }
+.opname-panel > button, .opname-panel label { min-height: 40px; }
+.opname-stage-rail { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 0 0 14px; padding: 4px; border: 1px solid #dbe3ef; border-radius: 12px; background: #f8fafc; }
+.opname-stage-rail__step { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; border-radius: 9px; color: #64748b; font-size: 12px; font-weight: 800; }
+.opname-stage-rail__step.is-active { background: #0b2559; color: #fff; box-shadow: 0 2px 6px rgba(11,37,89,.18); }
+.opname-stage-rail__step.is-done { color: #166534; }
+.opname-stage-rail__index { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: rgba(148,163,184,.18); font-size: 11px; }
+.opname-stage-rail__step.is-active .opname-stage-rail__index { background: rgba(255,255,255,.18); }
+.opname-category-segment { display: flex; gap: 4px; min-width: 0; margin: 0 0 14px; padding: 4px; overflow-x: auto; border: 1px solid #dbe3ef; border-radius: 12px; background: #fff; scrollbar-width: none; }
+.opname-category-segment button { flex: 1 1 0; min-width: 110px; min-height: 36px; padding: 6px 10px; border: 0; border-radius: 9px; background: transparent; color: #475569; font-size: 12px; font-weight: 750; white-space: nowrap; cursor: pointer; }
+.opname-category-segment button span { margin-left: 4px; color: #94a3b8; font-variant-numeric: tabular-nums; }
+.opname-category-segment button.is-active { background: #e8f1ff; color: #0b4da2; }
+.opname-category-segment button.is-active span { color: #0b4da2; }
+.opname-next-stage { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 12px; padding: 12px; border: 1px solid #bfdbfe; border-radius: 12px; background: #eff6ff; color: #1e3a8a; font-size: 12px; line-height: 1.4; }
+.opname-next-stage > div { min-width: 0; }
+.opname-next-stage__button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 auto; min-height: 40px; padding: 8px 14px; border: 0; border-radius: 10px; background: #0b4da2; color: #fff; font-size: 12px; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.opname-next-stage__button:hover { background: #083b7e; }
+.opname-flow-note { margin-top: 10px; color: #64748b; font-size: 12px; line-height: 1.45; }
+.opname-legacy-badge { display: inline-flex; align-items: center; min-height: 22px; margin-right: 6px; padding: 2px 7px; border: 1px solid #cbd5e1; border-radius: 999px; background: #f1f5f9; color: #64748b; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; vertical-align: middle; }
+.opname-field-mode { color: #172033; }
+.opname-field-mode__header { padding-top: max(12px, env(safe-area-inset-top)); }
+.opname-field-mode__body { width: min(760px, 100%); margin: 0 auto; }
+.opname-field-mode__actions { padding-bottom: max(14px, env(safe-area-inset-bottom)); }
+.opname-field-mode__actions > button { min-height: 44px; }
+.opname-action-bar { align-items: stretch; }
+.opname-action-bar > button { height: 40px; min-height: 40px; }
+
+@media (max-width: 768px) {
+  .opname-panel { border-radius: 16px !important; }
+  .opname-panel :is(button, select) { min-height: 44px; }
+  .opname-panel .opname-card-table { overflow-x: hidden !important; }
+  .opname-stage-rail { position: sticky; top: 0; z-index: 3; margin-inline: -2px; }
+  .opname-category-segment button { min-width: 104px; min-height: 44px; }
+  .opname-next-stage { align-items: stretch; flex-direction: column; gap: 10px; }
+  .opname-next-stage__button { width: 100%; min-height: 44px; }
+  .opname-field-mode__header { padding-inline: 14px; }
+  .opname-field-mode__body { padding: 12px; }
+  .opname-field-mode__actions { flex-wrap: wrap; padding-inline: 12px; }
+  .opname-field-mode__actions > button { flex: 1 1 0 !important; min-width: 0; }
+  .opname-action-bar > button { height: 44px; min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .opname-panel *, .opname-field-mode * { transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; }
+}
+
+[data-theme="dark"] .opname-stage-rail,
+[data-theme="dark"] .opname-category-segment { border-color: #334155; background: #111827; }
+[data-theme="dark"] .opname-stage-rail__step { color: #94a3b8; }
+[data-theme="dark"] .opname-stage-rail__step.is-active { background: #1d4ed8; color: #fff; }
+[data-theme="dark"] .opname-category-segment button { color: #cbd5e1; }
+[data-theme="dark"] .opname-category-segment button.is-active { background: #172554; color: #bfdbfe; }
+[data-theme="dark"] .opname-next-stage { border-color: #1e40af; background: #172554; color: #bfdbfe; }
+[data-theme="dark"] .opname-legacy-badge { border-color: #475569; background: #1e293b; color: #cbd5e1; }
+[data-theme="dark"] .opname-history-actions button:not([title="Hapus sesi opname"]) {
+  border-color: #334155 !important;
+  background: #172033 !important;
+  color: #cbd5e1 !important;
+}
+
 @media (max-width: 768px) {
   .stock-page .workspace-filter-panel :is(input, select, button) { min-height: 44px; }
   .stock-search-label { position: static; display: block; width: auto; height: auto; margin-bottom: 4px; overflow: visible; clip: auto; color: #334155; font-size: 12px; font-weight: 800; }

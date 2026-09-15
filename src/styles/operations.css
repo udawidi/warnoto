@@ -66,6 +66,36 @@
   color: #fff;
   box-shadow: 0 12px 28px -22px rgba(11,37,89,.8);
 }
+
+.operations-hero--stock-opname {
+  display: flex;
+  min-height: auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-color: #dbe3ef;
+  border-radius: 16px;
+  background: #fff;
+  color: #172033;
+  box-shadow: 0 8px 24px -24px rgba(15,23,42,.55);
+}
+.operations-hero--stock-opname .operations-hero__summary-copy { flex: 1 1 auto; padding: 16px 18px; }
+.operations-hero--stock-opname .operations-hero__summary-copy > span { color: #1d4ed8; }
+.operations-hero--stock-opname .operations-hero__summary-copy h1 { color: #172033; font-size: 20px; }
+.operations-hero--stock-opname .operations-hero__summary-copy p { margin-top: 4px; color: #64748b; }
+.operations-hero--stock-opname .operations-hero__footer { flex: 0 0 auto; border-top: 0; background: transparent; }
+.operations-hero--stock-opname .operations-metric { min-width: 84px; padding: 10px 12px; border-left: 1px solid #e2e8f0; border-right: 0; }
+.operations-hero--stock-opname .operations-metric strong { color: #172033; font-size: 16px; }
+.operations-hero--stock-opname .operations-metric span { font-size: 10px; }
+.operations-hero--stock-opname .operations-hero__scope { min-width: 96px; padding: 10px 16px; }
+
+@media (max-width: 768px) {
+  .operations-hero--stock-opname { display: block; }
+  .operations-hero--stock-opname .operations-hero__summary-copy { padding: 14px; }
+  .operations-hero--stock-opname .operations-hero__footer { overflow-x: auto; border-top: 1px solid #e2e8f0; }
+  .operations-hero--stock-opname .operations-hero__metrics { overflow: visible; }
+  .operations-hero--stock-opname .operations-hero__scope { display: none; }
+}
 .operations-hero__summary-copy {
   grid-column: 1 / -1;
   padding: 15px 18px 13px;
@@ -113,6 +143,12 @@
 .operations-hero--summary-only .operations-metric.is-alert strong { color: #fbbf24; }
 .operations-hero--summary-only .operations-hero__scope span { color: rgba(219,234,254,.8); font-weight: 650; letter-spacing: .35px; }
 .operations-hero--summary-only .operations-hero__scope strong { color: #fff; font-weight: 750; }
+
+/* Stock Opname keeps the summary-only markup but uses a light hero. */
+.operations-hero--summary-only.operations-hero--stock-opname .operations-metric:not(.is-alert) strong { color: #172033; }
+.operations-hero--summary-only.operations-hero--stock-opname .operations-metric span { color: #64748b; }
+.operations-hero--summary-only.operations-hero--stock-opname .operations-hero__scope span { color: #64748b; }
+.operations-hero--summary-only.operations-hero--stock-opname .operations-hero__scope strong { color: #1d4ed8; }
 
 .operations-alert { padding: 14px 16px !important; border-radius: 12px !important; box-shadow: none !important; }
 .operations-section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin: 20px 0 10px; padding-bottom: 8px; border-bottom: 1px solid #e2e8f0; }
@@ -278,6 +314,13 @@
 [data-theme="dark"] .operations-metric { border-right-color: #334155; }
 [data-theme="dark"] .operations-metric span,
 [data-theme="dark"] .operations-hero__scope span { color: #94a3b8; }
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-metric:not(.is-alert) strong { color: #e2e8f0; }
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-metric span,
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-hero__scope span { color: #94a3b8; }
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-hero__scope strong { color: #93c5fd; }
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-hero__summary-copy h1 { color: #f8fafc; }
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-hero__summary-copy > span { color: #93c5fd; }
+[data-theme="dark"] .operations-hero--summary-only.operations-hero--stock-opname .operations-hero__summary-copy p { color: #94a3b8; }
 [data-theme="dark"] .operations-section-heading { border-bottom-color: #334155; }
 [data-theme="dark"] .operations-section-heading h2 { color: #e2e8f0; }
 [data-theme="dark"] .operations-section-heading small { color: #94a3b8; }

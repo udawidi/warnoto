@@ -6,12 +6,12 @@ const { SURFACES } = require("./route-manifest");
 // fixtures.js): 2 item SAP, tiap item 1 blok beda (A-01/B-02), qtsFisik null (progress 0%)
 // supaya tombol "Mulai Hitung" (satu-satunya pintu HP ke mode lapangan) masih terlihat.
 const STOCK_OPNAME = SURFACES.find(s => s.slug === "stock-opname");
-const DRAFT_BUTTON_NAME = /Lanjutkan draft 2026-2 — SAP/;
+const DRAFT_BUTTON_NAME_CLEAN = /Lanjutkan draft 2026-2\s+\u2014\s+SAP/;
 
 async function openDraftSession(page) {
   await openApp(page);
   await openRoute(page, STOCK_OPNAME);
-  await page.getByRole("button", { name: DRAFT_BUTTON_NAME }).click();
+  await page.getByRole("button", { name: DRAFT_BUTTON_NAME_CLEAN }).click();
 }
 
 // OpnameLapanganView overlay tetap di DOM di atas tabel desktop (position:fixed) — nama
@@ -22,7 +22,7 @@ function overlayOf(page) {
 }
 
 test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
-  test.describe.configure({ timeout: 180_000 });
+  test.describe.configure({ timeout: 60_000 });
 
   // Fixture OPN-E2E-01 sengaja pakai qtsFisik:null (progress 0%, lihat komentar di atas) supaya
   // "Mulai Hitung" muncul — beda dari data produksi asli (selalu qtsFisik:qtySistem sejak dibuat,
@@ -40,7 +40,7 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
   test("buka mode lapangan, pilih blok, item tampil", async ({ isolatedPage: page }) => {
     await openDraftSession(page);
     await page.getByRole("button", { name: "Mulai Hitung" }).click();
-    await expect(page.getByText("📱 Mode Lapangan")).toBeVisible();
+    await expect(page.getByText(/Mode Lapangan/)).toBeVisible();
 
     const overlay = overlayOf(page);
     await overlay.getByText("GTK — A-01").click();
@@ -61,29 +61,30 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("GTK — A-01").click();
     await overlay.getByText("Isolator Keramik 150 kV").click();
     await overlay.locator("input[type=number]").fill("5");
-    await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
-    await overlay.getByRole("button", { name: "← Ganti Blok" }).click();
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Ganti Blok/ }).click();
 
     // Recount masih pending di sini -> resolusi SEKARANG (masih di dalam overlay), bukan
     // setelah overlay ditutup, supaya tidak menabrak celah reachability di atas.
-    await overlay.getByRole("button", { name: /🔁 Hitung Ulang \(1\)/ }).click();
+    await overlay.getByRole("button", { name: /Hitung Ulang \(1\)/ }).click();
     await overlay.locator("input[type=number]").fill("5"); // sama dgn hitungan pertama -> cocok
-    await overlay.getByRole("button", { name: "✔ Konfirmasi" }).click();
+    await overlay.getByRole("button", { name: /Konfirmasi/ }).click();
     await expect(overlay.getByText("Semua item selisih sudah dikonfirmasi.")).toBeVisible();
 
     // Item 2 (qtySistem 4) dihitung 4 -> sesuai, tidak ada selisih. Progress jadi 2/2.
-    await overlay.getByRole("button", { name: "← Kembali" }).click();
+    await overlay.getByRole("button", { name: /Kembali/ }).click();
     await overlay.getByText("B-02").click();
     await overlay.getByText("Lightning Arrester 150 kV").click();
     await overlay.locator("input[type=number]").fill("4");
-    await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
 
     // "✔ Simpan Saja" balik ke screen "items" (list blok), bukan "blok" (pemilihan blok) — "✕ Tutup"
     // cuma ada di screen "blok" (lihat OpnameLapanganView.jsx). Ganti blok dulu supaya sampai ke sana.
-    await overlay.getByRole("button", { name: "← Ganti Blok" }).click();
-    await overlay.getByRole("button", { name: "✕ Tutup" }).click();
-    await page.getByRole("button", { name: "📋 Submit ke Asman" }).click();
-    await expect(page.getByText(DRAFT_BUTTON_NAME)).not.toBeVisible();
+    await overlay.getByRole("button", { name: /Ganti Blok/ }).click();
+    await overlay.getByRole("button", { name: /Tutup/ }).click();
+    await page.getByRole("button", { name: /Buka Rekonsiliasi/ }).click();
+    await page.getByRole("button", { name: /Submit ke Asman/ }).click();
+    await expect(page.getByText(DRAFT_BUTTON_NAME_CLEAN)).not.toBeVisible();
   });
 
   test("recount pending memblokir submit kalau overlay ditutup sebelum dikonfirmasi", async ({ isolatedPage: page }) => {
@@ -96,19 +97,20 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("GTK — A-01").click();
     await overlay.getByText("Isolator Keramik 150 kV").click();
     await overlay.locator("input[type=number]").fill("5");
-    await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
-    await overlay.getByRole("button", { name: "← Ganti Blok" }).click();
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Ganti Blok/ }).click();
     await overlay.getByText("B-02").click();
     await overlay.getByText("Lightning Arrester 150 kV").click();
     await overlay.locator("input[type=number]").fill("4");
-    await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
-    await overlay.getByRole("button", { name: "← Ganti Blok" }).click();
-    await overlay.getByRole("button", { name: "✕ Tutup" }).click();
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Ganti Blok/ }).click();
+    await overlay.getByRole("button", { name: /Tutup/ }).click();
 
-    await page.getByRole("button", { name: "📋 Submit ke Asman" }).click();
+    await page.getByRole("button", { name: /Buka Rekonsiliasi/ }).click();
+    await page.getByRole("button", { name: /Submit ke Asman/ }).click();
     await expect(page.getByText(/item selisih belum dikonfirmasi hitung ulang/)).toBeVisible();
     // Masih di layar sesi (tidak balik ke daftar) -> submit benar-benar diblokir, bukan cuma toast kosmetik.
-    await expect(page.getByRole("button", { name: "📋 Submit ke Asman" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Submit ke Asman/ })).toBeVisible();
   });
 
   // Uji akseptansi kritis (komentar OpnameLapanganView.jsx): scanner HID "mengetik" cepat
@@ -153,27 +155,28 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("B-02").click();
     await overlay.getByText("Lightning Arrester 150 kV").click();
     await overlay.locator("input[type=number]").fill("4");
-    await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
-    await overlay.getByRole("button", { name: "← Ganti Blok" }).click();
-    await overlay.getByRole("button", { name: "✕ Tutup" }).click();
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Ganti Blok/ }).click();
+    await overlay.getByRole("button", { name: /Tutup/ }).click();
 
     // Submit diblokir recount, DAN tombol jalan keluar HP terlihat (inti fix).
-    await page.getByRole("button", { name: "📋 Submit ke Asman" }).click();
+    await page.getByRole("button", { name: /Buka Rekonsiliasi/ }).click();
+    await page.getByRole("button", { name: /Submit ke Asman/ }).click();
     await expect(page.getByText(/item selisih belum dikonfirmasi hitung ulang/)).toBeVisible();
-    const modeLapanganBtn = page.getByRole("button", { name: "📱 Mode Lapangan" });
+    const modeLapanganBtn = page.getByRole("button", { name: /Mode Lapangan/ });
     await expect(modeLapanganBtn).toBeVisible();
 
     // Balik ke overlay lewat jalan keluar itu, resolve recount, submit jadi lolos.
     await modeLapanganBtn.click();
     overlay = overlayOf(page);
-    await overlay.getByRole("button", { name: /🔁 Hitung Ulang \(1\)/ }).click();
+    await overlay.getByRole("button", { name: /Hitung Ulang \(1\)/ }).click();
     await overlay.locator("input[type=number]").fill("5");
-    await overlay.getByRole("button", { name: "✔ Konfirmasi" }).click();
+    await overlay.getByRole("button", { name: /Konfirmasi/ }).click();
     await expect(overlay.getByText("Semua item selisih sudah dikonfirmasi.")).toBeVisible();
-    await overlay.getByRole("button", { name: "← Kembali" }).click();
-    await overlay.getByRole("button", { name: "✕ Tutup" }).click();
-    await page.getByRole("button", { name: "📋 Submit ke Asman" }).click();
-    await expect(page.getByText(DRAFT_BUTTON_NAME)).not.toBeVisible();
+    await overlay.getByRole("button", { name: /Kembali/ }).click();
+    await overlay.getByRole("button", { name: /Tutup/ }).click();
+    await page.getByRole("button", { name: /Submit ke Asman/ }).click();
+    await expect(page.getByText(DRAFT_BUTTON_NAME_CLEAN)).not.toBeVisible();
   });
 
   test("autosave lapangan pulih setelah reload sebelum Simpan Draft ditekan", async ({ isolatedPage: page }) => {
@@ -186,7 +189,7 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     // "✔ Simpan Saja" cukup — ini menulis state activeOpname (setQtyForBlok), yang men-trigger
     // efek autosave localStorage tiap activeOpname berubah selama lapanganMode true. TIDAK
     // menekan "💾 Simpan Draft" (itu yang justru menghapus draft recovery setelah sukses).
-    await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
 
     // context.addInitScript() dari fixture (isolatedPage) jalan ULANG tiap navigasi/reload dan
     // localStorage.clear() dulu sebelum re-seed cloud fixture asli — draft recovery yang baru
@@ -201,7 +204,7 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await page.reload();
     await openApp(page);
     await openRoute(page, STOCK_OPNAME);
-    await page.getByRole("button", { name: DRAFT_BUTTON_NAME }).click();
+    await page.getByRole("button", { name: DRAFT_BUTTON_NAME_CLEAN }).click();
 
     await expect(page.getByText("Hitungan lapangan lokal dipulihkan")).toBeVisible();
     await page.getByRole("button", { name: /Lanjut Hitung — 1\/2/ }).click();

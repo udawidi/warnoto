@@ -115,7 +115,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   const body = { padding: 16, flex: 1 };
 
   return (
-    <div style={overlayStyle}>
+    <div className="opname-field-mode" style={overlayStyle}>
       {scanning && (
         <BarcodeScanner
           continuous={scanFor === "item"}
@@ -127,14 +127,14 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
       {/* ── Layar 1: pilih blok ─────────────────────────────────────────── */}
       {screen === "blok" && (
         <>
-          <div style={headerBar}>
+          <div className="opname-field-mode__header" style={headerBar}>
             <div>
               <div style={{ fontSize: 17, fontWeight: 800 }}>📱 Mode Lapangan</div>
               <div style={{ fontSize: 12, color: C.muted }}>Pilih blok untuk mulai hitung</div>
             </div>
             <button style={sty.btn("ghost", "sm")} onClick={onClose}>✕ Tutup</button>
           </div>
-          <div style={body}>
+          <div className="opname-field-mode__body" style={body}>
             {recountQueue.length > 0 && (
               <button style={{ ...sty.btn("primary"), width: "100%", minHeight: 44, marginBottom: 14, background: "#dc2626" }} onClick={() => setScreen("recount")}>
                 🔁 Hitung Ulang ({recountQueue.length}) — item selisih wajib dikonfirmasi
@@ -164,14 +164,14 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
       {/* ── Layar 2: daftar item di blok aktif ──────────────────────────── */}
       {screen === "items" && blokAktif && (
         <>
-          <div style={headerBar}>
+          <div className="opname-field-mode__header" style={headerBar}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 17, fontWeight: 800 }}>{blokAktif.gudangKode ? `${blokAktif.gudangKode} — ` : ""}{blokAktif.lokasiKode}</div>
               <div style={{ fontSize: 12, color: C.muted }}>{filled}/{total} terhitung{selisihCount > 0 ? ` • ${selisihCount} selisih` : ""}{receiving ? " • 📡 menerima scan..." : ""}</div>
             </div>
             <button style={sty.btn("ghost", "sm")} onClick={() => setScreen("blok")}>← Ganti Blok</button>
           </div>
-          <div style={body}>
+          <div className="opname-field-mode__body" style={body}>
             {blokAktif.entries.map(({ item, realIdx }) => {
               const entryAktif = item.hitungPerLokasi?.[lokasiAktif];
               const done = entryAktif?.at != null;
@@ -196,7 +196,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
               );
             })}
           </div>
-          <div style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
+          <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
             <button style={{ ...sty.btn("ghost"), flex: 1 }} onClick={onSimpanDraft}>💾 Simpan Draft</button>
             <button style={{ ...sty.btn("primary"), flex: 2 }} onClick={() => { setScanFor("item"); setScanning(true); }}>📷 Scan Barang</button>
           </div>
@@ -208,11 +208,11 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
         const item = items[itemAktifIdx];
         return (
           <>
-            <div style={headerBar}>
+            <div className="opname-field-mode__header" style={headerBar}>
               <div style={{ fontSize: 17, fontWeight: 800 }}>Hitung Fisik</div>
               <button style={sty.btn("ghost", "sm")} onClick={() => { setItemAktifIdx(null); setScreen("items"); }}>✕ Batal</button>
             </div>
-            <div style={body}>
+            <div className="opname-field-mode__body" style={body}>
               <div style={{ ...sty.card, marginBottom: 16 }}>
                 <div style={{ fontSize: 17, fontWeight: 800 }}>{item.namaBarang}</div>
                 <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>No. Katalog: {item.noKatalog} • Satuan: {item.satuan}</div>
@@ -223,7 +223,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
               <input autoFocus type="number" inputMode="decimal" min="0" style={{ ...sty.input, fontSize: 32, fontWeight: 800, textAlign: "center", padding: "18px 12px" }}
                 value={qtyInput} onChange={e => setQtyInput(e.target.value)} />
             </div>
-            <div style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
               <button style={{ ...sty.btn("primary"), minHeight: 48 }} onClick={() => {
                 if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
                 if (screen === "hitung-usul") { setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput, { usulPindahLokasi: true }); showToast(`✔ Dicatat di blok ini — ${item.namaBarang}: ${qtyInput}`); setItemAktifIdx(null); setQtyInput(""); setScreen("items"); }
@@ -270,11 +270,11 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
           const { item, realIdx } = recountQueue[0];
           return (
             <>
-              <div style={headerBar}>
+              <div className="opname-field-mode__header" style={headerBar}>
                 <div style={{ fontSize: 17, fontWeight: 800 }}>🔁 Hitung Ulang ({recountQueue.length} tersisa)</div>
                 <button style={sty.btn("ghost", "sm")} onClick={() => setScreen("blok")}>← Kembali</button>
               </div>
-              <div style={body}>
+              <div className="opname-field-mode__body" style={body}>
                 <div style={{ ...sty.card, marginBottom: 16 }}>
                   <div style={{ fontSize: 17, fontWeight: 800 }}>{item.namaBarang}</div>
                   <div style={{ fontSize: 13, color: C.muted, marginTop: 4 }}>No. Katalog: {item.noKatalog} • Satuan: {item.satuan}</div>
@@ -285,7 +285,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                 <input autoFocus type="number" inputMode="decimal" min="0" style={{ ...sty.input, fontSize: 32, fontWeight: 800, textAlign: "center", padding: "18px 12px" }}
                   value={recountQty} onChange={e => setRecountQty(e.target.value)} />
               </div>
-              <div style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}` }}>
+              <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}` }}>
                 <button style={{ ...sty.btn("primary"), width: "100%", minHeight: 48 }} onClick={() => {
                   if (recountQty === "" || isNaN(Number(recountQty))) { showToast("Isi qty dulu.", "error"); return; }
                   confirmRecount(realIdx, recountQty);

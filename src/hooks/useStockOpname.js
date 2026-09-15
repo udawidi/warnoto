@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { UPT } from "../constants.js";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
@@ -16,6 +16,9 @@ function readCachedList(key) {
 // useHeavyEquipment.js untuk penjelasan lengkap TDZ.
 export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto }) {
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
+  const opnameListRef = useRef(opnameList);
+  const commitOpnameList = next => { opnameListRef.current = next; setOpnameList(next); };
+  useEffect(() => { opnameListRef.current = opnameList; }, [opnameList]);
   const [stockCountList, setStockCountList] = useState(() => readCachedList("pln_stockcount_v1") ?? []); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [opnameExpanded, setOpnameExpanded] = useState(false); // sidebar accordion state for Stock Opname & Stock Count (digabung 1 menu)
   const [opnameSubTab, setOpnameSubTab] = useState("opname"); // "opname" | "stockCount"
@@ -42,9 +45,10 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
         syncPending = true;
       }
     }
-    const exists = opnameList.find(o=>o.id===toSave.id);
-    const nl = exists ? opnameList.map(o=>o.id===toSave.id?toSave:o) : [...opnameList, toSave];
-    setOpnameList(nl);
+    const currentList = opnameListRef.current;
+    const exists = currentList.find(o=>o.id===toSave.id);
+    const nl = exists ? currentList.map(o=>o.id===toSave.id?toSave:o) : [...currentList, toSave];
+    commitOpnameList(nl);
     if (syncPending) {
       showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
       return false;
@@ -82,9 +86,10 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     // Sesi baru yang langsung di-submit tanpa pernah "Simpan Draft" dulu belum ada di
     // opnameList sama sekali (startOpname cuma setActiveOpname, tidak append ke list) —
     // pakai pola exists?map:append sama seperti saveOpname, supaya tidak silently dropped.
-    const exists = opnameList.find(o=>o.id===opn.id);
-    const nl = exists ? opnameList.map(o=>o.id===opn.id?updated:o) : [...opnameList, updated];
-    setOpnameList(nl);
+    const currentList = opnameListRef.current;
+    const exists = currentList.find(o=>o.id===opn.id);
+    const nl = exists ? currentList.map(o=>o.id===opn.id?updated:o) : [...currentList, updated];
+    commitOpnameList(nl);
     await stateRef.current.saveToCloud({opnameList: nl});
     showToast("📋 Opname disubmit! Menunggu approval Asman.");
   }
@@ -220,7 +225,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const freezeOnFinish = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
     const updated = {...opn, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish, notulen: notulenList.length ? notulenList : (opn.notulen||[])};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
-    setOpnameList(nl); setStocks(newStocks); setKatalogList(newKatalogList);
+    commitOpnameList(nl); setStocks(newStocks); setKatalogList(newKatalogList);
     await stateRef.current.saveToCloud({opnameList: nl, stocks: newStocks, katalogList: newKatalogList});
     // Ditemukan 2026-07-07: approve/reject Opname tidak pernah lapor ke logApprovalHistory
     // (beda dari semua jenis approval lain — Lokasi, Stock Move/Edit/Delete, Alat Berat,
@@ -245,7 +250,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       : { ...(opn.freeze||{}), aktif: false, unfrozenAt: now };
     const updated = { ...opn, freeze };
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
-    setOpnameList(nl);
+    commitOpnameList(nl);
     await stateRef.current.saveToCloud({ opnameList: nl });
     showToast(aktif ? "🧊 Gudang di-freeze untuk sesi opname ini." : "Freeze gudang dinonaktifkan.");
   }
@@ -255,14 +260,14 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const freezeOnReject = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
     const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason, freeze: freezeOnReject};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
-    setOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
+    commitOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
     await logApprovalHistory({type:"OPNAME", decision:"REJECTED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:(opn.items||[]).filter(i=>i.selisih!==0).map(i=>({label:i.nama, qty:i.selisih})), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
     showToast("❌ Opname ditolak.", "error");
   }
   async function deleteOpname(id) {
     if (!window.confirm("Hapus sesi opname ini?")) return;
-    const nl = opnameList.filter(o=>o.id!==id);
-    setOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
+    const nl = opnameListRef.current.filter(o=>o.id!==id);
+    commitOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
     showToast("Opname dihapus.");
   }
 

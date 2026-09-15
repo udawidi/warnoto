@@ -7,12 +7,14 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, katalogSapStatus, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel, sourceLotLabel, getSourceLot, sourceLotRowsForCatalog } from "../lib/sap.js";
+import { applyMaraNameSearch, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel, sourceLotLabel, getSourceLot, sourceLotRowsForCatalog } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
+import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches } from "../lib/stockOpnameFlow.js";
+import { ArrowRight, Barcode, CheckCircle, FileArrowUp } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
@@ -68,6 +70,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const [baForm, setBaForm] = useState(null);
   useEffect(() => {
     if (!activeOpname) return;
+    setSapCategoryFilter("");
     setFreezeSel(new Set(activeOpname.freeze?.gudangIds || (activeOpname.gudangId ? [activeOpname.gudangId] : [])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
@@ -104,6 +107,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const [filterGudangId, setFilterGudangId] = useState("");
   const [filterLokasiId, setFilterLokasiId] = useState("");
   const [filterJenis, setFilterJenis] = useState("");
+  const [sapCategoryFilter, setSapCategoryFilter] = useState("");
 
   // "Tambah Material Ditemukan" (Opname Non-SAP) — form untuk barang fisik yang belum
   // tercatat sama sekali di sistem, ditemukan sambil opname jalan.
@@ -248,20 +252,33 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     return { [key]: { qty: qtySistem, at: null, by: null } };
   }
 
+  function opnameStockSapLabel(stock) {
+    const kat = katalogList.find(k => k.id === stock?.katalogId);
+    if (stock?.sapStatus === "Non-SAP" || String(stock?.id || "").startsWith("STK-PREMEM-")) return "Non-SAP";
+    return stockSapLabel({ ...stock, katalog: stock?.katalog || kat?.katalog, sapStatus: stock?.sapStatus || kat?.sapStatus, jenisBarang: kat?.jenisBarang || stock?.jenisBarang });
+  }
+
   function buildItemsFromSAP(sapRows) {
     const items = [];
+    const allowedSapRows = (sapRows || []).filter(row => {
+      const category = getSapOpnameCategory(row?.jenisBarang || row?.sapLabel || row?.kategori);
+      return SAP_OPNAME_CATEGORIES.includes(category);
+    });
     // Fase 1a: key ternormalisasi (normalizeKatalog) dua arah — SAP kadang beda zero-padding
     // dari Master Katalog, perbandingan mentah sebelumnya bikin item ke-cap "Tidak ada di SAP"
     // padahal sebenarnya cocok.
     const katalogByNo = {};
     katalogList.forEach(k=>{ if(k.katalog) katalogByNo[normalizeKatalog(k.katalog)]=k; });
+    const representedSapKeys = new Set();
 
     // Items from Data Stok — try match to SAP
-    const allKids = [...new Set(stocks.map(s=>s.katalogId).filter(Boolean))];
+    const allKids = [...new Set(stocks.filter(stock => isSapOpnameItem({ sapLabel: opnameStockSapLabel(stock) })).map(s=>s.katalogId).filter(Boolean))];
     allKids.forEach(kid=>{
       const kat = katalogList.find(k=>k.id===kid); if(!kat) return;
-      const katRows = sourceLotRowsForCatalog(stocks, kid);
-      const sapRow = sapRows.find(r=>normalizeKatalog(r.katalog)===normalizeKatalog(kat.katalog));
+      const katRows = sourceLotRowsForCatalog(stocks, kid).filter(stock => isSapOpnameItem({ sapLabel: opnameStockSapLabel(stock) }));
+      const sapRow = allowedSapRows.find(r=>normalizeKatalog(r.katalog)===normalizeKatalog(kat.katalog));
+      const sapCategory = getSapOpnameCategory(sapRow?.jenisBarang || sapRow?.sapLabel || sapRow?.kategori || opnameStockSapLabel(katRows[0]));
+      if (sapRow && katRows.length) representedSapKeys.add(normalizeKatalog(sapRow.katalog));
       katRows.forEach((stockRow, rowIndex)=>{
         const qtySistem = Number(stockRow.qty) || 0;
         const lokasiBreakdown = buildLokasiBreakdown([stockRow]);
@@ -274,32 +291,41 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           qtySAP: rowIndex===0 ? sapRow?.qty??null : null,
           qtsFisik: null, selisih: 0,
           statusItem: sapRow==null?"TIDAK_ADA_DI_SAP":"SESUAI",
+          sapCategory,
           keterangan: "", lokasiBreakdown, hitungPerLokasi: seedHitungPerLokasi(qtySistem, lokasiBreakdown),
         });
       });
     });
 
     // Items in SAP but not in sistem
-    sapRows.forEach(sr=>{
+    allowedSapRows.forEach(sr=>{
+      const sapKey = normalizeKatalog(sr.katalog);
       const kat = katalogByNo[normalizeKatalog(sr.katalog)];
-      if(!kat) {
+      if(!representedSapKeys.has(sapKey)) {
         items.push({
-          katalogId: null, namaBarang: sr.nama, noKatalog: sr.katalog, satuan: sr.satuan,
-          qtySistem: 0, qtySAP: sr.qty, qtsFisik: 0, selisih: 0,
+          katalogId: kat?.id || null, namaBarang: sr.nama || kat?.name || sr.katalog, noKatalog: sr.katalog || kat?.katalog || "-", satuan: sr.satuan || kat?.satuan || "-",
+          qtySistem: 0, qtySAP: sr.qty, qtsFisik: null, selisih: 0,
           statusItem: "TIDAK_ADA_DI_SISTEM", keterangan: "", lokasiBreakdown: [], hitungPerLokasi: {},
+          sapCategory: getSapOpnameCategory(sr.jenisBarang || sr.sapLabel || sr.kategori),
         });
       }
     });
     return items;
   }
 
-  function buildItemsNonSAP() {
+  function buildItemsNonSAP(gudangId = null) {
     // Only Non-SAP items from Data Stok
-    return [...new Set(stocks.filter(s=>katalogSapStatus(katalogList.find(k=>k.id===s.katalogId))==="Non-SAP").map(s=>s.katalogId))]
+    const scopedStocks = stocks.filter(stock => {
+      if (isSapOpnameItem({ sapLabel: opnameStockSapLabel(stock) })) return false;
+      const lokasi = lokasiList?.find(l => l.id === stock.lokasiId);
+      const stockGudangId = lokasi?.gudangId || null;
+      return stockGudangId === gudangId;
+    });
+    return [...new Set(scopedStocks.map(s=>s.katalogId))]
       .filter(Boolean).map(kid=>{
         const kat = katalogList.find(k=>k.id===kid);
         if(!kat) return null;
-        return sourceLotRowsForCatalog(stocks, kid).map(stockRow=>{
+        return sourceLotRowsForCatalog(scopedStocks, kid).map(stockRow=>{
           const qtySistem = Number(stockRow.qty) || 0;
           const lokasiBreakdown = buildLokasiBreakdown([stockRow]);
           return { stockId:stockRow.id, sourceLabel:sourceLotLabel(stockRow), sourceLot:getSourceLot(stockRow),
@@ -333,8 +359,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   function buildNewOpnameShell(jenisAlur, extra) {
     const semester = (()=>{ const d=new Date(); return `${d.getFullYear()}-S${d.getMonth()<6?1:2}`; })();
     return {
-      id: "OPN-"+Date.now(), semester, jenisAlur, kategori: jenisAlur==="SAP"?"Material SAP":"Material Non-SAP",
-      status:"DRAFT", items:jenisAlur==="NON_SAP"?buildItemsNonSAP():[],
+      id: "OPN-"+Date.now()+"-"+Math.random().toString(36).slice(2,7), semester, jenisAlur, kategori: jenisAlur==="SAP"?"Material SAP":"Material Non-SAP",
+      flowVersion: 2, status:"DRAFT", items:jenisAlur==="NON_SAP"?buildItemsNonSAP(extra?.gudangId ?? null):[],
       dibuatOleh:currentUser.id, dibuatAt:Date.now(),
       sapUploadedAt:null, totalRowsSAP:0,
       approvedByAsman:null, approvedAtAsman:null, catatanAsman:"",
@@ -345,8 +371,47 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   }
 
   function startOpname(jenisAlur) {
+    if (jenisAlur === "NON_SAP") {
+      showToast("Sesi Non-SAP dibuka dari sesi SAP yang sudah selesai per gudang.", "error");
+      return;
+    }
     setActiveOpname(buildNewOpnameShell(jenisAlur));
     setPage(0); setValidationErrors([]);
+  }
+
+  async function openOrCreateNonSapChild(parent) {
+    if (!parent || parent.flowVersion !== 2 || parent.jenisAlur !== "SAP") return;
+    const progress = opnameProgress(parent.items || []);
+    if (progress.total === 0 || progress.pct < 100) {
+      showToast("Selesaikan hitungan SAP per gudang terlebih dahulu.", "error");
+      return;
+    }
+    // Parent SAP is a complete per-gudang session at this point. Save the full snapshot here so
+    // reopening the parent can still expose the same 100% gate without a second network merge.
+    const parentSaved = await saveOpname(parent);
+    if (parentSaved === false) return;
+    const existing = opnameList.find(child => childOpnameMatches(child, parent));
+    if (existing) {
+      setActiveOpname(existing);
+      setPage(0);
+      setValidationErrors([]);
+      return;
+    }
+    const gudang = gudangList?.find(g => g.id === parent.gudangId);
+    const child = buildNewOpnameShell("NON_SAP", {
+      flowVersion: 2,
+      sourceSapOpnameId: parent.id,
+      gudangId: parent.gudangId ?? null,
+      gudangKode: parent.gudangKode || gudang?.kode || gudang?.nama || null,
+      semester: parent.semester,
+      items: buildItemsNonSAP(parent.gudangId ?? null),
+    });
+    const ok = await saveOpname(child);
+    if (ok === false) return;
+    setActiveOpname(child);
+    setPage(0);
+    setValidationErrors([]);
+    showToast(`Sesi Non-SAP ${child.gudangKode || "tanpa gudang"} siap diisi.`);
   }
 
   // Dropzone PID (Opname SAP): sesi DRAFT baru cuma dibuat kalau file berhasil di-parse —
@@ -432,7 +497,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   function itemSapLabel(item) {
     if (item.katalogId) {
       const s = (stocks||[]).find(s=>item.stockId ? s.id===item.stockId : s.katalogId===item.katalogId);
-      if (s) return stockSapLabel(s);
+      if (s) return opnameStockSapLabel(s);
     }
     return resolveSapLabel(item.noKatalog);
   }
@@ -442,6 +507,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   function getFilteredIndexed() {
     const items = activeOpname?.items || [];
     return items.map((it,idx)=>({it,idx})).filter(({it})=>{
+      if (activeOpname?.flowVersion === 2 && activeOpname?.jenisAlur === "SAP" && sapCategoryFilter) {
+        if (getSapOpnameCategory(it.sapCategory || it.sapLabel) !== sapCategoryFilter) return false;
+      }
       if (filterJenis) {
         const bin = itemSapLabel(it).startsWith("SAP") ? "SAP" : "Non-SAP";
         if (bin !== filterJenis) return false;
@@ -596,10 +664,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   // ── Progress calculation ─────────────────────────────────────────────
   function getProgress() {
-    if(!activeOpname?.items?.length) return {filled:0, total:0, pct:0};
-    const total = activeOpname.items.length;
-    const filled = activeOpname.items.filter(itemCounted).length;
-    return {filled, total, pct:Math.round(filled/total*100)};
+    return opnameProgress(activeOpname?.items || []);
   }
 
   const statusColor = {DRAFT:"#6b7280",PENDING_ASMAN:"#f59e0b",PENDING_MANAGER:"#3b82f6",SELESAI:"#16a34a",DITOLAK:"#dc2626"};
@@ -646,6 +711,27 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {!isReadOnly && <button style={sty.btn("ghost","sm")} onClick={handleBatal}>✕ Batal</button>}
           </div>
         </div>
+
+        {activeOpname.flowVersion === 2 && (
+          <div className="opname-stage-rail" aria-label="Tahapan Stock Opname">
+            <div className={`opname-stage-rail__step ${isSAP ? "is-active" : "is-done"}`}>
+              <span className="opname-stage-rail__index">1</span><span>SAP</span>
+            </div>
+            <div className={`opname-stage-rail__step ${!isSAP ? "is-active" : ""}`}>
+              <span className="opname-stage-rail__index">2</span><span>Non-SAP</span>
+            </div>
+          </div>
+        )}
+
+        {activeOpname.flowVersion === 2 && isSAP && items.length > 0 && (
+          <div className="opname-category-segment" aria-label="Filter kategori SAP">
+            <button type="button" className={!sapCategoryFilter ? "is-active" : ""} onClick={()=>{setSapCategoryFilter("");setPage(0);}}>Semua <span>{items.length}</span></button>
+            {SAP_OPNAME_CATEGORIES.map(category => {
+              const categoryProgress = opnameProgress(items, category);
+              return <button type="button" key={category} className={sapCategoryFilter===category ? "is-active" : ""} onClick={()=>{setSapCategoryFilter(category);setPage(0);}}>{category} <span>{categoryProgress.filled}/{categoryProgress.total}</span></button>;
+            })}
+          </div>
+        )}
 
         {/* Fase C: Dashboard progres per blok — klik chip untuk filter tabel ke blok itu. */}
         {!isReadOnly && (() => {
@@ -814,6 +900,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 {" • "}<span style={{fontWeight:700,color:C.red}}>{selisihCount}</span> selisih
                 {" • "}<span style={{fontWeight:700,color:"#b45309"}}>{items.filter(i=>["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length}</span> belum terdaftar
               </div>
+              {activeOpname.flowVersion === 2 && isSAP && prog.pct === 100 && !isReadOnly && (
+                <div className="opname-next-stage">
+                  <div><strong>SAP selesai untuk {activeOpname.gudangKode || "gudang ini"}.</strong><span> Lanjutkan ke daftar Non-SAP pada gudang yang sama.</span></div>
+                  <button type="button" className="opname-next-stage__button" onClick={()=>openOrCreateNonSapChild(activeOpname)}><ArrowRight size={16} weight="bold" aria-hidden="true" />Lanjut Non-SAP {activeOpname.gudangKode || "gudang"}</button>
+                </div>
+              )}
             </div>
 
             {/* Validation errors */}
@@ -830,7 +922,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
                 {!isReadOnly ? (
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <button style={sty.btn("ghost","sm")} onClick={handleScanQty}>📷 Scan QR untuk cari baris</button>
+                    <button style={sty.btn("ghost","sm")} onClick={handleScanQty}><Barcode size={16} aria-hidden="true" /> Scan QR untuk cari baris</button>
                     <span style={{fontSize:12,color:C.muted}}>Scan cuma membantu temukan & lompat ke barisnya — qty hasil hitung fisik tetap wajib diketik manual.</span>
                   </div>
                 ) : <div/>}
@@ -1049,7 +1141,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 berubah sesuai progress — Submit HANYA muncul kalau semua qty sudah terisi.
                 Sengaja HANYA di sini (bawah tabel), bukan di header juga (keluhan 2026-07-07). */}
             {!isReadOnly && (
-              <div className="approval-actions" style={{marginBottom:16}}>
+              <div className="approval-actions opname-action-bar" style={{marginBottom:16}}>
                 <button className="approval-btn--cancel" onClick={handleBatal}>✕ Batal</button>
                 <button className="approval-btn--cancel" onClick={async ()=>{ const ok = await saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]); if (ok) { try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {} } }}>💾 Simpan Draft</button>
                 {allBloksSelesai(activeOpname) && activeOpname.stage!=="REKONSILIASI" ? (
@@ -1238,7 +1330,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       <OperationsHero
         eyebrow="Stock Opname"
         title="Stock Opname"
-        description="Dilakukan 1× per semester — bandingkan data sistem vs lapangan & SAP"
+        description="Hitung SAP per gudang, lalu lanjutkan Non-SAP"
+        className="operations-hero--stock-opname"
         scope={`${opnameList.length} sesi`}
         metrics={[
           {label:"Menunggu approval",value:pendingForMe.length,alert:pendingForMe.length>0},
@@ -1254,6 +1347,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           {draftSessions.length>0 && draftSessions.slice(0,3).map(opn=>(
             <button key={opn.id} style={{...sty.btn("ghost","sm"),width:"100%",justifyContent:"flex-start",marginBottom:6}}
               onClick={()=>{setActiveOpname(opn);setPage(0);}}>
+              {opn.flowVersion !== 2 && <span className="opname-legacy-badge">Legacy</span>}
               📝 Lanjutkan draft {opn.semester} — {opn.jenisAlur} ({(opn.items||[]).length} item)
             </button>
           ))}
@@ -1266,12 +1360,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <div style={{fontSize:17,fontWeight:600,marginBottom:4}}>{csvLoading?"Memproses file...":"Tarik & lepas file PID di sini"}</div>
             <div style={{fontSize:13,color:C.muted,marginBottom:12}}>Format CSV/XLSX export SAP MM (PEMAT_DDMMYYYY)</div>
             <button type="button" style={sty.btn("primary")} disabled={csvLoading} onClick={e=>{ e.stopPropagation(); dropInputRef.current?.click(); }}>
-              {csvLoading?"Memproses...":"📂 Pilih File"}
+{csvLoading?"Memproses...":<><FileArrowUp size={16} aria-hidden="true" /> Pilih File</>}
             </button>
             <input ref={dropInputRef} type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" style={{display:"none"}} disabled={csvLoading}
               onChange={e=>{ handleDropzoneFiles(e.target.files); e.target.value=""; }}/>
           </div>
-          <button style={{...sty.btn("ghost","sm"),marginTop:10}} onClick={()=>startOpname("NON_SAP")}>Opname Non-SAP →</button>
+          <div className="opname-flow-note">Sesi baru dimulai dari SAP. Non-SAP dibuka per gudang setelah seluruh item SAP terhitung.</div>
         </div>
       )}
 
@@ -1404,6 +1498,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <div key={opn.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
                 <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:6,marginBottom:6}}>
                   <div style={{minWidth:0,flex:"1 1 180px"}}>
+                    {opn.flowVersion !== 2 && <span className="opname-legacy-badge">Legacy</span>}
                     <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori}{opn.gudangId!==undefined?(opn.gudangKode?` • Gudang ${opn.gudangKode}`:" • Belum Beralamat"):""})</span></div>
                     <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
                   </div>
@@ -1416,7 +1511,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     </span>
                   </div>
                 </div>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <div className="opname-history-actions" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>
                     🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
                   </button>

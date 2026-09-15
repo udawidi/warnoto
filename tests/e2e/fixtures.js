@@ -54,17 +54,17 @@ const LOKASI = [
 // qtsFisik:qtySistem) supaya progress mulai dari 0% dan tombol "Mulai Hitung" (mode lapangan)
 // masih terlihat di HP — lihat StockOpnameTab.jsx renderPanel().
 const OPNAME_SESSION = {
-  id:"OPN-E2E-01", semester:"2026-2", jenisAlur:"SAP", kategori:"Material Cadang", status:"DRAFT",
+  id:"OPN-E2E-01", semester:"2026-2", jenisAlur:"SAP", kategori:"Material Cadang", flowVersion:2, status:"DRAFT",
   dibuatOleh:"e2e-superadmin", dibuatAt:1784505600000, sapUploadedAt:1784505600000, totalRowsSAP:2,
   items:[
     {
-      katalogId:"KAT-E2E-01", namaBarang:"Isolator Keramik 150 kV", noKatalog:"301234567", satuan:"BUAH",
+      katalogId:"KAT-E2E-01", namaBarang:"Isolator Keramik 150 kV", noKatalog:"301234567", satuan:"BUAH", sapCategory:"Persediaan",
       qtySistem:10, qtySAP:10, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
       lokasiBreakdown:[{ lokasiId:"LOK-E2E-A", lokasiKode:"A-01", gudangId:"GDG-E2E-01", gudangKode:"GTK", qty:10 }],
       hitungPerLokasi:{},
     },
     {
-      katalogId:"KAT-E2E-02", namaBarang:"Lightning Arrester 150 kV", noKatalog:"309876543", satuan:"SET",
+      katalogId:"KAT-E2E-02", namaBarang:"Lightning Arrester 150 kV", noKatalog:"309876543", satuan:"SET", sapCategory:"Cadang",
       qtySistem:4, qtySAP:4, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
       lokasiBreakdown:[{ lokasiId:"LOK-E2E-B", lokasiKode:"B-02", gudangId:"GDG-E2E-01", gudangKode:"GTK", qty:4 }],
       hitungPerLokasi:{},
