@@ -296,9 +296,13 @@ async function upsertEvidence(input: any) {
   if (error) throw new Error(`Metadata evidence tidak tersimpan: ${error.message}`);
   return data;
 }
+// ponytail: file appProperties dropped — never queried (sync reads listChildren
+// by parent folder, not file tags) and mappingKey blew Drive's 124-byte-per-
+// property limit (key+value) on long item ids → 403. Re-add a truncated/hashed
+// tag only if a file-level lookup is ever needed.
 async function uploadDriveFile(file: File, folderId: string, mappingKey: string) {
   const boundary = `warnoto-${crypto.randomUUID()}`;
-  const metadata = JSON.stringify({ name: safeName(file.name, "evidence"), parents: [folderId], appProperties: { warnoto_maturity_folder_key: mappingKey, warnoto_maturity_root: DRIVE_ROOT_ID } });
+  const metadata = JSON.stringify({ name: safeName(file.name, "evidence"), parents: [folderId] });
   const head = new TextEncoder().encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`);
   const tail = new TextEncoder().encode(`\r\n--${boundary}--`);
   const bytes = new Uint8Array(head.length + file.size + tail.length);
