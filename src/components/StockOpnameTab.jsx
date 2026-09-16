@@ -6,14 +6,14 @@ import { fmtDate, parseSAPFile, parseUsulanPencocokanXLSX, scanUrlFor } from "..
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
-import { buildBeritaAcaraResmiHTML, buildTUG15HTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
+import { buildStockOpnamePackageHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
 import { applyMaraNameSearch, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel, sourceLotLabel, getSourceLot, sourceLotRowsForCatalog } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
-import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches } from "../lib/stockOpnameFlow.js";
+import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson } from "../lib/stockOpnameFlow.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
@@ -63,9 +63,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Fase 3: gudang yang dicentang untuk di-freeze pada sesi yang sedang dibuka — direset
   // tiap ganti sesi (bukan tiap edit item, activeOpname.id stabil per sesi).
   const [freezeSel, setFreezeSel] = useState(new Set());
-  // Fase F: dialog input meta cetak Berita Acara + TUG-15 (tim pemeriksa/mengetahui/PID/tanggal —
-  // murni input cetak, tidak disimpan ke opn). Prefill tim+mengetahui dari localStorage biar tak
-  // isi ulang tiap cetak.
+  // Fase F: metadata paket resmi disimpan pada JSON sesi selesai agar lintas perangkat.
   const [baPrintOpn, setBaPrintOpn] = useState(null);
   const [baForm, setBaForm] = useState(null);
   useEffect(() => {
@@ -361,7 +359,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     return {
       id: "OPN-"+Date.now()+"-"+Math.random().toString(36).slice(2,7), semester, jenisAlur, kategori: jenisAlur==="SAP"?"Material SAP":"Material Non-SAP",
       flowVersion: 2, status:"DRAFT", items:jenisAlur==="NON_SAP"?buildItemsNonSAP(extra?.gudangId ?? null):[],
-      dibuatOleh:currentUser.id, dibuatAt:Date.now(),
+      dibuatOleh:currentUser.id, dibuatAt:Date.now(), uptId:currentUser?.uptId || currentUser?.upt_id || null,
       sapUploadedAt:null, totalRowsSAP:0,
       approvedByAsman:null, approvedAtAsman:null, catatanAsman:"",
       approvedByManager:null, approvedAtManager:null, catatanManager:"",
@@ -401,6 +399,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const child = buildNewOpnameShell("NON_SAP", {
       flowVersion: 2,
       sourceSapOpnameId: parent.id,
+      uptId: parent.uptId || parent.upt_id || currentUser?.uptId || currentUser?.upt_id || null,
       gudangId: parent.gudangId ?? null,
       gudangKode: parent.gudangKode || gudang?.kode || gudang?.nama || null,
       semester: parent.semester,
@@ -698,7 +697,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleReplaceCSV} disabled={csvLoading} style={{display:"none"}}/>
               </label>
             )}
-            {isReadOnly && activeOpname.status==="SELESAI" && (
+            {isReadOnly && activeOpname.status==="SELESAI" && activeOpname.jenisAlur==="SAP" && (
               <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(activeOpname)}>📄 Cetak BA + TUG-15</button>
             )}
             {items.length>0 && (
@@ -1331,7 +1330,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         eyebrow="Stock Opname"
         title="Stock Opname"
         description="Hitung SAP per gudang, lalu lanjutkan Non-SAP"
-        className="operations-hero--stock-opname"
         scope={`${opnameList.length} sesi`}
         metrics={[
           {label:"Menunggu approval",value:pendingForMe.length,alert:pendingForMe.length>0},
@@ -1405,35 +1403,53 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       )}
 
-      {/* Fase F: dialog input meta cetak Berita Acara + TUG-15 format resmi PLN */}
+      {/* Fase F: metadata resmi disimpan di JSON sesi sebelum popup diisi. */}
       {baPrintOpn && baForm && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:12}}>
-          <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
-            <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>📄 Cetak Berita Acara + TUG-15</h3>
-            <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Gudang {baPrintOpn.gudangKode || "-"} • {baPrintOpn.semester}</p>
+            <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
+              <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>📄 Cetak Berita Acara + TUG-15</h3>
+              <p style={{fontSize:12,color:C.muted,marginBottom:14}}>UPT {baForm.identity?.upt?.nama || baForm.identity?.uptId || "-"} • Gudang {baPrintOpn.gudangKode || "-"} • {baPrintOpn.semester}</p>
+            {baForm.identity?.candidateUptIds?.length > 1 && <>
+              <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Pilih UPT sesi</label>
+              <select style={{...sty.input,marginBottom:10}} value={baForm.identity.uptId || ""} onChange={e=>selectBaPrintUpt(e.target.value)}>
+                <option value="">Pilih UPT yang benar...</option>
+                {baForm.identity.candidateUptIds.map(id=><option key={id} value={id}>{uptList.find(u=>String(u.id)===String(id))?.nama || id}</option>)}
+              </select>
+            </>}
+            {baForm.errors?.length > 0 && <div style={{padding:"10px 12px",borderRadius:8,background:"#fef2f2",color:"#b91c1c",fontSize:12,marginBottom:12}}>
+              <strong>Cetak diblokir:</strong><ul style={{margin:"5px 0 0 18px"}}>{baForm.errors.map(error=><li key={error}>{error}</li>)}</ul>
+            </div>}
+            {baForm.childWarning && <div style={{padding:"8px 10px",borderRadius:8,background:"#fffbeb",color:"#92400e",fontSize:12,marginBottom:12}}>⚠️ {baForm.childWarning}</div>}
 
             <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Tanggal</label>
             <input type="date" style={{...sty.input,marginBottom:10}} value={baForm.tanggal} onChange={e=>setBaForm(f=>({...f,tanggal:e.target.value}))}/>
 
             <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>No. PID</label>
-            <input style={{...sty.input,marginBottom:10}} value={baForm.pid} onChange={e=>setBaForm(f=>({...f,pid:e.target.value}))}/>
+            <textarea style={{...sty.input,minHeight:54,marginBottom:10}} placeholder="Pisahkan dengan koma, titik koma, atau baris baru" value={baForm.pidRefsText} onChange={e=>setBaForm(f=>({...f,pidRefsText:e.target.value}))}/>
 
             <label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Tim Pemeriksa</label>
-            {baForm.tim.map((t,i)=>(
+            {baForm.examiners.map((t,i)=>(
               <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
-                <input style={{...sty.input,flex:1}} placeholder={`Nama ${i+1}`} value={t.nama}
-                  onChange={e=>setBaForm(f=>({...f,tim:f.tim.map((x,xi)=>xi===i?{...x,nama:e.target.value}:x)}))}/>
-                <input style={{...sty.input,flex:1}} placeholder="Jabatan" value={t.jabatan}
-                  onChange={e=>setBaForm(f=>({...f,tim:f.tim.map((x,xi)=>xi===i?{...x,jabatan:e.target.value}:x)}))}/>
+                <select style={{...sty.input,flex:"0 0 42%"}} value={t.userId || ""} onChange={e=>{
+                  const selected = baForm.examinerCandidates.find(user=>String(user.id)===String(e.target.value));
+                  setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?(selected ? normalizeStockOpnamePerson(selected, f.identity?.uptId) : {...x,userId:null}):x)}));
+                }}>
+                  <option value="">Manual</option>
+                  {baForm.examinerCandidates.map(user=><option key={user.id} value={user.id}>{user.name || user.nama || user.id}</option>)}
+                </select>
+                <input style={{...sty.input,flex:1}} placeholder={`Nama ${i+1}`} value={t.name}
+                  onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,name:e.target.value,userId:null}:x)}))}/>
+                <input style={{...sty.input,flex:1}} placeholder="Jabatan" value={t.position}
+                  onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,position:e.target.value,userId:null}:x)}))}/>
               </div>
             ))}
 
-            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Mengetahui (MSB Dalkons Log)</label>
-            <input style={{...sty.input,marginBottom:16}} value={baForm.mengetahui} onChange={e=>setBaForm(f=>({...f,mengetahui:e.target.value}))}/>
+            <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Manager UPT (read-only)</label>
+            <input style={{...sty.input,marginBottom:16,background:C.surfaceMuted||"#f8fafc"}} readOnly value={baForm.manager?.name ? `${baForm.manager.name} — ${baForm.manager.position || "MANAGER"}` : "-"}/>
 
             <div style={{display:"flex",gap:10}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setBaPrintOpn(null);setBaForm(null);}}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} onClick={cetakBaTug15}>🖨️ Cetak</button>
+              <button style={{...sty.btn("primary"),flex:2,opacity:baForm.errors?.length||baForm.saving?0.55:1}} disabled={baForm.errors?.length>0||baForm.saving} onClick={cetakBaTug15}>{baForm.saving?"Menyimpan...":"🖨️ Cetak"}</button>
             </div>
           </div>
         </div>
@@ -1515,7 +1531,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>
                     🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
                   </button>
-                  {opn.status==="SELESAI" && <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(opn)}>📄 Cetak BA + TUG-15</button>}
+                  {opn.status==="SELESAI" && opn.jenisAlur==="SAP" && <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(opn)}>📄 Cetak BA + TUG-15</button>}
                   {opn.status==="DRAFT" && hasRole(currentUser, "ADMIN","TL") && <button title="Hapus sesi opname" style={sty.btn("danger","sm")} onClick={()=>deleteOpname(opn.id)}>🗑️</button>}
                 </div>
               </div>
@@ -1534,24 +1550,77 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   );
 
   function openBaPrintDialog(opn) {
-    const saved = JSON.parse(localStorage.getItem("pln_ba_meta") || "null");
+    const saved = opn.documentMeta?.version === 1 ? opn.documentMeta : null;
+    const identity = resolveStockOpnameDocumentIdentity({ opn, users, uptList, gudangList, currentUser, childList: opnameList, selectedUptId:saved?.manager?.uptId || null });
     const tglSrc = opn.approvedAtAsman || opn.dibuatAt || Date.now();
+    const candidates = (users || []).filter(user => String(user?.uptId || user?.upt_id || "") === String(identity.uptId || ""));
+    const savedExaminers = Array.isArray(saved?.examiners) && saved.examiners.length ? saved.examiners : identity.examiners;
     setBaPrintOpn(opn);
     setBaForm({
-      tim: saved?.tim || [{nama:"",jabatan:""},{nama:"",jabatan:""},{nama:"",jabatan:""}],
-      mengetahui: saved?.mengetahui || "",
-      pid: "",
-      tanggal: new Date(tglSrc).toISOString().slice(0,10),
+      identity,
+      manager: saved?.manager || identity.manager,
+      examinerCandidates: candidates,
+      examiners: [...savedExaminers, ...Array(Math.max(0, 3 - savedExaminers.length)).fill(null)].slice(0, 3).map(person => normalizeStockOpnamePerson(person, identity.uptId) || { userId:null, name:"", position:"", uptId:identity.uptId }),
+      pidRefsText: Array.isArray(saved?.pidRefs) ? saved.pidRefs.join(", ") : "",
+      tanggal: saved?.tanggal || new Date(tglSrc).toISOString().slice(0,10),
+      errors: identity.errors || [],
+      childWarning: identity.childWarning || "",
+      saving: false,
     });
   }
 
-  function cetakBaTug15() {
-    localStorage.setItem("pln_ba_meta", JSON.stringify({tim: baForm.tim, mengetahui: baForm.mengetahui}));
-    const w = window.open("", "_blank");
-    const ba = buildBeritaAcaraResmiHTML(baPrintOpn, baForm, {uptList});
-    const tug15 = buildTUG15HTML(baPrintOpn, baForm, {katalogList, uptList});
-    if (w) { w.document.write(ba + '<div style="page-break-before:always"></div>' + tug15); w.document.close(); }
-    setBaPrintOpn(null);
-    setBaForm(null);
+  function selectBaPrintUpt(selectedUptId) {
+    if (!baPrintOpn) return;
+    const identity = resolveStockOpnameDocumentIdentity({ opn:baPrintOpn, users, uptList, gudangList, currentUser, childList:opnameList, selectedUptId:selectedUptId || null });
+    const candidates = (users || []).filter(user => String(user?.uptId || user?.upt_id || "") === String(identity.uptId || ""));
+    const examiners = [...identity.examiners, ...Array(Math.max(0, 3 - identity.examiners.length)).fill(null)]
+      .slice(0, 3).map(person => normalizeStockOpnamePerson(person, identity.uptId) || { userId:null, name:"", position:"", uptId:identity.uptId });
+    setBaForm(form => ({...form, identity, manager:identity.manager, examinerCandidates:candidates, examiners, errors:identity.errors, childWarning:identity.childWarning}));
+  }
+
+  async function cetakBaTug15() {
+    if (!baPrintOpn || !baForm || baForm.errors?.length || baForm.saving) return;
+    const examiners = baForm.examiners.map(person => normalizeStockOpnamePerson(person, baForm.identity?.uptId));
+    const validationErrors = [];
+    if (!baForm.tanggal) validationErrors.push("Tanggal wajib diisi.");
+    if (!examiners.length || examiners.some(person => !person?.name || !person?.position)) validationErrors.push("Nama dan jabatan pemeriksa wajib diisi.");
+    const duplicateKeys = new Set();
+    examiners.forEach(person => {
+      const key = person.userId ? `id:${person.userId}` : `person:${String(person.name).trim().toUpperCase()}|${String(person.position).trim().toUpperCase()}`;
+      if (duplicateKeys.has(key)) validationErrors.push("Pemeriksa tidak boleh duplikat.");
+      duplicateKeys.add(key);
+    });
+    if (validationErrors.length) {
+      setBaForm(form => ({...form, errors:validationErrors}));
+      return;
+    }
+
+    // Popup harus dibuat dari event klik sebelum saveOpname await agar tidak diblokir browser.
+    let popup;
+    try { popup = window.open("", "_blank"); } catch { popup = null; }
+    if (!popup) { showToast("Popup cetak diblokir browser. Izinkan popup lalu coba lagi.", "error"); return; }
+    setBaForm(form => ({...form, saving:true}));
+    const meta = buildStockOpnameDocumentMeta({
+      identity: baForm.identity,
+      tanggal: baForm.tanggal,
+      pidRefs: parseStockOpnamePidRefs(baForm.pidRefsText),
+      examiners,
+      manager: baForm.identity.manager,
+      savedAt: new Date().toISOString(),
+      savedBy: currentUser?.id || null,
+    });
+    const updated = {...baPrintOpn, uptId: baForm.identity.uptId, documentMeta: meta};
+    try {
+      const saved = await saveOpname(updated);
+      if (saved === false) throw new Error("Penyimpanan metadata gagal.");
+      popup.document.write(buildStockOpnamePackageHTML(updated, baForm.identity.child, meta, {katalogList, uptList}));
+      popup.document.close();
+      setBaPrintOpn(null);
+      setBaForm(null);
+    } catch (error) {
+      try { popup.close(); } catch {}
+      setBaForm(form => ({...form, saving:false}));
+      showToast(`Gagal menyimpan metadata dokumen: ${error?.message || "coba lagi"}`, "error");
+    }
   }
 }

@@ -11,6 +11,7 @@ import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
 import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel } from "./sap.js";
 import { resolveStockPhotoUrl } from "./stockCache.js";
+import { childOpnameMatches } from "./stockOpnameFlow.js";
 
 // Resolver id->nama UPT penerbit dokumen (mis. "UPT-SBY" -> "UPT Surabaya").
 // Dipakai di seluruh kop/PIC/sig-role dokumen supaya UPT selain Surabaya
@@ -1971,9 +1972,8 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 }
 
 // ─── FASE F: Berita Acara + TUG-15 FORMAT RESMI PLN ───────────────────────
-// Dua dokumen cetak resmi, dipakai lewat dialog input (StockOpnameTab) yang
-// mengumpulkan tim pemeriksa/mengetahui/No.PID/tanggal (tidak disimpan ke
-// opn — murni input cetak). Meniru kop+@page dari buildTUG2FrontHTML.
+// Dokumen cetak resmi memakai metadata yang sudah disimpan pada JSON opname.
+// Builder lama tetap tersedia; package builder di bawah merakit satu HTML valid.
 function fmtTglResmi(tanggalStr) {
   const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const d = tanggalStr ? new Date(tanggalStr + "T00:00:00") : new Date();
@@ -1987,6 +1987,7 @@ export function buildBeritaAcaraResmiHTML(opn, meta, { uptList } = {}) {
   const gudangNama = opn.gudangKode || "-";
   const { hari, tgl } = fmtTglResmi(meta.tanggal);
   const tim = (meta.tim || []).slice(0, 3);
+  const managerLabel = `MANAGER ${uptNama.toUpperCase()}`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Stock Opname ${esc(opn.id)}</title>
 <style>
@@ -2042,7 +2043,7 @@ table.tim th{background:#f1f5f9;font-weight:700}
 
   <div class="sig-block">
     <div>Mengetahui,</div>
-    <div style="font-weight:700">MSB DALKONS LOG</div>
+    <div style="font-weight:700">${esc(managerLabel)}</div>
     <div class="sig-space"></div>
     <div class="sig-name">${esc(meta.mengetahui || ".....................")}</div>
   </div>
@@ -2056,6 +2057,7 @@ export function buildTUG15HTML(opn, meta, { katalogList, uptList } = {}) {
   const isNonSap = opn.jenisAlur === "NON_SAP";
   const uptNama = resolveUptNama(opn.uptId, uptList);
   const tim = (meta.tim || []).slice(0, 3);
+  const managerLabel = `MANAGER ${uptNama.toUpperCase()}`;
 
   const groupOrder = ["Cadang", "Persediaan", "Pre Memory"];
   const groups = new Map();
@@ -2100,7 +2102,7 @@ export function buildTUG15HTML(opn, meta, { katalogList, uptList } = {}) {
       <div class="sig-tug15">
         <div class="sig-left">
           <div>Mengetahui</div>
-          <div style="font-weight:700">MAN DAL KONS LOG</div>
+          <div style="font-weight:700">${esc(managerLabel)}</div>
           <div class="sig-space"></div>
           <div class="sig-name">${esc(meta.mengetahui || ".....................")}</div>
         </div>
@@ -2128,6 +2130,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:9.5px;color:#111;backgroun
 table.items{width:100%;border-collapse:collapse}
 table.items th,table.items td{border:1px solid #111;padding:3px 4px;font-size:9px}
 table.items th{background:#f1f5f9;font-weight:700;text-align:center}
+table.items thead{display:table-header-group}
 .sig-tug15{display:flex;justify-content:space-between;margin-top:10px;font-size:9.5px}
 .sig-left{width:220px;text-align:center}
 .sig-right{width:220px}
@@ -2162,4 +2165,32 @@ table.items th{background:#f1f5f9;font-weight:700;text-align:center}
 </body></html>`;
 }
 
+function extractHtmlPart(html, tag) {
+  const match = String(html || "").match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return match?.[1] || "";
+}
 
+function removePrintBar(html) {
+  return String(html || "").replace(/<div class="(?:bar|print-bar)"[\s\S]*?<\/div>/i, "");
+}
+
+export function buildStockOpnamePackageHTML(sapOpn, nonSapOpn, meta, { katalogList, uptList } = {}) {
+  const normalizedMeta = {
+    ...meta,
+    tanggal: meta?.tanggal || new Date().toISOString().slice(0, 10),
+    pid: (meta?.pidRefs || []).join(", "),
+    tim: (meta?.examiners || meta?.tim || []).slice(0, 3).map(item => ({
+      nama: item.nama || item.name || "",
+      jabatan: item.jabatan || item.position || "",
+    })),
+    mengetahui: meta?.manager?.name || meta?.mengetahui || "",
+  };
+  const ba = buildBeritaAcaraResmiHTML(sapOpn, normalizedMeta, { uptList });
+  const tugSap = buildTUG15HTML(sapOpn, normalizedMeta, { katalogList, uptList });
+  const tugNonSap = nonSapOpn?.status === "SELESAI" && childOpnameMatches(nonSapOpn, sapOpn)
+    ? buildTUG15HTML(nonSapOpn, normalizedMeta, { katalogList, uptList })
+    : "";
+  const styles = `${extractHtmlPart(ba, "style")}\n${extractHtmlPart(tugSap, "style")}`;
+  const body = `${removePrintBar(extractHtmlPart(ba, "body"))}<div class="package-break"></div>${removePrintBar(extractHtmlPart(tugSap, "body"))}${tugNonSap ? `<div class="package-break"></div>${removePrintBar(extractHtmlPart(tugNonSap, "body"))}` : ""}`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Paket Stock Opname ${String(sapOpn?.id || "")}</title><style>${styles}.package-break{break-before:page;page-break-before:always}.package-print-bar{position:sticky;top:0;background:#003087;color:#fff;padding:8px 14px;text-align:center;font:700 12px Arial;z-index:100}.package-print-bar button{background:#16a34a;color:#fff;border:0;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.package-print-bar{display:none}}</style></head><body><div class="package-print-bar">Paket Stock Opname <button type="button" onclick="window.print()">🖨️ Cetak / PDF</button></div>${body}</body></html>`;
+}

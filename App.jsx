@@ -3905,8 +3905,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     uptList.filter(u => dataScope.includes(u.id)).map(u => (u.nama || "").replace(/^UPT\s+/i, "").trim())
   );
   const scopedAttbList = scopedAttbUptNames === null ? attbList : attbList.filter(a => !a.upt || scopedAttbUptNames.has(a.upt));
-  // Opname & Stock Count discope lewat UPT pembuat/pengunggah (tak ada field uptId di sesi).
-  const scopedOpnameList = dataScope === null ? opnameList : opnameList.filter(o => inScopeUpt(users.find(u => u.id === o.dibuatOleh)?.uptId || null, dataScope));
+  // Opname discope dari snapshot sesi terlebih dahulu; fallback legacy tetap memakai gudang lalu pembuat.
+  const scopedOpnameList = dataScope === null ? opnameList : opnameList.filter(o => {
+    const gudangUptId = gudangList.find(g => g.id === o.gudangId)?.uptId || gudangList.find(g => g.id === o.gudangId)?.upt_id || null;
+    const creatorUptId = users.find(u => u.id === o.dibuatOleh)?.uptId || users.find(u => u.id === o.dibuatOleh)?.upt_id || null;
+    return inScopeUpt(o.uptId || o.upt_id || gudangUptId || creatorUptId, dataScope);
+  });
   const scopedStockCountList = dataScope === null ? stockCountList : stockCountList.filter(sc => inScopeUpt(users.find(u => u.id === sc.uploadedBy)?.uptId || null, dataScope));
   // UPT adalah pagar pertama; gudang_ids hanya mempersempit scope itu.
   // Tier nasional (SUPERADMIN global + ADMIN_LOG_PUSAT/PLN Pusat) = dataScope null →
