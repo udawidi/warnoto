@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-15
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-16
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -61,6 +61,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Validasi foto approval TUG-10 diperbaiki (2026-09-16).** Record `244.TUG-10/LOG.00.01/UPT-SBYA/IX/2026` memiliki delapan foto valid, tetapi item 6–8 masih memakai folder transaksi lama sehingga validator TL menolaknya. Validator sekarang tetap membatasi HTTPS, host WARNOTO, bucket `tug-photos`, keluarga dokumen, index, dan nama field, tetapi menerima ID transaksi lama dalam keluarga TUG yang sama. Shape legacy `fotoBarang` juga diterima untuk TUG-10; TUG-3 diaudit dengan aturan yang sama. Unit test 10/10 dan build lulus. Belum ada perubahan skema/data production.
 
 - **Edit kapasitas, foto privat sub-gudang, dan redesign menu Kapasitas selesai (`6ca0f7a`, 2026-09-15).** Luas terpakai otomatis dari total lima komposisi dengan batas gabungan 100%; simpan memakai upsert satu baris DB-first dan foto tidak masuk Google Sheet. Detail/Edit memakai satu modal, foto tampil di Detail, dan UI Apple-like responsif terverifikasi pada 360/390/412/768 px. Migration bounds dan foto aktif di production self-host: `foto_path` nullable, bucket `warehouse-capacity-photos` privat, baca untuk authenticated, upload/hapus untuk ADMIN/TL/SUPERADMIN, tanpa policy UPDATE. Data tetap 44 baris dan invalid 0. Verifikasi: unit 270/270, responsive E2E 12/12, build production, localhost, dan graphify lulus.
 
@@ -586,6 +588,19 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+**PENGUATAN SISTEM — instruksi kerja siap eksekusi (disusun Claude 2026-09-16, BELUM dikerjakan).**
+Jalur terpisah dari daftar smoke test di bawah; dikerjakan saat waktu senggang karena Gelombang 1 nol
+perubahan perilaku aplikasi. Dokumen swasembada: **`docs/INSTRUKSI_PENGUATAN_WARNOTO.md`** — berisi
+hasil audit 2026-09-16 (apa yang sudah aman dan haram diutak-atik + gap nyata), lalu 3 gelombang:
+**G1** ESLint + CI benar-benar menguji (sekarang CI cuma `npm run build`, 43 unit test tak pernah
+jalan) + Dependabot + `npm audit` + gitleaks (~2 jam, ROI tertinggi) · **G2** lint rule larang
+`supabase.from(` di `src/components/` (11 pelanggar, level `warn` dulu) + `docs/adr/` + wrapper
+`localStorage` + rapikan `scripts/` · **G3** retensi foto KTP/SIM (UU PDP 27/2022, BLOKIR nunggu
+keputusan user) + tutup celah guard env `supabaseClient.js:27` + cek secret di bundle + baseline
+Lighthouse. **Dua larangan keras di dokumen itu: jangan `npm audit fix --force` (menurunkan
+`pptxgenjs` ke 1.1.5, merusak ekspor maturity di `useMaturity.jsx`), dan jangan "memperbaiki"
+CSP/SRI/allowlist host yang sudah benar.**
+
 1. Smoke test production Kapasitas: upload, tampilkan, ganti, lalu hapus satu foto sub-gudang; pastikan refresh tetap benar dan Google Sheet tidak berubah karena foto.
 2. Jalankan wizard alokasi stok lama lalu smoke test TUG-8/9 untuk satu katalog dengan minimal dua kontrak/penyedia; pastikan pemilihan lot dan sisa tiap sumber benar.
 3. Pastikan pengeluaran dari tiap lot mengurangi sisa kontrak yang dipilih dan snapshot sumber tetap terlihat setelah refresh.
@@ -698,5 +713,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-15 Codex: **Saldo per sumber kontrak, detail Riwayat Approval, dan tiga panduan corporate sudah di-push; migration lot production sudah diterapkan dan terverifikasi.**
-- 2026-09-15 Codex: **Mojibake pada keterangan TUG-10 dibersihkan dan guard encoding source ditambahkan; seluruh unit test dan build lulus.**
+- 2026-09-16 Claude: **Audit fundamental/keamanan/arsitektur selesai; strategi penguatan ditulis jadi instruksi kerja `docs/INSTRUKSI_PENGUATAN_WARNOTO.md` untuk dieksekusi Codex. Nol perubahan kode aplikasi sesi ini.**
+- 2026-09-16 Codex: **Validasi foto TUG-10 lintas-ID transaksi diperbaiki dan diverifikasi; instruksi penguatan dijadwalkan untuk waktu senggang.**

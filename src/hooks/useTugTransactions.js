@@ -267,7 +267,7 @@ export function useTugTransactions({
       const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
       if (!barangOk) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih/nama barang` });
       if (!(si.qty>0)) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: jumlah` });
-      if (!si.fotoBarangRetur) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto barang` });
+      if (!si.fotoBarangRetur && !si.fotoBarang) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto barang` });
       if (si.statusMaterial==="Bongkaran ATTB (MTU)") {
         if (!si.noSeri?.trim()) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: nomor seri (ATTB)` });
         if (!si.fotoNameplate) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto nameplate (ATTB)` });

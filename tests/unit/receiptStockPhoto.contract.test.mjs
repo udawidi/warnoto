@@ -54,3 +54,26 @@ test("missing receipt helper reports TUG-10 ATTB nameplate", () => {
   const missing = missingReceiptPhotos(txn);
   assert.deepEqual(missing.map(x => x.field), ["fotoNameplate"]);
 });
+
+test("missing receipt helper accepts legacy TUG-10 fotoBarang attachment", () => {
+  const txn = { id: "TUG10-legacy", docType: "TUG10", stockItems: [{ fotoBarang: "ok" }] };
+  assert.deepEqual(missingReceiptPhotos(txn).map(x => x.field), []);
+});
+
+test("stored TUG-10 fotoBarang uses its actual legacy object path", () => {
+  const txn = { id: "TUG10-legacy", docType: "TUG10", stockItems: [{ fotoBarang: "https://warnoto.com/storage/v1/object/public/tug-photos/TUG10-legacy/item0-fotoBarang.jpg" }] };
+  assert.deepEqual(missingReceiptPhotos(txn, { requireStored: true }), []);
+});
+
+test("stored TUG-10 accepts legacy transaction prefix with exact item filename", () => {
+  const txn = { id: "TUG10-current", docType: "TUG10", stockItems: [{ fotoBarangRetur: "https://warnoto.com/storage/v1/object/public/tug-photos/TUG10-old/item0-fotoBarangRetur.jpg" }] };
+  assert.deepEqual(missingReceiptPhotos(txn, { requireStored: true }), []);
+});
+
+test("stored receipt photo rejects nested or cross-document paths", () => {
+  const base = "https://warnoto.com/storage/v1/object/public/tug-photos/";
+  const nested = { id: "TUG10-current", docType: "TUG10", stockItems: [{ fotoBarangRetur: `${base}TUG10-old/nested/item0-fotoBarangRetur.jpg` }] };
+  const crossFamily = { id: "TUG10-current", docType: "TUG10", stockItems: [{ fotoBarangRetur: `${base}TUG3-old/item0-fotoBarangRetur.jpg` }] };
+  assert.equal(missingReceiptPhotos(nested, { requireStored: true }).length, 1);
+  assert.equal(missingReceiptPhotos(crossFamily, { requireStored: true }).length, 1);
+});

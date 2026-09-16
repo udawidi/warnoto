@@ -1,6 +1,6 @@
 // Kontrak foto penerimaan TUG-3/TUG-10.
 // Foto wajib hanya dianggap aman bila sudah menjadi URL objek tug-photos
-// dengan prefix transaksi dan index item yang tepat.
+// dengan folder transaksi satu tingkat dan index item yang tepat.
 
 export const RECEIPT_PHOTO_BUCKET = "tug-photos";
 export const RECEIPT_PHOTO_HOSTS = ["warnoto.com", "api-staging.warnoto.com"];
@@ -17,10 +17,13 @@ export function isReceiptPhotoReference(value, txnId, itemIndex, field) {
     if (url.protocol !== "https:" || !RECEIPT_PHOTO_HOSTS.includes(url.hostname.toLowerCase())) return false;
     const parts = url.pathname.split("/").filter(Boolean);
     const bucketIndex = parts.lastIndexOf(RECEIPT_PHOTO_BUCKET);
-    return bucketIndex >= 0 && parts.slice(bucketIndex + 1).join("/") === path;
-  } catch {
-    return false;
-  }
+    // Prefix boleh berbeda pada draft lama/edit, tetapi tetap satu folder dan satu
+    // keluarga dokumen (TUG-3 atau TUG-10); nama file tetap exact.
+    const objectPath = parts.slice(bucketIndex + 1);
+    const folder = objectPath[0] || "";
+    const expectedFamily = String(txnId || "").split("-")[0];
+    return objectPath.length === 2 && folder.startsWith(`${expectedFamily}-`) && parts.at(-1) === path.split("/").at(-1);
+  } catch { return false; }
 }
 
 export function requiredReceiptPhotoField(docType) {
@@ -32,10 +35,15 @@ export function missingReceiptPhotos(txn, { requireStored = false } = {}) {
   const txnId = txn?.id;
   const missing = [];
   (txn?.stockItems || []).forEach((item, index) => {
-    const value = item?.[field];
-    const ok = requireStored
-      ? isReceiptPhotoReference(value, txnId, index, field)
-      : Boolean(value);
+    // TUG-10 lama memakai fotoBarang; terima keduanya saat migrasi/approval.
+    // Jalur form baru tetap menulis fotoBarangRetur.
+    const photoCandidates = txn?.docType === "TUG10"
+      ? [["fotoBarangRetur", item?.fotoBarangRetur], ["fotoBarang", item?.fotoBarang]]
+      : [[field, item?.[field]]];
+    const photo = photoCandidates.find(([candidateField, value]) => requireStored
+      ? isReceiptPhotoReference(value, txnId, index, candidateField)
+      : Boolean(value));
+    const ok = !!photo;
     if (!ok) missing.push({ index, field, label: `Barang #${index + 1}: foto barang` });
     const nameplateOk = requireStored
       ? isReceiptPhotoReference(item?.fotoNameplate, txnId, index, "fotoNameplate")

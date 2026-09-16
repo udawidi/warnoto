@@ -398,7 +398,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               const isAttb = si.statusMaterial==="Bongkaran ATTB (MTU)";
               const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
               const qtyOk = si.qty>0;
-              const fotoOk = !!si.fotoBarangRetur;
+              const fotoOk = !!si.fotoBarangRetur || !!si.fotoBarang;
               const seriOk = !isAttb || !!si.noSeri?.trim();
               const nameplateOk = !isAttb || !!si.fotoNameplate;
               const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk;
