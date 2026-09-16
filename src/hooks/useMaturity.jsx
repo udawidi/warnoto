@@ -52,6 +52,21 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Scoping UI Maturity pakai id UPT (FK), bukan kecocokan string nama — nama di
   // Master UPT bisa berbeda ejaan dengan nama yang tersimpan di baris audit.
   const selectedMaturityUptId = uptIdByNama(selectedMaturityUpt);
+  // Resync: init useState di atas jalan sekali saat mount, sebelum currentUser/uptList
+  // tentu sudah siap (auth async) → bisa nyangkut fallback "UPT Surabaya" selamanya.
+  // User UPT biasa (tanpa switcher): selalu paksa ke UPT-nya sendiri kalau beda.
+  // Peninjau lintas-UPT (switcher aktif): resync SEKALI saja di awal, lalu biarkan bebas pilih.
+  const didInitUptRef = useRef(false);
+  useEffect(() => {
+    const ownUptNama = (uptList.length ? uptList : DEFAULT_UPT_LIST).find(u => u.id === currentUser?.uptId)?.nama;
+    if (!ownUptNama) return;
+    if (!canSwitchMaturityUpt) {
+      if (ownUptNama !== selectedMaturityUpt) setSelectedMaturityUpt(ownUptNama);
+    } else if (!didInitUptRef.current) {
+      didInitUptRef.current = true;
+      setSelectedMaturityUpt(ownUptNama);
+    }
+  }, [currentUser?.uptId, uptList, canSwitchMaturityUpt]);
   const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
   const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments: createMaturityWarehouseAssessments() });
   const maturityAuditFormRef = useRef(maturityAuditForm);
