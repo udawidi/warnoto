@@ -86,13 +86,14 @@ function photoSnapshot(photo) {
   return photo;
 }
 
-function inspectionFormSnapshot({ items, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan }) {
+function inspectionFormSnapshot({ items, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan, tanggalBa }) {
   return JSON.stringify({
     items: items.map(item => ({ ...item, photos: (item.photos || []).map(photoSnapshot) })),
     selectedGudangId,
     pelaksanaLogistik,
     pelaksanaLogistikId,
     pelaksaraPemeliharaan,
+    tanggalBa,
   });
 }
 
@@ -196,6 +197,7 @@ export function InspeksiMaterialCadangTab({
   const scopedBatches = baGudangIds ? inspectionScope.materialInspectionBatches.filter(b => baGudangIds.has(b.gudangId)) : inspectionScope.materialInspectionBatches;
 
   const today = todayJakarta();
+  const [tanggalBa, setTanggalBa] = useState(() => todayJakarta());
 
   // Stok Cadang canonical: hanya yang katalognya jenisBarang==="Cadang".
   const cadangStockOptions = useMemo(() => {
@@ -242,7 +244,7 @@ export function InspeksiMaterialCadangTab({
 
   const completeCount = items.filter(itemComplete).length;
   const formInvalid = !items.length || items.some(it => !itemComplete(it)) || !pelaksanaLogistik.trim() || !pelaksaraPemeliharaan.length;
-  const stateSnapshot = () => inspectionFormSnapshot({ items, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan });
+  const stateSnapshot = () => inspectionFormSnapshot({ items, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan, tanggalBa });
   const hasFormContent = items.length > 0 || pelaksaraPemeliharaan.length > 0 || !!selectedGudangId;
   const isDirty = activeDraftId ? stateSnapshot() !== dirtyBaseline : hasFormContent;
 
@@ -339,6 +341,7 @@ export function InspeksiMaterialCadangTab({
     setActiveDraftId(null);
     setDraftPhotoUrls({});
     setDirtyBaseline("");
+    setTanggalBa(todayJakarta());
   }
 
   function collectValidationErrors() {
@@ -355,7 +358,7 @@ export function InspeksiMaterialCadangTab({
     return errors;
   }
 
-  function buildHeader() { return { inspectorId: currentUser.id, inspectorName: currentUser.name || currentUser.username || "Pemeriksa", uptId: inspectionIdentity.uptId, gudangId: lockedGudangId, tanggal: today, pelaksanaLogistik: pelaksanaLogistik.trim(), pelaksanaLogistikId, pelaksaraPemeliharaan, managerUpt: inspectionIdentity.managerUpt, namaUpt: inspectionIdentity.namaUpt, namaGudang: lockedGudang?.nama || "", inspectionFormVersion: 2 }; }
+  function buildHeader() { return { inspectorId: currentUser.id, inspectorName: currentUser.name || currentUser.username || "Pemeriksa", uptId: inspectionIdentity.uptId, gudangId: lockedGudangId, tanggal: tanggalBa, pelaksanaLogistik: pelaksanaLogistik.trim(), pelaksanaLogistikId, pelaksaraPemeliharaan, managerUpt: inspectionIdentity.managerUpt, namaUpt: inspectionIdentity.namaUpt, namaGudang: lockedGudang?.nama || "", inspectionFormVersion: 2 }; }
   function buildPayloadItems() { return items.map(it => ({ ...it, qtyStok: Number(it.qtyStok) || 1 })); }
 
   async function saveDraft() {
@@ -367,7 +370,7 @@ export function InspeksiMaterialCadangTab({
       const nextItems = (saved.items || items).map((it, i) => ({ ...it, photos: it.photoPaths || it.photos || [] }));
       const paths = nextItems.flatMap(it => it.photos.filter(p => typeof p === "string"));
       const urls = paths.length ? await loadInspectionPhotoUrls(paths) : {};
-      setDraftPhotoUrls(urls || {}); setItems(nextItems); setDirtyBaseline(inspectionFormSnapshot({ items: nextItems, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan })); showToast("Draft inspeksi tersimpan.");
+      setDraftPhotoUrls(urls || {}); setItems(nextItems); setDirtyBaseline(inspectionFormSnapshot({ items: nextItems, selectedGudangId, pelaksanaLogistik, pelaksanaLogistikId, pelaksaraPemeliharaan, tanggalBa })); showToast("Draft inspeksi tersimpan.");
     } catch (e) { showToast(e.message || "Gagal menyimpan draft.", "error"); } finally { setSaving(false); }
   }
 
@@ -386,14 +389,16 @@ export function InspeksiMaterialCadangTab({
     const nextPelaksanaLogistik = header.pelaksanaLogistik || "";
     const nextPelaksanaLogistikId = header.pelaksanaLogistikId || "";
     const nextPelaksara = Array.isArray(header.pelaksaraPemeliharaan) ? header.pelaksaraPemeliharaan : [];
+    const nextTanggalBa = header.tanggal || today;
     setDraftPhotoUrls(urls || {});
     setItems(loadedItems);
     setSelectedGudangId(gudangId);
     setPelaksanaLogistik(nextPelaksanaLogistik);
     setPelaksanaLogistikId(nextPelaksanaLogistikId);
     setPelaksaraPemeliharaan(nextPelaksara);
+    setTanggalBa(nextTanggalBa);
     setActiveDraftId(draft.id);
-    setDirtyBaseline(inspectionFormSnapshot({ items: loadedItems, selectedGudangId: gudangId, pelaksanaLogistik: nextPelaksanaLogistik, pelaksanaLogistikId: nextPelaksanaLogistikId, pelaksaraPemeliharaan: nextPelaksara }));
+    setDirtyBaseline(inspectionFormSnapshot({ items: loadedItems, selectedGudangId: gudangId, pelaksanaLogistik: nextPelaksanaLogistik, pelaksanaLogistikId: nextPelaksanaLogistikId, pelaksaraPemeliharaan: nextPelaksara, tanggalBa: nextTanggalBa }));
     setView("form");
   }
 
@@ -550,7 +555,23 @@ export function InspeksiMaterialCadangTab({
           {/* Langkah 1 — Identitas BA */}
           <StepHeader title="Identitas Berita Acara" C={C} />
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(200px,1fr))", gap: 10, alignItems: "start" }}>
-            <ChipReadonly label="Tanggal" value={today} C={C} />
+            <div style={{
+              border: `1px solid ${C.border}`, borderRadius: 10, padding: "8px 12px",
+              background: C.surface, display: "grid", gap: 2, minWidth: 0,
+            }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: ".4px" }}>Tanggal</span>
+              <input
+                type="date"
+                value={tanggalBa}
+                max={today}
+                onChange={e => setTanggalBa(e.target.value)}
+                style={{
+                  border: "none", background: "transparent", outline: "none", width: "100%",
+                  padding: 0, cursor: "pointer", fontSize: 13,
+                  fontWeight: 700, color: C.text,
+                }}
+              />
+            </div>
             <ChipReadonly label="UPT" value={inspectionIdentity.namaUpt} C={C} />
             {items.length === 0 ? (
               <div style={{
