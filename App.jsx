@@ -2406,7 +2406,8 @@ export default function PLNWarehouse() {
     // "upt-surabaya/" → dua UPT dgn katalog sama menulis path yang sama). Foto lama di
     // path lama tetap valid: URL tersimpan menunjuk file lama, file tidak dipindah.
     const uptFolder = String(uptId || "upt-tanpa").toLowerCase();
-    const path = `${uptFolder}/${kode}/${field==="fotoNameplate"?"tambahan":"utama"}.jpg`;
+    const versi = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const path = `${uptFolder}/${kode}/${field==="fotoNameplate"?"tambahan":"utama"}-${versi}.jpg`;
     return _withTimeout(uploadPhotoToStorage(await compressImage(img, {maxBytes:1_000_000}), "stock-photos", path), 30_000, "unggah foto");
   }
   // Upload langsung foto Nameplate/Keseluruhan dari modal detail (klik baris Data Stok) — khusus Admin/TL
