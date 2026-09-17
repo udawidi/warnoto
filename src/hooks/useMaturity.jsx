@@ -12,6 +12,7 @@ import {
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
 import { exportMaturitySheet } from "../lib/maturityDrive.js";
+import { MATURITY_AI_ANALYSIS_VERSION, hashAspectSnapshot } from "../lib/maturityAi.js";
 import {
   MATURITY_WAREHOUSE_TYPES, MATURITY_SHARED_ASPECTS,
   createMaturityWarehouseAssessments, normalizeMaturityAudit,
@@ -374,8 +375,6 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       if (uitscore > 0) return uitscore;
       const uptscore = scores[a.id]?.upt || 0;
       if (uptscore > 0) return uptscore;
-      const aiLevel = Math.round(aiAnalysis?.[a.id]?.result?.estimasiLevel || 0);
-      if (aiLevel >= 1 && aiLevel <= 5) return aiLevel;
       const uploadedCount = countCompletedEvidenceParents(a, evidence[a.id] || []);
       return calculateItemLevel(uploadedCount, countRequiredEvidenceUnits(a));
     };
@@ -657,6 +656,17 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         { type: MATURITY_WAREHOUSE_TYPES.PERSEDIAAN, label: "Persediaan", score: scoreResult.warehouseScores?.persediaan, assessment: warehouseAssessments.PERSEDIAAN || {} },
         { type: MATURITY_WAREHOUSE_TYPES.ATTB_MRWI, label: "ATTB/MRWI", score: scoreResult.warehouseScores?.attbMrwi, assessment: warehouseAssessments.ATTB_MRWI || {} },
       ];
+      const getExportableAi = (aspect, warehouse) => {
+        const entry = warehouse.assessment.aiAnalysis?.[aspect.id];
+        const hash = hashAspectSnapshot(warehouse.assessment.evidence?.[aspect.id] || [], warehouse.assessment.aspekScores?.[aspect.id], {
+          requiredEvidence: aspect.requiredEvidence,
+          levels: aspect.levels,
+          manualCriteria: aspect.requiredEvidence.flatMap(item => [...(item.manualCriteria || []), ...(item.displayDetails || [])]),
+        });
+        return entry?.analysisVersion === MATURITY_AI_ANALYSIS_VERSION && entry.hash === hash && entry.result?.status === "ANSWERED" && Number.isInteger(entry.result?.levelPotensial)
+          ? entry.result
+          : null;
+      };
       const catLevel = v => Math.max(1, Math.min(5, Math.round(v)));
 
       // Slide 1 — Cover
@@ -712,16 +722,16 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         ]];
         aspects.forEach(({ aspect: a, warehouse }) => {
           const s = warehouse.assessment.aspekScores?.[a.id] || {};
-          const ai = warehouse.assessment.aiAnalysis?.[a.id]?.result;
-          rows.push([warehouse.label, `${a.id} ${a.title}`, s.upt || "—", s.uit || "—", s.pusat || "—", ai?.estimasiLevel != null ? String(ai.estimasiLevel) : "—"]);
+          const ai = getExportableAi(a, warehouse);
+          rows.push([warehouse.label, `${a.id} ${a.title}`, s.upt || "—", s.uit || "—", s.pusat || "—", ai?.levelPotensial != null ? String(ai.levelPotensial) : "—"]);
         });
         slide.addTable(rows, { x: 0.4, y: 0.85, w: 9, colW: [1.2, 3.3, 1.1, 1.1, 1.1, 1.1], fontSize: 9, border: { type: "solid", color: "CBD5E1", pt: 0.5 } });
 
         // Insight AI ringkas — hanya aspek yang punya aiAnalysis, di bawah tabel
         const insightLines = aspects
-          .map(({ aspect: a, warehouse }) => ({ a, warehouse, ai: warehouse.assessment.aiAnalysis?.[a.id]?.result }))
+          .map(({ aspect: a, warehouse }) => ({ a, warehouse, ai: getExportableAi(a, warehouse) }))
           .filter(x => x.ai)
-          .map(({ a, ai }) => {
+          .map(({ a, warehouse, ai }) => {
             const gap = (ai.gap || [])[0];
             const rekom = (ai.rekomendasi || [])[0];
             return `${warehouse.label} ${a.id}: ${ai.alasanPenilaian || "—"}${gap ? ` | Gap: ${gap}` : ""}${rekom ? ` | Rekom: ${rekom}` : ""}`;
@@ -738,7 +748,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const allRekom = [];
       const allMenuju = [];
       warehouseConfigs.forEach(warehouse => AUDIT_ASPECTS.filter(a => isMaturityAspectApplicable(a.id, warehouse.type)).forEach(a => {
-        const ai = warehouse.assessment.aiAnalysis?.[a.id]?.result;
+        const ai = getExportableAi(a, warehouse);
         if (!ai) return;
         (ai.rekomendasi || []).forEach(r => allRekom.push(`${warehouse.label} ${a.id}: ${r}`));
         (ai.menujuLevelMaksimal || []).forEach(m => allMenuju.push(`${warehouse.label} ${a.id}: ${m.poin ? `[${m.poin}] ` : ""}${m.aksi || ""}`));

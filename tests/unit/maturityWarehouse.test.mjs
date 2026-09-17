@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { AUDIT_ASPECTS } from "../../src/data/auditAspects.js";
 import { MATLEV_SOURCE, MATLEV_MANUAL_CRITERIA, MATLEV_EVIDENCE_SPLITS } from "../../src/data/matlevSource.js";
 import { MATURITY_WAREHOUSE_ASPECTS, MATURITY_SHARED_ASPECTS, maturityAspectKey, normalizeMaturityAudit, calculateMaturityDualScore, evaluateMaturityWarehouseGate, isCurrentForm5SSaved, countCompletedEvidenceParents, calculateMaturityWarehouseScore, canonicalMaturityItemId, maturityItemIdsForReview, parseMaturityAuditText, selectedMaturityRequiredItems } from "../../src/lib/maturityWarehouse.js";
-import { hashAspectSnapshot } from "../../src/lib/maturityAi.js";
+import { analyzeMaturityAspect, hashAspectSnapshot, buildMaturityEvidenceChecklist } from "../../src/lib/maturityAi.js";
 
 test("PROGNOSA applicability is 28 Persediaan and 8 ATTB/MRWI", () => {
   assert.equal(MATURITY_WAREHOUSE_ASPECTS.PERSEDIAAN.length, 28);
@@ -109,6 +109,53 @@ test("AI snapshot hash changes when manual criteria text changes", () => {
   const evidence = [{ id: "file-1", name: "notulen.pdf", size: 10 }];
   const context = { manualCriteria: ["Kontrak material", "Rencana penyimpanan"] };
   assert.notEqual(hashAspectSnapshot(evidence, { upt: 3 }, context), hashAspectSnapshot(evidence, { upt: 3 }, { manualCriteria: ["Kontrak material berubah", "Rencana penyimpanan"] }));
+  assert.equal(hashAspectSnapshot(evidence, { upt: 1 }, context), hashAspectSnapshot(evidence, { upt: 5 }, context));
+});
+
+test("AI checklist uses canonical item IDs and treats uploads as unverified metadata", () => {
+  const aspect = AUDIT_ASPECTS.find(item => item.id === "2.5");
+  const checklist = buildMaturityEvidenceChecklist(aspect, [
+    { id: "one", itemId: "rwd_kegiatan_nd", name: "notulen.pdf" },
+    { id: "two", itemId: "rwd_foto", name: "foto.pdf" },
+    { id: "three", itemId: "rwd_foto", name: "foto-duplikat.pdf" },
+  ]);
+  assert.deepEqual(checklist.map(item => item.id), ["rwd_kegiatan_nd", "rwd_kegiatan_foto"]);
+  assert.equal(checklist.every(item => item.terunggah), true);
+  assert.equal(checklist.every(item => item.terpenuhi === false), true);
+  assert.equal(checklist.every(item => item.status === "TERUNGGAH_PERLU_VERIFIKASI"), true);
+});
+
+test("AI response contract is compact and failures never become Level 1", async () => {
+  const aspect = AUDIT_ASPECTS.find(item => item.id === "2.5");
+  const evidence = [{ id: "file-1", itemId: "rwd_nd", name: "nd.pdf" }];
+  const calls = [];
+  let mode = "valid";
+  const invoke = async (name, options) => {
+    calls.push({ name, options });
+    if (mode === "valid") return { data: { choices: [{ message: { content: '{"levelPotensial":3,"alasanPenilaian":"Slot metadata tersedia."}' } }] }, error: null };
+    if (mode === "malformed") return { data: { choices: [{ message: { content: "bukan-json" } }] }, error: null };
+    return { data: null, error: new Error("Edge Function gagal") };
+  };
+
+  const answered = await analyzeMaturityAspect(aspect, evidence, {}, { invoke });
+  assert.equal(answered.status, "ANSWERED");
+  assert.equal(answered.levelPotensial, 3);
+  assert.equal(answered.perEvidence.length > 0, true);
+  assert.equal(calls[0].name, "ai-proxy");
+  assert.equal(calls[0].options.body.max_tokens, 300);
+
+  mode = "malformed";
+  const malformed = await analyzeMaturityAspect(aspect, evidence, {}, { invoke });
+  assert.equal(malformed.status, "ERROR");
+  assert.equal(malformed.levelPotensial, null);
+  assert.equal(malformed.estimasiLevel, null);
+  assert.equal(malformed.perEvidence.length > 0, true);
+
+  mode = "error";
+  const failed = await analyzeMaturityAspect(aspect, evidence, {}, { invoke });
+  assert.equal(failed.status, "ERROR");
+  assert.equal(failed.levelPotensial, null);
+  assert.equal(failed.perEvidence.length > 0, true);
 });
 
 test("evidence notes become numbered lists with nested letter points", () => {

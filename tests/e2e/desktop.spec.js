@@ -204,7 +204,10 @@ test.describe("WARNOTO desktop preservation smoke", () => {
 
     await page.getByRole("button", { name:"Pelaksanaan Audit", exact:true }).click();
     await page.getByRole("button", { name:"+ Audit Baru", exact:true }).first().click();
+    await expect(page.getByText("Proyeksi Draft", { exact:true })).toBeVisible();
     await page.locator(".maturity-aspect-row").first().click();
+    await expect(page.getByRole("button", { name:/Analisa AI/ }).first()).toBeDisabled();
+    await expect(page.getByText("Belum terunggah (7)", { exact:true })).toBeVisible();
     await expect(page.locator('input[type="file"]:not(:disabled)')).toHaveCount(7);
     await page.getByText("Lokasi folder & format file", { exact:true }).first().click();
     await expect(page.getByText(/Maks\. 25 MB per berkas/).first()).toBeVisible();

@@ -228,11 +228,8 @@ export function flattenMaturityWarehouseAssessments(assessments) {
 function scoreForAspect(aspect, assessment, calculateItemLevel) {
   const scores = assessment?.aspekScores || {};
   const evidence = assessment?.evidence || {};
-  const ai = assessment?.aiAnalysis || {};
   const value = scores[aspect.id] || {};
   for (const key of ["pusat", "uit", "upt"]) if (Number(value[key]) > 0) return Number(value[key]);
-  const aiLevel = Math.round(ai[aspect.id]?.result?.estimasiLevel || 0);
-  if (aiLevel >= 1 && aiLevel <= 5) return aiLevel;
   const count = countCompletedEvidenceParents(aspect, evidence[aspect.id] || []);
   return calculateItemLevel(count, countRequiredEvidenceUnits(aspect));
 }

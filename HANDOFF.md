@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-16
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-17
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -38,6 +38,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Saldo TUG-8/TUG-9 dibedakan per sumber/lot kontrak (2026-09-15).** Material berkatalog sama dari TUG-3/TUG-10 dan penyedia/kontrak berbeda tidak boleh saling menimpa. Pengeluaran memilih lot sumber dan mengurangi sisa lot tersebut; transaksi menyimpan snapshot sumber agar riwayat tetap terbaca. Data lama dialokasikan lewat wizard/RPC review-first. Migration `20260915_tug_source_lots.sql` **sudah diterapkan ke production self-host** secara atomic dan terverifikasi.
 - **Template PDF TUG-3/4/5/10 seragam gaya AppSheet TUG-9** (`docBuilders.js`). JANGAN ambil perubahan `App.jsx` dari PR Kevin (menghapus guard Mode Demo / tombol "Isi Data Contoh" ke form resmi).
 - **Maturity canonical self-host:** `maturity_assessments`, `maturity_audits`, `maturity_audit_history` (unik per upt/tahun/semester), `maturity_5s_assessments` (append-only, authenticated hanya SELECT+INSERT). Evidence audit = Google Drive binary + Supabase metadata; root folder `UPT Surabaya Apps` (`13FFto2pzVRLq4LBpRaJsIyGa2Bk5gaYD`), OAuth cred hanya di Edge Runtime MiniPC. Scope dari `maturity_audits.upt_id`; UIT hanya UPT se-`uit_id`; audit FINAL immutable. Mode Demo Maturity sengaja dimatikan.
+- **Maturity AI (2026-09-17):** Analisis tetap metadata-only dan hanya berjalan saat tombol ditekan. Checklist slot evidence dihitung lokal; AI memberi level potensial, bukan nilai resmi. Hasil AI dan kegagalannya tidak masuk skor audit. Dashboard draft menandai proyeksi berbasis evidence; nilai FINAL tetap hasil penilaian manual Pusat.
 - **Inspeksi Material Cadang:** self-host canonical + tenant boundary UPT/gudang ditegakkan di UI & DB, UPT/Manager dari profil login, runtime non-E2E menolak endpoint selain `warnoto.com`. Struktur: parent `material_inspection_batches` + `batch_id` pada `material_inspections`, nomor server `000001/BA-INSPEKSI/UPT-SBY/07/2026`, tepat 2 foto/material, satu BA satu gudang. Migration security `20260802_material_inspection_multi_upt_security.sql` **sudah applied**.
 - **Perubahan lokasi Data Stok oleh ADMIN:** dalam Gudang sama → langsung simpan; lintas Gudang → butuh approval TL (lokasi lama utuh sampai disetujui). TL lintas Gudang → butuh ASMAN. Dropdown Gudang memfilter Blok/Lokasi tujuan agar `gudangId`/`lokasiId` tak silang.
 - **Forecast Stok:** gabung histori legacy TUG-15 (`legacy_history_archive`) ke analisa AI, dicocokkan per katalog via `src/lib/normalizeKatalogCode.js`. Query legacy di try/catch TERPISAH (gagal ≠ gagal analisa). Cap histori -18 bulan. Metrik dihitung kode dulu lalu disisipkan ke prompt Groq; ada fallback lokal saat Groq gagal. Toast throttled saat auto-sync bot gagal.
@@ -62,6 +63,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Analisa AI Maturity selesai di kode (2026-09-17).** Checklist lokal membedakan slot belum terunggah dari berkas yang masih perlu verifikasi isi. Prompt diringkas dengan keluaran maksimal 300 token, cache diberi versi baru, dan kegagalan tidak lagi membuat Level 1 palsu. Uji unit Maturity 17/17, build, E2E desktop dan ponsel 360 px lulus. Satu uji full suite tentang daftar role masih gagal di area yang tidak diubah. Verifikasi respons AI pada produksi masih perlu dilakukan setelah deploy.
 
 - **Output resmi Stock Opname selesai lokal, belum commit/push (2026-09-16).** Sesi baru dan child menyimpan `uptId`; scope opname mengutamakan UPT record. Dialog BA memakai metadata durable lintas perangkat, Manager otomatis/read-only, pilihan UPT saat sumber legacy konflik, pemeriksa picker/manual, dan warning bila child Non-SAP belum selesai. `buildStockOpnamePackageHTML` menghasilkan satu dokumen valid BA + TUG15 SAP + child Non-SAP selesai; header tabel berulang dan label tanda tangan Manager mengikuti UPT. Banner Stock Opname juga sudah diselaraskan dengan menu lain. Spec Kit `007-stock-opname-official-output` converged. Verifikasi: 289 unit test, 2 E2E SAP-first, build, localhost HTTP 200, dan diff-check lulus.
 
@@ -591,6 +594,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Verifikasi produksi Penilaian Maturity > Input: checklist muncul tanpa request AI; tombol Analisa AI memberi level potensial; kegagalan dapat dicoba ulang tanpa mengubah nilai manual. Cek waktu respons nyata.
+
 0. Review hasil cetak BA + TUG15 Stock Opname di localhost dengan sesi SAP selesai; uji juga child Non-SAP selesai dan kasus SAP-only. Jika format sudah disetujui, commit lalu push `main` hanya atas perintah eksplisit user.
 
 **PENGUATAN SISTEM — instruksi kerja siap eksekusi (disusun Claude 2026-09-16, BELUM dikerjakan).**
@@ -722,5 +727,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-16 Claude: **Audit fundamental/keamanan/arsitektur selesai; strategi penguatan ditulis jadi instruksi kerja `docs/INSTRUKSI_PENGUATAN_WARNOTO.md` untuk dieksekusi Codex. Nol perubahan kode aplikasi sesi ini.**
 - 2026-09-16 Codex: **Validasi foto TUG-10, penyelarasan banner, dan paket resmi BA+TUG15 Stock Opname selesai serta terverifikasi lokal; belum commit/push.**
+- 2026-09-17 Codex: **Analisa AI Maturity diringankan dan dipisahkan dari nilai resmi; rilis ke `main` atas izin user, smoke produksi menyusul.**

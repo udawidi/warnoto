@@ -1,71 +1,124 @@
 import { supabase } from "../supabaseClient.js";
+import { canonicalMaturityItemId, selectedMaturityRequiredItems } from "./maturityWarehouse.js";
 
-// djb2, cukup untuk deteksi perubahan (bukan kriptografis) — dipakai gate cache
-// "jangan analisa ulang kalau evidence & skor tak berubah".
+export const MATURITY_AI_ANALYSIS_VERSION = 2;
+
+// djb2 cukup untuk gate cache; bukan hash kriptografis.
 function djb2(str) {
   let h = 5381;
   for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) >>> 0;
   return h.toString(36);
 }
 
-export function hashAspectSnapshot(evidenceList, scoreObj, context = {}) {
-  const evPart = (evidenceList || [])
-    .map(e => `${e.id}:${e.name || ""}:${e.size || 0}`)
-    .sort()
-    .join("|");
-  const manualCriteria = JSON.stringify(context.manualCriteria || []).slice(0, 4000);
-  return djb2(`${evPart}::${scoreObj?.upt || 0}::${manualCriteria}`);
+export function hashAspectSnapshot(evidenceList, _scoreObj, context = {}) {
+  const evidence = (evidenceList || []).map(e => ({
+    id: e.id || "",
+    itemId: canonicalMaturityItemId(e.itemId || ""),
+    name: e.name || e.file_name || "",
+    size: e.size || 0,
+  })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const rubric = {
+    requiredEvidence: context.requiredEvidence || [],
+    levels: context.levels || [],
+    manualCriteria: context.manualCriteria || [],
+  };
+  return djb2(`maturity-ai-v${MATURITY_AI_ANALYSIS_VERSION}::${JSON.stringify(evidence)}::${JSON.stringify(rubric)}`);
+}
+
+function filesForItem(item, aspect, files) {
+  return files.filter(file => canonicalMaturityItemId(file?.itemId) === item.id || (!file?.itemId && aspect.requiredEvidence.length === 1));
+}
+
+/** Metadata checklist only. A matching upload is visible, but never proves content compliance. */
+export function buildMaturityEvidenceChecklist(aspect, evidenceList = []) {
+  const files = Array.isArray(evidenceList) ? evidenceList : [];
+  const selected = selectedMaturityRequiredItems(aspect, files);
+  return selected.map(item => {
+    const matchingFiles = filesForItem(item, aspect, files);
+    const terunggah = matchingFiles.length > 0;
+    return {
+      id: item.id,
+      itemId: item.id,
+      label: item.label,
+      terunggah,
+      // Upload presence is deliberately not proof that the rubric is fulfilled.
+      terpenuhi: false,
+      status: terunggah ? "TERUNGGAH_PERLU_VERIFIKASI" : "BELUM_TERUNGGAH",
+      catatan: terunggah
+        ? "Berkas terunggah; isi, tanda tangan, tanggal, dan kesesuaian rubrik wajib diverifikasi manual."
+        : `Belum ada berkas pada slot ini. Unggah ${item.label}.`,
+    };
+  });
+}
+
+function localChecklistSummary(aspect, evidenceList) {
+  const perEvidence = buildMaturityEvidenceChecklist(aspect, evidenceList);
+  const missing = perEvidence.filter(item => !item.terunggah);
+  const gap = missing.map(item => item.label);
+  const rekomendasi = missing.map(item => `Unggah evidence: ${item.label}.`);
+  const menujuLevelMaksimal = missing.map(item => ({ poin: item.label, aksi: `Unggah ${item.label}, lalu verifikasi manual sesuai rubrik.` }));
+  return { perEvidence, gap, rekomendasi, menujuLevelMaksimal };
 }
 
 const FALLBACK_RESULT = {
   status: "UNAVAILABLE",
-  estimasiLevel: 1,
-  alasanPenilaian: "Analisis AI belum tersedia (layanan gagal/kosong). Nilai manual berdasarkan skor yang sudah diisi.",
-  perEvidence: [],
-  gap: ["Analisis otomatis tidak dapat dijalankan saat ini."],
-  rekomendasi: ["Periksa evidence secara manual sesuai rubrik level di panel kiri."],
-  menujuLevelMaksimal: [],
+  analysisVersion: MATURITY_AI_ANALYSIS_VERSION,
+  levelPotensial: null,
+  estimasiLevel: null,
+  alasanPenilaian: "Analisis AI belum tersedia. Nilai manual berdasarkan rubrik tetap berlaku.",
 };
 
-function labelOf(e) {
-  return e.itemLabel || e.label || e.name || e.file_name || "berkas";
-}
+const AI_REQUEST_TIMEOUT_MS = 25000;
 
-// Analisa berbasis metadata SAJA (nama & kelengkapan evidence), TANPA fetch/OCR isi
-// berkas — cepat & tak bisa gagal "gagal dibaca" karena tak ada fetch.
-export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { onProgress } = {}) {
-  onProgress?.(0, evidenceList.length);
-  const namaEvidence = evidenceList.map(labelOf);
-
+// Analisa metadata saja. Model hanya memberi level potensial dan satu alasan;
+// checklist, gap, serta rekomendasi berasal dari data lokal.
+export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { onProgress, invoke = (name, options) => supabase.functions.invoke(name, options) } = {}) {
+  const local = localChecklistSummary(aspect, evidenceList);
+  onProgress?.(0, 1);
   try {
-    const { data, error } = await supabase.functions.invoke("ai-proxy", {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+    const checklist = local.perEvidence.map(item => ({ id: item.id, label: item.label, status: item.status }));
+    const request = invoke("ai-proxy", {
       body: {
         temperature: 0.2,
-        max_tokens: 1500,
+        max_tokens: 300,
         messages: [
-          { role: "system", content: "Kamu adalah auditor maturity gudang PLN yang objektif. Nilai HANYA berdasarkan KELENGKAPAN & kesesuaian NAMA dokumen evidence yang terupload dibanding evidence wajib & rubrik level — kamu TIDAK membaca isi dokumen. Karena tak bisa melihat isi, kamu DILARANG menyatakan ada/tidaknya tanda tangan, stempel, tanggal, atau isi dokumen — jangan pernah bilang dokumen 'tidak bertanda tangan' maupun 'sudah bertanda tangan'. Jawab HANYA JSON valid, tanpa teks lain." },
-          { role: "user", content: `Aspek: ${aspect.id} ${aspect.title}
-Evidence wajib dari PROGNOSA kolom J: ${JSON.stringify(aspect.sourceEvidence || aspect.requiredEvidence)}
-Rubrik level:\n${aspect.levels.join(" ").slice(0, 800)}
-Catatan evidence dari PROGNOSA kolom K: ${JSON.stringify(aspect.sourceNote ?? aspect.catatan)}
-Kriteria isi yang wajib diverifikasi checker secara manual (AI tidak boleh mengklaim terpenuhi): ${JSON.stringify(aspect.requiredEvidence.flatMap(item => [...(item.manualCriteria || []), ...(item.displayDetails || [])].map(label => ({ item: item.label, label }))))}
-Skor UPT saat ini: ${scoreObj?.upt || 0}
-Nama evidence yang terupload (isi TIDAK dibaca, nilai dari kelengkapan & nama saja): ${namaEvidence.length ? JSON.stringify(namaEvidence) : "(tidak ada evidence terupload)"}
-
-Kembalikan JSON dengan struktur PERSIS:
-{"estimasiLevel":1-5,"alasanPenilaian":"","perEvidence":[{"label":"","terpenuhi":true,"catatan":""}],"gap":["..."],"rekomendasi":["..."],"menujuLevelMaksimal":[{"poin":"","aksi":""}]}
-perEvidence dibuat dari daftar Evidence wajib, terpenuhi=true kalau tampak ada evidence terupload yang namanya cocok (berdasar NAMA & kelengkapan saja, BUKAN isi/tanda tangan). Untuk kriteria rubrik yang menuntut tanda tangan/stempel/tanggal (mis. tanda tangan GM), JANGAN menyimpulkan tidak terpenuhi hanya karena kamu tak bisa melihatnya — tulis di catatan 'perlu verifikasi manual tanda tangan/stempel' dan JANGAN turunkan estimasiLevel semata karena tanda tangan tak terlihat. Untuk setiap perEvidence dengan terpenuhi=false, catatan WAJIB sebut singkat apa yang belum ada DAN aksi yang harus dilakukan (contoh: "belum ada — unggah Probis Stock Opname bertanda tangan GM"), jangan hanya "belum lengkap". gap WAJIB berisi daftar NAMA evidence wajib yang belum tampak terupload (selisih Evidence wajib vs nama evidence terupload), BUKAN kalimat umum seperti "kurang dari 2 dokumen". rekomendasi berisi langkah konkret untuk melengkapi tiap evidence yang kurang. menujuLevelMaksimal berisi poin konkret yang masih kurang dibanding rubrik Level 5 beserta aksi perbaikannya.` },
+          { role: "system", content: "Kamu auditor maturity gudang PLN. Nilai hanya level potensial dari metadata slot evidence dan rubrik. Kamu tidak membaca isi berkas dan tidak boleh mengklaim tanda tangan, stempel, tanggal, atau isi terpenuhi. Jawab JSON valid tanpa teks lain." },
+          { role: "user", content: `Aspek ${aspect.id} ${aspect.title}\nRubrik level: ${JSON.stringify(aspect.levels)}\nChecklist metadata: ${JSON.stringify(checklist)}\nKembalikan persis {\"levelPotensial\":1-5,\"alasanPenilaian\":\"satu alasan singkat\"}.` },
         ],
       },
+      signal: controller.signal,
     });
-    onProgress?.(evidenceList.length, evidenceList.length);
+    let data, error;
+    try {
+      ({ data, error } = await request);
+    } finally {
+      clearTimeout(timer);
+    }
     if (error) throw error;
     const text = data.choices?.[0]?.message?.content || "";
     const jsonText = text.match(/\{[\s\S]*\}/)?.[0] || text;
     const parsed = JSON.parse(jsonText);
-    return { ...FALLBACK_RESULT, ...parsed, status: "ANSWERED" };
+    const level = Number(parsed.levelPotensial ?? parsed.estimasiLevel);
+    if (!Number.isInteger(level) || level < 1 || level > 5) throw new Error("Respons AI tidak memiliki level potensial yang valid");
+    onProgress?.(1, 1);
+    return {
+      ...FALLBACK_RESULT,
+      ...local,
+      status: "ANSWERED",
+      levelPotensial: level,
+      // Compatibility for old readers; scoring never consumes this field.
+      estimasiLevel: level,
+      alasanPenilaian: String(parsed.alasanPenilaian || "Level potensial berdasarkan metadata evidence dan rubrik."),
+    };
   } catch (err) {
-    onProgress?.(evidenceList.length, evidenceList.length);
-    return { ...FALLBACK_RESULT, status: "ERROR", errorMessage: err.message };
+    onProgress?.(1, 1);
+    return {
+      ...FALLBACK_RESULT,
+      ...local,
+      status: "ERROR",
+      errorMessage: err?.message || "Edge Function gagal",
+    };
   }
 }

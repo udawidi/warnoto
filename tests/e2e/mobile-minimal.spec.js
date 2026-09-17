@@ -25,6 +25,7 @@ test.describe("Mode ringkas HP", () => {
     await openRoute(page, { tab:"maturity", menuPath:["Penilaian Maturity"], readySelector:'.app-shell[data-current-tab="maturity"]' });
     await page.getByRole("button", { name:"Pelaksanaan Audit", exact:true }).click();
     await page.getByRole("button", { name:"+ Audit Baru", exact:true }).first().click();
+    await expect(page.getByText("Proyeksi Draft", { exact:true })).toBeVisible();
 
     const persediaan = page.getByRole("tab", { name:"Gudang Persediaan", exact:true });
     const attb = page.getByRole("tab", { name:"Gudang ATTB/MRWI", exact:true });
@@ -34,6 +35,8 @@ test.describe("Mode ringkas HP", () => {
     await expect(page.locator(".maturity-aspect-row")).toHaveCount(4);
     await expect(page.getByRole("button", { name:"Tata Kelola", exact:true })).toHaveCount(0);
     await page.locator(".maturity-aspect-row").filter({ hasText:"3.4" }).click();
+    await expect(page.getByRole("button", { name:/Analisa AI/ }).first()).toBeDisabled();
+    await expect(page.getByText(/Belum terunggah \(\d+\)/).first()).toBeVisible();
     const manualCriteria = page.getByText("Yang harus diperiksa checker", { exact:true }).locator("xpath=..");
     await expect(manualCriteria.locator('ol[type="a"] > li')).toHaveCount(3);
 
