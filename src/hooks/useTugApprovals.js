@@ -304,7 +304,7 @@ export function useTugApprovals({
           touchedStockIds.add(existingRow.id);
         } else {
           const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), sourceLot, kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk } });
+          newStocks.push({ id:newId, katalogId:si.katalogId, name:existingKatalog?.name || "", katalog:existingKatalog?.katalog || "", unit:existingKatalog?.satuan || "unit", keteranganBarang:existingKatalog?.keterangan || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), sourceLot, kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]: qtyMasuk }, uptId: txn.uptId || currentUserUptId });
           touchedStockIds.add(newId);
         }
       } else {
@@ -328,7 +328,7 @@ export function useTugApprovals({
           touchedStockIds.add(existingRow2.id);
         } else {
           const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), sourceLot:sourceLot2, kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]:qtyMasuk } });
+          newStocks.push({ id:newStkId, katalogId:katId, name:si.namaBaru || "", katalog:katalogCodeBaru || "", unit:si.satuanBaru || "unit", keteranganBarang:si.keteranganBaru || "", lokasiId, qty:qtyMasuk, minQty:0, price:si.hargaSatuan||0, jenisBarang, sapStatus, img:fotoBarang, fotoKeseluruhan:fotoBarang, createdAt:Date.now(), sourceLot:sourceLot2, kontrakRefs:[kontrakEntry], _tug3Applied:{ [effectKey]:qtyMasuk }, uptId: txn.uptId || currentUserUptId });
           touchedStockIds.add(newStkId);
         }
       }

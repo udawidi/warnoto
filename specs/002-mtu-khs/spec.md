@@ -66,6 +66,19 @@ Users open the exact same-year drawing for a record and see usage from approved 
 2. **Given** only a 2024 document for a 2026 record, **When** viewed, **Then** the record says drawing is unavailable.
 3. **Given** an approved TUG link, **When** viewed, **Then** usage is shown without changing stock or installed quantity.
 
+### User Story 5 - Use Gardu Induk in TUG stock movements (Priority: P1)
+
+An authorized UPT user can receive material at a Gardu Induk through TUG-3 or TUG-10 and issue that material through TUG-8 or TUG-9. The GI remains managed in Master GI & Bay, while the transaction forms present it as one destination or source with one storage location.
+
+**Independent Test**: Receive one item into an active GI, reload the app, then issue part of its balance from the same GI. The stock remains scoped to its UPT and each approval changes the balance exactly once.
+
+**Acceptance Scenarios**:
+
+1. **Given** an active GI with a complete database warehouse and location pair, **When** a user selects it in TUG-3 or TUG-10, **Then** the single GI storage location is selected automatically and cannot be changed independently.
+2. **Given** a finalized GI receipt, **When** a user submits TUG-8 or TUG-9 from that GI, **Then** the approved transaction reduces the GI stock once without a location or UPT mismatch.
+3. **Given** a GI whose database pair is unavailable or inactive, **When** a user opens a TUG form, **Then** that GI cannot be selected for a new transaction.
+4. **Given** a GI already used by MTU records, stock, or pending receipts, **When** an authorized user attempts to deactivate it, **Then** the system rejects the change and preserves the history.
+
 ### Edge Cases
 
 - Empty or `-` organization/location values remain unresolved and do not create fake master rows.
@@ -96,6 +109,11 @@ Users open the exact same-year drawing for a record and see usage from approved 
 - **FR-014**: The system MUST NOT attach a drawing from a different procurement year.
 - **FR-015**: The UI MUST support desktop and 360 px mobile operation, light/dark themes, keyboard focus, loading, empty, and error states.
 - **FR-016**: The legacy `pln_rencana_v1` data MUST not be shown or deleted.
+- **FR-017**: Each active GI offered in TUG MUST have one durable warehouse row and one durable location row with the same UPT owner as the GI master.
+- **FR-018**: A GI without both durable rows MUST be hidden from new TUG transactions; cached virtual GI rows MUST NOT bypass this gate.
+- **FR-019**: TUG-3 and TUG-10 MUST assign the GI's single location automatically, and TUG-8/9 MUST be able to issue stock from that location through the existing canonical approval flow.
+- **FR-020**: Master Gudang and Master Lokasi editing MUST neither expose nor delete GI adapter rows.
+- **FR-021**: Deactivation or UPT reassignment MUST NOT strand stock, pending transactions, or MTU records at a GI. An unused deactivated GI remains available to historical records but not to new transactions.
 
 ### Key Entities
 
@@ -103,6 +121,7 @@ Users open the exact same-year drawing for a record and see usage from approved 
 - **MTU Unit**: Optional serialized child of an MTU record.
 - **GI**: Scoped installation-site master beneath one ULTG. The complete source is `D:\CLAUDE\WARNOTO data\Data Material HAR\BAY GI.xlsx`, sheet `3a. BAY` (2,429 raw rows, 185 GI, 2,427 Bay, 15 ULTG, 6 UPT); the seed is additive and preserves legacy rows.
 - **Bay**: Scoped master beneath one GI.
+- **GI warehouse adapter**: Durable warehouse and location rows with stable IDs derived from the GI ID; these support the existing stock and TUG contracts and are not separate user-managed masters.
 - **MTU Specification**: KHS code and optional reviewed catalog association.
 - **Document**: Exact external document metadata and URL.
 - **Usage Link**: Reference from an MTU allocation to an approved TUG item.
@@ -119,6 +138,9 @@ Users open the exact same-year drawing for a record and see usage from approved 
 - **SC-004**: All unresolved hierarchy conflicts are visible before approval and none are silently guessed.
 - **SC-005**: No MTU update or usage-link action changes stock outside the existing approved TUG flow.
 - **SC-006**: The primary mobile workflow completes at 360 px without horizontal page overflow or touch targets below 44 px.
+- **SC-007**: A GI receipt through each supported inbound TUG type persists at the correct UPT and is still visible after reload.
+- **SC-008**: A canonical TUG-8/9 issue from GI reaches final approval and decreases only the selected GI stock once.
+- **SC-009**: Saving ordinary warehouse masters leaves all GI adapter rows intact, and users from another UPT cannot access their stock.
 
 ## Assumptions
 

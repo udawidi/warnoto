@@ -59,3 +59,13 @@ tests/unit/
 | GI/Bay management belongs in Master Data | Avoids a duplicate master UI inside MTU KHS while preserving row-level RPC writes | Keeping a feature-local tab would split the canonical master workflow |
 | Typed GI UPT scope and normalized uniqueness | Makes RLS and hierarchy checks direct and deterministic | Deriving UPT through ULTG on every query permits ambiguity and duplicate names |
 | Database-first Sheet mirror | Preserves review-first writes and provides durable retry/audit when Google is unavailable | Browser-side or automatic two-way sync would expose credentials and create last-writer-wins conflicts |
+
+## GI stock movement integration
+
+The GI master remains authoritative. A proposed migration backfills and maintains a durable `gudang` row (`GI-<gi_id>`) and a durable `lokasi` row (`GILOK-<gi_id>`) for each GI. Both rows carry `data.__gi`, the GI ID, active state, and the GI's UPT. Existing stock RLS, the MTU receipt RPC, and canonical TUG-8/9 continue to validate the ordinary `stocks → lokasi → gudang` chain. Their security checks are not relaxed.
+
+Database lifecycle code rejects an ID collision with ordinary warehouse data. It also rejects deactivation or UPT reassignment after the GI has been used by an MTU record, stock, or a pending receipt. Unused deactivated GI rows remain archived for history. The proposed migration is reviewed separately before production application.
+
+The application derives transaction choices only from active, complete database GI pairs. It discards old cached virtual rows. Master Gudang and Master Lokasi hide GI adapter rows, while full-list reconciliation preserves those rows. TUG-3 stores the GI location on each item; TUG-10 stores it on the transaction header. TUG-8/9 use the existing canonical stock path. GI selection stays unavailable if the migration has not been applied.
+
+Verification covers migration idempotence and collision guards, RLS scope, deactivation guards, all four TUG forms, reload persistence, existing unit tests, and production build. Database application and live transaction smoke tests require the project's review-first approval.

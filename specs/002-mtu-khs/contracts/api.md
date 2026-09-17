@@ -36,3 +36,12 @@ Stable codes include `MTU_SCOPE_DENIED`, `MTU_HIERARCHY_INVALID`, `MTU_MAPPING_R
 - PENGADAAN may change procurement/vendor/contract/price/delivery/document/import/spec fields nationally. Its requests and per-UIT import batches require ASMAN_LOG_UIT for the record/batch UIT.
 - TL may change onsite actuals, GI/Bay or warehouse placement, serials, usage references, installation planning/actuals and status only within its UPT. Its requests require ASMAN of that UPT.
 - GI/Bay manual maintenance requires `aksi.kelolaMaster` and hierarchy scope. Imported master candidates become active only through the approved UIT batch.
+
+## GI adapter contract for TUG
+
+- The GI master lifecycle maintains durable `GI-<id>` warehouse and `GILOK-<id>` location rows. Backfill is idempotent and rejects collisions with ordinary master rows.
+- The transaction UI accepts only active GI rows whose warehouse and location adapter both came from the database. Before migration, GI is unavailable as a new TUG source or destination.
+- TUG-3 carries `GILOK-<id>` on each incoming item. TUG-10 carries it in the destination header. New stock rows carry the transaction's UPT.
+- Canonical TUG-8/9 and the MTU receipt RPC keep their existing server-side location, warehouse, UPT, and stock checks. No new bypass or relaxation is introduced.
+- Ordinary warehouse master reconciliation preserves GI adapter rows; the ordinary master editors never expose them for editing or deletion.
+- Deactivation rejects any GI with MTU records, stock, or pending TUG-3/10 receipts. Unused deactivation archives its adapter rows; historical reads remain valid.

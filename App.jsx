@@ -20,6 +20,7 @@ import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildT
 import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
+import { activePairedGudangRows, dropCachedGiRows } from "./src/lib/giWarehouse.js";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
 import { can } from "./src/lib/perms.js";
 import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentStatusFromKondisi, normalizeHeavyEquipmentRecord, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanStartDate, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName, normalizeHeavyEquipmentLoanStatus, isPendingHeavyEquipmentLoan, getHeavyEquipmentLoanRuntimeStatus, canApproveHeavyEquipmentLoan, getEquipmentCategory } from "./src/lib/heavyEquipment.js";
@@ -328,7 +329,7 @@ export default function PLNWarehouse() {
   const [rolePerms, setRolePerms] = useState({}); // override izin per role dari tabel role_permissions ({role: {key:bool}}); {} = pakai DEFAULT_PERMS
   const [stocks, setStocks] = useState(() => readCachedList("pln_stocks_v4") ?? []); // junction rows: katalogId + lokasiId + qty/price/jenis
   const [katalogList, setKatalogList] = useState(() => readCachedList("pln_katalog_v4") ?? []); // Master Katalog Barang
-  const [lokasiList, setLokasiList] = useState(() => readCachedList("pln_lokasi_v4") ?? []); // Master Lokasi Gudang
+  const [lokasiList, setLokasiList] = useState(() => dropCachedGiRows(readCachedList("pln_lokasi_v4")) ?? []); // Master Lokasi Gudang
   const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
   const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? []);
   const [supplierList, setSupplierList] = useState(() => readCachedList("pln_supplier_v1") ?? []); // Master Supplier (nasional, dipakai jg di form TUG-3)
@@ -336,7 +337,7 @@ export default function PLNWarehouse() {
   const [uitList, setUitList] = useState(() => readCachedList("pln_uit_v1") ?? []);
   const [uptList, setUptList] = useState(() => readCachedList("pln_upt_v1") ?? []);
   const [ultgList, setUltgList] = useState(() => readCachedList("pln_ultg_v1") ?? []); // Unit di bawah UPT (mis. ULTG Surabaya Utara/Selatan)
-  const [gudangList, setGudangList] = useState(() => readCachedList("pln_gudang_v1") ?? []);
+  const [gudangList, setGudangList] = useState(() => dropCachedGiRows(readCachedList("pln_gudang_v1")) ?? []);
   const [subGudangList, setSubGudangList] = useState(() => readCachedList("pln_sub_gudang_v1") ?? []); // level di antara Gudang dan Blok Lokasi
   const [importGudangOpen, setImportGudangOpen] = useState(false); // toggle panel Import & Review di Master Gudang
   const [importLokasiOpen, setImportLokasiOpen] = useState(false); // modal Import Excel Master Lokasi
@@ -759,18 +760,18 @@ export default function PLNWarehouse() {
       tug3LoadPromise.catch(() => {});
       const tug10LoadPromise = loadTug10Transactions();
       tug10LoadPromise.catch(() => {});
-
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
       // tidak-menulis yang ada di bawah.
       const [initialLokasi, initialKatalog, initialStocks] = await Promise.all([masterLoads[5], masterLoads[8], masterLoads[9]]);
-      if (initialLokasi !== null) setLokasiList(initialLokasi?.length ? dedupeById(initialLokasi).list : (initialLokasi ? [] : (clokLocal || DEFAULT_LOKASI)));
+      if (initialLokasi !== null) setLokasiList(initialLokasi?.length ? dedupeById(initialLokasi).list : (initialLokasi ? [] : (dropCachedGiRows(clokLocal) || DEFAULT_LOKASI)));
       if (initialKatalog !== null) setKatalogList(initialKatalog?.some(k => k.name) ? dedupeById(initialKatalog.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
       if (initialStocks !== null) setStocks(initialStocks?.length ? dedupeById(initialStocks).list : (cs || DEFAULT_STOCKS));
       setLoading(false);
 
       const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, csup, cmaRemote, cmauRemote, cmahRemote, cm5sRemote] = await Promise.all([...masterLoads, ...maturityLoads]);
-      const clok = clokRemote || clokLocal; // fallback ke localStorage kalau Supabase belum terkonfigurasi
+      const clok = clokRemote || dropCachedGiRows(clokLocal); // cache virtual dibuang; shadow DB dipertahankan untuk history
+      const cgdgRows = cgdg;
       // Seed DEFAULT (gudang/lokasi) hanya boleh oleh viewer NASIONAL (Pusat/SUPERADMIN).
       // Multi-UPT + RLS: hasil kosong untuk akun scoped berarti "UPT-ku belum punya
       // gudang/lokasi", BUKAN tabel kosong global — seed di sini akan ditolak RLS (403,
@@ -829,13 +830,13 @@ export default function PLNWarehouse() {
         }
         // Master Lokasi — perhalus initial paint di atas (baris setLokasiList(dLok.list))
         // dengan pola 3-arah eksplisit yang sama seperti katalog/stocks: fetch GAGAL
-        // (clokRemote === null) → pertahankan tampilan lokal, JANGAN push ke server;
+        // (clokRemote === null) → pertahankan cache lokal tanpa GI virtual, JANGAN push ke server;
         // ada data → pakai data server + refresh cache; genuinely kosong → seed sekali
         // dari DEFAULT_LOKASI (perilaku sama seperti seedMasterTableIfEmpty yang lama).
         if (clokRemote === null) {
           loadFailures.push("Master Lokasi");
-        } else if (clokRemote.length > 0) {
-          const lokFresh = dedupeById(clokRemote).list;
+        } else if (clok.length > 0) {
+          const lokFresh = dedupeById(clok).list;
           setLokasiList(lokFresh);
           CLOUD.set("pln_lokasi_v4", lokFresh);
         } else if (canSeedMaster && DEFAULT_LOKASI.length > 0) {
@@ -958,13 +959,13 @@ export default function PLNWarehouse() {
         setUltgList(cultg);
         CLOUD.set("pln_ultg_v1", cultg);
       }
-      if (cgdg === null) {
+      if (cgdgRows === null) {
         loadFailures.push("Master Gudang");
-      } else if (cgdg.length > 0) {
-        setGudangList(cgdg);
-        CLOUD.set("pln_gudang_v1", cgdg);
+      } else if (cgdgRows.length > 0) {
+        setGudangList(cgdgRows);
+        CLOUD.set("pln_gudang_v1", cgdgRows);
       } else if (canSeedMaster && DEFAULT_GUDANG.length > 0) {
-        setGudangList(DEFAULT_GUDANG);
+          setGudangList(DEFAULT_GUDANG);
         await syncMasterTable("gudang", DEFAULT_GUDANG, g => ({ upt_id: g.uptId || null }));
         CLOUD.set("pln_gudang_v1", DEFAULT_GUDANG);
       } else {
@@ -3101,7 +3102,7 @@ export default function PLNWarehouse() {
             // Retur TUG-10 masuk sbg Non-SAP dulu (belum terdaftar SAP Persediaan/Cadang) —
             // admin reklasifikasi ke SAP kemudian. Baris existing yang cuma di-bump qty TIDAK diubah sapStatus-nya.
             const kat = approvalKatalog.find(k => k.id === si.katalogId);
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
+            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, uptId:txn.uptId || currentUserUptId || null, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
             touchedStockIds.add(newId);
           }
         } else {
@@ -3124,7 +3125,7 @@ export default function PLNWarehouse() {
             touchedStockIds.add(existingRow2.id);
           } else {
             const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
+            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, uptId:txn.uptId || currentUserUptId || null, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
             touchedStockIds.add(newStkId);
           }
         }
@@ -3920,9 +3921,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const visibleGudangList = useMemo(() => getVisibleGudangForInspection({
     currentUser,
     currentUserUptId,
-    gudangList,
+    gudangList: gudangList.filter(g => !g?.__gi),
     uptList,
   }), [currentUser, currentUserUptId, gudangList, uptList]);
+  const visibleTugGudangList = useMemo(() => getVisibleGudangForInspection({
+    currentUser,
+    currentUserUptId,
+    gudangList: activePairedGudangRows(gudangList, lokasiList),
+    uptList,
+  }), [currentUser, currentUserUptId, gudangList, lokasiList, uptList]);
   // Kapasitas/Peta Gudang: baris kapasitas dicocokkan by NAMA gudang (warehouse_capacity
   // tak menyimpan id gudang). ponytail: match-by-name, cukup untuk enforcement UI; unrestricted user di-early-return supaya tak terpengaruh sama sekali.
   const visibleCapacityList = useMemo(() => {
@@ -5053,16 +5060,16 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} />}
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
-      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} visibleGudangList={visibleGudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} visibleGudangList={visibleTugGudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SCAN PICKER MODAL — kode scan TUG cocok >1 stok, biarkan user pilih (jangan auto-pilih) */}
       <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
 
       {/* TXN MODAL - TUG10 FORM (incoming material / return to warehouse) */}
-      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleTugGudangList} uptList={uptList} katalogList={katalogList} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* TXN MODAL - TUG3 FORM (Karantina — penerimaan barang tahap 1) */}
-      {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={nextSafeDocSeq(docSeq, txns)} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={nextSafeDocSeq(docSeq, txns)} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleTugGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SUPPLIER MODAL — dirender setelah TUG3 supaya "+ Tambah supplier baru" (dari SearchableSelect di TUG3) stack di atas form TUG3 */}
       {supplierModal && <SupplierModal supplierModal={supplierModal} setSupplierModal={setSupplierModal} supplierForm={supplierForm} setSupplierForm={setSupplierForm} saveSupplier={saveSupplier} sty={sty} C={C} />}

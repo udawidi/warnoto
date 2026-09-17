@@ -83,6 +83,15 @@
 - [x] T047 Add compact 2024 reconciliation and 2026 receipt controls to MTU detail; show human-readable inbound and outbound TUG records on desktop and 360 px mobile.
 - [ ] T048 Run focused/full tests, production build, mobile smoke, migration diff audit, and verify MTU actions never duplicate stock movement.
 
+## Phase 12: Gardu Induk as a TUG stock location (US5)
+
+- [x] T049 [US5] Propose a backfill and lifecycle migration for GI warehouse/location adapter rows, ID collision checks, and deactivation guards in `supabase/migrations/20260918_gi_tug_warehouse.sql`.
+- [x] T050 [US5] Make transaction GI choices depend on complete active database rows and discard cached virtual GI rows in `App.jsx`.
+- [x] T051 [US5] Preserve GI adapter rows during full-list master reconciliation and hide them from ordinary master editors in `src/lib/masterSync.js`, `src/hooks/useWarehouseConfig.jsx`, and `src/components/MasterDataTab.jsx`.
+- [x] T052 [US5] Complete GI selection, automatic destination location, and satpam handling in `src/components/TugFormModals.jsx`.
+- [x] T053 [US5] Preserve UPT ownership for new GI stock rows in `src/hooks/useTugApprovals.js` and `App.jsx`.
+- [ ] T054 [US5] Verify GI lifecycle and TUG contracts with focused tests, the full unit suite, a production build, and a browser smoke test; record the migration as proposed only in `tests/unit/` and `specs/002-mtu-khs/quickstart.md`.
+
 ## Dependencies
 
 - T003-T006 block feature UI and writes.
@@ -91,3 +100,4 @@
 - T014-T015 depend on record detail and API foundation.
 - T016-T018 run after implementation tasks.
 - T044-T045 define and protect the new contracts before T046-T047; T048 runs last.
+- T049 is required before T050-T053 can be used in production. T054 validates the complete US5 path. Applying T049 to production requires explicit user approval.

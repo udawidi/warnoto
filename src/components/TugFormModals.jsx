@@ -1,5 +1,6 @@
 // Modal form transaksi TUG (dipindah dari App.jsx, refactor batch 1).
 // Tug5FormModal, Tug98FormModal (TUG9/TUG8), Tug10FormModal, Tug3FormModal.
+import { useEffect } from "react";
 import { SearchableSelect } from "./SearchableSelect.jsx";
 import { PhotoSlot } from "./PhotoSlot.jsx";
 import { Barcode, Camera } from "@phosphor-icons/react";
@@ -162,6 +163,8 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
 export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudangList, visibleGudangList, satpamList, enrichedStocks, tug98Collapsed, setTug98Collapsed, addItemRow, removeItemRow, updateItemRow, openScanner, handleImg, handleMaterialImg, editingDraftTxnId, setEditingDraftTxnId, saveTxn, isMobile, sty, C }) {
   const isDerivedDraft = Boolean(editingDraftTxnId);
   const gudSatpams = satpamList.filter(sp=>sp.gudangId && sp.gudangId===txnForm.gudangId);
+  // GI (Gardu Induk) sumber tak punya satpam gudang — Satpam Bertugas dikosongkan, isi manual di Surat Jalan.
+  const isSrcGI = !!(visibleGudangList||[]).find(g=>g.id===txnForm.gudangId)?.__gi;
   const gudStocks = enrichedStocks.filter(s=>s.gudangId===txnForm.gudangId && Number(s.qty)>0 && !isLegacySourceAllocation(s));
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
@@ -204,18 +207,19 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
             </div>
             <div style={{marginBottom:14}}>
               <label style={sty.label}>Satpam Bertugas (Mengetahui di Surat Jalan)</label>
-              <select style={sty.select} value={txnForm.satpamId||""} disabled={!txnForm.gudangId} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
-                <option value="">{txnForm.gudangId?"-- Pilih Satpam --":"Pilih gudang dulu"}</option>
+              <select style={sty.select} value={txnForm.satpamId||""} disabled={!txnForm.gudangId || isSrcGI} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
+                <option value="">{isSrcGI?"-- (kosong, GI tak punya satpam) --":txnForm.gudangId?"-- Pilih Satpam --":"Pilih gudang dulu"}</option>
                 {(gudSatpams.length>0?gudSatpams:(txnForm.gudangId?satpamList:[])).map(sp=><option key={sp.id} value={sp.id}>{sp.name}{gudSatpams.length===0?" (gudang lain)":""}</option>)}
               </select>
-              {satpamList.length===0 && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Belum ada data Satpam. Tambahkan di menu Master Data → tab Satpam.</div>}
-              {txnForm.gudangId && gudSatpams.length===0 && satpamList.length>0 && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
+              {isSrcGI && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#0369a1",marginTop:4}}>ℹ️ Sumber Gardu Induk — Isi manual (tulis tangan) di Surat Jalan cetak.</div>}
+              {!isSrcGI && satpamList.length===0 && <div style={{fontSize:12,color:C.muted,marginTop:4}}>Belum ada data Satpam. Tambahkan di menu Master Data → tab Satpam.</div>}
+              {!isSrcGI && txnForm.gudangId && gudSatpams.length===0 && satpamList.length>0 && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
             </div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>BARANG / MATERIAL</div>
             <div style={{marginBottom:14}}>
               <label style={sty.label}>Gudang Sumber Barang *</label>
-              <select style={sty.select} value={txnForm.gudangId||""} onChange={e=>{ const gid=e.target.value; setTxnForm(tf=>{ const cand=satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangId:gid, stockItems:[{stockId:"",qty:1}], satpamId: cand.length===1?cand[0].id:""}; }); setTug98Collapsed({}); }}>
+              <select style={sty.select} value={txnForm.gudangId||""} onChange={e=>{ const gid=e.target.value; setTxnForm(tf=>{ const g=(visibleGudangList||[]).find(x=>x.id===gid); const cand=g?.__gi?[]:satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangId:gid, stockItems:[{stockId:"",qty:1}], satpamId: cand.length===1?cand[0].id:""}; }); setTug98Collapsed({}); }}>
                 <option value="">-- Pilih Gudang --</option>
                 {visibleGudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
               </select>
@@ -316,9 +320,17 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
     : (!txnForm.gudangTujuanId ? [] : lokasiList.filter(l=>l.gudangId===txnForm.gudangTujuanId && (tug10Subs.length===0 || (l.subGudangId||"")===(txnForm.subGudangTujuanId||""))));
   const gudSatpams = satpamList.filter(sp=>sp.gudangId && sp.gudangId===txnForm.gudangTujuanId);
   const selGud = gudangList.find(g=>g.id===txnForm.gudangTujuanId);
+  const isGI = !!selGud?.__gi;
+  const giLokasi = isGI ? lokasiList.find(l=>l.__gi && l.gudangId===selGud.id) : null;
   const selSub = subGudangList.find(sg=>sg.id===txnForm.subGudangTujuanId);
   const selBlok = lokasiList.find(l=>l.id===txnForm.lokasiTujuanId);
   const breadcrumb = [selGud?.nama || (isLegacyGud?"Legacy (tanpa gudang)":null), selSub?.nama, selBlok?.kode].filter(Boolean).join(" › ");
+  useEffect(() => {
+    if (!isGI || !giLokasi) return;
+    setTxnForm(tf => tf.lokasiTujuanId === giLokasi.id && !tf.subGudangTujuanId && !tf.satpamId
+      ? tf
+      : { ...tf, lokasiTujuanId: giLokasi.id, subGudangTujuanId: "", satpamId: "" });
+  }, [isGI, giLokasi?.id]);
   const missingList = tug10Missing(txnForm);
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
@@ -356,7 +368,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               </div>
               <div>
                 <label style={sty.label}>Gudang Penyimpanan *</label>
-                <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>{ const gid=e.target.value; setTxnForm(tf=>{ const cand=satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangTujuanId:gid, subGudangTujuanId:"", lokasiTujuanId:"", satpamId: cand.length===1?cand[0].id:""}; }); }}>
+                <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>{ const gid=e.target.value; const selected=(visibleGudangList||[]).find(g=>g.id===gid); setTxnForm(tf=>{ const cand=selected?.__gi?[]:satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangTujuanId:gid, subGudangTujuanId:"", lokasiTujuanId:selected?.__gi?(lokasiList.find(l=>l.__gi&&l.gudangId===gid)?.id||""):"", satpamId: cand.length===1?cand[0].id:""}; }); }}>
                   <option value="">-- Pilih Gudang --</option>
                   {visibleGudangList.map(g=>{ const up=uptList.find(u=>u.id===g.uptId); return <option key={g.id} value={g.id}>{g.nama}{up?` — ${up.nama}`:""}</option>; })}
                   {hasLegacyBlok && <option value="__legacy__">Blok tanpa gudang (legacy)</option>}
@@ -374,19 +386,20 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               )}
               <div ref={setRef("lokasiTujuanId")} style={{...hl("lokasiTujuanId")}}>
                 <label style={sty.label}>Blok Penyimpanan *</label>
-                <select style={sty.select} value={txnForm.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>setTxnForm(tf=>({...tf,lokasiTujuanId:e.target.value}))}>
+                {isGI ? <div style={{...sty.input,display:"flex",alignItems:"center",color:C.muted}}>📍 {selGud?.nama}</div> : <select style={sty.select} value={txnForm.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>setTxnForm(tf=>({...tf,lokasiTujuanId:e.target.value}))}>
                   <option value="">{txnForm.gudangTujuanId?"-- Pilih Blok --":"Pilih gudang dulu"}</option>
                   {tug10Bloks.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan?`— ${l.keterangan}`:""}</option>)}
-                </select>
-                {txnForm.gudangTujuanId && tug10Bloks.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada blok pada pilihan ini. Tambahkan di Master Data → Master Gudang.</div>}
+                </select>}
+                {!isGI && txnForm.gudangTujuanId && tug10Bloks.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada blok pada pilihan ini. Tambahkan di Master Data → Master Gudang.</div>}
               </div>
               <div style={{gridColumn:isMobile?"auto":"1/-1"}}>
                 <label style={sty.label}>Satpam Gudang (Mengetahui)</label>
-                <select style={sty.select} value={txnForm.satpamId||""} disabled={!txnForm.gudangTujuanId||isLegacyGud} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
-                  <option value="">{(!txnForm.gudangTujuanId||isLegacyGud)?"Pilih gudang dulu":"-- Pilih Satpam --"}</option>
-                  {(gudSatpams.length>0?gudSatpams:(txnForm.gudangTujuanId&&!isLegacyGud?satpamList:[])).map(sp=><option key={sp.id} value={sp.id}>{sp.name}{gudSatpams.length===0?" (gudang lain)":""}</option>)}
+                <select style={sty.select} value={txnForm.satpamId||""} disabled={!txnForm.gudangTujuanId||isLegacyGud||isGI} onChange={e=>setTxnForm(tf=>({...tf,satpamId:e.target.value}))}>
+                  <option value="">{(!txnForm.gudangTujuanId||isLegacyGud)?"Pilih gudang dulu":isGI?"-- (kosong, GI tak punya satpam) --":"-- Pilih Satpam --"}</option>
+                  {(gudSatpams.length>0?gudSatpams:(txnForm.gudangTujuanId&&!isLegacyGud&&!isGI?satpamList:[])).map(sp=><option key={sp.id} value={sp.id}>{sp.name}{gudSatpams.length===0?" (gudang lain)":""}</option>)}
                 </select>
-                {txnForm.gudangTujuanId && !isLegacyGud && gudSatpams.length===0 && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
+                {isGI && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#0369a1",marginTop:4}}>ℹ️ Tujuan Gardu Induk — isi manual di Surat Jalan cetak.</div>}
+                {!isGI && txnForm.gudangTujuanId && !isLegacyGud && gudSatpams.length===0 && <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada satpam untuk gudang ini — tambahkan di Master Data → Satpam. Sementara bisa pilih dari semua satpam.</div>}
               </div>
               {breadcrumb && <div style={{gridColumn:isMobile?"auto":"1/-1",fontSize:12,color:C.accent,fontWeight:700,background:"#eef2ff",border:"1px solid #c7d2fe",borderRadius: 10,padding:"6px 10px"}}>📍 {breadcrumb}</div>}
             </div>
@@ -574,10 +587,22 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, editingDraftTxnId, savingTxn, docSeq, katalogList, lokasiList, visibleGudangList, supplierList, openAddSupplier, CATEGORIES, tug3ExpandedIdx, setTug3ExpandedIdx, addItemRow, removeItemRow, updateItemRow, handleImg, saveTxn, maraSearch, setMaraSearch, maraSearchResults, setMaraSearchResults, maraSearchLoading, maraSearchError, searchMaraCatalog, applyMaraToItemRow, isMobile, sty, C }) {
   // Auto-pilih Gudang Tujuan kalau cuma ada 1 opsi (pola "adjust state saat render" React,
   // aman krn kondisi jadi false setelah state ke-set, tidak infinite-loop).
-  if (!txnForm.gudangTujuanId && (visibleGudangList||[]).length===1) {
-    setTxnForm(tf=>tf.gudangTujuanId ? tf : ({...tf, gudangTujuanId: visibleGudangList[0].id}));
+  if (!txnForm.gudangTujuanId) {
+    const def = (visibleGudangList||[]).length===1 ? visibleGudangList[0] : null;
+    if (def) setTxnForm(tf=>tf.gudangTujuanId ? tf : ({...tf, gudangTujuanId: def.id}));
   }
   const tug3Bloks = txnForm.gudangTujuanId ? sortBlokOptions(lokasiList.filter(l=>l.gudangId===txnForm.gudangTujuanId)) : [];
+  // GI (Gardu Induk) = pseudo-gudang tanpa sub-blok — 1 pseudo-blok tunggal (lihat App.jsx).
+  const selGudangTujuan = (visibleGudangList||[]).find(g=>g.id===txnForm.gudangTujuanId);
+  const isGI = !!selGudangTujuan?.__gi;
+  const giLokasi = isGI ? lokasiList.find(l=>l.__gi && l.gudangId===selGudangTujuan.id) : null;
+  // Efek (bukan set-saat-render) — cegah warning "update parent while rendering child".
+  useEffect(() => {
+    if (!isGI || !giLokasi) return;
+    setTxnForm(tf=>tf.stockItems.some(si=>si.lokasiTujuanId!==giLokasi.id)
+      ? { ...tf, stockItems: tf.stockItems.map(si=>si.lokasiTujuanId===giLokasi.id ? si : ({...si, lokasiTujuanId: giLokasi.id})) }
+      : tf);
+  }, [isGI, giLokasi?.id, txnForm.stockItems.length]);
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -624,7 +649,7 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>LOKASI PENYIMPANAN</div>
             <div style={{marginBottom:14}}>
               <label style={sty.label}>Gudang Tujuan *</label>
-              <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,gudangTujuanId:e.target.value}))}>
+              <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,gudangTujuanId:e.target.value, stockItems: tf.stockItems.map(si=>({...si, lokasiTujuanId:""}))}))}>
                 <option value="">-- Pilih Gudang --</option>
                 {(visibleGudangList||[]).map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}
               </select>
@@ -711,6 +736,12 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr 1fr",gap:8}}>
                   <div><label style={sty.label}>Jumlah</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty||""} onChange={e=>updateItemRow(idx,"qty",e.target.value===""?"":Number(e.target.value))}/></div>
                   <div><label style={sty.label}>Harga Satuan</label><input style={sty.input} type="number" inputMode="decimal" min="0" value={si.hargaSatuan||""} onChange={e=>updateItemRow(idx,"hargaSatuan",e.target.value===""?"":Number(e.target.value))}/></div>
+                  {isGI ? (
+                    <div>
+                      <label style={sty.label}>Lokasi Tujuan</label>
+                      <div style={{...sty.input,display:"flex",alignItems:"center",color:C.muted}}>📍 {selGudangTujuan?.nama}</div>
+                    </div>
+                  ) : (
                   <div>
                     <label style={sty.label}>Lokasi Tujuan</label>
                     <select style={sty.select} value={si.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>updateItemRow(idx,"lokasiTujuanId",e.target.value)}>
@@ -719,6 +750,7 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                     </select>
                     {txnForm.gudangTujuanId && tug3Bloks.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada blok pada gudang ini.</div>}
                   </div>
+                  )}
                 </div>
                 <div style={{marginTop:8,maxWidth:260}}>
                   <label style={sty.label}>Status Barang</label>

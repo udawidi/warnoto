@@ -15,6 +15,7 @@ function normalizeGudangName(s) {
     .replace(/\s+/g, " ")
     .trim();
 }
+const isGiShadow = row => row?.__gi === true;
 
 // Saran Gudang existing yang "mirip" (token overlap nama) di UPT yang sama — dipakai di
 // panel konfirmasi Admin saat import Kapasitas Gudang mendeteksi kandidat Gudang baru.
@@ -88,9 +89,11 @@ export function useWarehouseConfig({
     });
   }
 
-  function syncLokasi(nl) { return syncMasterTable("lokasi", nl, l => ({ gudang_id: l.gudangId || null, status: l.status || null })); }
+  // GI shadow berada di tabel, tetapi lifecycle-nya berasal dari GI master; jangan diedit lewat Master Lokasi.
+  function syncLokasi(nl) { return syncMasterTable("lokasi", nl.filter(l => !isGiShadow(l)), l => ({ gudang_id: l.gudangId || null, status: l.status || null })); }
 
   async function saveLokasi() {
+    if (isGiShadow(lokasiForm)) { showToast("Blok Gardu Induk dikelola dari Master GI.","error"); return; }
     if (!lokasiForm.gudangId) { showToast("Pilih Gudang dulu sebelum mengisi Blok! Data harus berjenjang: Gudang → Blok.","error"); return; }
     if (!lokasiForm.kode?.trim()) { showToast("Kode Lokasi tidak boleh kosong!","error"); return; }
     if (isKodeDuplicateInSubGudang(lokasiForm.kode, lokasiForm.gudangId, lokasiForm.subGudangId, lokasiModal==="edit"?lokasiForm.id:null)) {
@@ -114,12 +117,14 @@ export function useWarehouseConfig({
   // Buka popup konfirmasi hapus blok gudang (bukan langsung hapus) —
   // tombol pemanggil hanya dirender untuk role ADMIN.
   function requestDeleteLokasi(l) {
+    if (isGiShadow(l)) { showToast("Blok Gardu Induk dikelola dari Master GI.","error"); return; }
     if (stocks.some(s=>s.lokasiId===l.id)) { showToast("Tidak bisa hapus: lokasi ini masih dipakai di Data Stok!","error"); return; }
     setLokasiDeleteConfirm(l);
   }
   async function confirmDeleteLokasi() {
     const l = lokasiDeleteConfirm;
     if (!l) return;
+    if (isGiShadow(l)) { setLokasiDeleteConfirm(null); return; }
     const prevList = lokasiList;
     const nl = lokasiList.filter(x=>x.id!==l.id);
     setLokasiList(nl); setLokasiDeleteConfirm(null);
@@ -147,7 +152,8 @@ export function useWarehouseConfig({
   function openAddGudang() { setGudangForm({id:"GDG-"+uid().slice(-6), nama:"", kode:"", alamat:"", uptId:uptList[0]?.id||"", denahImageData:null, denahUploadedAt:null, fotoGudang:null, createdAt:Date.now()}); setGudangModal("add"); setGudangWizardStep(1); setWizardBlokDraft(null); }
   function openEditGudang(g) { setGudangForm({...g}); setGudangModal("edit"); }
   function closeGudangWizard() { setGudangModal(null); setGudangWizardStep(1); setWizardBlokDraft(null); }
-  function syncGudang(ng) { return syncMasterTable("gudang", ng, g => ({ upt_id: g.uptId || null })); }
+  // GI shadow berada di tabel, tetapi lifecycle-nya berasal dari GI master; jangan diedit lewat Master Gudang.
+  function syncGudang(ng) { return syncMasterTable("gudang", ng.filter(g => !isGiShadow(g)), g => ({ upt_id: g.uptId || null })); }
   function syncSubGudang(nsg) { return syncMasterTable("sub_gudang", nsg, sg => ({ gudang_id: sg.gudangId || null })); }
 
   // Cari Master UPT yang cocok dengan label string UPT dari laporan kapasitas (fuzzy, uppercase)
@@ -171,7 +177,8 @@ export function useWarehouseConfig({
   // sudah ada itu; { action:"NEW" } atau tidak ada entry sama sekali = perilaku lama
   // (cocokkan otomatis via normalizeGudangName, baru buat baru kalau benar2 tidak ada).
   function syncGudangCapacityToMasterGudang(records, decisions = {}) {
-    let gList = [...gudangList];
+    const giShadows = gudangList.filter(isGiShadow);
+    let gList = gudangList.filter(g => !isGiShadow(g));
     let sgList = [...subGudangList];
     const created = [];
     const createdSub = [];
@@ -222,7 +229,7 @@ export function useWarehouseConfig({
         createdSub.push(r.subGudang);
       }
     });
-    return { gList, sgList, created, createdSub, skippedNoUpt };
+    return { gList: [...gList, ...giShadows], sgList, created, createdSub, skippedNoUpt };
   }
 
   // Preview (read-only, tidak mengubah apa pun) — dipakai SEBELUM approve untuk deteksi
@@ -429,6 +436,7 @@ export function useWarehouseConfig({
     showToast("Import ditolak.", "success");
   }
   async function saveGudang() {
+    if (isGiShadow(gudangForm)) { showToast("Gudang Gardu Induk dikelola dari Master GI.","error"); return; }
     if (!gudangForm.nama?.trim()) { showToast("Nama Gudang wajib diisi!","error"); return; }
     const prevList = gudangList;
     const ng = gudangModal==="add" ? [...gudangList, gudangForm] : gudangList.map(g=>g.id===gudangForm.id?gudangForm:g);
@@ -441,6 +449,7 @@ export function useWarehouseConfig({
   }
   // Step 1 wizard: simpan data gudang lalu lanjut ke Step 2 (upload denah) tanpa menutup modal
   async function gudangWizardNext() {
+    if (isGiShadow(gudangForm)) { showToast("Gudang Gardu Induk dikelola dari Master GI.","error"); return; }
     if (!gudangForm.nama?.trim()) { showToast("Nama Gudang wajib diisi!","error"); return; }
     const prevList = gudangList;
     const exists = gudangList.some(g=>g.id===gudangForm.id);
@@ -454,6 +463,7 @@ export function useWarehouseConfig({
   }
   async function deleteGudang(id) {
     const g = gudangList.find(x=>x.id===id);
+    if (isGiShadow(g)) { showToast("Gudang Gardu Induk dikelola dari Master GI.","error"); return; }
     const blokCount = lokasiList.filter(l=>l.gudangId===id).length;
     askConfirmDelete({
       title: "Hapus Gudang?",
@@ -497,6 +507,7 @@ export function useWarehouseConfig({
 
   // Upload gambar denah gudang (PNG/JPG) — kompres otomatis jika > 1MB
   async function uploadDenahGudang(gudangId, file) {
+    if (isGiShadow(gudangList.find(g => g.id === gudangId))) { showToast("Denah GI dikelola dari Master GI.","error"); return; }
     stateRef.current.setDenahLoading?.(true);
     try {
       const imgData = await new Promise((resolve, reject) => {
@@ -549,6 +560,7 @@ export function useWarehouseConfig({
   // tools ini hanya bisa diakses ADMIN). subGudangId non-null = usulan berasal dari denah Sub
   // Gudang -> koordinat disimpan di subMapX/subMapY (bukan mapX/mapY denah Gudang keseluruhan).
   async function confirmOcrSuggestions(gudangId, subGudangId=null) {
+    if (isGiShadow(gudangList.find(g => g.id === gudangId))) { showToast("Blok GI dikelola dari Master GI.","error"); return; }
     const checked = stateRef.current.ocrSuggestions.filter(s => s.checked);
     if (checked.length === 0) { showToast("Tidak ada usulan yang dicentang.","error"); return; }
     if (checked.some(s => !s.kode.trim())) { showToast("Nama Area wajib diisi untuk semua usulan yang dicentang!","error"); return; }

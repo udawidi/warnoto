@@ -20,6 +20,7 @@ Every MTU record stores `upt_id`. Optional lower-level references must resolve t
 - `mtu_khs_import_batches`: file/sheet metadata, counts, status, actor and approval.
 - `mtu_khs_import_rows`: batch row, raw values, normalized candidate, hyperlinks, validation and mapping state.
 - `mtu_khs_sheet_sync_jobs`: one durable App-to-Sheet delivery job per approved change or usage update, with source tab/row identity, status, attempts, before/after values, error, and timestamps.
+- GI warehouse adapter: `gudang.id = GI-<gardu_induk.id>` and `lokasi.id = GILOK-<gardu_induk.id>`. Both rows carry `data.__gi = true`, `giId`, and `giActive`; the warehouse's `upt_id` equals the GI master's `upt_id`. These rows are database-backed and hidden from ordinary warehouse master editing.
 
 ## Invariants
 
@@ -35,3 +36,5 @@ Every MTU record stores `upt_id`. Optional lower-level references must resolve t
 - GI/Bay management lives in Master Data > Master GI & Bay (`garduInduk`); MTU KHS consumes these masters and does not render a duplicate management tab.
 - Database records remain canonical. Google Sheets are an operational mirror; failed or conflicting delivery is retained for retry and never overwrites a canonical approval.
 - The approved one-time seed is insert-only and provenance-tagged. It maps six UPT IDs (`UPT-BLI`, `UPT-GRS`, `UPT-MDN`, `UPT-MLG`, `UPT-PBG`, `UPT-SBY`) to 15 normalized ULTG, 82 GI, and 195 Bay. `GI 150KV KASIHJATIM` is explicitly assigned to `KRIAN`.
+- An active GI can be selected in a new TUG only if its warehouse and location adapter rows both exist and are active. Neither row is derived solely from browser state or cache.
+- An adapter ID collision with ordinary warehouse data is rejected. GI deactivation or UPT reassignment is rejected after an MTU record, stock, or pending TUG receipt uses the GI. Unused deactivation keeps the adapter rows archived so historical references remain valid.

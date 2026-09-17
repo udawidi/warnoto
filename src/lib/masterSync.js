@@ -155,10 +155,15 @@ export async function syncMasterTable(table, list, extraCols) {
   // menghasilkan list yang masih berisi N-1 item, bukan kosong, kecuali baris terakhir — kasus
   // itu sengaja dibiarkan tidak terhapus dari Supabase, harus dihapus manual kalau memang perlu).
   if (list.length === 0) return true;
-  const { data: existing, error: selErr } = await supabase.from(table).select("id");
+  const { data: existing, error: selErr } = await supabase.from(table).select(table === "gudang" || table === "lokasi" ? "id,data" : "id");
   if (selErr) { console.error(`syncMasterTable select(${table}): ${selErr.message}`, selErr); return false; }
   const currentIds = new Set(list.map(i => i.id));
-  const toDelete = (existing || []).filter(r => !currentIds.has(r.id)).map(r => r.id);
+  // Shadow GI rows are durable references for TUG/MTU history. Reconciliation
+  // from a stale browser must never delete them.
+  const toDelete = (existing || []).filter(r => {
+    const isProtectedGi = (table === "gudang" || table === "lokasi") && r.data?.__gi === true;
+    return !currentIds.has(r.id) && !isProtectedGi;
+  }).map(r => r.id);
   if (toDelete.length) {
     const { error: delErr } = await supabase.from(table).delete().in("id", toDelete);
     if (delErr) { console.error(`syncMasterTable delete(${table}): ${delErr.message}`, delErr); return false; }

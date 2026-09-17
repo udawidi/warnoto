@@ -19,6 +19,7 @@ export function useDenahOcr({ stateRef, setGudangList, setSubGudangList, lokasiL
   // Baca teks/label blok yang sudah tergambar di PNG denah (OCR) supaya
   // sistem bisa mengusulkan kode blok otomatis saat user klik titik di peta.
   async function runOcrOnDenah(gudangId, imgData) {
+    if (stateRef.current.gudangList.find(g => g.id === gudangId)?.__gi) { showToast("Denah GI dikelola dari Master GI.", "error"); return; }
     try {
       const img = await new Promise((resolve, reject) => {
         const im = new Image();
@@ -110,6 +111,7 @@ export function useDenahOcr({ stateRef, setGudangList, setSubGudangList, lokasiL
 
   // Assign koordinat blok via klik di gambar denah
   async function assignLokasiKoordinat(lokasiId, xPct, yPct, gudangId) {
+    if (lokasiList.find(l => l.id === lokasiId)?.__gi) { showToast("Koordinat blok GI dikelola dari Master GI.", "error"); return; }
     const prevList = lokasiList;
     const nl = lokasiList.map(l=>l.id===lokasiId ? {...l, mapX:xPct, mapY:yPct, gudangId} : l);
     setLokasiList(nl);
@@ -120,6 +122,7 @@ export function useDenahOcr({ stateRef, setGudangList, setSubGudangList, lokasiL
   }
 
   async function resetLokasiKoordinat(lokasiId) {
+    if (lokasiList.find(l => l.id === lokasiId)?.__gi) { showToast("Koordinat blok GI dikelola dari Master GI.", "error"); return; }
     const prevList = lokasiList;
     const nl = lokasiList.map(l=>l.id===lokasiId ? {...l, mapX:null, mapY:null, gudangId:null} : l);
     setLokasiList(nl);
@@ -131,6 +134,7 @@ export function useDenahOcr({ stateRef, setGudangList, setSubGudangList, lokasiL
 
   // Assign koordinat blok via klik di denah Sub Gudang (terpisah dari mapX/mapY denah Gudang keseluruhan)
   async function assignLokasiKoordinatSub(lokasiId, xPct, yPct, subGudangId, gudangId) {
+    if (lokasiList.find(l => l.id === lokasiId)?.__gi) { showToast("Koordinat blok GI dikelola dari Master GI.", "error"); return; }
     const prevList = lokasiList;
     const nl = lokasiList.map(l=>l.id===lokasiId ? {...l, subMapX:xPct, subMapY:yPct, subGudangId, gudangId} : l);
     setLokasiList(nl);
@@ -142,6 +146,7 @@ export function useDenahOcr({ stateRef, setGudangList, setSubGudangList, lokasiL
 
   // Reset hanya koordinat pin di denah Sub Gudang — assignment subGudangId (pengelompokan) tidak ikut dihapus
   async function resetLokasiKoordinatSub(lokasiId) {
+    if (lokasiList.find(l => l.id === lokasiId)?.__gi) { showToast("Koordinat blok GI dikelola dari Master GI.", "error"); return; }
     const prevList = lokasiList;
     const nl = lokasiList.map(l=>l.id===lokasiId ? {...l, subMapX:null, subMapY:null} : l);
     setLokasiList(nl);
