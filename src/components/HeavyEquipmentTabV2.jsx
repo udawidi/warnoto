@@ -165,6 +165,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     ...normalizedLoans.map(l=>l.requesterUpt),
   ].filter(Boolean))).sort();
   const canManage = hasRole(currentUser, "ADMIN","TL");
+  // HAR UIT boleh MENGAJUKAN peminjaman (lintas UPT) tanpa hak kelola/edit/tambah alat.
+  const canRequestLoan = canManage || hasRole(currentUser, "HAR_UIT");
   const canEditAll = hasRole(currentUser, "ADMIN");
   // Riwayat Perjalanan (Live Location BATCH 3a) — gate ADMIN/TL/UIT/PUSAT (sesuai plan Fase 3b).
   const canSeeRiwayatPerjalanan = canManage || isMultiUptViewer;
@@ -456,11 +458,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         <div style={{display:"flex",alignItems:"center",fontSize:12,color:C.muted,paddingLeft:4}}>dipinjam/total</div>
       </div>
 
-      <div className="equipment-loan-layout" style={{display:"grid",gridTemplateColumns:canManage?"minmax(260px,300px) 1fr":"1fr",gap:14,alignItems:"start"}}>
+      <div className="equipment-loan-layout" style={{display:"grid",gridTemplateColumns:canRequestLoan?"minmax(260px,300px) 1fr":"1fr",gap:14,alignItems:"start"}}>
 
-        {/* Form ajukan (Admin/TL only) — alat yang ditawarkan HARUS di luar UPT sendiri untuk
+        {/* Form ajukan (Admin/TL + HAR UIT) — alat yang ditawarkan HARUS di luar UPT sendiri untuk
             role non-MSB (Surabaya selalu peminjam di form ini, lihat borrowableEquipment). */}
-        {canManage && (
+        {canRequestLoan && (
           <div className="operations-form-panel" style={sty.card}>
             <div style={{fontSize:13,fontWeight:900,marginBottom:10}}>Ajukan Peminjaman</div>
             <div style={{marginBottom:8}}>

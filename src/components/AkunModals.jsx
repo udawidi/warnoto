@@ -70,7 +70,7 @@ export function AkunModal({ akunModal, setAkunModal, akunForm, setAkunForm, akun
                   </div>
                 )}
                 {(() => {
-                  const isUitScopedForm = ["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT"].includes(akunForm.role) || (akunForm.role==="PENGADAAN" && akunForm.pengadaanScope==="UIT");
+                  const isUitScopedForm = ["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","HAR_UIT"].includes(akunForm.role) || (akunForm.role==="PENGADAAN" && akunForm.pengadaanScope==="UIT");
                   if (isUitScopedForm) {
                     return (
                       <div style={{marginBottom:12}}>

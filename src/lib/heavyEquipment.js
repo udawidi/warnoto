@@ -132,6 +132,13 @@ export function isPendingHeavyEquipmentLoan(loan) {
   return normalizeHeavyEquipmentLoanStatus(loan?.status) === "PENDING_OWNER_ASMAN";
 }
 
+// Loan "aktif" = masih mengunci alat: diajukan (menunggu ACC) atau sedang dipinjam.
+// Bukan terminal (REJECTED/SELESAI). Dipakai guard anti double-book.
+export function isActiveHeavyEquipmentLoan(loan) {
+  const s = normalizeHeavyEquipmentLoanStatus(loan?.status);
+  return s === "PENDING_OWNER_ASMAN" || s === "DIPINJAM";
+}
+
 export function getHeavyEquipmentLoanRuntimeStatus(loan, now = Date.now()) {
   const normalized = normalizeHeavyEquipmentLoanStatus(loan?.status);
   if (["SELESAI", "REJECTED", "PENDING_OWNER_ASMAN"].includes(normalized)) return normalized;

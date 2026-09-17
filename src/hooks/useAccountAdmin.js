@@ -34,7 +34,7 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
   // pakai uitId, bukan uptId — field-nya saling eksklusif di form (lihat render modal).
   // ADMIN_LOG_PUSAT tidak termasuk: nasional, tidak terikat satu UIT.
   function isUitScopedRole(f) {
-    return ["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT"].includes(f.role) || (f.role==="PENGADAAN" && f.pengadaanScope==="UIT");
+    return ["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","HAR_UIT"].includes(f.role) || (f.role==="PENGADAAN" && f.pengadaanScope==="UIT");
   }
   // Peran nasional (Pusat): lingkupnya seluruh UPT dan UIT, jadi tidak memilih
   // unit apa pun. Tanpa cabang ini ia jatuh ke "UPT wajib dipilih" dan menyimpan

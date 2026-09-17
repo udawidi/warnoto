@@ -42,7 +42,7 @@ export const PERM_AKSI = [
 // Urutan role sebagai kolom di halaman Matrix Izin. SUPERADMIN read-only (selalu true).
 export const MATRIX_ROLES = [
   "SUPERADMIN", "ADMIN", "TL", "ASMAN", "MANAGER",
-  "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT", "ADMIN_LOG_PUSAT",
+  "ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT", "HAR_UIT", "ADMIN_LOG_PUSAT",
   "PENGADAAN", "VIEWER", "ADMIN_ULTG", "MGR_ULTG", "OPERATOR", "RENEV",
 ];
 
@@ -78,6 +78,7 @@ export const DEFAULT_PERMS = {
   // terdaftar, jadi tanpa ini akunnya membuka aplikasi tanpa satu menu pun.
   ASMAN_LOG_UIT: { ...FULL_MENUS },
   MGR_LOGISTIK_UIT: { ...FULL_MENUS },
+  HAR_UIT: menus("dashboard", "stock", "heavyEquipment"),
   ADMIN_LOG_PUSAT: { ...FULL_MENUS },
   // VIEWER: cabang normal TANPA menu approval.
   VIEWER: menus("dashboard", "stock", "kapasitasGudang", "master", "transaction", "heavyEquipment", "attb", "opname", "rencana", "forecastStok", "inspeksiMaterial", "ai"),

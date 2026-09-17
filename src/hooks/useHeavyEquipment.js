@@ -10,6 +10,7 @@ import {
   getHeavyEquipmentLoanReturnDate,
   getHeavyEquipmentLoanJobName,
   isPendingHeavyEquipmentLoan,
+  isActiveHeavyEquipmentLoan,
   getHeavyEquipmentLoanRuntimeStatus,
   canApproveHeavyEquipmentLoan,
 } from "../lib/heavyEquipment.js";
@@ -133,7 +134,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
   }
 
   async function createHeavyEquipmentLoan(form) {
-    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa mengajukan peminjaman alat.","error"); return; }
+    if (!hasRole(currentUser, "ADMIN","TL","HAR_UIT")) { showToast("Hanya Admin/TL/HAR UIT yang bisa mengajukan peminjaman alat.","error"); return; }
     if (!form.equipmentId || !form.requesterUpt || !form.namaPekerjaan?.trim() || !form.tanggalAmbil || !form.tanggalKembali || !form.keperluan?.trim()) {
       showToast("Lengkapi alat, UPT peminjam, nama pekerjaan, tanggal, dan keperluan.","error"); return;
     }
@@ -143,6 +144,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     if (alat.statusAlat === "MAINTENANCE") { showToast("Alat sedang maintenance, tidak bisa dipinjam UPT lain.","error"); return; }
     if (alat.statusAlat === "KIR") { showToast("Alat sedang KIR, tidak bisa dipinjam UPT lain.","error"); return; }
     if (alat.upt === form.requesterUpt) { showToast("Peminjaman harus antar UPT. Pilih UPT peminjam yang berbeda dari UPT pemilik alat.","error"); return; }
+    if (heavyEquipmentLoans.some(l => l.equipmentId === form.equipmentId && isActiveHeavyEquipmentLoan(l))) { showToast("Alat sudah ada peminjaman aktif (menunggu ACC atau sedang dipinjam), tidak bisa diajukan lagi.","error"); return; }
     const loan = {
       id: `HLOAN-${uid().slice(-8)}`,
       equipmentId: form.equipmentId,
@@ -173,6 +175,9 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
     if (!loan || !isPendingHeavyEquipmentLoan(loan)) return;
     if (!canApproveHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya Asman UPT pemilik alat yang bisa approve peminjaman ini.","error"); return; }
+    const alatCek = heavyEquipmentList.find(eq => eq.id === loan.equipmentId);
+    const bentrok = heavyEquipmentLoans.some(l => l.id !== loanId && l.equipmentId === loan.equipmentId && isActiveHeavyEquipmentLoan(l));
+    if (alatCek?.availabilityStatus === "DIPINJAM" || bentrok) { showToast("Alat sudah dipinjam / di-ACC untuk peminjaman lain, tidak bisa disetujui.","error"); return; }
     const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
     const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
     const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ownerUpt, requesterUpt, status:"DIPINJAM", approvedBy:currentUser.id, approvedAt:Date.now(), catatanApproval:catatan } : l);
