@@ -108,7 +108,8 @@ test("role baru terdaftar utuh, tidak setengah jalan", () => {
   });
   // Scope-UIT: ASMAN_LOG_UIT ikut, ADMIN_LOG_PUSAT (nasional) tidak.
   [accountHookSource, akunSource].forEach(src => {
-    assert.match(src, /\["ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT"\]/);
+    ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT", "HAR_UIT"].forEach(role =>
+      assert.match(src, new RegExp(`"${role}"`), `${role} harus masuk scope UIT`));
   });
   // ADMIN_UIT dinaikkan 1 -> 5 per commit 77f8896 (keputusan bisnis eksplisit,
   // disinkron ke 2 Edge Function admin-create-user/admin-update-user).
