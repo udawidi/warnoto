@@ -847,7 +847,7 @@ export function InspeksiMaterialCadangTab({
           {scopedBatches.length === 0 ? (
             <p style={{ margin: 0, fontSize: 13, color: C.muted }}>Belum ada BA tersimpan.</p>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(320px,1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(380px,1fr))", gap: 12 }}>
               {scopedBatches.map(batch => (
                 <BatchCard
                   key={batch.id}
@@ -1146,7 +1146,7 @@ function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onP
       boxShadow: "0 1px 2px rgba(16,24,40,0.04)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <div style={{ display: "grid", gap: 4 }}>
+        <div style={{ display: "grid", gap: 4, minWidth: 0, flex: "1 1 auto" }}>
           <div style={{ fontSize: 13, fontWeight: 800, color: C.accent, display: "inline-flex", alignItems: "center", gap: 6 }}>
             <ClipboardText size={14} weight="fill" /> {batch.nomorBa || "—"}
           </div>
@@ -1165,11 +1165,11 @@ function BatchCard({ batch, expanded, photoUrls, isMobile, C, sty, onToggle, onP
           </button>
         </div>
       </div>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        <MetaChip C={C} bold>UPT: {batch.namaUpt || batch.uptId || "—"}</MetaChip>
-        <MetaChip C={C}>Logistik: {batch.pelaksanaLogistik || "—"}</MetaChip>
-        <MetaChip C={C}>Pemeliharaan: {pelaksaraDisplay(batch.pelaksaraPemeliharaan)}</MetaChip>
-        <MetaChip C={C}>Manager: {batch.managerUpt || "—"}</MetaChip>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "6px 18px" }}>
+        <IdentityField label="UPT" value={batch.namaUpt || batch.uptId || "—"} C={C} />
+        <IdentityField label="Logistik" value={batch.pelaksanaLogistik || "—"} C={C} />
+        <IdentityField label="Pemeliharaan" value={pelaksaraDisplay(batch.pelaksaraPemeliharaan)} C={C} />
+        <IdentityField label="Manager" value={batch.managerUpt || "—"} C={C} />
       </div>
       {expanded && (batch.items || []).length > 0 && (
         <div style={{ display: "grid", gap: 8, marginTop: 4, borderTop: `1px solid ${C.border}`, paddingTop: 10 }}>
@@ -1199,6 +1199,16 @@ function MetaChip({ C, children, bold }) {
     <span style={{
       display: "inline-block", padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: bold ? 800 : 600,
       background: C.bg, color: bold ? C.text : C.muted, border: `1px solid ${C.border}`,
+      maxWidth: 220, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "middle",
     }}>{children}</span>
+  );
+}
+
+function IdentityField({ label, value, C }) {
+  return (
+    <div style={{ minWidth: 0, display: "grid", gap: 2 }}>
+      <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: ".4px", textTransform: "uppercase" }}>{label}</div>
+      <div title={value} style={{ fontSize: 13, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    </div>
   );
 }
