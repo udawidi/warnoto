@@ -113,11 +113,9 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await expect(page.getByRole("button", { name: /Submit ke Asman/ })).toBeVisible();
   });
 
-  // Uji akseptansi kritis (komentar OpnameLapanganView.jsx): scanner HID "mengetik" cepat
-  // (gap <120ms) ke kolom fokus -> harus ditangkap sebagai satu kode scan, BUKAN ikut
-  // terketik ke kolom qty. page.keyboard.press (bukan page.evaluate dispatch sintetis) dipakai
-  // supaya event benar-benar "trusted" dan diproses default action browser seperti alat asli.
-  test("burst scanner tidak mengotori kolom qty", async ({ isolatedPage: page }) => {
+  // Di layar hitung, input qty harus menerima keyboard desktop. Scanner HID aktif kembali
+  // setelah kembali ke daftar item; kontrak ini mencegah onScanStart memburamkan input qty.
+  test("update jumlah menerima ketikan manual lalu menyimpan qty", async ({ isolatedPage: page }) => {
     await openDraftSession(page);
     await page.getByRole("button", { name: "Mulai Hitung" }).click();
     const overlay = overlayOf(page);
@@ -128,13 +126,25 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await expect(qtyInput).toBeVisible();
     await expect(qtyInput).toHaveValue("");
 
-    for (const digit of ["1", "2", "3", "4"]) await page.keyboard.press(digit);
+    await page.keyboard.press("1");
+    await page.keyboard.press("2");
+    await expect(qtyInput).toHaveValue("12");
+    await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByText("Isolator Keramik 150 kV").click();
+    await expect(overlay.locator("input[type=number]")).toHaveValue("12");
+  });
+
+  test("scanner HID pada daftar item tetap membuka kartu hitung", async ({ isolatedPage: page }) => {
+    await openDraftSession(page);
+    await page.getByRole("button", { name: "Mulai Hitung" }).click();
+    const overlay = overlayOf(page);
+    await overlay.getByText("GTK — A-01").click();
+
+    for (const digit of "301234567") await page.keyboard.press(digit);
     await page.keyboard.press("Enter");
 
-    // Kode "1234" tidak match katalog manapun -> dialog "tidak ditemukan" muncul, membuktikan
-    // burst-nya DITANGKAP sebagai scan (onScan), bukan ketikan biasa ke kolom.
-    await expect(page.getByText(/Kode "1234" tidak ditemukan/)).toBeVisible();
-    await expect(qtyInput).toHaveValue("");
+    await expect(overlay.getByText("Qty Hasil Hitung Fisik")).toBeVisible();
+    await expect(overlay.getByText("Isolator Keramik 150 kV")).toBeVisible();
   });
 
   // Fix celah reachability (lihat komentar test recount di atas): di HP saat progress 100%,

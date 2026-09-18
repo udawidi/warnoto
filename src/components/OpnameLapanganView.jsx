@@ -71,11 +71,13 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
     setLokasiAktif(key); setScanning(false); setScreen("items");
   }
 
-  // Scanner alat (HID) — hanya aktif di layar item/hitung, blockInput menutup bug hasil scan ikut
-  // terketik ke kolom qty; onScanStart blur field qty yang lagi fokus SEBELUM karakter scan masuk
-  // (uji akseptansi kritis: kursor di kolom qty lalu tembak scanner -> angka TIDAK boleh kotor).
+  // Scanner alat (HID) — hanya aktif di layar item (bukan layar "hitung"). Di layar hitung,
+  // kolom qty diketik MANUAL; scanner burst-detector + onScanStart(blur) tak bisa membedakan
+  // ketikan manusia dari scanner, jadi keystroke pertama mem-blur field -> angka tak bisa
+  // diketik di desktop (bug 2026-09). Alur normal: scan item di layar items -> hitung -> simpan
+  // -> balik ke items (scanner aktif lagi) -> scan berikutnya. Scan-jump saat qty fokus dilepas.
   useHardwareScanner((code) => handleItemScan(code, false), {
-    enabled: (screen === "items" || screen === "hitung") && !scanning,
+    enabled: screen === "items" && !scanning,
     blockInput: true,
     onScanStart: () => { setReceiving(true); setTimeout(() => setReceiving(false), 400); const el = document.activeElement; if (el && typeof el.blur === "function") el.blur(); },
   });
