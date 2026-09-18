@@ -33,6 +33,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const qtyInputRefs = useRef({});
   const [pageSize, setPageSize] = useState(10);
   const [dragActive, setDragActive] = useState(false); // Fase 0: dropzone PID
+  const [showBlokProgress, setShowBlokProgress] = useState(false); // Progres per blok collapse default (opt-in, filter utama di toolbar)
   const dropInputRef = useRef(null);
   // Fase 1d: blok (lokasiId | "_TANPA_LOKASI") yang disentuh perangkat INI, per sesi (keyed by
   // opn.id) — dikirim ke saveOpname supaya merge-on-save cuma menimpa blok yang benar diedit di
@@ -732,7 +733,50 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           </div>
         )}
 
-        {/* Fase C: Dashboard progres per blok — klik chip untuk filter tabel ke blok itu. */}
+        {/* Freeze Gudang — Fase A: BLOKIR KERAS transaksi TUG (bukan lagi peringatan).
+            Hanya gudang sesi ini (bukan semua gudang+GI) — derive dari blok item sesi. */}
+        {hasRole(currentUser, "ADMIN","TL","ASMAN") && activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK" && (() => {
+          const sesiGudangIds = new Set();
+          for (const it of items) {
+            for (const b of getItemBlocks(it, lokasiList, gudangList)) {
+              if (b.gudangId) sesiGudangIds.add(b.gudangId);
+            }
+          }
+          if (!sesiGudangIds.size && activeOpname.gudangId) sesiGudangIds.add(activeOpname.gudangId);
+          const sesiGudangList = (gudangList||[]).filter(g=>sesiGudangIds.has(g.id));
+          return (
+          <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
+              🧊 Freeze Gudang (Blokir Transaksi TUG saat Opname)
+            </div>
+            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>
+              Gudang yang dicentang akan DIBLOKIR — transaksi TUG masuk/keluar dari/ke gudang itu ditolak selama sesi opname ini berjalan (otomatis aktif saat mulai hitung, lepas saat opname selesai/ditolak).
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
+              {sesiGudangList.map(g=>{
+                const checked = freezeSel.has(g.id);
+                return (
+                  <label key={g.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:`1px solid ${checked?"#1d4ed8":C.border}`,background:checked?"#dbeafe":"white",fontSize:12,cursor:"pointer"}}>
+                    <input type="checkbox" checked={checked} onChange={()=>setFreezeSel(s=>{const n=new Set(s); checked?n.delete(g.id):n.add(g.id); return n;})}/>
+                    {g.kode||g.nama}
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+              {activeOpname.freeze?.aktif ? (
+                <button style={sty.btn("danger","sm")} onClick={()=>toggleFreeze(false)}>❄️ Nonaktifkan Freeze</button>
+              ) : (
+                <button style={sty.btn("primary","sm")} disabled={!freezeSel.size} onClick={()=>toggleFreeze(true)}>🧊 Aktifkan Freeze</button>
+              )}
+              {activeOpname.freeze?.aktif && <span style={{fontSize:12,color:"#1d4ed8",fontWeight:700}}>🧊 Aktif sejak {fmtDate(activeOpname.freeze.at)}</span>}
+            </div>
+          </div>
+          );
+        })()}
+
+        {/* Fase C: Dashboard progres per blok — klik chip untuk filter tabel ke blok itu.
+            Default terlipat (opt-in) — filter Gudang/Blok utama ada di toolbar tabel. */}
         {!isReadOnly && (() => {
           const seen = new Set();
           const bloks = [];
@@ -745,12 +789,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             }
           }
           if (!bloks.length) return null;
+          bloks.sort((a,b)=>(a.lokasiKode||"").localeCompare(b.lokasiKode||"",undefined,{numeric:true}));
           return (
             <div style={{marginBottom:14,background:"#fff",border:`1px solid ${C.border}`,borderRadius:12,padding:"10px 12px"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                <span style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:.2}}>Progres per blok</span>
+              <button type="button" onClick={()=>setShowBlokProgress(v=>!v)} aria-expanded={showBlokProgress}
+                style={{display:"flex",width:"100%",alignItems:"center",justifyContent:"space-between",background:"none",border:"none",padding:0,cursor:"pointer",marginBottom:showBlokProgress?8:0}}>
+                <span style={{fontSize:12,fontWeight:600,color:C.muted,letterSpacing:.2}}>
+                  {showBlokProgress?"▾":"▸"} Progres per blok
+                </span>
                 <span style={{fontSize:12,color:C.muted}}>{bloks.filter(b=>blokProgress(activeOpname,b.lokasiId,lokasiList,gudangList).selesai).length}/{bloks.length} blok</span>
-              </div>
+              </button>
+              {showBlokProgress && (
               <div style={{display:"flex",flexWrap:"wrap",gap:6,rowGap:6,lineHeight:1.5}}>
                 {bloks.map((b,bi)=>{
                   const { total, counted, selesai } = blokProgress(activeOpname, b.lokasiId, lokasiList, gudangList);
@@ -770,40 +819,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   );
                 })}
               </div>
+              )}
             </div>
           );
         })()}
-
-        {/* Freeze Gudang — Fase A: BLOKIR KERAS transaksi TUG (bukan lagi peringatan). */}
-        {hasRole(currentUser, "ADMIN","TL","ASMAN") && activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK" && (
-          <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
-            <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
-              🧊 Freeze Gudang (Blokir Transaksi TUG saat Opname)
-            </div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>
-              Gudang yang dicentang akan DIBLOKIR — transaksi TUG masuk/keluar dari/ke gudang itu ditolak selama sesi opname ini berjalan (otomatis aktif saat mulai hitung, lepas saat opname selesai/ditolak).
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
-              {(gudangList||[]).map(g=>{
-                const checked = freezeSel.has(g.id);
-                return (
-                  <label key={g.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:`1px solid ${checked?"#1d4ed8":C.border}`,background:checked?"#dbeafe":"white",fontSize:12,cursor:"pointer"}}>
-                    <input type="checkbox" checked={checked} onChange={()=>setFreezeSel(s=>{const n=new Set(s); checked?n.delete(g.id):n.add(g.id); return n;})}/>
-                    {g.kode||g.nama}
-                  </label>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              {activeOpname.freeze?.aktif ? (
-                <button style={sty.btn("danger","sm")} onClick={()=>toggleFreeze(false)}>❄️ Nonaktifkan Freeze</button>
-              ) : (
-                <button style={sty.btn("primary","sm")} disabled={!freezeSel.size} onClick={()=>toggleFreeze(true)}>🧊 Aktifkan Freeze</button>
-              )}
-              {activeOpname.freeze?.aktif && <span style={{fontSize:12,color:"#1d4ed8",fontWeight:700}}>🧊 Aktif sejak {fmtDate(activeOpname.freeze.at)}</span>}
-            </div>
-          </div>
-        )}
 
         {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP.
             Pola card biru + label sama persis dengan "Step 1: Upload File SAP" di bawah,
@@ -1340,7 +1359,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
       {/* Zona upload PID — dropzone gantikan tombol "+ Opname SAP" (Fase 0, 0a). Sesi DRAFT
           baru cuma dibuat SETELAH file berhasil di-parse (startOpnameFromFile). */}
-      {canCreate && (
+      {canCreate && !activeOpname && (
         <div style={{marginBottom:20}}>
           {draftSessions.length>0 && draftSessions.slice(0,3).map(opn=>(
             <button key={opn.id} style={{...sty.btn("ghost","sm"),width:"100%",justifyContent:"flex-start",marginBottom:6}}
