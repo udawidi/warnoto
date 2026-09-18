@@ -1,36 +1,130 @@
-import { useEffect, useState } from "react";
-import { Plus, Trash } from "@phosphor-icons/react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MapPin, Plus, Trash, X } from "@phosphor-icons/react";
 import { deleteMtuKhsMasterRow, friendlyMtuKhsError, loadMtuKhsMaster, saveMtuKhsMasterRow } from "./mtuKhsApi.js";
-import { filterMtuHierarchy } from "./mtuKhsHierarchy.js";
 
-const label = item => item?.nama || item?.name || item?.id;
+const label = item => item?.nama || item?.name || item?.id || "-";
+const norm = value => String(value || "").trim().toLowerCase();
+const blank = { name: "", code: "", lat: "", lng: "", mapSourceUrl: "" };
+const coordOf = item => {
+  const latText = String(item?.lat ?? "").trim(), lngText = String(item?.lng ?? "").trim();
+  if (!latText || !lngText) return null;
+  const lat = Number(latText), lng = Number(lngText);
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180 ? { lat, lng } : null;
+};
+const rounded = value => Math.round(value * 1e6) / 1e6;
+const osmPointUrl = ({ lat, lng }) => `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`;
 
-export function MtuKhsMasterPanel({ currentUser, uitList = [], uptList = [], ultgList = [], onGiSaved }) {
-  const [gis, setGis] = useState([]); const [bays, setBays] = useState([]); const [error, setError] = useState("");
-  const [selection, setSelection] = useState({ uitId: "", uptId: "", ultgId: "", giId: "" }); const [form, setForm] = useState({ name: "", code: "" });
-  const [mapForm, setMapForm] = useState({ lat: "", lng: "", mapSourceUrl: "" });
+export function MtuKhsMasterPanel({ currentUser, uptList = [], ultgList = [], onGiSaved }) {
+  const [gis, setGis] = useState([]), [bays, setBays] = useState([]), [error, setError] = useState("");
+  const [query, setQuery] = useState(""), [uptId, setUptId] = useState(""), [ultgId, setUltgId] = useState(""), [missing, setMissing] = useState(false);
+  const [editing, setEditing] = useState(null), [draft, setDraft] = useState(blank), [saving, setSaving] = useState(false);
+  const [bayName, setBayName] = useState(""), [bayError, setBayError] = useState(""), [baySaving, setBaySaving] = useState(false);
+  const mapDivRef = useRef(null), mapRef = useRef(null), markerRef = useRef(null);
   const canManage = ["SUPERADMIN", "ADMIN_LOG_PUSAT", "ADMIN_UIT", "TL"].includes(currentUser?.role);
-  async function refresh() { const [gi, bay] = await Promise.all([loadMtuKhsMaster("mtu_khs_gardu_induk", { user: currentUser, uptList }), loadMtuKhsMaster("mtu_khs_gardu_induk_bay", { user: currentUser, uptList })]); setGis(gi.data || []); setBays(bay.data || []); }
-  useEffect(() => { refresh(); }, [currentUser, uptList]);
-  const visible = filterMtuHierarchy({ ...selection, uptList, ultgList, gis, bays }); const selectedGi = gis.find(item => item.id === selection.giId);
-  useEffect(() => { setMapForm({ lat: selectedGi?.lat ?? "", lng: selectedGi?.lng ?? "", mapSourceUrl: selectedGi?.mapSourceUrl ?? "" }); }, [selectedGi]);
-  const setSelectionValue = (key, value) => { setSelection(previous => ({ ...previous, [key]: value, ...(key === "uitId" ? { uptId: "", ultgId: "", giId: "" } : {}), ...(key === "uptId" ? { ultgId: "", giId: "" } : {}), ...(key === "ultgId" ? { giId: "" } : {}) })); setForm({ name: "", code: "" }); setError(""); };
-  async function save(kind) { const parent = kind === "GI" ? selection.ultgId : selection.giId; if (!form.name.trim() || !parent) return setError("Nama dan induk wajib diisi"); const id = `${kind === "GI" ? "GI" : "BAY"}-${form.code.trim() || Date.now()}`; const row = kind === "GI" ? { id, ultgId: parent, nama: form.name.trim(), kode: form.code.trim(), active: true } : { id, garduIndukId: parent, nama: form.name.trim(), kode: form.code.trim(), active: true }; const result = await saveMtuKhsMasterRow(kind === "GI" ? "mtu_khs_gardu_induk" : "mtu_khs_gardu_induk_bay", row); if (result.error) setError(friendlyMtuKhsError(result.error)); else { setForm({ name: "", code: "" }); setError(""); refresh(); } }
-  async function saveGiMap() {
-    if (!selectedGi) return setError("Pilih GI terlebih dahulu");
-    const latText = String(mapForm.lat).trim(), lngText = String(mapForm.lng).trim(), hasLat = latText !== "", hasLng = lngText !== "";
-    if (hasLat !== hasLng) return setError("Latitude dan longitude harus diisi berpasangan");
-    const lat = hasLat ? Number(latText) : null, lng = hasLng ? Number(lngText) : null;
-    if (hasLat && (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180)) return setError("Koordinat tidak valid. Latitude -90..90, longitude -180..180");
-    const mapSourceUrl = String(mapForm.mapSourceUrl || "").trim();
-    if (mapSourceUrl) { try { const parsed = new URL(mapSourceUrl); if (parsed.protocol !== "https:" || !parsed.hostname) throw new Error("invalid"); } catch { return setError("Sumber peta harus berupa URL HTTPS yang valid"); } }
-    const row = { ...selectedGi, lat, lng, mapSourceUrl: mapSourceUrl || null }, result = await saveMtuKhsMasterRow("mtu_khs_gardu_induk", row);
-    if (result.error) return setError(friendlyMtuKhsError(result.error));
-    onGiSaved?.(row);
-    setError(""); await refresh();
+  const ownUpt = currentUser?.role === "TL" ? (currentUser.uptId || currentUser.upt_id || "") : "";
+  const editableUpts = ownUpt ? uptList.filter(item => item.id === ownUpt) : uptList;
+
+  async function refresh() {
+    const [giResult, bayResult] = await Promise.all([
+      loadMtuKhsMaster("mtu_khs_gardu_induk", { user: currentUser, uptList }),
+      loadMtuKhsMaster("mtu_khs_gardu_induk_bay", { user: currentUser, uptList }),
+    ]);
+    if (giResult.error || bayResult.error) { setError(friendlyMtuKhsError(giResult.error || bayResult.error)); return; }
+    setGis(giResult.data || []); setBays(bayResult.data || []);
   }
-  async function remove(table, id) { const result = await deleteMtuKhsMasterRow(table, id); if (result.error) setError(friendlyMtuKhsError(result.error)); else refresh(); }
-  const previewLat = Number(mapForm.lat), previewLng = Number(mapForm.lng);
-  const previewUrl = String(mapForm.lat).trim() && String(mapForm.lng).trim() && Number.isFinite(previewLat) && Number.isFinite(previewLng) && previewLat >= -90 && previewLat <= 90 && previewLng >= -180 && previewLng <= 180 ? `https://www.openstreetmap.org/?mlat=${previewLat}&mlon=${previewLng}#map=16/${previewLat}/${previewLng}` : "";
-  return <section className="mtu-khs-master-panel"><div className="mtu-khs-master-panel__head"><span className="mtu-khs-eyebrow">Scoped master</span><h2>Gardu Induk / GI</h2><p>Hierarki: UIT → UPT → ULTG → GI → Bay. Bay melekat pada GI.</p></div><div className="mtu-khs-hierarchy-filters"><select aria-label="Filter UIT" value={selection.uitId} onChange={event => setSelectionValue("uitId", event.target.value)}><option value="">Pilih UIT</option>{uitList.map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select><select aria-label="Filter UPT" disabled={!selection.uitId} value={selection.uptId} onChange={event => setSelectionValue("uptId", event.target.value)}><option value="">Pilih UPT</option>{visible.upt.map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select><select aria-label="Filter ULTG" disabled={!selection.uptId} value={selection.ultgId} onChange={event => setSelectionValue("ultgId", event.target.value)}><option value="">Pilih ULTG</option>{visible.ultg.filter(item => !selection.uptId || (item.parentUptId || item.uptId) === selection.uptId).map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select><select aria-label="Filter GI" disabled={!selection.ultgId} value={selection.giId} onChange={event => setSelectionValue("giId", event.target.value)}><option value="">Pilih GI</option>{visible.gis.filter(item => item.ultgId === selection.ultgId).map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select></div>{canManage && selection.ultgId && <div className="mtu-khs-master-form"><input aria-label="Nama master" placeholder={selection.giId ? "Nama Bay" : "Nama Gardu Induk"} value={form.name} onChange={event => setForm(value => ({ ...value, name: event.target.value }))} /><input aria-label="Kode master" placeholder="Kode" value={form.code} onChange={event => setForm(value => ({ ...value, code: event.target.value }))} /><button type="button" className="approval-btn approval-btn--primary" onClick={() => save(selection.giId ? "BAY" : "GI")}><Plus size={17} /> Tambah {selection.giId ? "Bay" : "GI"}</button></div>}{selectedGi && canManage && <div className="mtu-khs-master-form mtu-khs-map-form"><input aria-label="Latitude GI" type="number" step="any" min="-90" max="90" placeholder="Latitude GI" value={mapForm.lat} onChange={event => setMapForm(value => ({ ...value, lat: event.target.value }))} /><input aria-label="Longitude GI" type="number" step="any" min="-180" max="180" placeholder="Longitude GI" value={mapForm.lng} onChange={event => setMapForm(value => ({ ...value, lng: event.target.value }))} /><input aria-label="Sumber peta GI" type="url" placeholder="URL sumber peta (HTTPS)" value={mapForm.mapSourceUrl} onChange={event => setMapForm(value => ({ ...value, mapSourceUrl: event.target.value }))} />{previewUrl && <a href={previewUrl} target="_blank" rel="noreferrer" style={{alignSelf:"center",fontSize:12}}>Buka titik ↗</a>}<button type="button" className="approval-btn approval-btn--primary" onClick={saveGiMap}>Simpan titik peta</button></div>}{error && <p className="mtu-khs-alert mtu-khs-alert--error">{error}</p>}<div className="mtu-khs-master-lists"><div><h3>Gardu Induk ({selection.ultgId ? visible.gis.length : 0})</h3>{selection.ultgId && visible.gis.filter(item => item.ultgId === selection.ultgId).map(item => <div className={`mtu-khs-master-row ${selection.giId === item.id ? "is-selected" : ""}`} key={item.id} role="button" tabIndex="0" onClick={() => setSelectionValue("giId", item.id)} onKeyDown={event => { if (event.key === "Enter" || event.key === " ") setSelectionValue("giId", item.id); }}><span><strong>{label(item)}</strong><small>{item.kode || item.code || item.ultgId}{item.lat != null && item.lng != null ? ` · ${Number(item.lat).toFixed(5)}, ${Number(item.lng).toFixed(5)}` : " · titik peta belum diisi"}</small></span>{canManage && <button type="button" aria-label="Nonaktifkan GI" onClick={event => { event.stopPropagation(); remove("mtu_khs_gardu_induk", item.id); }}><Trash size={16} /></button>}</div>)}</div><div><h3>Bay</h3>{!selection.giId ? <p className="mtu-khs-muted">Pilih GI untuk melihat Bay.</p> : visible.bays.map(item => <div className="mtu-khs-master-row" key={item.id}><span><strong>{label(item)}</strong><small>{item.kode || item.code || item.garduIndukId}</small></span>{canManage && <button type="button" aria-label="Nonaktifkan Bay" onClick={() => remove("mtu_khs_gardu_induk_bay", item.id)}><Trash size={16} /></button>}</div>)}</div></div></section>;
+  useEffect(() => { refresh(); }, [currentUser, uptList]);
+  useEffect(() => { if (ownUpt) setUptId(ownUpt); }, [ownUpt]);
+
+  const ultgMap = useMemo(() => new Map(ultgList.map(item => [item.id, item])), [ultgList]);
+  const uptMap = useMemo(() => new Map(uptList.map(item => [item.id, item])), [uptList]);
+  const parentUpt = gi => gi.uptId || ultgMap.get(gi.ultgId)?.parentUptId || ultgMap.get(gi.ultgId)?.uptId || "";
+  const visible = useMemo(() => gis.filter(gi => (!uptId || parentUpt(gi) === uptId) && (!ultgId || gi.ultgId === ultgId) && (!query || norm([label(gi), gi.kode, gi.code, gi.id].join(" ")).includes(norm(query))) && (!missing || !coordOf(gi))), [gis, uptId, ultgId, query, missing, ultgMap]);
+  const selectedBays = editing ? bays.filter(item => item.garduIndukId === editing.id) : [];
+  const editorPeers = useMemo(() => editing ? gis.filter(item => item.id !== editing.id && (item.ultgId === editing.ultgId || parentUpt(item) === parentUpt(editing))) : [], [editing, gis, ultgMap]);
+  const mapStart = coordOf(draft) || coordOf(editorPeers[0]) || { lat: -7.2575, lng: 112.7521 };
+
+  function open(gi) {
+    setError(""); setBayError(""); setBayName("");
+    const next = gi ? { ...gi, isNew: false } : { id: `GI-${Date.now()}`, isNew: true, uptId: ownUpt, ultgId: "" };
+    setEditing(next);
+    setDraft(gi ? { name: label(gi), code: gi.kode || gi.code || "", lat: gi.lat ?? "", lng: gi.lng ?? "", mapSourceUrl: gi.mapSourceUrl || "" } : blank);
+  }
+  const setValue = (key, value) => { setError(""); setDraft(previous => ({ ...previous, [key]: value })); };
+
+  async function save() {
+    if (!canManage) return;
+    const name = draft.name.trim(), latText = String(draft.lat).trim(), lngText = String(draft.lng).trim();
+    if (!name) return setError("Nama GI wajib diisi");
+    if (!editing.ultgId) return setError("ULTG wajib dipilih");
+    if ((latText === "") !== (lngText === "")) return setError("Latitude dan longitude harus diisi berpasangan");
+    const lat = latText ? Number(latText) : null, lng = lngText ? Number(lngText) : null;
+    if (latText && (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180)) return setError("Koordinat tidak valid");
+    const src = draft.mapSourceUrl.trim();
+    if (src) { try { const parsed = new URL(src); if (parsed.protocol !== "https:" || !parsed.hostname) throw Error(); } catch { return setError("Sumber peta harus URL HTTPS yang valid"); } }
+    setSaving(true);
+    const { isNew: _isNew, ...identity } = editing;
+    const row = { ...identity, nama: name, name, normalizedName: norm(name), kode: draft.code.trim(), code: draft.code.trim(), lat, lng, mapSourceUrl: src || null };
+    const result = await saveMtuKhsMasterRow("mtu_khs_gardu_induk", row);
+    setSaving(false);
+    if (result.error) return setError(friendlyMtuKhsError(result.error));
+    onGiSaved?.(row); await refresh(); setEditing(null);
+  }
+
+  async function addBay() {
+    if (!canManage || !editing?.id) return;
+    const name = bayName.trim(); if (!name) return setBayError("Nama Bay wajib diisi");
+    setBaySaving(true); setBayError("");
+    const result = await saveMtuKhsMasterRow("mtu_khs_gardu_induk_bay", { id: `BAY-${Date.now()}`, garduIndukId: editing.id, nama: name, normalizedName: norm(name), active: true });
+    setBaySaving(false);
+    if (result.error) return setBayError(friendlyMtuKhsError(result.error));
+    setBayName(""); await refresh();
+  }
+  async function removeBay(id) {
+    if (!canManage) return;
+    setBayError(""); const result = await deleteMtuKhsMasterRow("mtu_khs_gardu_induk_bay", id);
+    if (result.error) return setBayError(friendlyMtuKhsError(result.error));
+    await refresh();
+  }
+
+  useEffect(() => {
+    const node = mapDivRef.current;
+    if (!editing || !node || typeof window.L === "undefined") return undefined;
+    const map = window.L.map(node, { scrollWheelZoom: false }).setView([mapStart.lat, mapStart.lng], coordOf(draft) ? 15 : 11);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors", maxZoom: 19 }).addTo(map);
+    mapRef.current = map;
+    const updateFromClick = event => {
+      if (!canManage) return;
+      const lat = rounded(event.latlng.lat), lng = rounded(event.latlng.lng);
+      setDraft(previous => ({ ...previous, lat: String(lat), lng: String(lng), mapSourceUrl: osmPointUrl({ lat, lng }) }));
+      setError("");
+    };
+    if (canManage) map.on("click", updateFromClick);
+    requestAnimationFrame(() => map.invalidateSize());
+    return () => { map.off("click", updateFromClick); map.remove(); mapRef.current = null; markerRef.current = null; };
+  }, [editing?.id, canManage]);
+
+  useEffect(() => {
+    const map = mapRef.current, coord = coordOf(draft);
+    if (!map) return;
+    if (!coord) { if (markerRef.current) { map.removeLayer(markerRef.current); markerRef.current = null; } return; }
+    if (!markerRef.current) markerRef.current = window.L.marker([coord.lat, coord.lng]).addTo(map);
+    else markerRef.current.setLatLng([coord.lat, coord.lng]);
+  }, [draft.lat, draft.lng]);
+
+  return <section className="mtu-khs-master-panel">
+    <div className="mtu-khs-master-panel__head"><span className="mtu-khs-eyebrow">Master data</span><h2>Gardu Induk / GI</h2><p>Cari GI, pilih satu, lalu buka editor.</p></div>
+    <div className="mtu-khs-gi-toolbar"><input aria-label="Cari GI" placeholder="Cari nama atau kode GI" value={query} onChange={event => setQuery(event.target.value)} /><select aria-label="Filter UPT" value={uptId} onChange={event => { setUptId(event.target.value); setUltgId(""); }}><option value="">Semua UPT</option>{editableUpts.map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select><select aria-label="Filter ULTG" value={ultgId} onChange={event => setUltgId(event.target.value)}><option value="">Semua ULTG</option>{ultgList.filter(item => !uptId || (item.parentUptId || item.uptId) === uptId).map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select><label className="mtu-khs-check"><input type="checkbox" checked={missing} onChange={event => setMissing(event.target.checked)} /> Belum ada titik</label>{canManage && <button type="button" className="approval-btn approval-btn--primary" onClick={() => open()}><Plus size={17} /> GI baru</button>}</div>
+    {error && !editing && <p className="mtu-khs-alert mtu-khs-alert--error">{error}</p>}
+    <div className="mtu-khs-gi-list"><div className="mtu-khs-gi-list__count">{visible.length} GI ditemukan</div>{visible.map(gi => <button type="button" className="mtu-khs-gi-card" key={gi.id} onClick={() => open(gi)}><span><strong>{label(gi)}</strong><small>{gi.kode || gi.code || "Tanpa kode"} · {label(ultgMap.get(gi.ultgId))} · {label(uptMap.get(parentUpt(gi)))}</small></span><span className={`mtu-khs-status ${coordOf(gi) ? "mtu-khs-status--green" : "mtu-khs-status--yellow"}`}>{coordOf(gi) ? "Ada titik" : "Belum ada titik"}</span></button>)}{!visible.length && <p className="mtu-khs-muted">GI tidak ditemukan.</p>}</div>
+    {editing && <div className="mtu-khs-gi-editor-backdrop" role="presentation" onMouseDown={event => event.target === event.currentTarget && !saving && setEditing(null)}><aside className="mtu-khs-gi-editor" role="dialog" aria-modal="true" aria-labelledby="mtu-khs-gi-editor-title">
+      <header><div><span className="mtu-khs-eyebrow">{editing.isNew ? "Tambah GI" : "Edit GI"}</span><h2 id="mtu-khs-gi-editor-title">{editing.isNew ? "Gardu Induk baru" : label(editing)}</h2></div><button className="mtu-khs-icon-button" type="button" aria-label="Tutup" onClick={() => !saving && setEditing(null)}><X size={20} /></button></header>
+      <div className="mtu-khs-gi-editor__body">{error && <p className="mtu-khs-alert mtu-khs-alert--error">{error}</p>}<div className="mtu-khs-editor-fields">
+        <label>Nama GI<input disabled={!canManage} value={draft.name} onChange={event => setValue("name", event.target.value)} /></label><label>Kode GI<input disabled={!canManage} value={draft.code} onChange={event => setValue("code", event.target.value)} /></label>
+        {editing.isNew ? <><label>UPT<select disabled={!canManage} value={editing.uptId || ""} onChange={event => setEditing(previous => ({ ...previous, uptId: event.target.value, ultgId: "" }))}><option value="">Pilih UPT</option>{editableUpts.map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select></label><label>ULTG<select disabled={!canManage} value={editing.ultgId || ""} onChange={event => setEditing(previous => ({ ...previous, ultgId: event.target.value }))}><option value="">Pilih ULTG</option>{ultgList.filter(item => !editing.uptId || (item.parentUptId || item.uptId) === editing.uptId).map(item => <option key={item.id} value={item.id}>{label(item)}</option>)}</select></label></> : <div className="mtu-khs-readonly"><span>UPT / ULTG</span><strong>{label(uptMap.get(parentUpt(editing)))} · {label(ultgMap.get(editing.ultgId))}</strong></div>}
+        <label>Latitude<input disabled={!canManage} type="number" step="any" min="-90" max="90" value={draft.lat} onChange={event => setValue("lat", event.target.value)} /></label><label>Longitude<input disabled={!canManage} type="number" step="any" min="-180" max="180" value={draft.lng} onChange={event => setValue("lng", event.target.value)} /></label><label className="mtu-khs-editor-fields__wide">Sumber peta (HTTPS)<input disabled={!canManage} type="url" value={draft.mapSourceUrl} onChange={event => setValue("mapSourceUrl", event.target.value)} /></label>
+      </div><div ref={mapDivRef} className="mtu-khs-map-preview__canvas" role="application" aria-label="Peta lokasi GI" />{coordOf(draft) && <a className="mtu-khs-map-preview__link" href={osmPointUrl(coordOf(draft))} target="_blank" rel="noreferrer"><MapPin size={15} /> Buka peta</a>}
+      <section className="mtu-khs-bay-section"><h3>Bay ({selectedBays.length})</h3>{canManage && <div className="mtu-khs-bay-add"><input aria-label="Nama Bay baru" placeholder="Nama Bay" value={bayName} onChange={event => { setBayName(event.target.value); setBayError(""); }} /><button type="button" onClick={addBay} disabled={baySaving}><Plus size={15} /> {baySaving ? "Menyimpan..." : "Tambah Bay"}</button></div>}{bayError && <p className="mtu-khs-alert mtu-khs-alert--error">{bayError}</p>}{selectedBays.map(item => <div className="mtu-khs-bay-row" key={item.id}><span>{label(item)}</span>{canManage && <button type="button" aria-label={`Hapus ${label(item)}`} onClick={() => removeBay(item.id)}><Trash size={16} /></button>}</div>)}</section></div>
+      <footer><button type="button" className="approval-btn" onClick={() => setEditing(null)} disabled={saving}>Tutup</button>{canManage && <button type="button" className="approval-btn approval-btn--primary" onClick={save} disabled={saving}>{saving ? "Menyimpan..." : "Simpan GI"}</button>}</footer>
+    </aside></div>}
+  </section>;
 }

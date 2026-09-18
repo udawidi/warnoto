@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-17
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-18
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -63,6 +63,10 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **UI Master GI dan peta dashboard selesai (2026-09-18).** Master GI memakai pencarian, filter UPT/ULTG/titik kosong, dan editor samping dengan peta Leaflet interaktif. Klik peta mengisi koordinat dan URL OSM; UPT/ULTG GI lama tetap terkunci. Dashboard menampilkan gudang saja saat awal; GI muncul lewat toggle. Verifikasi: unit 299/299, E2E GI 4/4, build, diff-check, dan browser localhost akun UPT Surabaya (3 gudang awal, 30 pin GI saat toggle, popup lokasi). Penyimpanan edit nyata belum diuji agar tidak mengubah database produksi.
+
+- **GI sebagai lokasi TUG (pekerjaan Claude 2026-09-18).** GI diturunkan dari master MTU-KHS menjadi pseudo-gudang `GI-<giId>` dan pseudo-blok `GILOK-<giId>` bertanda `__gi:true`, tanpa perubahan skema. Stok GI menyimpan `lokasi_id` sintetis dan `stocks.upt_id` untuk scope RLS. TUG-3 memilih GI sebagai tujuan; TUG-8/9 dapat memakai GI sebagai asal. Smoke form TUG-3/9 dan build lulus. Verifikasi approval TUG-3 hingga Data Stok serta RLS produksi masih terbuka; lihat langkah berikutnya.
 
 - **Analisa AI Maturity selesai di kode (2026-09-17).** Checklist lokal membedakan slot belum terunggah dari berkas yang masih perlu verifikasi isi. Prompt diringkas dengan keluaran maksimal 300 token, cache diberi versi baru, dan kegagalan tidak lagi membuat Level 1 palsu. Uji unit Maturity 17/17, build, E2E desktop dan ponsel 360 px lulus. Satu uji full suite tentang daftar role masih gagal di area yang tidak diubah. Verifikasi respons AI pada produksi masih perlu dilakukan setelah deploy.
 
@@ -594,6 +598,9 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Smoke UI GI setelah deploy pada akun TL: cari GI, buka editor, cek titik peta dan toggle dashboard. Uji simpan edit lokasi nyata hanya pada GI yang disetujui pengguna; jangan mengubah data produksi sebagai uji coba.
+- Verifikasi end-to-end approval TUG-3 tujuan GI sampai Data Stok menampilkan lokasi GI sesuai UPT; cek konsol setelah memilih GI lalu kembali ke gudang biasa.
+
 - Verifikasi produksi Penilaian Maturity > Input: checklist muncul tanpa request AI; tombol Analisa AI memberi level potensial; kegagalan dapat dicoba ulang tanpa mengubah nilai manual. Cek waktu respons nyata.
 
 0. Review hasil cetak BA + TUG15 Stock Opname di localhost dengan sesi SAP selesai; uji juga child Non-SAP selesai dan kasus SAP-only. Jika format sudah disetujui, commit lalu push `main` hanya atas perintah eksplisit user.
@@ -727,5 +734,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-16 Codex: **Validasi foto TUG-10, penyelarasan banner, dan paket resmi BA+TUG15 Stock Opname selesai serta terverifikasi lokal; belum commit/push.**
-- 2026-09-17 Codex: **Analisa AI Maturity diringankan dan dipisahkan dari nilai resmi; rilis ke `main` atas izin user, smoke produksi menyusul.**
+- 2026-09-18 Claude: **Lokasi GI di TUG Barang Masuk/Pengeluaran diimplementasi (pseudo-gudang MTU-KHS, tanpa skema DB); build hijau + smoke browser dasar lolos; diserahkan ke Codex untuk re-verifikasi console + end-to-end approval + commit. Kuota Claude habis.**
+- 2026-09-18 Codex: **UI Master GI dan toggle peta dashboard selesai; unit, E2E, build, dan localhost lulus; rilis `main` atas izin user.**

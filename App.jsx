@@ -1676,9 +1676,16 @@ export default function PLNWarehouse() {
 
   // Peta Wilayah Gudang: scope ke UPT login (null = nasional, lihat semua)
   const petaScopeUptIds = getScopeUptIds(currentUser, uptList); // null=nasional
-  const petaGudangList = petaScopeUptIds === null ? gudangList : gudangList.filter(g => petaScopeUptIds.includes(g.uptId));
+  const petaScopedList = petaScopeUptIds === null ? gudangList : gudangList.filter(g => petaScopeUptIds.includes(g.uptId));
+  // GI adalah shadow gudang untuk transaksi. Marker-nya sengaja dipisah agar peta
+  // dashboard tetap fokus ke gudang saat pertama dibuka.
+  const petaGudangList = petaScopedList.filter(g => !g?.__gi);
+  const petaGiList = petaScopedList.filter(g => g?.__gi);
+  const petaMapList = [...petaGudangList, ...petaGiList];
   // Overlay Alat Berat di peta — default OFF supaya tampilan peta lama tak berubah tanpa aksi user.
   const [showAlatBerat, setShowAlatBerat] = useState(false);
+  // Overlay GI — default OFF; marker hanya ditambahkan saat user meminta.
+  const [showGi, setShowGi] = useState(false);
   // Marker live per-unit (Batch 3a) — layer terpisah dari agregat showAlatBerat, default OFF.
   const [showLiveAlat, setShowLiveAlat] = useState(false);
 
@@ -1699,6 +1706,16 @@ export default function PLNWarehouse() {
     // kalau alamat tidak mengandung Plus Code (gudang lama yang alamatnya masih teks biasa).
     const gudangWithCoord = petaGudangList
       .map(g => ({ g, coord: extractLatLngFromAddress(g.alamat) || (g.lat!=null && g.lng!=null ? {lat:g.lat,lng:g.lng} : null) }))
+      .filter(x => x.coord);
+    const validCoord = value => {
+      const latText = String(value?.lat ?? "").trim(), lngText = String(value?.lng ?? "").trim();
+      if (!latText || !lngText) return null;
+      const lat = Number(latText), lng = Number(lngText);
+      return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+        ? { lat, lng } : null;
+    };
+    const giWithCoord = petaGiList
+      .map(g => ({ g, coord: validCoord(g) }))
       .filter(x => x.coord);
     if (!petaWilayahMapRef.current) {
       petaWilayahMapRef.current = window.L.map(petaWilayahDivRef.current, { scrollWheelZoom:false }).setView([-7.2945, 112.7321], 12);
@@ -1721,6 +1738,34 @@ export default function PLNWarehouse() {
       window.L.marker([coord.lat, coord.lng], {icon:gudangIconFor(g.uptId)}).addTo(map._markersLayer)
         .bindPopup(`<b>🏭 ${g.nama}</b> (${g.kode})<br/>${g.alamat||"-"}<br/>${itemCount} baris stok • Total Qty: <b>${fmtNum(totalQty)}</b>${lastMaturity?`<br/>Maturity: Level ${lastMaturity.level} (${MATURITY_LEVELS[lastMaturity.level]})`:""}`);
     });
+    // Overlay GI — layer terpisah dari marker gudang dan overlay alat. Popup GI
+    // dibangun sebagai DOM node supaya nama/alamat dari master tidak menjadi HTML.
+    if (!map._giLayerGroup) map._giLayerGroup = window.L.layerGroup().addTo(map);
+    map._giLayerGroup.clearLayers();
+    if (showGi) {
+      const giIcon = window.L.divIcon({
+        html: '<div style="width:30px;height:30px;border-radius:50%;background:#7c3aed;border:2px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;font-size:15px;color:white;">⚡</div>',
+        className: "", iconSize:[30,30], iconAnchor:[15,15], popupAnchor:[0,-15],
+      });
+      giWithCoord.forEach(({g, coord}) => {
+        const name = String(g.nama || g.name || "Gardu Induk");
+        const uptLabel = String(uptList.find(u => u.id === g.uptId)?.nama || g.uptId || "-");
+        let mapUrl = "";
+        try {
+          const parsed = new URL(String(g.mapSourceUrl || ""));
+          if (parsed.protocol === "https:") mapUrl = parsed.href;
+        } catch { /* fallback to generated coordinate link */ }
+        if (!mapUrl) mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${coord.lat},${coord.lng}`)}`;
+        const popup = document.createElement("div");
+        const title = document.createElement("strong"); title.textContent = `⚡ ${name}`;
+        const upt = document.createElement("div"); upt.textContent = `UPT: ${uptLabel}`;
+        const coords = document.createElement("div"); coords.textContent = `${coord.lat}, ${coord.lng}`;
+        const link = document.createElement("a");
+        link.href = mapUrl; link.target = "_blank"; link.rel = "noreferrer"; link.textContent = "Buka titik peta ↗";
+        popup.append(title, upt, coords, link);
+        window.L.marker([coord.lat, coord.lng], { icon: giIcon }).addTo(map._giLayerGroup).bindPopup(popup);
+      });
+    }
     // Overlay Alat Berat (toggle) — layer terpisah dari marker gudang, dibersihkan &
     // dibangun ulang tiap render supaya tak numpuk. ponytail: agregat per UPT (bukan
     // titik per alat) karena field lokasi alat (eq.upt/eq.lokasi) masih teks bebas
@@ -1791,10 +1836,11 @@ export default function PLNWarehouse() {
       if (!liveWantedIds.has(id)) { liveLayer.removeLayer(liveLayer._byId[id]); delete liveLayer._byId[id]; }
     });
     const pts = gudangWithCoord.map(x => [x.coord.lat, x.coord.lng]);
+    if (showGi) pts.push(...giWithCoord.map(x => [x.coord.lat, x.coord.lng]));
     if (pts.length === 1) map.setView(pts[0], 13);
     else if (pts.length > 1) map.fitBounds(pts, { padding: [30, 30], maxZoom: 13 });
     setTimeout(()=>map.invalidateSize(), 100);
-  }, [tab, dashTab, petaGudangList, stocks, lokasiList, maturityAssessments, currentUser, showAlatBerat, heavyEquipmentList, uptList, petaScopeUptIds, showLiveAlat, equipmentPositions]);
+  }, [tab, dashTab, petaGudangList, petaGiList, stocks, lokasiList, maturityAssessments, currentUser, showAlatBerat, showGi, heavyEquipmentList, uptList, petaScopeUptIds, showLiveAlat, equipmentPositions]);
 
   // Toast error dibiarkan tampil lebih lama (5.5s) daripada sukses (3.5s) —
   // pesan error biasanya lebih panjang/penting untuk dibaca tuntas, terutama
@@ -4345,8 +4391,9 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             enrichedStocks={scopedEnrichedStocks} txns={scopedTxns} katalogList={katalogList} uptList={uptList} lokasiList={lokasiList} rencanaKedatanganList={rencanaKedatanganList}
             topN={topN} setTopN={setTopN} pemakaianMode={pemakaianMode} setPemakaianMode={setPemakaianMode}
             heavyEquipmentList={heavyEquipmentList} heavyEquipmentLoans={heavyEquipmentLoans} attbList={scopedAttbList} attbBongkaranPool={attbBongkaranPool}
-            materialCadangData={materialCadangData} gudangList={petaGudangList} petaWilayahDivRef={petaWilayahDivRef}
+            materialCadangData={materialCadangData} gudangList={petaMapList} petaWilayahDivRef={petaWilayahDivRef}
             showAlatBerat={showAlatBerat} setShowAlatBerat={setShowAlatBerat}
+            showGi={showGi} setShowGi={setShowGi}
             showLiveAlat={showLiveAlat} setShowLiveAlat={setShowLiveAlat}
             petaUptLabel={petaScopeUptIds === null ? "Semua UPT" : (petaScopeUptIds.length === 1 ? currentUptNama : "Wilayah UIT")}
             procurementSummary={procurementSummary}

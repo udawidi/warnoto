@@ -47,4 +47,19 @@ test.describe("GI fixture selection stays local to e2e", () => {
     await expect(page.getByRole("dialog", { name: "Preview lokasi GI" })).toBeVisible();
     await expect(page.getByRole("link", { name: /Buka peta internet/ })).toHaveAttribute("href", /openstreetmap\.org/);
   });
+
+  test("dashboard shows GI markers only when GI is enabled", async ({ isolatedPage: page }) => {
+    await openApp(page);
+    const map = page.locator(".dashboard-map-card");
+    await expect(map).toBeVisible();
+    const markers = map.locator(".leaflet-marker-icon");
+    const giMarkers = markers.filter({ hasText: "⚡" });
+    await expect(giMarkers).toHaveCount(0);
+
+    const toggle = map.getByRole("checkbox", { name: "Tampilkan GI" });
+    await toggle.check();
+    await expect(giMarkers).toHaveCount(1); // active GI with coordinates; missing/inactive excluded
+    await toggle.uncheck();
+    await expect(giMarkers).toHaveCount(0);
+  });
 });

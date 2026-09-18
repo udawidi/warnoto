@@ -6,23 +6,28 @@ import { UPT_MAP_COLOR } from "../theme.js";
 
 export function DashboardRingkasanBlock({
   C, currentUser, gudangList, uptList, uptNama, petaWilayahDivRef, stockCountList,
-  setTab, setOpnameSubTab, showAlatBerat, setShowAlatBerat, showLiveAlat, setShowLiveAlat,
+  setTab, setOpnameSubTab, showAlatBerat, setShowAlatBerat, showGi, setShowGi, showLiveAlat, setShowLiveAlat,
 }){
+  const warehouseList = gudangList.filter(g => !g?.__gi);
   // Legenda warna per-UPT hanya relevan kalau peta memang menampilkan >1 UPT sekaligus
   // (viewer UIT/Pusat) — dicek langsung dari isi gudangList (sudah discope App.jsx),
   // bukan cek tier role terpisah, supaya otomatis benar kalau scoping berubah nanti.
-  const mapUptIds = [...new Set(gudangList.map(g=>g.uptId).filter(Boolean))];
+  const mapUptIds = [...new Set(warehouseList.map(g=>g.uptId).filter(Boolean))];
   return (
           <div className="dashboard-insight-grid">
             <section className="dashboard-insight-card dashboard-map-card">
               <div className="dashboard-insight-card__header">
                 <div>
                   <strong>Peta Wilayah Gudang {uptNama}</strong>
-                  <span>{gudangList.filter(g=>g.lat!=null&&g.lng!=null).length} dari {gudangList.length} gudang memiliki koordinat GPS</span>
+                  <span>{warehouseList.filter(g=>g.lat!=null&&g.lng!=null).length} dari {warehouseList.length} gudang memiliki koordinat GPS</span>
                 </div>
                 <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.muted,fontWeight:600,cursor:"pointer"}}>
                   <input type="checkbox" checked={!!showAlatBerat} onChange={e=>setShowAlatBerat(e.target.checked)}/>
                   Alat Berat
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.muted,fontWeight:600,cursor:"pointer"}}>
+                  <input type="checkbox" aria-label="Tampilkan GI" checked={!!showGi} onChange={e=>setShowGi(e.target.checked)}/>
+                  GI
                 </label>
                 <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,color:C.muted,fontWeight:600,cursor:"pointer"}}>
                   <input type="checkbox" checked={!!showLiveAlat} onChange={e=>setShowLiveAlat(e.target.checked)}/>
@@ -46,7 +51,7 @@ export function DashboardRingkasanBlock({
                   ))}
                 </div>
               )}
-              {gudangList.filter(g=>g.lat==null||g.lng==null).length>0 && hasRole(currentUser, "ADMIN") && (
+              {warehouseList.filter(g=>g.lat==null||g.lng==null).length>0 && hasRole(currentUser, "ADMIN") && (
                 <div className="dashboard-insight-card__notice">Ada gudang yang belum memiliki koordinat GPS. Lengkapi melalui Master Data.</div>
               )}
             </section>
