@@ -3,6 +3,7 @@
 // (katalog, satpam, timmutu, organisasi, gudang, akun, migrasi, auditLog, perms).
 // JSX/logic tidak diubah — hanya relokasi.
 import { useState } from "react";
+import { supabase } from "../supabaseClient.js";
 import { can } from "../lib/perms.js";
 import { ROLES, hasRole, roleTier, getScopeUptIds, inScopeUpt } from "../lib/roles.js";
 import { katalogSapLabel, sapBadgeStyleForLabel } from "../lib/sap.js";
@@ -15,6 +16,7 @@ import { AuditLogPage } from "./AuditLogPage.jsx";
 import { PermMatrixPage } from "./PermMatrixPage.jsx";
 import { NotifRecipientPanel } from "./NotifRecipientPanel.jsx";
 import { MtuKhsMasterPanel } from "../features/mtu-khs/MtuKhsMasterPanel.jsx";
+import { buildLabelBlokHTML } from "../lib/docBuilders.js";
 
 export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockSubTab, filteredKatalog, satpamList: rawSatpamList, supplierList, openAddSupplier, openEditSupplier, deleteSupplier, timMutuList: rawTimMutuList, uitList: rawUitList, uptList: rawUptList, ultgList: rawUltgList, users, gudangList: rawGudangList, lokasiList: rawLokasiList, subGudangList, visibleGudangList: rawVisibleGudangList, openAddKatalog, openAddSatpam, openAddUIT, openAddGudang, openAddAkun, importGudangOpen, setImportGudangOpen, showGudangMaintenance, setShowGudangMaintenance, importLokasiOpen, setImportLokasiOpen, gudangCapacityImports, setGudangCapacityImports, saveToCloud, showToast, backfillGudangCoordFromCapacity, dedupeGudangDanSubGudang, isKodeDuplicateInSubGudang, setLokasiList, syncLokasi, maraUploadProgress, maraUploadLoading, uploadMaraToDB, katalogList, katalogSearch, setKatalogSearch, katalogFilterBelumMara, setKatalogFilterBelumMara, pagedKatalog, stocks, openEditKatalog, deleteKatalog, katalogPageSize, setKatalogPageSize, katalogPageClamped, setKatalogPage, katalogTotalPages, openEditSatpam, deleteSatpam, openEditTimMutu, orgSearch, setOrgSearch, collapsedUitIds, setCollapsedUitIds, openAddUPT, openEditUIT, deleteUIT, openAddULTG, openEditUPT, deleteUPT, openEditULTG, deleteULTG, expandedGudangId, setExpandedGudangId, openEditGudang, deleteGudang, showGudangDenahTools, setShowGudangDenahTools, uploadDenahGudang, denahLoading, mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, manualAddMode, setManualAddMode, ocrSuggestGudangId, setOcrSuggestGudangId, ocrSuggestSubGudangId, setOcrSuggestSubGudangId, ocrSuggestions, setOcrSuggestions, assignLokasiKoordinat, suggestKodeFromOcr, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds, uploadDenahSubGudang, denahSubLoading, mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub, assignLokasiKoordinatSub, openEditLokasi, requestDeleteLokasi, selectedSubGudangId, setSelectedSubGudangId, openEditAkun, resetMfa, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, setStocks, setKatalogList, setTxns, reloadRolePerms, onGiSaved }) {
   const [akunSearch, setAkunSearch] = useState("");
@@ -38,6 +40,32 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
   const satpamList = (dataScope === null ? rawSatpamList : rawSatpamList.filter(s => inScopeUpt(satpamUptId(s), dataScope))).filter(s => !masterUptFilter || satpamUptId(s) === masterUptFilter);
   const timMutuList = (dataScope === null ? rawTimMutuList : rawTimMutuList.filter(t => t.uptId ? inScopeUpt(t.uptId, dataScope) : inScopeUpt(legacySurabayaId, dataScope))).filter(t => !masterUptFilter || (t.uptId||legacySurabayaId) === masterUptFilter);
   const gudangDisplay = visibleGudangList.filter(g => !masterUptFilter || g.uptId === masterUptFilter);
+
+  async function printBlokLabels(blocks, gudang) {
+    const list = (blocks || []).filter(l => l?.id);
+    if (!list.length) { showToast?.("Belum ada blok untuk dicetak.", "error"); return; }
+    if (!supabase) { showToast?.("Koneksi server belum tersedia.", "error"); return; }
+    // Buka popup dalam event klik sebelum await; browser memblokir window.open
+    // yang baru dipanggil setelah query token selesai.
+    const popup = window.open("", "_blank");
+    if (!popup) { showToast?.("Popup cetak diblokir browser. Izinkan popup lalu coba lagi.", "error"); return; }
+    popup.opener = null;
+    popup.document.write("<p style='font-family:system-ui;padding:24px'>Menyiapkan label QR…</p>");
+    try {
+      const { data, error } = await supabase.from("lokasi").select("id,public_token").in("id", list.map(l => l.id));
+      if (error) { popup.close(); showToast?.("QR publik belum siap. Terapkan migrasi lokasi public_token terlebih dahulu.", "error"); return; }
+      const tokenByLokasi = Object.fromEntries((data || []).map(row => [row.id, row.public_token]).filter(([, token]) => token));
+      if (list.some(l => !tokenByLokasi[l.id])) { popup.close(); showToast?.("Token QR blok belum tersedia. Terapkan migrasi lokasi public_token terlebih dahulu.", "error"); return; }
+      const html = await buildLabelBlokHTML(list, gudang, tokenByLokasi);
+      popup.document.open();
+      popup.document.write(html);
+      popup.document.close();
+    } catch (err) {
+      console.error("printBlokLabels", err);
+      popup.close();
+      showToast?.("Label QR gagal dibuat.", "error");
+    }
+  }
   return (
           <div className={`workspace-page master-page master-page--${stockSubTab}`}>
             <div className="workspace-page-toolbar">
@@ -476,6 +504,9 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                           <div style={{fontSize:12,color:C.muted,marginTop:2}}>{bloklokasi.length} blok terkait, {blokWithCoord.length} sudah ter-peta{subsOfGudang.length>0?` • ${subsOfGudang.length} Sub Gudang`:""}</div>
                         </div>
                         <div className="master-warehouse-card__actions">
+                          {bloklokasi.length > 0 && (
+                            <button title="Cetak semua QR blok gudang" style={sty.btn("ghost","sm")} onClick={e=>{e.stopPropagation();printBlokLabels(bloklokasi,g);}}>QR {isMobile ? "" : "Blok"}</button>
+                          )}
                           {hasRole(currentUser, "TL") && (
                             <div className="master-warehouse-card__admin-actions" style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
                               <button aria-label="Edit gudang" title="Edit gudang" style={sty.btn("ghost","sm")} onClick={()=>openEditGudang(g)}>{isMobile?"✏️":"✏️ Edit"}</button>
@@ -680,6 +711,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                           </div>
                                           <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                                             <span style={{fontSize:12,color:n>0?C.accent:C.muted,fontWeight:700}}>{n} item</span>
+                                            <button title="Cetak QR blok" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>printBlokLabels([l],g)}>QR</button>
                                             {hasRole(currentUser, "TL") && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>openEditLokasi(l)}>✏️</button>}
                                             {hasRole(currentUser, "TL") && <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"2px 8px"}} onClick={()=>requestDeleteLokasi(l)}>🗑️</button>}
                                           </div>

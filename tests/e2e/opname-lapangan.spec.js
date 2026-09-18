@@ -45,6 +45,14 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     const overlay = overlayOf(page);
     await overlay.getByText("GTK — A-01").click();
     await expect(overlay.getByText("Isolator Keramik 150 kV")).toBeVisible();
+    for (const width of [320, 360]) {
+      await page.setViewportSize({ width, height: 700 });
+      const sizes = await overlay.locator(".opname-field-mode__change-block, .opname-field-mode__actions > button")
+        .evaluateAll(buttons => buttons.map(button => ({ width: button.getBoundingClientRect().width, height: button.getBoundingClientRect().height })));
+      expect(sizes).toHaveLength(3);
+      expect(sizes.every(size => size.width >= 44 && size.height >= 44)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width + 1);
+    }
   });
 
   // Paling penting: selisih wajib hitung ulang (blind) sebelum submit boleh lanjut.

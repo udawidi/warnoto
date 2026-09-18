@@ -7,7 +7,7 @@ import { can } from "../lib/perms.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import * as XLSX from "xlsx";
 
-export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession }) {
+export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, previewStockCount, saveStockCountSession, approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession, showWork=true, showHistory=true }) {
   const [uploading, setUploading] = useState(false);
   const [tindakanFilter, setTindakanFilter] = useState("ALL");
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -64,6 +64,7 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
 
   return (
     <div>
+      <div style={{display:showWork?"block":"none"}}>
       <OperationsHero
         eyebrow="Stock Count"
         title="Stock Count"
@@ -185,6 +186,8 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
         );
       })()}
 
+      </div>
+      <div style={{display:showHistory?"block":"none"}}>
       {orderedStockCountList.length===0 ? (
         !draftItems && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada sesi Stock Count. {can(currentUser, "aksi.import", rolePerms) && "Klik \"Upload CSV/XLSX SAP\" untuk mulai."}</div>
       ) : orderedStockCountList.map(session => {
@@ -293,6 +296,7 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

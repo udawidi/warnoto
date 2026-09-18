@@ -443,6 +443,9 @@ export function scanUrlFor(katalogId) {
 }
 
 // URL halaman scan publik untuk satu blok lokasi (label QR blok gudang, Fase 2 Stock Opname).
-export function lokasiScanUrlFor(lokasiId) {
-  return `${PUBLIC_APP_ORIGIN}/?loc=${encodeURIComponent(lokasiId)}`;
+// Token berada di fragment supaya tidak ikut terkirim dalam request HTTP/referrer.
+// Tanpa token, URL tetap kompatibel untuk pemilihan blok di Mode Lapangan.
+export function lokasiScanUrlFor(lokasiId, publicToken) {
+  const base = `${PUBLIC_APP_ORIGIN}/?loc=${encodeURIComponent(lokasiId)}`;
+  return publicToken ? `${base}#t=${encodeURIComponent(publicToken)}` : base;
 }

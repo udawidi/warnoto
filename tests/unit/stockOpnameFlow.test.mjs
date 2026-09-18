@@ -9,6 +9,21 @@ import {
   resolveStockOpnameDocumentIdentity,
   parseStockOpnamePidRefs,
 } from "../../src/lib/stockOpnameFlow.js";
+import {
+  allBloksSelesai,
+  applyQtyToItem,
+  itemCounted,
+  sumHitungPerLokasi,
+  extractLokasiIdFromScan,
+} from "../../src/lib/sap.js";
+import { lokasiScanUrlFor } from "../../src/lib/utils.js";
+
+test("QR blok publik tetap terbaca sebagai pilihan blok di Mode Lapangan", () => {
+  const url = lokasiScanUrlFor("TEST-BLOK A", "123e4567-e89b-42d3-a456-426614174000");
+  assert.match(url, /\?loc=TEST-BLOK%20A#t=123e4567-e89b-42d3-a456-426614174000$/);
+  assert.equal(extractLokasiIdFromScan(url), "TEST-BLOK A");
+  assert.equal(extractLokasiIdFromScan(`https://warnoto.vercel.app${url}`), "TEST-BLOK A");
+});
 
 test("SAP opname hanya mengenal tiga kategori dan menolak Non-SAP", () => {
   assert.deepEqual(SAP_OPNAME_CATEGORIES, ["Cadang", "Persediaan", "Pre Memory"]);
@@ -28,6 +43,52 @@ test("progress opname dapat dihitung total dan per kategori", () => {
   ];
   assert.deepEqual(opnameProgress(items), { filled: 2, total: 3, pct: 67 });
   assert.deepEqual(opnameProgress(items, "Cadang"), { filled: 1, total: 2, pct: 50 });
+  assert.deepEqual(opnameProgress([{ qtsFisik: 2 }], null, { requireTimestamp: true }), { filled: 0, total: 1, pct: 0 });
+});
+
+test("material flow v2 wajib punya bukti timestamp, termasuk semua blok", () => {
+  const partial = {
+    qtsFisik: 4,
+    lokasiBreakdown: [{ lokasiId: "A" }, { lokasiId: "B" }],
+    hitungPerLokasi: { A: { qty: 4, at: 100 } , B: { qty: 0, at: null } },
+  };
+  assert.equal(itemCounted(partial), false);
+  assert.equal(allBloksSelesai({ flowVersion: 2, items: [partial] }), false);
+  const complete = { ...partial, hitungPerLokasi: { A: { qty: 4, at: 100 }, B: { qty: 0, at: 200 } } };
+  assert.equal(itemCounted(complete), true);
+  assert.equal(allBloksSelesai({ flowVersion: 2, items: [complete] }), true);
+  assert.equal(itemCounted({ qtsFisik: 4 }), true);
+  assert.equal(itemCounted({ qtsFisik: 4, hitungPerLokasi: {} }), false);
+});
+
+test("hitung agregat tidak menggandakan blok dan input kosong menghapus bukti", () => {
+  const item = {
+    qtySistem: 5,
+    lokasiBreakdown: [{ lokasiId: "A" }, { lokasiId: "B" }],
+    hitungPerLokasi: { A: { qty: 3, at: 100 }, B: { qty: 2, at: 200 } },
+  };
+  assert.equal(sumHitungPerLokasi({ ...item.hitungPerLokasi, _TANPA_LOKASI: { qty: 9, at: null } }), 5);
+  const unchanged = applyQtyToItem(item, "_TANPA_LOKASI", "", "u");
+  assert.equal(unchanged.hitungPerLokasi.A.at, 100);
+  assert.equal(unchanged.hitungPerLokasi.B.at, 200);
+  const aggregate = applyQtyToItem(item, "_TANPA_LOKASI", "9", "u");
+  assert.equal(aggregate.qtsFisik, 9);
+  assert.equal(aggregate.hitungPerLokasi.A.at, null);
+  assert.equal(itemCounted(aggregate), true);
+  const block = applyQtyToItem(aggregate, "A", "4", "u");
+  assert.equal(block.hitungPerLokasi._TANPA_LOKASI.at, null);
+  assert.equal(block.qtsFisik, 4);
+  assert.equal(itemCounted(block), false);
+  const cleared = applyQtyToItem(block, "A", "", "u");
+  assert.equal(cleared.qtsFisik, null);
+  assert.equal(cleared.hitungPerLokasi.A.at, null);
+  assert.equal(itemCounted(cleared), false);
+  const zero = applyQtyToItem(cleared, "A", 0, "u");
+  assert.equal(zero.qtsFisik, 0);
+  assert.notEqual(zero.hitungPerLokasi.A.at, null);
+  assert.equal(itemCounted(zero), false);
+  const singleZero = applyQtyToItem({ lokasiBreakdown: [{ lokasiId: "A" }], hitungPerLokasi: { A: { qty: 0, at: null } } }, "A", 0, "u");
+  assert.equal(itemCounted(singleZero), true);
 });
 
 test("child Non-SAP hanya dicocokkan ke parent SAP, gudang, dan semester", () => {

@@ -19,7 +19,16 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
       blockMap.get(key).entries.push({ item, realIdx });
     });
   });
-  const blockList = [...blockMap.values()].sort((a, b) => (a.key === "_TANPA_LOKASI" ? 1 : 0) - (b.key === "_TANPA_LOKASI" ? 1 : 0));
+  const blockList = [...blockMap.values()].sort((a, b) => {
+    const aTanpaLokasi = a.key === "_TANPA_LOKASI";
+    const bTanpaLokasi = b.key === "_TANPA_LOKASI";
+    if (aTanpaLokasi || bTanpaLokasi) return Number(aTanpaLokasi) - Number(bTanpaLokasi);
+    return `${a.gudangKode || ""} ${a.lokasiKode || ""}`.localeCompare(
+      `${b.gudangKode || ""} ${b.lokasiKode || ""}`,
+      undefined,
+      { numeric: true, sensitivity: "base" },
+    );
+  });
   const recountQueue = items.map((item, realIdx) => ({ item, realIdx })).filter(x => x.item.recount?.perluUlang);
 
   const [screen, setScreen] = useState("blok"); // blok | items | hitung | recount
@@ -171,7 +180,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
               <div style={{ fontSize: 17, fontWeight: 800 }}>{blokAktif.gudangKode ? `${blokAktif.gudangKode} — ` : ""}{blokAktif.lokasiKode}</div>
               <div style={{ fontSize: 12, color: C.muted }}>{filled}/{total} terhitung{selisihCount > 0 ? ` • ${selisihCount} selisih` : ""}{receiving ? " • 📡 menerima scan..." : ""}</div>
             </div>
-            <button style={sty.btn("ghost", "sm")} onClick={() => setScreen("blok")}>← Ganti Blok</button>
+            <button className="opname-field-mode__change-block" style={sty.btn("ghost", "sm")} onClick={() => setScreen("blok")}>← Ganti Blok</button>
           </div>
           <div className="opname-field-mode__body" style={body}>
             {blokAktif.entries.map(({ item, realIdx }) => {
@@ -199,8 +208,8 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
             })}
           </div>
           <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
-            <button style={{ ...sty.btn("ghost"), flex: 1 }} onClick={onSimpanDraft}>💾 Simpan Draft</button>
-            <button style={{ ...sty.btn("primary"), flex: 2 }} onClick={() => { setScanFor("item"); setScanning(true); }}>📷 Scan Barang</button>
+            <button className="opname-field-mode__draft" style={{ ...sty.btn("ghost"), flex: 1 }} onClick={onSimpanDraft}>💾 Simpan Draft</button>
+            <button className="opname-field-mode__scan" style={{ ...sty.btn("primary"), flex: 2 }} onClick={() => { setScanFor("item"); setScanning(true); }}>📷 Scan Barang</button>
           </div>
         </>
       )}

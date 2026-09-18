@@ -9,7 +9,7 @@ import { canonicalKatalogCode } from "./normalizeKatalogCode.js";
 import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
-import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel } from "./sap.js";
+import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel, itemCounted } from "./sap.js";
 import { resolveStockPhotoUrl } from "./stockCache.js";
 import { childOpnameMatches } from "./stockOpnameFlow.js";
 
@@ -981,6 +981,7 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
     TIDAK_ADA_DI_SAP: "Tidak ada di SAP",
     TIDAK_ADA_DI_SISTEM: "Tidak terdaftar",
   }[s] || s || "-");
+  const countedItem = it => itemCounted(it, { requireTimestamp: opn.flowVersion===2 });
 
   const itemRows = items.map((it, idx) => `
     <tr>
@@ -990,16 +991,16 @@ export function buildBeritaAcaraHTML(opn, katalogList, users, uptList) {
       <td style="text-align:center">${fmtE(it.satuan)}</td>
       <td style="text-align:center">${fmt(it.qtySistem)}</td>
       <td style="text-align:center">${it.qtySAP===null||it.qtySAP===undefined?"-":it.qtySAP}</td>
-      <td style="text-align:center">${fmt(it.qtsFisik)}</td>
-      <td style="text-align:center">${fmt(it.selisih)}</td>
-      <td style="text-align:center">${esc(statusLabel(it.statusItem))}</td>
+      <td style="text-align:center">${countedItem(it) ? fmt(it.qtsFisik) : "-"}</td>
+      <td style="text-align:center">${countedItem(it) ? fmt(it.selisih) : "-"}</td>
+      <td style="text-align:center">${countedItem(it) ? esc(statusLabel(it.statusItem)) : "Belum dihitung"}</td>
       <td>${fmtE(it.keterangan)}</td>
     </tr>`).join("");
 
   const total = items.length;
-  const akurat = items.filter(i=>Number(i.selisih)===0).length;
-  const selisihCount = items.filter(i=>Number(i.selisih)!==0).length;
-  const belumTerdaftar = items.filter(i=>i.statusItem==="TIDAK_ADA_DI_SISTEM").length;
+  const akurat = items.filter(i=>countedItem(i) && Number(i.selisih)===0).length;
+  const selisihCount = items.filter(i=>countedItem(i) && Number(i.selisih)!==0).length;
+  const belumTerdaftar = items.filter(i=>countedItem(i) && i.statusItem==="TIDAK_ADA_DI_SISTEM").length;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Opname ${esc(opn.id)}</title>
 <style>@page{size:A4 landscape;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:9.5px;color:#111;background:#e5e7eb}.page{padding:20px;background:white;max-width:1120px;margin:0 auto 16px}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:12px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:12px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:3px 6px;font-size:9.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.kpi{display:flex;gap:8px;margin-bottom:10px}.kpi .box{flex:1;border:1px solid #ccc;border-radius:4px;padding:6px;text-align:center}.kpi .box .n{font-size:15px;font-weight:800;color:#00377a}.kpi .box .l{font-size:8.5px;color:#555;margin-top:2px}table.items{width:100%;border-collapse:collapse;margin-bottom:12px;table-layout:fixed}table.items th{background:#003087;color:white;padding:5px 4px;font-size:9px;text-align:center;border:1px solid #ccc}table.items td{padding:4px 4px;border:1px solid #ccc;font-size:9px;word-wrap:break-word}table.items col.c-no{width:32px}table.items col.c-nama{width:auto}table.items col.c-kat{width:90px}table.items col.c-stn{width:42px}table.items col.c-num{width:56px}table.items col.c-status{width:90px}.sig-row{display:flex;justify-content:space-around;margin-top:24px;text-align:center}.sig-col{width:200px;font-size:9.5px}.sig-space{height:50px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:12mm}table.items thead{display:table-header-group}table.items tr{page-break-inside:avoid}.sig-row{page-break-inside:avoid}}</style></head><body>
@@ -1595,10 +1596,13 @@ export async function buildBarcodeSheetHTML(katalogItems, lokasiByKatalog) {
 
 // Lembar label QR blok lokasi (cetak massal, Fase 2 Stock Opname) — sejajar buildBarcodeSheetHTML
 // tapi encode lokasiScanUrlFor per-blok, bukan katalog per-item. QR di-generate LOKAL (offline).
-export async function buildLabelBlokHTML(lokasiList, gudang) {
+export async function buildLabelBlokHTML(lokasiList, gudang, tokenByLokasi = {}) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  if ((lokasiList || []).some(l => !tokenByLokasi[l.id] && !l.public_token)) {
+    throw new Error("Token QR blok belum tersedia. Terapkan migrasi lokasi public_token terlebih dahulu.");
+  }
   const labels = await Promise.all((lokasiList || []).map(async (l) => {
-    const scanUrl = lokasiScanUrlFor(l.id);
+    const scanUrl = lokasiScanUrlFor(l.id, tokenByLokasi[l.id] || l.public_token);
     const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 220 });
     return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(l.kode || l.nama || "-")}</div><div class="meta">${esc(gudang?.nama || gudang?.kode || "-")}</div></div>`;
   }));
@@ -2074,15 +2078,16 @@ export function buildTUG15HTML(opn, meta, { katalogList, uptList } = {}) {
   const groupsHtml = jenisKeys.map(jenis => {
     const items = groups.get(jenis);
     const rows = items.map((it, i) => {
-      const lebih = it.selisih > 0 ? it.selisih : 0;
-      const kurang = it.selisih < 0 ? -it.selisih : 0;
+      const counted = itemCounted(it, { requireTimestamp: opn.flowVersion===2 });
+      const lebih = counted && it.selisih > 0 ? it.selisih : 0;
+      const kurang = counted && it.selisih < 0 ? -it.selisih : 0;
       return `<tr>
         <td style="text-align:center">${i + 1}</td>
         <td>${esc(it.namaBarang)}</td>
         <td style="text-align:center">${esc(it.noKatalog)}</td>
         <td style="text-align:center">${esc(it.satuan)}</td>
         <td style="text-align:center">${isNonSap ? "" : (it.qtySAP ?? "")}</td>
-        <td style="text-align:center">${it.qtsFisik ?? ""}</td>
+        <td style="text-align:center">${counted ? (it.qtsFisik ?? "") : "Belum dihitung"}</td>
         <td style="text-align:center">${lebih || ""}</td>
         <td style="text-align:center">${kurang || ""}</td>
         <td>${esc(it.keterangan)}</td>

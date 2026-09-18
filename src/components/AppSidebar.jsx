@@ -171,6 +171,7 @@ export function AppSidebar({
                       {[
                         {id:"opname",icon:<SidebarIcon name="opname" size={16}/>,label:"Stock Opname"},
                         {id:"stockCount",icon:<SidebarIcon name="report" size={16}/>,label:"Stock Count",badge:stockCountPendingCount},
+                        {id:"history",icon:<SidebarIcon name="report" size={16}/>,label:"Riwayat"},
                       ].map(sub=>{
                         const subActive = isActive && opnameSubTab===sub.id;
                         return (

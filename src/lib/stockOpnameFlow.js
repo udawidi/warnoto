@@ -1,3 +1,5 @@
+import { itemCounted } from "./sap.js";
+
 export const SAP_OPNAME_CATEGORIES = ["Cadang", "Persediaan", "Pre Memory"];
 
 const normalize = value => String(value || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
@@ -15,16 +17,11 @@ export function isSapOpnameItem(item) {
   return SAP_OPNAME_CATEGORIES.includes(getSapOpnameCategory(item?.sapCategory || item?.sapLabel || item?.jenisBarang));
 }
 
-function counted(item) {
-  if (item?.qtsFisik !== null && item?.qtsFisik !== undefined && item?.qtsFisik !== "") return true;
-  const rows = item?.hitungPerLokasi;
-  return !!rows && Object.keys(rows).length > 0 && Object.values(rows).every(row => row?.at != null);
-}
-
-export function opnameProgress(items = [], category = null) {
+export function opnameProgress(items = [], category = null, { requireTimestamp = false } = {}) {
   const scoped = category ? items.filter(item => getSapOpnameCategory(item?.sapCategory || item?.sapLabel) === category) : items;
   const total = scoped.length;
-  const filled = scoped.filter(counted).length;
+  const strict = requireTimestamp || scoped.some(item => Object.prototype.hasOwnProperty.call(item || {}, "hitungPerLokasi"));
+  const filled = scoped.filter(item => itemCounted(item, { requireTimestamp: strict })).length;
   return { filled, total, pct: total ? Math.round((filled / total) * 100) : 0 };
 }
 

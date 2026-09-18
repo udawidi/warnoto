@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { UPT } from "../constants.js";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
-import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted, stockSapLabel } from "../lib/sap.js";
+import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted, allBloksSelesai, stockSapLabel } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
 
 function readCachedList(key) {
@@ -82,6 +82,10 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };
   }
   async function submitOpname(opn) {
+    if (opn?.flowVersion === 2 && !allBloksSelesai(opn)) {
+      showToast("Belum bisa submit: semua material harus selesai dihitung.", "error");
+      return false;
+    }
     const updated = {...opn, status:"PENDING_ASMAN", submittedAt:Date.now()};
     // Sesi baru yang langsung di-submit tanpa pernah "Simpan Draft" dulu belum ada di
     // opnameList sama sekali (startOpname cuma setActiveOpname, tidak append ke list) —
@@ -92,9 +96,14 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     commitOpnameList(nl);
     await stateRef.current.saveToCloud({opnameList: nl});
     showToast("📋 Opname disubmit! Menunggu approval Asman.");
+    return true;
   }
   async function approveOpname_Asman(opn, catatan) {
-    if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman yang bisa approve.","error"); return; }
+    if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman yang bisa approve.","error"); return false; }
+    if (opn?.flowVersion === 2 && !allBloksSelesai(opn)) {
+      showToast("Belum bisa approve: semua material harus selesai dihitung.", "error");
+      return false;
+    }
     let newStocks = [...stocks];
     // Material baru dari SAP (item.katalogId null — belum ada di Master Katalog saat upload)
     // sekarang IKUT approval sesi ini (Asman->Manager), TIDAK ada approval TL terpisah (keputusan
@@ -237,6 +246,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     if (konfirmasiNonStock) msg += ` ${konfirmasiNonStock} material Non-Stock hasil opname dikonfirmasi aktif.`;
     if (notulenList.length) msg += ` + ${notulenList.length} material Non-SAP diusulkan pindah kategori.`;
     showToast(msg, materialBaruKonflik.length ? "error" : "success");
+    return true;
   }
   // Fase 3 — freeze/unfreeze gudang selama sesi opname berjalan. Mode PERINGATAN saja
   // (lihat useTugTransactions.commitNewTxn): transaksi TUG dari/ke gudang yang di-freeze

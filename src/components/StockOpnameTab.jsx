@@ -19,7 +19,11 @@ import { ArrowRight, Barcode, CheckCircle, FileArrowUp } from "@phosphor-icons/r
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
-  setStocks, saveToCloud, visibleGudangList, stockGudangFilter, setStockGudangFilter }) {
+  setStocks, saveToCloud, visibleGudangList, stockGudangFilter, setStockGudangFilter,
+  showWork=true, showHistory=true, onOpenWork }) {
+
+  const sortedGudangList = [...(gudangList || [])].sort((a,b) => String(a.kode || a.nama || "").localeCompare(String(b.kode || b.nama || ""), "id", { numeric:true, sensitivity:"base" }));
+  const sortedLokasiList = [...(lokasiList || [])].sort((a,b) => String(a.kode || a.nama || "").localeCompare(String(b.kode || b.nama || ""), "id", { numeric:true, sensitivity:"base" }));
 
   const [activeOpname, setActiveOpname] = useState(null);
   const [page, setPage] = useState(0);
@@ -242,13 +246,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       return { stockId:s.id, sourceLabel:sourceLotLabel(s), lokasiId: s.lokasiId||null, lokasiKode: lok?.kode||null, gudangId: lok?.gudangId||null, gudangKode: gud?.kode||gud?.nama||null, qty: s.qty||0 };
     });
   }
-  // Fase 1c: seed hitungPerLokasi dari qtySistem (default awal — belum benar-benar dihitung
-  // fisik). Blok tunggal → kunci lokasinya; kosong/multi-blok → "_TANPA_LOKASI" (breakdown penuh
-  // per-blok menyusul di mode lapangan Fase 2).
-  function seedHitungPerLokasi(qtySistem, lokasiBreakdown) {
-    if (!qtySistem) return {};
-    const key = lokasiBreakdown.length===1 ? (lokasiBreakdown[0].lokasiId||"_TANPA_LOKASI") : "_TANPA_LOKASI";
-    return { [key]: { qty: qtySistem, at: null, by: null } };
+  // Setiap blok perlu bukti hitung tersendiri; angka buku bukan hasil hitung fisik.
+  function seedHitungPerLokasi(_qtySistem, lokasiBreakdown) {
+    const keys = [...new Set(lokasiBreakdown.map(b=>b.lokasiId||"_TANPA_LOKASI"))];
+    return Object.fromEntries(keys.map(key=>[key, { qty:0, at:null, by:null }]));
   }
 
   function opnameStockSapLabel(stock) {
@@ -380,8 +381,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   async function openOrCreateNonSapChild(parent) {
     if (!parent || parent.flowVersion !== 2 || parent.jenisAlur !== "SAP") return;
-    const progress = opnameProgress(parent.items || []);
-    if (progress.total === 0 || progress.pct < 100) {
+    const progress = opnameProgress(parent.items || [], null, { requireTimestamp: true });
+    if (progress.total === 0 || progress.filled !== progress.total) {
       showToast("Selesaikan hitungan SAP per gudang terlebih dahulu.", "error");
       return;
     }
@@ -526,7 +527,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // baris qty kosong pertama (di antara yang lolos filter aktif).
   function scrollToFirstEmptyQty() {
     const fi = getFilteredIndexed();
-    const pos = fi.findIndex(({it})=>!itemCounted(it));
+    const pos = fi.findIndex(({it})=>!itemCounted(it, { requireTimestamp: activeOpname?.flowVersion===2 }));
     if (pos < 0) return;
     const realIdx = fi[pos].idx;
     setPage(Math.floor(pos / pageSize));
@@ -573,7 +574,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         items[realIdx] = applyQtyToItem(items[realIdx], key, value, currentUser?.id);
         if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
         touchedRef.current[prev.id].add(key);
-        return {...prev, items, freeze: ensureAutoFreeze(prev, items[realIdx])};
+        return {...prev, items, freeze: value === "" ? prev.freeze : ensureAutoFreeze(prev, items[realIdx])};
       } else if (field==="lokasiId") {
         // Non-SAP: kalau qty sudah sempat diisi sebelum lokasi dipilih/diganti, pindahkan entri
         // hitungPerLokasi ke kunci lokasi yang baru supaya tidak nyangkut di "_TANPA_LOKASI".
@@ -637,7 +638,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     }
     const isNonSapSession = activeOpname?.jenisAlur === "NON_SAP";
     (activeOpname.items||[]).forEach((item,i)=>{
-      if(item.qtsFisik==null||item.qtsFisik==="") errors.push(`Baris ${i+1}: qty fisik belum diisi`);
+      if(!itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 })) errors.push(`Baris ${i+1}: qty fisik belum dihitung`);
       if(item.selisih!==0 && !item.keterangan?.trim()) errors.push(`Baris ${i+1} (${item.namaBarang}): keterangan wajib diisi jika ada selisih`);
       // Opname Non-SAP: lokasi WAJIB diisi untuk semua item (baseline maupun temuan baru) —
       // ini yang membuktikan opname fisik benar-benar dilakukan, bukan cuma isi qty dari kursi.
@@ -664,7 +665,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   // ── Progress calculation ─────────────────────────────────────────────
   function getProgress() {
-    return opnameProgress(activeOpname?.items || []);
+    return opnameProgress(activeOpname?.items || [], null, { requireTimestamp: activeOpname?.flowVersion===2 });
   }
 
   const statusColor = {DRAFT:"#6b7280",PENDING_ASMAN:"#f59e0b",PENDING_MANAGER:"#3b82f6",SELESAI:"#16a34a",DITOLAK:"#dc2626"};
@@ -676,11 +677,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const isSAP = activeOpname.jenisAlur==="SAP";
     const isReadOnly = activeOpname.status!=="DRAFT";
     const items = activeOpname.items||[];
+    const countedItem = item => itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 });
     const filteredIndexed = getFilteredIndexed();
     const totalPages = Math.ceil(filteredIndexed.length/pageSize);
     const pageEntries = filteredIndexed.slice(page*pageSize, (page+1)*pageSize);
     const prog = getProgress();
-    const selisihCount = items.filter(i=>i.selisih!==0).length;
+    const selisihCount = items.filter(i=>countedItem(i) && i.selisih!==0).length;
 
     return (
       <div className="opname-panel" style={{...sty.card,marginBottom:20}}>
@@ -708,7 +710,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               </button>
             )}
             {isReadOnly && <button style={sty.btn("ghost","sm")} onClick={()=>setActiveOpname(null)}>← Kembali ke Daftar</button>}
-            {!isReadOnly && <button style={sty.btn("ghost","sm")} onClick={handleBatal}>✕ Batal</button>}
           </div>
         </div>
 
@@ -727,7 +728,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           <div className="opname-category-segment" aria-label="Filter kategori SAP">
             <button type="button" className={!sapCategoryFilter ? "is-active" : ""} onClick={()=>{setSapCategoryFilter("");setPage(0);}}>Semua <span>{items.length}</span></button>
             {SAP_OPNAME_CATEGORIES.map(category => {
-              const categoryProgress = opnameProgress(items, category);
+              const categoryProgress = opnameProgress(items, category, { requireTimestamp: activeOpname.flowVersion===2 });
               return <button type="button" key={category} className={sapCategoryFilter===category ? "is-active" : ""} onClick={()=>{setSapCategoryFilter(category);setPage(0);}}>{category} <span>{categoryProgress.filled}/{categoryProgress.total}</span></button>;
             })}
           </div>
@@ -905,7 +906,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
                 <div style={{fontSize:12,fontWeight:700}}>Progress Pengisian: {prog.filled}/{prog.total} item ({prog.pct}%)</div>
                 <div style={{fontSize:12,color:selisihCount>0?C.red:C.green,fontWeight:700}}>
-                  {selisihCount>0?`⚠️ ${selisihCount} item selisih`:"✅ Belum ada selisih"}
+                  {prog.filled<prog.total?`⏳ ${prog.total-prog.filled} belum dihitung`:selisihCount>0?`⚠️ ${selisihCount} item selisih`:"✅ Belum ada selisih"}
                 </div>
               </div>
               <div style={{background:"#f1f5f9",borderRadius: 10,height:8,marginBottom:10}}>
@@ -914,11 +915,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               {/* Ringkasan satu baris angka tenang — bukan 4 boks warna (gaya Apple-like, 0c) */}
               <div style={{fontSize:13,color:C.muted}}>
                 <span style={{fontWeight:700,color:C.text}}>{items.length}</span> total
-                {" • "}<span style={{fontWeight:700,color:C.green}}>{items.filter(i=>i.statusItem==="SESUAI").length}</span> sesuai
+                {" • "}<span style={{fontWeight:700,color:C.green}}>{items.filter(i=>countedItem(i) && i.statusItem==="SESUAI").length}</span> sesuai
                 {" • "}<span style={{fontWeight:700,color:C.red}}>{selisihCount}</span> selisih
-                {" • "}<span style={{fontWeight:700,color:"#b45309"}}>{items.filter(i=>["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length}</span> belum terdaftar
+                {" • "}<span style={{fontWeight:700,color:"#b45309"}}>{items.filter(i=>countedItem(i) && ["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length}</span> belum terdaftar
               </div>
-              {activeOpname.flowVersion === 2 && isSAP && prog.pct === 100 && !isReadOnly && (
+              {activeOpname.flowVersion === 2 && isSAP && prog.total > 0 && prog.filled === prog.total && !isReadOnly && (
                 <div className="opname-next-stage">
                   <div><strong>SAP selesai untuk {activeOpname.gudangKode || "gudang ini"}.</strong><span> Lanjutkan ke daftar Non-SAP pada gudang yang sama.</span></div>
                   <button type="button" className="opname-next-stage__button" onClick={()=>openOrCreateNonSapChild(activeOpname)}><ArrowRight size={16} weight="bold" aria-hidden="true" />Lanjut Non-SAP {activeOpname.gudangKode || "gudang"}</button>
@@ -948,14 +949,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterGudangId}
                     onChange={e=>{setFilterGudangId(e.target.value);setFilterLokasiId("");setPage(0);}}>
                     <option value="">Semua Gudang</option>
-                    {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
+                    {sortedGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                     <option value="__NONE__">Tanpa Lokasi</option>
                   </select>
                   {filterGudangId && filterGudangId!=="__NONE__" && (
                     <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterLokasiId}
                       onChange={e=>{setFilterLokasiId(e.target.value);setPage(0);}}>
                       <option value="">Semua Blok</option>
-                      {(lokasiList||[]).filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                      {sortedLokasiList.filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                     </select>
                   )}
                   <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterJenis}
@@ -995,7 +996,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 <tbody>
                   {pageEntries.map(({it:item, idx:realIdx})=>{
                     const isHighlighted = highlightIdx===realIdx;
-                    const rowBg = isHighlighted ? "#dbeafe" : item.statusItem==="MATERIAL_BARU_NONSAP" ? "#eff6ff" : item.statusItem==="SESUAI"?"white":item.statusItem==="TIDAK_ADA_DI_SISTEM"?"#fefce8":item.statusItem==="TIDAK_ADA_DI_SAP"?"#f8fafc":"#fff5f5";
+                    const counted = countedItem(item);
+                    const rowBg = isHighlighted ? "#dbeafe" : !counted ? "white" : item.statusItem==="MATERIAL_BARU_NONSAP" ? "#eff6ff" : item.statusItem==="SESUAI"?"white":item.statusItem==="TIDAK_ADA_DI_SISTEM"?"#fefce8":item.statusItem==="TIDAK_ADA_DI_SAP"?"#f8fafc":"#fff5f5";
                     const statusBadge = item.statusItem==="SESUAI"
                       ? {bg:"#dcfce7",fg:"#166534",label:"✅ Sesuai"}
                       : item.statusItem==="TIDAK_ADA_DI_SAP"
@@ -1009,10 +1011,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     return (
                       <tr className="mobile-card-table__row" key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none"}}>
                         {!isMobile && <td data-label="No" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
-                        <td data-label="Nama Barang" className="mobile-card-table__title" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?120:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>
-                          {item.namaBarang}
+                        <td data-label="Nama Barang" className="mobile-card-table__title opname-item-name" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?180:260,overflowWrap:"anywhere",whiteSpace:"normal",lineHeight:1.35,minWidth:0}}>
+                          <div style={{fontWeight:700,overflowWrap:"anywhere",whiteSpace:"normal"}}>{item.namaBarang}</div>
                           {(() => { const lbl = itemSapLabel(item); const bs = sapBadgeStyleForLabel(lbl); return (
-                            <span style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:12,color:C.muted,marginTop:2}}>
+                            <span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:C.muted,marginTop:3,whiteSpace:"normal",overflowWrap:"anywhere"}}>
                               <span style={{width:6,height:6,borderRadius:"50%",background:bs.fg,flexShrink:0}}/> {lbl}
                             </span>
                           ); })()}
@@ -1044,22 +1046,22 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         <td data-label="Qty Fisik" className="is-key" style={{padding:"4px 6px",textAlign:"center"}}>
                           {!isReadOnly
                             ? <input type="number" inputMode="decimal" min="0" placeholder="hitung…"
-                                value={itemCounted(item) ? item.qtsFisik : ""}
+                                value={counted ? item.qtsFisik : ""}
                                 ref={el=>{qtyInputRefs.current[realIdx]=el;}}
-                                onChange={e=>updateItem(realIdx,"qtsFisik",Number(e.target.value))}
+                                onChange={e=>updateItem(realIdx,"qtsFisik",e.target.value)}
                                 style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,textAlign:"center"}}/>
-                            : <span style={{fontWeight:700}}>{fmtNum(item.qtsFisik)}</span>}
+                            : <span style={{fontWeight:700}}>{counted?fmtNum(item.qtsFisik):"—"}</span>}
                         </td>
                         <td data-label="Selisih" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:700,whiteSpace:"nowrap",
                           color:item.selisih<0?"#dc2626":item.selisih>0?"#16a34a":"#6b7280"}}>
-                          {item.qtsFisik==null?"—":item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
+                          {!counted?"—":item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
                         </td>
                         <td data-label="Status" className="is-key" style={{padding:"6px 8px"}}>
-                          <span title={itemCounted(item)?"Sudah dihitung":"Belum dihitung"} style={{marginRight:4,fontSize:12,fontWeight:700,color:itemCounted(item)?"#16a34a":"#9ca3af"}}>
-                            {itemCounted(item)?"✓":"•"}
+                          <span title={counted?"Sudah dihitung":"Belum dihitung"} style={{marginRight:4,fontSize:12,fontWeight:700,color:counted?"#16a34a":"#9ca3af"}}>
+                            {counted?"✓":"•"}
                           </span>
-                          {item.qtsFisik==null ? (
-                            <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>—</span>
+                          {!counted ? (
+                            <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>Belum dihitung</span>
                           ) : (
                             <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:statusBadge.bg,color:statusBadge.fg}}>
                               {statusBadge.label}
@@ -1073,13 +1075,13 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                                 <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); }}
                                   style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
                                   <option value="">-- Gudang --</option>
-                                  {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
+                                  {sortedGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                                 </select>
                                 <select value={item.lokasiId||""} onChange={e=>updateItem(realIdx,"lokasiId",e.target.value)}
                                   disabled={!itemGudangId && !item._gudangTmp}
                                   style={{width:110,padding:"3px 4px",border:`1px solid ${!item.lokasiId?C.red:C.border}`,borderRadius: 10,fontSize:12}}>
                                   <option value="">-- Blok --</option>
-                                  {(lokasiList||[]).filter(l=>l.gudangId===(itemGudangId||item._gudangTmp)).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                                  {sortedLokasiList.filter(l=>l.gudangId===(itemGudangId||item._gudangTmp)).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                                 </select>
                               </div>
                             ) : (
@@ -1186,7 +1188,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       // ke approval Asman walau semua qty sudah lengkap. Fix: submitOpname saja
                       // (sudah mencakup semua yang dilakukan saveOpname), di-await, baru pindah tab.
                       if(!validate()) return;
-                      await submitOpname(activeOpname);
+                      const submitted = await submitOpname(activeOpname);
+                      if (submitted === false) return;
                       try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {}
                       setActiveOpname(null);
                     }}>
@@ -1304,14 +1307,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     <label style={sty.label}>Gudang *</label>
                     <select style={sty.select} value={tambahForm.gudangId} onChange={e=>setTambahForm(f=>({...f,gudangId:e.target.value,lokasiId:""}))}>
                       <option value="">-- Pilih Gudang --</option>
-                      {(gudangList||[]).map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
+                      {sortedGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                     </select>
                   </div>
                   <div style={{marginBottom:10}}>
                     <label style={sty.label}>Blok Lokasi *</label>
                     <select style={sty.select} value={tambahForm.lokasiId} onChange={e=>setTambahForm(f=>({...f,lokasiId:e.target.value}))} disabled={!tambahForm.gudangId}>
                       <option value="">-- Pilih Blok --</option>
-                      {(lokasiList||[]).filter(l=>l.gudangId===tambahForm.gudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                      {sortedLokasiList.filter(l=>l.gudangId===tambahForm.gudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
                     </select>
                   </div>
                   <div style={{marginBottom:14}}>
@@ -1345,6 +1348,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   return (
     <div>
+      <div style={{display:showWork?"block":"none"}}>
       <OperationsHero
         eyebrow="Stock Opname"
         title="Stock Opname"
@@ -1499,7 +1503,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             : <div style={{display:"flex",gap:8}}>
                 <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>🔍 Review Detail</button>
                 <div className="approval-actions">
-                  <button className="approval-btn--approve" onClick={()=>{approveOpname_Asman(opn,catatanApproval);setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (final)</button>
+                  <button className="approval-btn--approve" onClick={async ()=>{const approved=await approveOpname_Asman(opn,catatanApproval);if(approved!==false)setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (final)</button>
                   <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                 </div>
               </div>}
@@ -1507,6 +1511,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       ))}
 
       {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
+      </div>
+      <div style={{display:showHistory?"block":"none"}}>
       <div style={{borderTop:`1px solid ${C.border}`,marginTop:24,paddingTop:16,marginBottom:10}}>
         <div style={{fontSize:13,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".4px"}}>Riwayat Opname</div>
       </div>
@@ -1528,7 +1534,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           .slice().sort((a,b)=>b.dibuatAt-a.dibuatAt)
           .map(opn=>{
             const creator = users.find(u=>u.id===opn.dibuatOleh)||{};
-            const selisihCount = (opn.items||[]).filter(i=>i.selisih!==0).length;
+            const selisihCount = (opn.items||[]).filter(i=>itemCounted(i, { requireTimestamp: opn.flowVersion===2 }) && i.selisih!==0).length;
             return (
               <div key={opn.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
                 <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:6,marginBottom:6}}>
@@ -1547,7 +1553,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </div>
                 </div>
                 <div className="opname-history-actions" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>
+                  <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);onOpenWork?.();}}>
                     🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
                   </button>
                   {opn.status==="SELESAI" && opn.jenisAlur==="SAP" && <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(opn)}>📄 Cetak BA + TUG-15</button>}
@@ -1564,6 +1570,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <div style={{fontSize:12,marginTop:4}}>Tarik file PID ke zona upload di atas untuk memulai</div>
           </div>
         )}
+      </div>
       </div>
     </div>
   );

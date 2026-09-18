@@ -33,6 +33,7 @@ import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
 import { TelegramWhitelistPanel } from "./src/components/TelegramWhitelistPanel.jsx";
 import { ScanPublicView } from "./src/components/ScanPublicView.jsx";
+import { ScanBlockPublicView } from "./src/components/ScanBlockPublicView.jsx";
 import { KPISaldoCards } from "./src/components/KPISaldoCards.jsx";
 import { PendingWidget } from "./src/components/PendingWidget.jsx";
 import { RencanaWidget } from "./src/components/RencanaWidget.jsx";
@@ -503,6 +504,7 @@ export default function PLNWarehouse() {
   const [tugExpanded, setTugExpanded] = useState(false); // sidebar accordion state for TUG
   const [tugSubTab, setTugSubTab] = useState(() => readTugRoute().subtab); // "TUG3" | "TUG10" (penerimaan) or "TUG9" | "TUG8" (pengeluaran)
   const [masterExpanded, setMasterExpanded] = useState(false); // sidebar accordion state for Master Data
+  const [opnameHistoryTab, setOpnameHistoryTab] = useState("opname"); // submenu Riwayat: Opname | Stock Count
   // opnameExpanded/opnameSubTab dipindah ke useStockOpname (2026-08-10).
   const [isMobile, setIsMobile] = useState(typeof window !== "undefined" && window.innerWidth <= 768);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // drawer sidebar di HP
@@ -4195,6 +4197,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   // ══════════════════════ PUBLIC SCAN VIEW (QR dari HP, tanpa login) ══════════════════════
   const scanKatalogId = new URLSearchParams(window.location.search).get("scan");
   if (scanKatalogId) return <ScanPublicView katalogId={scanKatalogId} />;
+  const scanLokasiId = new URLSearchParams(window.location.search).get("loc");
+  if (scanLokasiId) return <ScanBlockPublicView lokasiId={scanLokasiId} />;
 
   // ══════════════════════ LOGIN ══════════════════════
   // Selama authLoading, jangan tampilkan form login dulu — supaya tidak kedip
@@ -4332,7 +4336,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     heavyEquipment: {eyebrow:"Fleet Operations",title:"Alat Berat & Peminjaman"},
     attb: {eyebrow:"Asset Disposal Governance",title:"MRWI — Penghapusan Aset"},
     maturity: {eyebrow:"Warehouse Maturity Audit",title:"Penilaian Maturity Gudang"},
-    opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
+    opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="history"?"Riwayat Opname & Stock Count":opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
     rencana: {eyebrow:"Material Transmisi Utama",title:"MTU KHS"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
@@ -4401,15 +4405,21 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         )}
 
                 {/* STOCK OPNAME & STOCK COUNT (digabung 1 menu, dipilih lewat sub-tab sidebar) */}
-        {tab==="opname" && (
+        <div style={{display:tab==="opname"?"block":"none"}}>
           <div>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
-              {[{id:"opname",label:"📋 Stock Opname"},{id:"stockCount",label:"📊 Stock Count"}].map(s=>(
+              {[{id:"opname",label:"📋 Stock Opname"},{id:"stockCount",label:"📊 Stock Count"},{id:"history",label:"🕘 Riwayat"}].map(s=>(
                 <button key={s.id} style={{padding:"8px 16px",borderRadius: 10,border:`1px solid ${opnameSubTab===s.id?C.accent:C.border}`,background:opnameSubTab===s.id?C.accent:"white",color:opnameSubTab===s.id?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}} onClick={()=>setOpnameSubTab(s.id)}>{s.label}</button>
               ))}
             </div>
-            {opnameSubTab==="opname" ? (
-              <StockOpnameTab
+            {opnameSubTab==="history" && (
+              <div className="opname-history-tabs" style={{display:"flex",gap:8,marginBottom:16}}>
+                {[{id:"opname",label:"📋 Riwayat Opname"},{id:"stockCount",label:"📊 Riwayat Stock Count"}].map(s=>(
+                  <button key={s.id} type="button" style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${opnameHistoryTab===s.id?C.accent:C.border}`,background:opnameHistoryTab===s.id?C.accent:"white",color:opnameHistoryTab===s.id?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}} onClick={()=>setOpnameHistoryTab(s.id)}>{s.label}</button>
+                ))}
+              </div>
+            )}
+            <StockOpnameTab
                 opnameList={scopedOpnameList}
                 stocks={stocks}
                 katalogList={katalogList}
@@ -4436,9 +4446,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 visibleGudangList={visibleGudangList}
                 stockGudangFilter={stockGudangFilter}
                 setStockGudangFilter={setStockGudangFilter}
+                showWork={opnameSubTab==="opname"}
+                showHistory={opnameSubTab==="history" && opnameHistoryTab==="opname"}
+                onOpenWork={()=>setOpnameSubTab("opname")}
               />
-            ) : (
-              <StockCountTab
+            <StockCountTab
                 stockCountList={scopedStockCountList}
                 currentUser={currentUser}
                 rolePerms={rolePerms}
@@ -4449,10 +4461,11 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 approveStockCountItems={approveStockCountItems}
                 rejectStockCountItem={rejectStockCountItem}
                 deleteStockCountSession={deleteStockCountSession}
+                showWork={opnameSubTab==="stockCount"}
+                showHistory={opnameSubTab==="history" && opnameHistoryTab==="stockCount"}
               />
-            )}
           </div>
-        )}
+        </div>
 
         {/* KAPASITAS GUDANG (termasuk Peta Gudang sebagai sub-tab) */}
         {tab==="kapasitasGudang" && (

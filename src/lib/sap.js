@@ -543,7 +543,10 @@ export function normalizeKatalog(k) { return String(k||"").trim().replace(/^0+/,
 // {qty,at,by} }) — dipakai StockOpnameTab (edit qty) & useStockOpname (approve/merge) supaya
 // definisi "jumlah total" satu tempat saja, tidak dobel logic penjumlahan.
 export function sumHitungPerLokasi(hitungPerLokasi) {
-  return Object.values(hitungPerLokasi || {}).reduce((a, e) => a + (Number(e?.qty) || 0), 0);
+  const entries = Object.entries(hitungPerLokasi || {}).filter(([, entry]) => entry?.at != null);
+  const aggregate = entries.find(([key]) => key === "_TANPA_LOKASI");
+  if (aggregate) return Number(aggregate[1]?.qty) || 0;
+  return entries.reduce((a, [, entry]) => a + (Number(entry?.qty) || 0), 0);
 }
 
 // Tulis qty hasil hitung fisik ke SATU blok (lokasiKey) sebuah item opname, lalu turunkan ulang
@@ -554,31 +557,53 @@ export function sumHitungPerLokasi(hitungPerLokasi) {
 // sebelumnya) — statusnya tetap MATERIAL_BARU_*.
 export function applyQtyToItem(item, lokasiKey, qty, userId, { markRecount = false } = {}) {
   const isMaterialBaru = ["TIDAK_ADA_DI_SISTEM", "MATERIAL_BARU_NONSAP"].includes(item.statusItem);
-  const hitungPerLokasi = { ...(item.hitungPerLokasi || {}), [lokasiKey]: { qty: Number(qty) || 0, at: Date.now(), by: userId } };
+  const key = lokasiKey || "_TANPA_LOKASI";
+  const hasQty = qty !== null && qty !== undefined && !(typeof qty === "string" && qty.trim() === "");
+  const hitungPerLokasi = { ...(item.hitungPerLokasi || {}) };
+  if (hasQty && key === "_TANPA_LOKASI") {
+    Object.keys(hitungPerLokasi).forEach(existingKey => {
+      if (existingKey !== key) hitungPerLokasi[existingKey] = { ...hitungPerLokasi[existingKey], qty: 0, at: null, by: null };
+    });
+  } else if (hasQty && hitungPerLokasi._TANPA_LOKASI?.at != null) {
+    hitungPerLokasi._TANPA_LOKASI = { ...hitungPerLokasi._TANPA_LOKASI, qty: 0, at: null, by: null };
+  }
+  hitungPerLokasi[key] = hasQty
+    ? { qty: Number(qty) || 0, at: Date.now(), by: userId }
+    : { ...(hitungPerLokasi[key] || {}), qty: 0, at: null, by: null };
   const qtsFisik = sumHitungPerLokasi(hitungPerLokasi);
-  const next = { ...item, hitungPerLokasi, qtsFisik };
-  if (!isMaterialBaru) {
+  const hasCount = Object.values(hitungPerLokasi).some(entry => entry?.at != null);
+  const next = { ...item, hitungPerLokasi, qtsFisik: hasCount ? qtsFisik : null };
+  if (!isMaterialBaru && hasCount) {
     next.selisih = qtsFisik - (item.qtySistem || 0);
     next.statusItem = next.selisih === 0 ? "SESUAI" : "SELISIH";
     // Fase 2e: selisih -> wajib hitung ulang, TAPI cuma untuk jalur lapangan (markRecount=true,
     // OpnameLapanganView) yang memang menyediakan layar konfirmasi kedua. Edit desktop biasa
     // (markRecount default false) tak boleh menandai/menimpa recount — kalau tak markRecount,
     // biarkan next.recount apa adanya (jangan disentuh sama sekali, termasuk tak dihapus jadi null).
-    if (markRecount) next.recount = next.selisih !== 0 ? { perluUlang: true, qtyUlang: null, at: null, by: null, key: lokasiKey } : null;
-  }
+    if (markRecount) next.recount = next.selisih !== 0 ? { perluUlang: true, qtyUlang: null, at: null, by: null, key } : null;
+  } else if (!isMaterialBaru && !hasCount) next.recount = null;
   return next;
 }
 
 // Fase B: item dianggap "sudah dihitung" kalau SEMUA entri hitungPerLokasi-nya punya at != null
 // (seed awal pakai at:null, applyQtyToItem set at:Date.now() saat hitung nyata). Dipakai buat
 // progress + gate transisi HITUNG->REKONSILIASI (angka buku sendiri SELALU tampil, tidak blind).
-export function itemCounted(item) {
-  const h = item?.hitungPerLokasi; if (!h) return false;
+export function itemCounted(item, { requireTimestamp = false } = {}) {
+  const h = item?.hitungPerLokasi;
+  if (h === null || h === undefined) {
+    return !requireTimestamp && item?.qtsFisik !== null && item?.qtsFisik !== undefined && item?.qtsFisik !== "";
+  }
   const keys = Object.keys(h); if (!keys.length) return false;
-  return keys.every(k => h[k]?.at != null);
+  if (h._TANPA_LOKASI?.at != null) return true;
+  const expectedKeys = item?.lokasiBreakdown?.length
+    ? [...new Set(item.lokasiBreakdown.map(block => block?.lokasiId || "_TANPA_LOKASI"))]
+    : item?.lokasiId ? [item.lokasiId]
+    : keys;
+  return expectedKeys.every(key => h[key]?.at != null);
 }
 export function allBloksSelesai(opn) {
-  return (opn?.items||[]).length > 0 && (opn.items).every(itemCounted);
+  const requireTimestamp = opn?.flowVersion === 2;
+  return (opn?.items||[]).length > 0 && (opn.items).every(item => itemCounted(item, { requireTimestamp }));
 }
 
 export function blokKeyOf(lokasiId) { return lokasiId || "_TANPA_LOKASI"; }
@@ -598,7 +623,8 @@ export function getItemBlocks(item, lokasiList, gudangList) {
 export function blokProgress(opn, lokasiId, lokasiList, gudangList) {
   const items = (opn?.items || []).filter(it => getItemBlocks(it, lokasiList, gudangList).some(b => b.lokasiId === lokasiId));
   const total = items.length;
-  const counted = items.filter(itemCounted).length;
+  const requireTimestamp = opn?.flowVersion === 2;
+  const counted = items.filter(item => itemCounted(item, { requireTimestamp })).length;
   return { total, counted, selesai: total > 0 && counted === total };
 }
 
@@ -617,6 +643,6 @@ export function extractKatalogIdFromScan(code) {
 // "?loc=<lokasiId>" — sejajar extractKatalogIdFromScan di atas.
 export function extractLokasiIdFromScan(code) {
   try { const u = new URL(code); const id = u.searchParams.get("loc"); if (id) return id; } catch {}
-  const m = code.match(/[?&]loc=([^&\s]+)/);
+  const m = code.match(/[?&]loc=([^&#\s]+)/);
   return m ? decodeURIComponent(m[1]) : null;
 }
