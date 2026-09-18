@@ -1,4 +1,5 @@
 ﻿"gi_name","poi_title","lat","lng","reason"
-"GI 150KV SEGOROMADU","PT. PLN (Persero) GI Altaprima","-7.194514799999999","112.6368425","name mismatch; manual review"
-"GI 70KV SEGOROMADU","PT. PLN (Persero) GI Altaprima","-7.194514799999999","112.6368425","name mismatch; manual review"
-"GITET 500KV GRATI","GITET 500 KV GRATI","-7.6541694","113.0250726","name mismatch; manual review"
+"GI 150KV BANARAN","GI Banaran","-7.836843","112.0321277","POI does not distinguish 150 kV from 70 kV"
+"GI 70KV BANARAN","GI Banaran","-7.836843","112.0321277","POI does not distinguish 150 kV from 70 kV"
+"GI 150KV GRATI","GITET 500 KV GRATI","-7.6541694","113.0250726","500 kV POI cannot identify the 150 kV GI"
+"GI 150KV PAITON","GITET Paiton","","","GITET POI cannot identify the 150 kV GI"
