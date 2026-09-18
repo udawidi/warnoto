@@ -30,7 +30,7 @@ export function DataStokTab({
   photoSearchResults, setPhotoSearchResults, photoSearchResultMode, photoSearchOcrText,
   enrichedStocks, pagedStocks, kritisCount, tanpaLokasiCount,
   setStockDetailId,
-  katalogList, lokasiList, gudangList, uptList, subGudangList, visibleGudangList,
+  katalogList, lokasiList, gudangList, uptList, subGudangList, visibleGudangList, stockVisibleGudangList,
   stockGudangFilter, setStockGudangFilter,
   setPendingFoto, setLightboxImg,
   saveToCloud, showToast,
@@ -44,6 +44,7 @@ export function DataStokTab({
   const [splitRows, setSplitRows] = useState([]);
   const [splitRequestKey, setSplitRequestKey] = useState("");
   const searchInputRef = useRef(null);
+  const stockGudangOptions = stockVisibleGudangList || visibleGudangList;
 
   function openSourceSplit(st) {
     const candidates = legacySourceCandidates(st);
@@ -192,7 +193,7 @@ export function DataStokTab({
                   </select>
                 )}
                 <select style={{...sty.select,maxWidth:280}} value={stockGudangSelect} onChange={e=>{setStockGudangSelect(e.target.value);setStockBlokSelect("");}} aria-label="Filter Gudang">
-                  <option value="">Semua Gudang</option>{visibleGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
+                  <option value="">Semua Gudang</option>{stockGudangOptions.map(g=><option key={g.id} value={g.id}>{g.__gi ? g.nama : g.kode||g.nama}</option>)}
                 </select>
                 <select style={{...sty.select,maxWidth:280}} value={stockBlokSelect} disabled={!stockGudangSelect} onChange={e=>setStockBlokSelect(e.target.value)} aria-label="Filter Blok">
                   <option value="">Semua Blok</option>{blokSelectOptions.map(l=><option key={l.id} value={l.id}>{l.kode}{l.nama?" — "+l.nama:""}</option>)}
@@ -212,7 +213,7 @@ export function DataStokTab({
                   {filterJenis!=="ALL" && <span>Jenis: {filterJenis} <button aria-label="Hapus filter jenis" onClick={()=>setFilterJenis("ALL")} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
                   {filterStatusSAP!=="ALL" && <span>Status: {filterStatusSAP} <button aria-label="Hapus filter status" onClick={()=>setFilterStatusSAP("ALL")} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
                   {stockUptFilter && <span>UPT: {stockUptFilterOptions.find(u=>u.id===stockUptFilter)?.nama||"-"} <button aria-label="Hapus filter UPT" onClick={()=>setStockUptFilter("")} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
-                  {stockGudangSelect && <span>Gudang: {visibleGudangList.find(g=>g.id===stockGudangSelect)?.kode||"-"} <button aria-label="Hapus filter gudang" onClick={()=>{setStockGudangSelect("");setStockBlokSelect("");}} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
+                  {stockGudangSelect && <span>Gudang: {(() => { const selected = stockGudangOptions.find(g=>g.id===stockGudangSelect); return selected?.__gi ? selected.nama : selected?.kode || "-"; })()} <button aria-label="Hapus filter gudang" onClick={()=>{setStockGudangSelect("");setStockBlokSelect("");}} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
                   {stockBlokSelect && <span>Blok: {lokasiList.find(l=>l.id===stockBlokSelect)?.kode||"-"} <button aria-label="Hapus filter blok" onClick={()=>setStockBlokSelect("")} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
                   {stockQuickFilter && <span>{stockQuickFilter==="kritis"?"Stok kritis":"Belum ada lokasi"} <button aria-label="Hapus filter cepat" onClick={()=>setStockQuickFilter("")} style={{background:"transparent",border:"none",cursor:"pointer",marginLeft:5,fontWeight:800}}>×</button></span>}
                   <button type="button" onClick={resetAllFilters} style={{...sty.btn("ghost","sm"),marginLeft:4}}>Reset semua</button>
@@ -306,13 +307,24 @@ export function DataStokTab({
                     // tiap render ulang. Sekarang gudangId disimpan langsung ke stok begitu dipilih.
                     const gdg = lok?.gudangId ? gudangList.find(g=>g.id===lok.gudangId) : (st.gudangId ? gudangList.find(g=>g.id===st.gudangId) : null);
                     const petaInfo = getLokasiPetaInfo(lok, gdg, subGudangList);
-                    const canLihatPeta = !!petaInfo;
+                    const giLat = Number(gdg?.lat), giLng = Number(gdg?.lng);
+                    const giHasCoords = gdg?.__gi && gdg.lat != null && gdg.lng != null && String(gdg.lat).trim() !== "" && String(gdg.lng).trim() !== "";
+                    const giMapInfo = giHasCoords && Number.isFinite(giLat) && giLat >= -90 && giLat <= 90 && Number.isFinite(giLng) && giLng >= -180 && giLng <= 180
+                      ? { lat: giLat, lng: giLng, mapSourceUrl: gdg.mapSourceUrl || "" } : null;
+                    const canLihatPeta = gdg?.__gi ? !!giMapInfo : !!petaInfo;
                     const hasDenah = !!(gdg?.denahImageData || (lok?.subGudangId && subGudangList.find(s=>s.id===lok.subGudangId)?.denahImageData));
                     // Baris agregat: bukan stok nyata, tidak ada modal detail — lompat ke mode
                     // "Per Lokasi" + cari nomor katalog ini, supaya pecahan per-blok langsung terlihat.
                     const openDetail = ()=>{
                       if (isAgg) { setStockViewMode("lokasi"); setSearch(st.katalog||""); return; }
                       setPendingFoto({}); setStockDetailId(st.id);
+                    };
+                    const openLocationMap = () => {
+                      if (gdg?.__gi) { if (giMapInfo) setPetaMiniDetail({ kind:"GI", stock:st, lokasi:lok, gudang:gdg, mapInfo:giMapInfo }); else showToast("Titik peta GI belum diisi di Master Data → Gardu Induk / GI.","error"); return; }
+                      if (petaInfo) { setPetaMiniDetail({ stock:st, lokasi:lok, gudang:gdg, petaInfo }); return; }
+                      if (!lok) { showToast("Blok/Lokasi belum diisi untuk material ini.","error"); return; }
+                      if (!hasDenah) { showToast(`Denah "${gdg?.nama||lok?.kode||"-"}" belum diupload. Upload di Master Data → Master Gudang.`,"error"); return; }
+                      showToast(`Blok ${lok?.kode||"-"} belum diplot koordinatnya di denah. Atur di Master Data → Master Gudang.`,"error");
                     };
                     const sapLabel = stockSapLabel(st);
                     const sapBs = sapBadgeStyleForLabel(sapLabel);
@@ -365,14 +377,9 @@ export function DataStokTab({
                             {!isAgg && <button
                               className="table-action-button stock-mobile-action--location"
                               aria-label="Lokasi"
-                              title={canLihatPeta ? "Lihat di Peta Gudang" : !lok ? "Blok belum diisi" : !hasDenah ? "Denah belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
+                              title={canLihatPeta ? (gdg?.__gi ? "Lihat lokasi GI di internet" : "Lihat di Peta Gudang") : gdg?.__gi ? "Titik peta GI belum diisi" : !lok ? "Blok belum diisi" : !hasDenah ? "Denah belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
                               style={{color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
-                              onClick={()=>{
-                                if (canLihatPeta) { setPetaMiniDetail({stock:st, lokasi:lok, gudang:gdg, petaInfo}); return; }
-                                if (!lok) { showToast("Blok/Lokasi belum diisi untuk material ini.","error"); return; }
-                                if (!hasDenah) { showToast(`Denah "${gdg?.nama||lok?.kode||"-"}" belum diupload. Upload di Master Data → Master Gudang.`,"error"); return; }
-                                showToast(`Blok ${lok?.kode||"-"} belum diplot koordinatnya di denah. Atur di Master Data → Master Gudang.`,"error");
-                              }}><MapPin size={16} weight="bold" aria-hidden="true" /></button>}
+                              onClick={openLocationMap}><MapPin size={16} weight="bold" aria-hidden="true" /></button>}
                             <button className="table-action-button stock-mobile-action--card" aria-label="Kartu Gantung Digital" title="Kartu Gantung Digital"
                               onClick={()=>setKartuGantungDetail(katalogForStock(st))}><Tag size={16} weight="bold" aria-hidden="true" /> <span>Kartu Gantung</span></button>
                           </div>
@@ -383,14 +390,9 @@ export function DataStokTab({
                               onClick={()=>setKartuGantungDetail(katalogForStock(st))}><Tag size={16} weight="bold" aria-hidden="true" /></button>
                             {!isAgg && <button
                               className="table-action-button is-icon"
-                              title={canLihatPeta ? "Lihat di Peta Gudang" : !lok ? "Blok belum diisi" : !hasDenah ? "Denah belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
+                              title={canLihatPeta ? (gdg?.__gi ? "Lihat lokasi GI di internet" : "Lihat di Peta Gudang") : gdg?.__gi ? "Titik peta GI belum diisi" : !lok ? "Blok belum diisi" : !hasDenah ? "Denah belum diupload (Master Data → Master Gudang)" : "Blok ini belum diplot koordinatnya di denah"}
                               style={{color:canLihatPeta?"#dc2626":C.muted,opacity:canLihatPeta?1:0.5}}
-                              onClick={()=>{
-                                if (canLihatPeta) { setPetaMiniDetail({stock:st, lokasi:lok, gudang:gdg, petaInfo}); return; }
-                                if (!lok) { showToast("Blok/Lokasi belum diisi untuk material ini.","error"); return; }
-                                if (!hasDenah) { showToast(`Denah "${gdg?.nama||lok?.kode||"-"}" belum diupload. Upload di Master Data → Master Gudang.`,"error"); return; }
-                                showToast(`Blok ${lok?.kode||"-"} belum diplot koordinatnya di denah. Atur di Master Data → Master Gudang.`,"error");
-                              }}><MapPin size={16} weight="bold" aria-hidden="true" /></button>}
+                              onClick={openLocationMap}><MapPin size={16} weight="bold" aria-hidden="true" /></button>}
                             {isAgg ? (
                               <button className="table-action-button is-icon" aria-label="Lihat lokasi" title="Lihat lokasi"
                                 onClick={openDetail}><MapPin size={16} weight="bold" aria-hidden="true" /></button>

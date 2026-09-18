@@ -38,9 +38,11 @@
 .mtu-khs-hierarchy-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 18px 0 10px; }
 .mtu-khs-hierarchy-filters select { min-height: 44px; min-width: 0; border: 1px solid #e6eaf1; border-radius: 10px; padding: 0 10px; background: #f9fafb; color: #0f172a; font-size: 16px; }
 .mtu-khs-master-form { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+.mtu-khs-master-form.mtu-khs-map-form { grid-template-columns: repeat(3, minmax(0, 1fr)) auto auto; }
 .mtu-khs-master-row[role="button"] { cursor: pointer; }
 .mtu-khs-master-row.is-selected { border-radius: 10px; background: #eff6ff; box-shadow: inset 3px 0 #1d4ed8; padding-inline: 10px; }
 @media (max-width: 768px) { .mtu-khs-hierarchy-filters { grid-template-columns: 1fr; } }
+@media (max-width: 768px) { .mtu-khs-master-form.mtu-khs-map-form { grid-template-columns: 1fr; } }
 .mtu-khs-detail__header { position: sticky; top: 0; z-index: 2; background: #fff; }
 .mtu-khs-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; padding: 12px 2px; color: #64748b; font-size: 12px; }
 .mtu-khs-pagination label { display: inline-flex; align-items: center; gap: 5px; }

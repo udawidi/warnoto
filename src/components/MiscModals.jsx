@@ -1,6 +1,7 @@
 // Kumpulan modal/popup kecil — dipindah dari App.jsx (refactor batch 2g).
 // Murni relokasi JSX; tidak ada perubahan tampilan/teks/logic. State & handler
 // tetap hidup di App.jsx dan diteruskan sebagai props.
+import { useEffect, useRef } from "react";
 import { Camera, IdentificationCard, Images, MagnifyingGlass } from "@phosphor-icons/react";
 
 // USULAN BLOK DARI DENAH — popup terpusat (guard hasRole/ocr tetap di App.jsx).
@@ -156,7 +157,28 @@ export function LightboxModal({ lightboxImg, setLightboxImg, sty }) {
 }
 
 // PETA MINI MODAL — dari card Data Stok
+function GiMapPreview({ detail, sty, C, onClose }) {
+  const mapRef = useRef(null);
+  useEffect(() => {
+    if (!mapRef.current || !window.L) return undefined;
+    const map = window.L.map(mapRef.current, { scrollWheelZoom: false }).setView([detail.mapInfo.lat, detail.mapInfo.lng], 16);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { attribution: "© OpenStreetMap contributors", maxZoom: 19 }).addTo(map);
+    window.L.marker([detail.mapInfo.lat, detail.mapInfo.lng]).addTo(map);
+    return () => map.remove();
+  }, [detail]);
+  const fallbackMapUrl = `https://www.openstreetmap.org/?mlat=${detail.mapInfo.lat}&mlon=${detail.mapInfo.lng}#map=16/${detail.mapInfo.lat}/${detail.mapInfo.lng}`;
+  const mapUrl = /^https:\/\//i.test(String(detail.mapInfo.mapSourceUrl || "")) ? detail.mapInfo.mapSourceUrl : fallbackMapUrl;
+  return <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
+    <div role="dialog" aria-modal="true" aria-label="Preview lokasi GI" style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}><div><h3 style={{fontSize:15,fontWeight:800}}>📍 Lokasi GI di Internet</h3><p style={{fontSize:12,color:C.muted}}>{detail.gudang?.nama || "GI"} · {detail.mapInfo.lat}, {detail.mapInfo.lng}</p></div><button style={sty.btn("danger","sm")} onClick={onClose}>✕</button></div>
+      <div ref={mapRef} style={{height:320,borderRadius:10,overflow:"hidden",background:"#e5e7eb"}} aria-label="Peta OpenStreetMap GI" />
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginTop:10,fontSize:12,color:C.muted}}><span>© OpenStreetMap contributors</span><a href={mapUrl} target="_blank" rel="noreferrer" style={{...sty.btn("primary","sm"),textDecoration:"none"}}>Buka peta internet ↗</a></div>
+    </div>
+  </div>;
+}
+
 export function PetaMiniDetailModal({ petaMiniDetail, setPetaMiniDetail, lokasiList, sty, C }) {
+  if (petaMiniDetail?.kind === "GI") return <GiMapPreview detail={petaMiniDetail} sty={sty} C={C} onClose={() => setPetaMiniDetail(null)} />;
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
       <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
