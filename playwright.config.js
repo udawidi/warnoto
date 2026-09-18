@@ -53,7 +53,7 @@ module.exports = defineConfig({
     })),
     {
       name: "desktop-smoke",
-      testMatch: ["desktop.spec.js", "heavy-equipment.spec.js", "tug15-legacy.spec.js"],
+      testMatch: ["desktop.spec.js", "heavy-equipment.spec.js", "tug15-legacy.spec.js", "gi-tug-selection.spec.js"],
       use: { viewport:{ width:1366, height:768 }, screen:{ width:1366, height:768 } },
     },
     {

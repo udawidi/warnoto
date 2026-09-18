@@ -103,6 +103,16 @@ const CLOUD_FIXTURES = {
   pln_migrasi_pending_review_v1: [],
 };
 
+const GI_CLOUD_OVERRIDES = {
+  pln_stocks_v4: [{ ...STOCKS[0], uptId:"UPT-SBY", gudangId:"GI-E2E-01", lokasiId:"GILOK-E2E-01" }, STOCKS[1]],
+  pln_gudang_v1: [...GUDANG,
+    { id:"GI-E2E-01", nama:"GI E2E Surabaya", kode:"GIE2E", alamat:"Lokasi fixture", uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"E2E-01", giActive:true },
+    { id:"GI-E2E-INACTIVE", nama:"GI Inactive", kode:"GIINACTIVE", alamat:"Lokasi fixture", uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"INACTIVE", giActive:false },
+    { id:"GI-E2E-MISSING", nama:"GI Missing Pair", kode:"GIMISSING", alamat:"Lokasi fixture", uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"MISSING", giActive:true },
+  ],
+  pln_lokasi_v4: [...LOKASI, { id:"GILOK-E2E-01", kode:"GI-E2E-01", keterangan:"Gardu Induk fixture", gudangId:"GI-E2E-01", subGudangId:null, uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"E2E-01", giActive:true }],
+};
+
 const FORBIDDEN_HOSTS = [
   /(^|\.)supabase\.co$/i,
   /(^|\.)groq\.com$/i,
@@ -160,4 +170,4 @@ const test = base.extend({
   },
 });
 
-module.exports = { test, expect, E2E_PROFILE, CLOUD_FIXTURES };
+module.exports = { test, expect, E2E_PROFILE, CLOUD_FIXTURES, GI_CLOUD_OVERRIDES };

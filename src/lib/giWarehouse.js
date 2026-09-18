@@ -1,7 +1,11 @@
 // GI shadow rows are valid only when the database has materialized both sides
 // of the gudang/lokasi pair. Transaction selectors use this fail-closed filter.
 export function dropCachedGiRows(list) {
-  return Array.isArray(list) ? list.filter(row => !row?.__gi) : null;
+  if (!Array.isArray(list)) return null;
+  // E2E preview only: fixture shadow rows are safe to expose in the isolated
+  // Vite profile. Production and normal development remain fail-closed.
+  const fixturePreview = import.meta.env?.DEV && import.meta.env?.MODE === "e2e";
+  return list.filter(row => !row?.__gi || (fixturePreview && row.__giFixture === true));
 }
 
 export function activeGiRows(list) {

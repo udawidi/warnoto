@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
-import { activePairedGudangRows } from "../../src/lib/giWarehouse.js";
+import { activePairedGudangRows, dropCachedGiRows } from "../../src/lib/giWarehouse.js";
 
 const migration = await readFile(new URL("../../supabase/migrations/20260918_gi_tug_warehouse.sql", import.meta.url), "utf8");
 const app = await readFile(new URL("../../App.jsx", import.meta.url), "utf8");
@@ -73,6 +73,11 @@ test("GI transaction choices fail closed on missing, inactive, or mismatched pai
     activePairedGudangRows([physical, { ...valid, uptId: null }], [validLocation]),
     [physical],
   );
+});
+
+test("GI fixture cache rows are fail-closed outside Vite e2e mode", () => {
+  const fixture = { id: "GI-FIXTURE", __gi: true, __giFixture: true };
+  assert.deepEqual(dropCachedGiRows([fixture]), []);
 });
 
 test("TUG forms use GI's real location and leave satpam empty", () => {
