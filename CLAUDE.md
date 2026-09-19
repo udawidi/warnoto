@@ -21,6 +21,12 @@ Aplikasi manajemen gudang PLN (React + Vite 4 + Supabase, deploy Vercel).
 ## Status pekerjaan
 Lihat bagian "Status sekarang" di `HANDOFF.md` (satu-satunya sumber status, supaya tidak ada dua versi).
 
+## Preferensi verifikasi pengguna
+
+- Untuk review manual WARNOTO, gunakan `npm run dev` dan serahkan pengujian kepada pengguna di `http://localhost:3001/`.
+- Port `4173` (`npm run dev:e2e`) hanya digunakan untuk pengujian Playwright/E2E saat memang diperlukan; jangan berikan URL itu sebagai alamat review manual.
+- Untuk perubahan UI kecil dan terarah, utamakan edit minimum, build, lalu aktifkan localhost 3001. Jangan menahan pengguna dengan rangkaian E2E/browser yang panjang kecuali diminta atau risikonya memang membutuhkan verifikasi tersebut.
+
 ## graphify
 
 This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.

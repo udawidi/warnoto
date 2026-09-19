@@ -2,6 +2,7 @@
 // item -> ketik qty -> simpan & lanjut. Overlay di atas StockOpnameTab (dipanggil dari tombol
 // "Mulai/Lanjut Hitung"), TIDAK menggantikan tabel desktop yang sudah ada.
 import { useState } from "react";
+import { Barcode, FloppyDisk, MapPin } from "@phosphor-icons/react";
 import { BarcodeScanner } from "./BarcodeScanner.jsx";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { extractKatalogIdFromScan, extractLokasiIdFromScan, normalizeKatalog, blokKeyOf, getItemBlocks } from "../lib/sap.js";
@@ -180,7 +181,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
               <div style={{ fontSize: 17, fontWeight: 800 }}>{blokAktif.gudangKode ? `${blokAktif.gudangKode} — ` : ""}{blokAktif.lokasiKode}</div>
               <div style={{ fontSize: 12, color: C.muted }}>{filled}/{total} terhitung{selisihCount > 0 ? ` • ${selisihCount} selisih` : ""}{receiving ? " • 📡 menerima scan..." : ""}</div>
             </div>
-            <button className="opname-field-mode__change-block" style={sty.btn("ghost", "sm")} onClick={() => setScreen("blok")}>← Ganti Blok</button>
+            <button className="opname-field-mode__change-block" style={{ ...sty.btn("ghost", "sm"), display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setScreen("blok")}><MapPin size={17} weight="bold" aria-hidden="true" />Pilih Blok</button>
           </div>
           <div className="opname-field-mode__body" style={body}>
             {blokAktif.entries.map(({ item, realIdx }) => {
@@ -200,16 +201,19 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                       {done ? <div style={{ fontSize: 20, fontWeight: 900, color: item.selisih !== 0 ? "#f59e0b" : C.green }}>{terhitung}</div> : <div style={{ fontSize: 12, color: C.muted, fontWeight: 700 }}>Belum</div>}
                     </div>
                   </div>
-                  <button style={{ ...sty.btn("ghost", "sm"), marginTop: 8 }} onClick={(e) => { e.stopPropagation(); handleTandaiNihil(realIdx); }}>
-                    ❌ Tidak ditemukan (0)
-                  </button>
+                  <div className="opname-field-mode__zero-action">
+                    <button style={{ ...sty.btn("ghost", "sm") }} onClick={(e) => { e.stopPropagation(); handleTandaiNihil(realIdx); }}>
+                      Catat 0 di Blok Ini
+                    </button>
+                    <span>Material tidak ditemukan secara fisik di blok aktif.</span>
+                  </div>
                 </div>
               );
             })}
           </div>
           <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
-            <button className="opname-field-mode__draft" style={{ ...sty.btn("ghost"), flex: 1 }} onClick={onSimpanDraft}>💾 Simpan Draft</button>
-            <button className="opname-field-mode__scan" style={{ ...sty.btn("primary"), flex: 2 }} onClick={() => { setScanFor("item"); setScanning(true); }}>📷 Scan Barang</button>
+            <button className="opname-field-mode__draft" style={{ ...sty.btn("ghost"), flex: 1 }} onClick={onSimpanDraft}><FloppyDisk size={17} weight="bold" aria-hidden="true" />Draft</button>
+            <button className="opname-field-mode__scan" style={{ ...sty.btn("primary"), flex: 2 }} onClick={() => { setScanFor("item"); setScanning(true); }}><Barcode size={17} weight="bold" aria-hidden="true" />Scan</button>
           </div>
         </>
       )}

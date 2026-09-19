@@ -49,7 +49,10 @@
 .opname-field-mode__actions > button { height: 44px; min-height: 44px; }
 .opname-field-mode__change-block { flex: 0 0 auto; min-width: 44px; white-space: nowrap; }
 .opname-field-mode__draft,
-.opname-field-mode__scan { min-width: 0; white-space: nowrap; }
+.opname-field-mode__scan { min-width: 0; white-space: nowrap; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.opname-field-mode__zero-action { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.opname-field-mode__zero-action > button { min-height: 40px; }
+.opname-field-mode__zero-action > span { color: #64748b; font-size: 12px; line-height: 1.35; }
 .opname-action-bar { align-items: stretch; }
 .opname-action-bar > button { height: 40px; min-height: 40px; }
 .opname-item-name { vertical-align: top; overflow-wrap: anywhere; }
@@ -68,9 +71,12 @@
   .opname-field-mode__body { padding: 12px; }
   .opname-field-mode__actions { flex-wrap: nowrap; padding-inline: 12px; gap: 8px !important; }
   .opname-field-mode__actions > button { height: 44px; min-height: 44px; }
-  .opname-field-mode__draft { flex: 1 1 0 !important; padding-inline: 8px !important; font-size: 13px !important; }
-  .opname-field-mode__scan { flex: 1 1 0 !important; padding-inline: 8px !important; font-size: 13px !important; }
-  .opname-field-mode__change-block { min-height: 44px; }
+  .opname-field-mode__actions { justify-content: flex-end; }
+  .opname-field-mode__draft { flex: 0 0 auto !important; width: 84px; padding-inline: 10px !important; font-size: 13px !important; }
+  .opname-field-mode__scan { flex: 0 0 auto !important; width: 104px; padding-inline: 12px !important; font-size: 13px !important; }
+  .opname-field-mode__change-block { min-height: 44px; padding-inline: 14px !important; font-size: 15px !important; font-weight: 800 !important; border-color: #93c5fd !important; color: #1d4ed8 !important; }
+  .opname-field-mode__zero-action { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .opname-field-mode__zero-action > button { width: 100%; }
   .opname-action-bar > button { height: 44px; min-height: 44px; }
   .opname-history-tabs { gap: 6px !important; }
   .opname-history-tabs > button { flex: 1 1 150px; min-height: 44px; padding-inline: 10px !important; }
@@ -88,6 +94,7 @@
 [data-theme="dark"] .opname-category-segment button.is-active { background: #172554; color: #bfdbfe; }
 [data-theme="dark"] .opname-next-stage { border-color: #1e40af; background: #172554; color: #bfdbfe; }
 [data-theme="dark"] .opname-legacy-badge { border-color: #475569; background: #1e293b; color: #cbd5e1; }
+[data-theme="dark"] .opname-field-mode__zero-action > span { color: #94a3b8; }
 [data-theme="dark"] .opname-history-actions button:not([title="Hapus sesi opname"]) {
   border-color: #334155 !important;
   background: #172033 !important;
