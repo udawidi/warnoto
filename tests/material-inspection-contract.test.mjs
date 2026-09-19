@@ -37,6 +37,19 @@ test("RBAC keeps VIEWER read-only and only ADMIN/TL receive the create action", 
   const viewer = permsSource.match(/VIEWER: menus\(([^\n]+)\)/)?.[1] || "";
   assert.match(viewer, /"inspeksiMaterial"/);
   assert.doesNotMatch(viewer, /"maturity"/);
+  assert.match(componentSource, /useState\(\(\) => writer \? "form" : "history"\)/);
+  assert.match(componentSource, /!writer && view !== "history"/);
+  assert.doesNotMatch(componentSource, /\{ id: "form", label: "Buat Inspeksi" \},/);
+});
+
+test("inspection UI keeps the selected UPT as the single visible scope", () => {
+  assert.match(componentSource, /activeBaUptFilter = baUptFilterOptions\.some/);
+  assert.match(componentSource, /scope=\{scopeLabel\}/);
+  assert.match(componentSource, /Wilayah UIT \(\$\{baUptFilterOptions\.length\} UPT\)/);
+  assert.match(componentSource, /const scopeLabel = activeBaUptFilter/);
+  assert.doesNotMatch(componentSource, /scope=\{inspectionIdentity\.namaUpt\}/);
+  assert.match(componentSource, /Filter UPT inspeksi material/);
+  assert.match(componentSource, /Belum ada BA tersimpan untuk/);
 });
 
 test("batch UI carries BA header fields and prints per-batch (multi-material, no bulk-print workflow)", () => {

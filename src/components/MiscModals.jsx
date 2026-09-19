@@ -80,7 +80,7 @@ export function LokasiDeleteConfirmModal({ lokasiDeleteConfirm, setLokasiDeleteC
 export function ConfirmDialogModal({ confirmDialog, setConfirmDialog, sty, C }) {
   const isWarning = confirmDialog.variant === "warning";
   return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:16}} onClick={()=>setConfirmDialog(null)}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1100,padding:16}} onClick={()=>{ confirmDialog.onCancel?.(); setConfirmDialog(null); }}>
       <div style={{...sty.card,width:380,maxWidth:"100%",textAlign:"center",boxShadow:"0 20px 50px rgba(0,0,0,0.3)"}} onClick={e=>e.stopPropagation()}>
         <div style={{width:56,height:56,borderRadius:"50%",background:isWarning?"#fef3c7":"#fee2e2",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 14px",fontSize:24}}>{isWarning?"⚠️":"🗑️"}</div>
         <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>{confirmDialog.title}</h3>
@@ -91,7 +91,7 @@ export function ConfirmDialogModal({ confirmDialog, setConfirmDialog, sty, C }) 
           </div>
         )}
         <div style={{display:"flex",gap:10}}>
-          {!isWarning && <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setConfirmDialog(null)}>Batal</button>}
+          {!isWarning && <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{ confirmDialog.onCancel?.(); setConfirmDialog(null); }}>Batal</button>}
           <button style={{...sty.btn(isWarning?"primary":"danger"),flex:1}} onClick={()=>{ const fn=confirmDialog.onConfirm; setConfirmDialog(null); fn?.(); }}>{confirmDialog.confirmLabel}</button>
         </div>
       </div>

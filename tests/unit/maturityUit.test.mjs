@@ -16,6 +16,8 @@ import {
 
 const dashboardSource = await readFile(new URL("../../src/components/MaturityDashboardTab.jsx", import.meta.url), "utf8");
 const editorSource = await readFile(new URL("../../src/components/MaturityAuditSystem.jsx", import.meta.url), "utf8");
+const appSource = await readFile(new URL("../../App.jsx", import.meta.url), "utf8");
+const modalSource = await readFile(new URL("../../src/components/MiscModals.jsx", import.meta.url), "utf8");
 const hookSource = await readFile(new URL("../../src/hooks/useMaturity.jsx", import.meta.url), "utf8");
 const syncSource = await readFile(new URL("../../src/lib/maturitySync.js", import.meta.url), "utf8");
 const proposalSource = await readFile(new URL("../../supabase/proposals/20260919_maturity_uit_hardening.sql", import.meta.url), "utf8");
@@ -81,6 +83,15 @@ test("mobile evidence viewer memakai native link dan memberi feedback untuk id k
   assert.doesNotMatch(editorSource, /window\.open\(state\.url/);
   assert.match(editorSource, /else setUploadError\(/);
   assert.match(editorSource, /belum memiliki ID server dan tidak dapat dibuka/);
+});
+
+test("popup migrasi Maturity mengingat dismissal per signature kandidat", () => {
+  assert.match(appSource, /warnoto_maturity_migration_dismissed_sig/);
+  assert.match(appSource, /item\.label.*record\?\.id/);
+  assert.match(appSource, /localStorage\.setItem\("warnoto_maturity_migration_dismissed_sig", migrationSignature\)/);
+  assert.match(appSource, /onCancel: \(\) =>/);
+  assert.equal((modalSource.match(/confirmDialog\.onCancel\?\./g) || []).length, 2);
+  assert.doesNotMatch(appSource, /onCancel:[\s\S]{0,500}upsertAll/);
 });
 
 test("reviewer UIT/Pusat init setelah scope async dan tidak menimpa pilihan valid", () => {

@@ -141,7 +141,8 @@ export function InspeksiMaterialCadangTab({
   isMobile,
   openScanner,
 }) {
-  const [view, setView] = useState("form");
+  const writer = ["ADMIN", "TL"].includes(currentUser?.role) && can(currentUser, "aksi.buatInspeksiMaterial", rolePerms);
+  const [view, setView] = useState(() => writer ? "form" : "history");
   const [items, setItems] = useState([]);
   const [selectedGudangId, setSelectedGudangId] = useState("");
   const [pickerQuery, setPickerQuery] = useState("");
@@ -163,7 +164,6 @@ export function InspeksiMaterialCadangTab({
   const [dirtyBaseline, setDirtyBaseline] = useState("");
   const [draftPhotoUrls, setDraftPhotoUrls] = useState({});
   const pickerSearchRef = useRef(null);
-  const writer = ["ADMIN", "TL"].includes(currentUser?.role) && can(currentUser, "aksi.buatInspeksiMaterial", rolePerms);
   const inspectionScope = useMemo(() => getInspectionScope({
     currentUser,
     currentUserUptId,
@@ -187,14 +187,20 @@ export function InspeksiMaterialCadangTab({
     return ids.size > 1 ? uptList.filter(u => ids.has(u.id)) : [];
   }, [inspectionScope.gudangList, uptList]);
   const [baUptFilter, setBaUptFilter] = useState("");
-  const baGudangIds = baUptFilter
-    ? new Set(inspectionScope.gudangList.filter(g => g.uptId === baUptFilter).map(g => g.id))
+  const activeBaUptFilter = baUptFilterOptions.some(u => u.id === baUptFilter) ? baUptFilter : "";
+  const activeBaUpt = baUptFilterOptions.find(u => u.id === activeBaUptFilter);
+  const baGudangIds = activeBaUptFilter
+    ? new Set(inspectionScope.gudangList.filter(g => g.uptId === activeBaUptFilter).map(g => g.id))
     : null;
   const scopedGudangList = baGudangIds ? inspectionScope.gudangList.filter(g => baGudangIds.has(g.id)) : inspectionScope.gudangList;
   const scopedLokasiList = baGudangIds ? inspectionScope.lokasiList.filter(l => baGudangIds.has(l.gudangId)) : inspectionScope.lokasiList;
   const scopedLokasiIds = new Set(scopedLokasiList.map(l => l.id));
-  const scopedStocks = baGudangIds ? inspectionScope.stocks.filter(s => s.lokasiId ? scopedLokasiIds.has(s.lokasiId) : s.uptId === baUptFilter) : inspectionScope.stocks;
+  const scopedStocks = baGudangIds ? inspectionScope.stocks.filter(s => s.lokasiId ? scopedLokasiIds.has(s.lokasiId) : s.uptId === activeBaUptFilter) : inspectionScope.stocks;
   const scopedBatches = baGudangIds ? inspectionScope.materialInspectionBatches.filter(b => baGudangIds.has(b.gudangId)) : inspectionScope.materialInspectionBatches;
+  const scopeLabel = activeBaUptFilter
+    ? (activeBaUpt?.nama || "UPT terpilih")
+    : (baUptFilterOptions.length > 1 ? `Wilayah UIT (${baUptFilterOptions.length} UPT)` : (inspectionIdentity.namaUpt || "Wilayah UIT"));
+  const scopedMaterialCount = scopedBatches.reduce((total, batch) => total + (batch.items?.length || 0), 0);
 
   const today = todayJakarta();
   const [tanggalBa, setTanggalBa] = useState(() => todayJakarta());
@@ -254,6 +260,10 @@ export function InspeksiMaterialCadangTab({
     loadMaterialInspectionDrafts().then(rows => { if (active) setDrafts(rows || []); }).catch(() => {});
     return () => { active = false; };
   }, [writer]);
+
+  useEffect(() => {
+    if (!writer && view !== "history") setView("history");
+  }, [writer, view]);
 
   useEffect(() => {
     if (activeGudangId && pickerSearchRef.current) pickerSearchRef.current.focus();
@@ -461,7 +471,7 @@ export function InspeksiMaterialCadangTab({
   }
 
   const tabs = [
-    { id: "form", label: "Buat Inspeksi" },
+    ...(writer ? [{ id: "form", label: "Buat Inspeksi" }] : []),
     ...(writer ? [{ id: "drafts", label: `Draft Saya (${drafts.length})` }] : []),
     { id: "history", label: "History BA" },
   ];
@@ -479,17 +489,17 @@ export function InspeksiMaterialCadangTab({
           eyebrow="Material Assurance"
           title="Inspeksi Material Cadang"
           description="Satu Berita Acara memuat 1–10 material Cadang dari satu gudang. Identitas material terkunci, dan riwayat bersifat append-only."
-          scope={inspectionIdentity.namaUpt}
+          scope={scopeLabel}
           metrics={[
             { label: "BA Tersimpan", value: scopedBatches.length },
-            { label: "Material di Form", value: items.length },
-            { label: "Lengkap", value: `${completeCount}/${items.length}` },
+            { label: writer ? "Material di Form" : "Total Material", value: writer ? items.length : scopedMaterialCount },
+            { label: writer ? "Lengkap" : "UPT Scope", value: writer ? `${completeCount}/${items.length}` : (activeBaUptFilter ? 1 : Math.max(1, baUptFilterOptions.length)) },
             { label: writer ? "Akses Tulis" : "Akses Baca", value: writer ? "ADMIN/TL" : "VIEWER" },
           ]}
           controls={baUptFilterOptions.length > 0 ? (
             <div>
               <label>Filter UPT</label>
-              <select value={baUptFilter} onChange={e => setBaUptFilter(e.target.value)}>
+              <select aria-label="Filter UPT inspeksi material" value={activeBaUptFilter} onChange={e => setBaUptFilter(e.target.value)}>
                 <option value="">Semua UPT</option>
                 {baUptFilterOptions.map(u => <option key={u.id} value={u.id}>{u.nama}</option>)}
               </select>
@@ -835,17 +845,11 @@ export function InspeksiMaterialCadangTab({
         </div>
       )}
 
-      {view === "form" && !writer && (
-        <div className="no-print" style={{ ...sty.card, textAlign: "center", color: C.muted, fontSize: 13 }}>
-          Akses baca saja. Hanya ADMIN/TL yang dapat membuat Berita Acara inspeksi.
-        </div>
-      )}
-
       {view === "history" && (
         <div className="no-print" style={{ ...sty.card, display: "grid", gap: 12 }}>
           <StepHeader title="Riwayat Berita Acara" C={C} />
           {scopedBatches.length === 0 ? (
-            <p style={{ margin: 0, fontSize: 13, color: C.muted }}>Belum ada BA tersimpan.</p>
+            <p style={{ margin: 0, fontSize: 13, color: C.muted }}>Belum ada BA tersimpan untuk {scopeLabel}.</p>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit,minmax(380px,1fr))", gap: 12 }}>
               {scopedBatches.map(batch => (

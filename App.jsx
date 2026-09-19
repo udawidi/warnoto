@@ -480,8 +480,8 @@ export default function PLNWarehouse() {
 
   const [stockModal, setStockModal] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null); // popup konfirmasi hapus generik untuk Master Data lain (Katalog, Satpam, UIT, ULTG, UPT, Gudang): {title, message, warning, confirmLabel, onConfirm}
-  function askConfirmDelete({ title, message, warning, confirmLabel, onConfirm, variant }) {
-    setConfirmDialog({ title: title||"Hapus Data?", message, warning, confirmLabel: confirmLabel||(variant==="warning"?"Mengerti":"🗑️ Ya, Hapus"), onConfirm, variant });
+  function askConfirmDelete({ title, message, warning, confirmLabel, onConfirm, onCancel, variant }) {
+    setConfirmDialog({ title: title||"Hapus Data?", message, warning, confirmLabel: confirmLabel||(variant==="warning"?"Mengerti":"🗑️ Ya, Hapus"), onConfirm, onCancel, variant });
   }
   const {
     akunModal, setAkunModal, akunForm, setAkunForm, akunBusy, setAkunBusy, akunResult, setAkunResult,
@@ -687,6 +687,10 @@ export default function PLNWarehouse() {
   }
   const lastBotSyncErrorToastRef = useRef(0);
   const maturityMigrationPromptedRef = useRef({ assessments:false, audits:false });
+  const maturityMigrationDismissedSigRef = useRef(null);
+  if (maturityMigrationDismissedSigRef.current === null) {
+    try { maturityMigrationDismissedSigRef.current = localStorage.getItem("warnoto_maturity_migration_dismissed_sig"); } catch { maturityMigrationDismissedSigRef.current = ""; }
+  }
   // Hanya aktif setelah bootstrap untuk user ini selesai. Ref mencegah channel
   // sempat terbuka saat login ulang sebelum effect loadCloud sempat set state refresh.
   const stocksBootstrapUserIdRef = useRef(null);
@@ -1064,6 +1068,10 @@ export default function PLNWarehouse() {
         CLOUD.set("pln_maturity_5s_assessments_v1", cm5sRemote);
       }
       if (maturityMigrationCandidates.length > 0) {
+        const migrationSignature = maturityMigrationCandidates
+          .flatMap(item => item.cached.map(record => `${item.label}:${record?.id || ""}`))
+          .sort().join("|");
+        if (maturityMigrationDismissedSigRef.current === migrationSignature) return;
         const migrationSummary = maturityMigrationCandidates.map(item => `${item.cached.length} ${item.label}`).join(" dan ");
         askConfirmDelete({
           title: "Migrasikan data Maturity ke server?",
@@ -1089,6 +1097,10 @@ export default function PLNWarehouse() {
               return;
             }
             showToast("Data Maturity berhasil dimigrasikan dan diverifikasi di server.");
+          },
+          onCancel: () => {
+            maturityMigrationDismissedSigRef.current = migrationSignature;
+            try { localStorage.setItem("warnoto_maturity_migration_dismissed_sig", migrationSignature); } catch {}
           },
         });
       }
