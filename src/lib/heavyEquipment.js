@@ -1,6 +1,6 @@
 // Alat Berat: data default + normalizer + getter loan + gate approval —
 // dipindah dari App.jsx (refactor Fase 3d). getUserUptScope dari roles.js.
-import { getUserUptScope } from "./roles.js";
+import { getUserUptScope, stripUptPrefix } from "./roles.js";
 
 export const HEAVY_EQUIPMENT_RAW = `
 HE-001|Surabaya|Gudang Ketintang|TRUCK CRANE|Angkat|Nissan|8 TON|||Baik|
@@ -122,6 +122,18 @@ export function getHeavyEquipmentLoanJobName(loan) {
   return loan?.namaPekerjaan || loan?.keperluan || "";
 }
 
+export function normalizeHeavyEquipmentUptName(value) {
+  return stripUptPrefix(String(value || "").replace(/\s+/g, " ").trim()).toUpperCase();
+}
+
+export function canCompleteHeavyEquipmentLoan(user, loan, uptList) {
+  if (!user || !["ADMIN", "TL"].includes(user.role)) return false;
+  if (!loan?.id || !loan?.equipmentId || !["DIPINJAM", "APPROVED", "OVERDUE"].includes(normalizeHeavyEquipmentLoanStatus(loan.status))) return false;
+  const ownerUpt = normalizeHeavyEquipmentUptName(getHeavyEquipmentLoanOwnerUpt(loan));
+  const userUpt = normalizeHeavyEquipmentUptName(getUserUptScope(user, uptList));
+  return !!ownerUpt && !!userUpt && ownerUpt === userUpt;
+}
+
 export function normalizeHeavyEquipmentLoanStatus(status) {
   if (status === "PENDING_ASMAN") return "PENDING_OWNER_ASMAN";
   if (status === "APPROVED") return "DIPINJAM";
@@ -136,7 +148,7 @@ export function isPendingHeavyEquipmentLoan(loan) {
 // Bukan terminal (REJECTED/SELESAI). Dipakai guard anti double-book.
 export function isActiveHeavyEquipmentLoan(loan) {
   const s = normalizeHeavyEquipmentLoanStatus(loan?.status);
-  return s === "PENDING_OWNER_ASMAN" || s === "DIPINJAM";
+  return s === "PENDING_OWNER_ASMAN" || s === "DIPINJAM" || s === "OVERDUE";
 }
 
 export function getHeavyEquipmentLoanRuntimeStatus(loan, now = Date.now()) {

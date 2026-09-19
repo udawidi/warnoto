@@ -1,6 +1,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
-const { test, expect } = require("./fixtures");
+const { test, expect, CLOUD_FIXTURES } = require("./fixtures");
 const { openApp, openRoute } = require("./support/responsive");
 
 const ADMIN = { id:"e2e-admin", name:"E2E Admin", username:"admin-e2e", role:"ADMIN", jabatan:"Admin Gudang", avatar:"AD", upt:"Surabaya", gudangIds:null };
@@ -138,5 +138,41 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
     expect(hook).toContain('if (_isDataUrl(item.foto))');
     expect(hook).toContain('"tug-photos", `alat-berat/${item.id}.jpg`');
     expect(sync).toContain('supabase.from(table).upsert(upsertRows, { onConflict: "id" })');
+  });
+
+  test.describe("pengembalian oleh owner", () => {
+    test.use({
+      actorProfile: { ...TL },
+      cloudOverrides: {
+        pln_heavy_equipment_v1: [{ ...CLOUD_FIXTURES.pln_heavy_equipment_v1[0], availabilityStatus:"DIPINJAM", activeLoanId:"LOAN-OWNER-01", borrowedToUpt:"Gresik" }],
+        pln_heavy_equipment_loans_v1: [{ ...CLOUD_FIXTURES.pln_heavy_equipment_loans_v1[1], id:"LOAN-OWNER-01", equipmentId:"HE-E2E-01", ownerUpt:"Surabaya", requesterUpt:"Gresik", status:"DIPINJAM" }],
+      },
+    });
+
+    test("ADMIN/TL owner melihat CTA kembali di kartu Armada", async ({ isolatedPage:page }) => {
+      await openFleetForE2E(page);
+      await expect(page.getByRole("button", { name:"Tandai Alat Kembali", exact:true })).toHaveCount(1);
+    });
+
+    test("gagal RPC mempertahankan modal dan data peminjaman", async ({ isolatedPage:page }) => {
+      await openFleetForE2E(page);
+      await page.getByRole("button", { name:"Tandai Alat Kembali", exact:true }).click();
+      const dialog = page.getByRole("dialog", { name:"Konfirmasi Alat Kembali" });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("checkbox").first().check();
+      await dialog.getByRole("checkbox").last().check();
+      await dialog.getByRole("button", { name:"Tandai Sudah Kembali" }).click();
+      await expect(page.getByText("Server pengembalian alat belum tersedia.")).toBeVisible();
+      await expect(dialog).toBeVisible();
+      await expect(page.getByText("OVERDUE", { exact:true }).last()).toBeVisible();
+    });
+
+    test.describe("peminjam", () => {
+      test.use({ actorProfile: { ...TL, upt:"Gresik", uptId:"UPT-GSK" } });
+      test("UPT peminjam tidak melihat CTA kembali", async ({ isolatedPage:page }) => {
+        await openFleetForE2E(page);
+        await expect(page.getByRole("button", { name:"Tandai Alat Kembali", exact:true })).toHaveCount(0);
+      });
+    });
   });
 });

@@ -13,6 +13,7 @@ import {
   isActiveHeavyEquipmentLoan,
   getHeavyEquipmentLoanRuntimeStatus,
   canApproveHeavyEquipmentLoan,
+  canCompleteHeavyEquipmentLoan,
 } from "../lib/heavyEquipment.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "../lib/heavyEquipmentPhoto.js";
 
@@ -51,7 +52,7 @@ async function uploadSuratIzin(dataUrl, equipmentId, showToast) {
 // saveToCloud diakses lewat stateRef.current (bukan langsung sbg param) karena hook ini
 // dipanggil sebelum saveToCloud (useCallback) didefinisikan di PLNWarehouse — stateRef.current.saveToCloud
 // diisi belakangan (lihat App.jsx setelah definisi saveToCloud), sama pola dgn stateRef utk data state.
-export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, logApprovalHistory }) {
+export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, logApprovalHistory, supabaseClient }) {
   const [heavyEquipmentList, setHeavyEquipmentList] = useState(() => readCachedList("pln_heavy_equipment_v1") ?? []);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState(() => readCachedList("pln_heavy_equipment_loans_v1") ?? []);
 
@@ -205,14 +206,27 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
 
   async function completeHeavyEquipmentLoan(loanId) {
     const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
-    if (!loan || !["DIPINJAM","OVERDUE"].includes(getHeavyEquipmentLoanRuntimeStatus(loan))) return;
-    if (!hasRole(currentUser, "ADMIN","TL","ASMAN")) { showToast("Role kamu tidak bisa menandai alat kembali.","error"); return; }
-    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, status:"SELESAI", returnedBy:currentUser.id, returnedAt:Date.now() } : l);
-    const nextEquipment = heavyEquipmentList.map(eq=>eq.id===loan.equipmentId ? { ...eq, availabilityStatus:"TERSEDIA", activeLoanId:null, borrowedToUpt:null, borrowedJobName:null, borrowedUntil:null } : eq);
+    if (!loan || !["DIPINJAM","OVERDUE"].includes(getHeavyEquipmentLoanRuntimeStatus(loan))) return false;
+    if (!canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya ADMIN/TL UPT pemilik alat yang bisa menandai alat kembali.","error"); return false; }
+    if (!supabaseClient?.rpc) { showToast("Server pengembalian alat belum tersedia.", "error"); return false; }
+    let data;
+    let error;
+    try {
+      ({ data, error } = await supabaseClient.rpc("complete_heavy_equipment_loan", { p_loan_id: loanId }));
+    } catch (rpcError) {
+      showToast(`Gagal menandai alat kembali: ${rpcError?.message || "Server tidak dapat dihubungi."}`, "error");
+      return false;
+    }
+    if (error || !data?.loan || !data?.equipment) {
+      showToast(`Gagal menandai alat kembali: ${error?.message || "Respons server tidak lengkap."}`, "error");
+      return false;
+    }
+    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ...data.loan } : l);
+    const nextEquipment = heavyEquipmentList.map(eq=>eq.id===loan.equipmentId ? { ...eq, ...data.equipment } : eq);
     setHeavyEquipmentLoans(nextLoans);
     setHeavyEquipmentList(nextEquipment);
-    await stateRef.current.saveToCloud({heavyEquipmentLoans: nextLoans, heavyEquipmentList: nextEquipment}, {heavyEquipmentLoansChangedRows: [nextLoans.find(l=>l.id===loanId)]});
     showToast("Alat ditandai sudah kembali.");
+    return true;
   }
 
   return {

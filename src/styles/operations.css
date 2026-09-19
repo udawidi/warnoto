@@ -487,6 +487,50 @@
   .heavy-equipment-page .dashboard-mode-switch button { padding-inline: 9px; }
 }
 
+/* Heavy equipment: compact registry rhythm aligned with the operations template. */
+.heavy-equipment-page .operations-hero--summary-only { margin-bottom: 10px; }
+.heavy-equipment-page .operations-hero__summary-copy { padding: 12px 16px 10px; }
+.heavy-equipment-page .operations-hero__summary-copy p { margin-top: 3px; }
+.heavy-equipment-page .operations-hero--summary-only .operations-metric { padding: 11px 14px; }
+.heavy-equipment-page .dashboard-mode-switch {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px !important;
+  padding: 3px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.heavy-equipment-page .dashboard-mode-switch button {
+  min-height: 40px !important;
+  padding: 6px 10px !important;
+  border-radius: 8px;
+}
+.heavy-equipment-page .operations-section-heading { margin-top: 14px; margin-bottom: 8px; padding-bottom: 6px; }
+.heavy-equipment-page .equipment-filter-layout { gap: 8px !important; margin-bottom: 8px !important; }
+.heavy-equipment-page .heavy-category-strip { gap: 4px; }
+.heavy-equipment-page .heavy-category-strip .heavy-category-button { padding: 4px 8px !important; }
+.heavy-equipment-page .equipment-card-grid { gap: 10px !important; margin-bottom: 16px !important; }
+.heavy-equipment-page .equipment-card { padding: 11px !important; gap: 8px !important; }
+.heavy-equipment-page .equipment-card > div:first-child { height: 112px !important; }
+.heavy-equipment-page .equipment-card__header { gap: 6px !important; }
+.heavy-equipment-page .equipment-spec-grid { gap: 6px 8px; }
+.heavy-equipment-page .equipment-fact-value { font-size: 12px; }
+.heavy-equipment-page .equipment-card button[aria-label="Tandai Alat Kembali"] { min-height: 40px; padding: 7px 10px; }
+[data-theme="dark"] .heavy-equipment-page .dashboard-mode-switch { border-color: #334155; background: #0f172a; }
+
+@media (min-width: 769px) {
+  .heavy-equipment-page .dashboard-mode-switch button span,
+  .heavy-equipment-page .equipment-fact-label { font-size: 11px; }
+}
+
+@media (max-width: 768px) {
+  .heavy-equipment-page .dashboard-mode-switch { overflow-x: auto; }
+  .heavy-equipment-page .dashboard-mode-switch button { flex: 1 0 auto; min-height: 44px !important; }
+  .heavy-equipment-page .equipment-card > div:first-child { height: 120px !important; }
+  .heavy-equipment-page .equipment-card button[aria-label="Tandai Alat Kembali"] { width: 100%; min-height: 44px; }
+}
+
 /* ATTB: compact pipeline toolbar (segments + stage cards) for phone screens. */
 @media (max-width: 768px) {
   .attb-page .operations-segments { margin-bottom: 6px; }

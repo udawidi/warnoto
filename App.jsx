@@ -1247,7 +1247,7 @@ export default function PLNWarehouse() {
     approveHeavyEquipmentLoan,
     rejectHeavyEquipmentLoan,
     completeHeavyEquipmentLoan,
-  } = useHeavyEquipment({ currentUser, uptList, showToast, stateRef, logApprovalHistory });
+  } = useHeavyEquipment({ currentUser, uptList, showToast, stateRef, logApprovalHistory, supabaseClient: supabase });
   const {
     opnameList, setOpnameList,
     stockCountList, setStockCountList,
