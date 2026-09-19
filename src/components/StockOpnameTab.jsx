@@ -20,7 +20,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
   setStocks, saveToCloud, visibleGudangList, stockGudangFilter, setStockGudangFilter,
-  showWork=true, showHistory=true, onOpenWork }) {
+  uploadStockFoto, showWork=true, showHistory=true, onOpenWork }) {
 
   const sortedGudangList = [...(gudangList || [])].sort((a,b) => String(a.kode || a.nama || "").localeCompare(String(b.kode || b.nama || ""), "id", { numeric:true, sensitivity:"base" }));
   const sortedLokasiList = [...(lokasiList || [])].sort((a,b) => String(a.kode || a.nama || "").localeCompare(String(b.kode || b.nama || ""), "id", { numeric:true, sensitivity:"base" }));
@@ -593,6 +593,31 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     });
   }
 
+  async function handleOpnamePhoto(realIdx, field, file) {
+    if (!file || !uploadStockFoto || !activeOpname) return;
+    const item = activeOpname.items?.[realIdx];
+    const sessionUptId = activeOpname.uptId || activeOpname.upt_id;
+    if (!sessionUptId) { showToast("Sesi opname tidak memiliki UPT. Foto tidak disimpan.", "error"); return; }
+    try {
+      const dataUrl = typeof file === "string" ? file : await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(new Error("File foto tidak dapat dibaca."));
+        reader.readAsDataURL(file);
+      });
+      const katalogId = item?.katalogId || item?.noKatalog || item?.stockId;
+      if (!katalogId) throw new Error("Foto tidak memiliki identitas material.");
+      const url = await uploadStockFoto(katalogId, field, dataUrl, sessionUptId);
+      const next = { ...activeOpname, items: activeOpname.items.map((entry, index) => index === realIdx ? { ...entry, [field]: url } : entry) };
+      const saved = await saveOpname(next, [...(touchedRef.current[activeOpname.id] || [])], { silent:true, forceMerge:true });
+      if (saved === false) { setActiveOpname(next); return; }
+      setActiveOpname(saved || next);
+      showToast("✅ Foto tersimpan.");
+    } catch (error) {
+      showToast(error?.message || "Gagal menyimpan foto.", "error");
+    }
+  }
+
   // Fase 2d: field mode (OpnameLapanganView) butuh nulis qty ke BLOK YANG SESUNGGUHNYA
   // (lokasiKey dari blok yang lagi aktif di HP) — beda dari updateItem desktop yang selalu pakai
   // itemLokasiKey (kolaps ke "_TANPA_LOKASI" utk item multi-blok, breakdown per-blok yang
@@ -1122,7 +1147,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                                     onChange={e=>{
                                       const f=e.target.files[0]; if(!f) return;
                                       const r=new FileReader();
-                                      r.onload=ev=>updateItem(realIdx,field,ev.target.result);
+                                      r.onload=ev=>handleOpnamePhoto(realIdx, field, ev.target.result);
                                       r.readAsDataURL(f);
                                     }}/>
                                 )}
@@ -1188,7 +1213,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       // ke approval Asman walau semua qty sudah lengkap. Fix: submitOpname saja
                       // (sudah mencakup semua yang dilakukan saveOpname), di-await, baru pindah tab.
                       if(!validate()) return;
-                      const submitted = await submitOpname(activeOpname);
+                      const submitted = await submitOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]);
                       if (submitted === false) return;
                       try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {}
                       setActiveOpname(null);
@@ -1365,13 +1390,34 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           baru cuma dibuat SETELAH file berhasil di-parse (startOpnameFromFile). */}
       {canCreate && !activeOpname && (
         <div style={{marginBottom:20}}>
-          {draftSessions.length>0 && draftSessions.slice(0,3).map(opn=>(
-            <button key={opn.id} style={{...sty.btn("ghost","sm"),width:"100%",justifyContent:"flex-start",marginBottom:6}}
-              onClick={()=>{setActiveOpname(opn);setPage(0);}}>
-              {opn.flowVersion !== 2 && <span className="opname-legacy-badge">Legacy</span>}
-              📝 Lanjutkan draft {opn.semester} — {opn.jenisAlur} ({(opn.items||[]).length} item)
-            </button>
-          ))}
+          {draftSessions.length>0 && <section aria-labelledby="opname-draft-title" style={{border:`1px solid ${C.accent}55`,borderRadius:14,padding:"14px 16px",marginBottom:12,background:`${C.accent}0d`}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,marginBottom:10}}>
+              <div>
+                <div id="opname-draft-title" style={{fontSize:15,fontWeight:850,color:C.text||"#111827"}}>Ada opname yang bisa dilanjutkan</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>Selesaikan hitungan yang masih tersimpan sebagai draft.</div>
+              </div>
+              <span style={{minWidth:28,height:28,padding:"0 8px",display:"inline-flex",alignItems:"center",justifyContent:"center",borderRadius:999,background:C.accent,color:"white",fontSize:13,fontWeight:800}}>{draftSessions.length}</span>
+            </div>
+            <div style={{display:"grid",gap:8}}>
+              {draftSessions.slice(0,3).map(opn=>{
+                const progress = opnameProgress(opn.items||[], null, { requireTimestamp: opn.flowVersion===2 });
+                return <div key={opn.id} style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",padding:"10px 12px",borderRadius:10,background:C.surface||"white",border:`1px solid ${C.border}`}}>
+                  <div style={{flex:"1 1 220px",minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:13,fontWeight:800}}>
+                      <span>{opn.semester || "Semester belum diisi"}</span><span style={{color:C.muted,fontWeight:500}}>• {opn.jenisAlur || opn.kategori || "Stock Opname"}</span>
+                      {opn.flowVersion !== 2 && <span className="opname-legacy-badge">Legacy</span>}
+                    </div>
+                    <div style={{fontSize:12,color:C.muted,marginTop:3}}>{opn.gudangKode || "Gudang belum dipilih"} • {progress.filled}/{progress.total} item terhitung • {fmtDate(opn.dibuatAt)}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flex:"0 0 auto"}}>
+                    <span style={{fontSize:11,fontWeight:800,color:"#92400e",background:"#fef3c7",padding:"4px 8px",borderRadius:999}}>Draft</span>
+                    <button type="button" aria-label={`Lanjutkan opname ${opn.semester||""}`} style={{...sty.btn("primary","sm"),whiteSpace:"nowrap"}} onClick={()=>{setActiveOpname(opn);setPage(0);}}>Lanjutkan opname <ArrowRight size={14} aria-hidden="true" /></button>
+                  </div>
+                </div>;
+              })}
+            </div>
+            {draftSessions.length>3 && <div style={{fontSize:11,color:C.muted,marginTop:8}}>Menampilkan 3 draft terbaru.</div>}
+          </section>}
           <div
             onDragOver={e=>{e.preventDefault(); setDragActive(true);}}
             onDragLeave={()=>setDragActive(false)}
@@ -1512,17 +1558,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
       {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
       </div>
-      <div style={{display:showHistory?"block":"none"}}>
+      <div className="inventory-assurance-history" style={{display:showHistory?"block":"none"}}>
       <div style={{borderTop:`1px solid ${C.border}`,marginTop:24,paddingTop:16,marginBottom:10}}>
-        <div style={{fontSize:13,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".4px"}}>Riwayat Opname</div>
+        <div className="inventory-assurance-history__title">Riwayat Opname</div>
       </div>
 
       {/* Filter status — chip compact (Apple-like) */}
-      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+      <div className="inventory-assurance-history__filters" style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
         {["semua","DRAFT","PENDING_ASMAN","SELESAI","DITOLAK"].map(s=>(
           <button key={s} style={{padding:"4px 10px",borderRadius:999,border:`1px solid ${filterStatus===s?C.accent:C.border}`,background:filterStatus===s?C.accent:"transparent",color:filterStatus===s?"white":C.muted,fontSize:12,fontWeight:filterStatus===s?600:400,cursor:"pointer"}}
             onClick={()=>setFilterStatus(s)}>
-            {s==="semua"?"Semua":statusLabel[s]||s}
+            {s==="semua"?"Semua":statusLabel[s]||s} <span style={{opacity:.8}}>({s==="semua"?opnameList.length:opnameList.filter(o=>o.status===s).length})</span>
           </button>
         ))}
       </div>
@@ -1536,12 +1582,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             const creator = users.find(u=>u.id===opn.dibuatOleh)||{};
             const selisihCount = (opn.items||[]).filter(i=>itemCounted(i, { requireTimestamp: opn.flowVersion===2 }) && i.selisih!==0).length;
             return (
-              <div key={opn.id} style={{padding:"10px 0",borderBottom:`1px solid ${C.border}`}}>
+              <div key={opn.id} className="inventory-assurance-history__row inventory-assurance-history__row--summary" style={{padding:"11px 0",borderBottom:`1px solid ${C.border}`}}>
                 <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"flex-start",gap:6,marginBottom:6}}>
                   <div style={{minWidth:0,flex:"1 1 180px"}}>
                     {opn.flowVersion !== 2 && <span className="opname-legacy-badge">Legacy</span>}
                     <div style={{fontWeight:800,fontSize:13}}>Opname {opn.semester} — {opn.jenisAlur} <span style={{fontSize:12,fontWeight:400,color:C.muted}}>({opn.kategori}{opn.gudangId!==undefined?(opn.gudangKode?` • Gudang ${opn.gudangKode}`:" • Belum Beralamat"):""})</span></div>
-                    <div style={{fontSize:12,color:C.muted}}>{fmtDate(opn.dibuatAt)} • {creator.name||"-"} • {opn.items?.length||0} item • {selisihCount} selisih</div>
+                    <div style={{fontSize:11,color:C.muted,marginTop:3}}>{fmtDate(opn.dibuatAt)} • dibuat oleh {creator.name||"-"}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
                     {opn.freeze?.aktif && (
@@ -1551,6 +1597,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       {statusLabel[opn.status]||opn.status}
                     </span>
                   </div>
+                </div>
+                <div className="inventory-assurance-history__metrics" style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:6,marginBottom:8,fontSize:11}}>
+                  <div style={{padding:"6px 8px",borderRadius:7,background:C.surfaceMuted||"#f8fafc"}}><span style={{display:"block",color:C.muted}}>Total item</span><strong style={{fontSize:13}}>{opn.items?.length||0}</strong></div>
+                  <div style={{padding:"6px 8px",borderRadius:7,background:C.surfaceMuted||"#f8fafc"}}><span style={{display:"block",color:C.muted}}>Terhitung</span><strong style={{fontSize:13}}>{opnameProgress(opn.items||[], null, { requireTimestamp: opn.flowVersion===2 }).filled}</strong></div>
+                  <div style={{padding:"6px 8px",borderRadius:7,background:selisihCount?"#fff7ed":(C.surfaceMuted||"#f8fafc")}}><span style={{display:"block",color:C.muted}}>Selisih</span><strong style={{fontSize:13,color:selisihCount?"#c2410c":"inherit"}}>{selisihCount}</strong></div>
                 </div>
                 <div className="opname-history-actions" style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);onOpenWork?.();}}>
@@ -1563,11 +1614,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             );
           })}
 
-        {opnameList.length===0 && (
+        {(filterStatus==="semua"?opnameList:opnameList.filter(o=>o.status===filterStatus)).length===0 && (
           <div style={{...sty.card,textAlign:"center",padding:50,color:C.muted}}>
             <div style={{fontSize:32,marginBottom:12}}>📋</div>
-            <div style={{fontSize:13,fontWeight:700}}>Belum ada sesi Stock Opname</div>
-            <div style={{fontSize:12,marginTop:4}}>Tarik file PID ke zona upload di atas untuk memulai</div>
+            <div style={{fontSize:13,fontWeight:700}}>{filterStatus==="semua"?"Belum ada sesi Stock Opname":"Tidak ada opname dengan status ini"}</div>
+            <div style={{fontSize:12,marginTop:4}}>{filterStatus==="semua"?"Tarik file PID ke zona upload di atas untuk memulai":"Coba pilih filter status lain."}</div>
           </div>
         )}
       </div>

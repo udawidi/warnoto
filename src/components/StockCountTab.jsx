@@ -77,14 +77,14 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
         ]}
       />
       {can(currentUser, "aksi.import", rolePerms) && !draftItems && (
-        <div style={{marginBottom:16}}>
+        <div className="inventory-assurance-command" style={{marginBottom:16}}>
           <label style={{...sty.btn("primary"),cursor:uploading?"default":"pointer",opacity:uploading?0.6:1}}>
             {uploading ? "Memproses..." : "📂 Upload CSV/XLSX SAP"}
             <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleFile} disabled={uploading} style={{display:"none"}}/>
           </label>
         </div>
       )}
-      <div style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#1d4ed8",lineHeight:1.45,marginBottom:16}}>
+      <div className="inventory-assurance-command__note" style={{background:"#eff6ff",border:`1px solid #bfdbfe`,borderRadius: 10,padding:"10px 12px",fontSize:12,color:"#1d4ed8",lineHeight:1.45,marginBottom:16}}>
         ℹ️ Hanya membaca & membandingkan qty SAP vs Aplikasi — <b>tidak mengubah</b> data. Rekomendasi hanya saran.
       </div>
 
@@ -187,7 +187,7 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
       })()}
 
       </div>
-      <div style={{display:showHistory?"block":"none"}}>
+      <div className="inventory-assurance-history" style={{display:showHistory?"block":"none"}}>
       {orderedStockCountList.length===0 ? (
         !draftItems && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada sesi Stock Count. {can(currentUser, "aksi.import", rolePerms) && "Klik \"Upload CSV/XLSX SAP\" untuk mulai."}</div>
       ) : orderedStockCountList.map(session => {
@@ -201,8 +201,8 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
         const shownMismatch = tindakanFilter==="ALL" ? mismatch : mismatch.filter(i=>i.rekomendasi===tindakanFilter);
         const selectedInSession = mismatch.filter(i=>i.approval==="PENDING" && selectedIds.has(i.id));
         return (
-          <div key={session.id} style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden",boxShadow:"none"}}>
-            <div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:8,padding:"14px 16px",cursor:"pointer",borderBottom:isOpen?`1px solid ${C.border}`:"none"}} onClick={()=>setExpandedId(isOpen?null:session.id)}>
+          <div key={session.id} className="inventory-assurance-history__row inventory-assurance-history__row--expandable" style={{...sty.card,marginBottom:12,padding:0,overflow:"hidden",boxShadow:"none"}}>
+            <div className="inventory-assurance-history__header" role="button" tabIndex={0} aria-expanded={isOpen} style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:8,padding:"14px 16px",cursor:"pointer",borderBottom:isOpen?`1px solid ${C.border}`:"none"}} onClick={()=>setExpandedId(isOpen?null:session.id)} onKeyDown={e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setExpandedId(isOpen?null:session.id);}}}>
               <div style={{minWidth:0,flex:"1 1 180px"}}>
                 <div style={{fontWeight:800,fontSize:13}}>{fmtDate(session.uploadedAt)} — {session.summary.totalItem} item dibandingkan</div>
                 <div style={{fontSize:12,color:C.muted}}>{session.summary.akuratCount} akurat • {mismatch.length} temuan • {mismatch.filter(i=>i.approval==="PENDING").length} pending</div>
@@ -214,7 +214,7 @@ export function StockCountTab({ stockCountList, currentUser, rolePerms, sty, C, 
             </div>
             {isOpen && (
               <div style={{padding:"0 16px 16px"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(96px,1fr))",gap:8,marginBottom:10}}>
+                <div className="inventory-assurance-history__metrics" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(96px,1fr))",gap:8,marginBottom:10}}>
                   {[
                     ["Akurat",session.summary.akuratCount,C.green],
                     ["Temuan",mismatch.length,"#dc2626"],

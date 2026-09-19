@@ -4,6 +4,8 @@ import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
 import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted, allBloksSelesai, stockSapLabel } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
+import { normalizeOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
+import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
 
 function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
@@ -14,7 +16,7 @@ function readCachedList(key) {
 // read-only, approval temuan selisih per item). saveToCloud/uploadStockFoto diakses lewat
 // stateRef.current / param langsung (hoisted function) — sama pola dgn hook lain, lihat
 // useHeavyEquipment.js untuk penjelasan lengkap TDZ.
-export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto }) {
+export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient }) {
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
   const opnameListRef = useRef(opnameList);
   const commitOpnameList = next => { opnameListRef.current = next; setOpnameList(next); };
@@ -28,10 +30,18 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
   // bisa hilang. Kalau caller kasih touchedLokasiIds (blok yang BENAR disentuh perangkat ini),
   // ambil versi sesi terbaru dari server dulu, lalu tulis balik cuma blok itu — sisanya dari
   // server. Gagal ambil (offline) → simpan LOKAL saja, jangan menimpa server dgn data parsial.
-  async function saveOpname(opn, touchedLokasiIds) {
-    let toSave = opn;
+  async function saveOpname(opn, touchedLokasiIds, { silent = false, forceMerge = false, failClosed = false } = {}) {
+    let toSave;
+    try { toSave = await normalizeOpnamePhotos(opn, uploadStockFoto); }
+    catch (error) {
+      showToast(error?.message || "Gagal menyimpan foto opname.", "error");
+      return false;
+    }
     let syncPending = false;
-    if (Array.isArray(touchedLokasiIds) && touchedLokasiIds.length) {
+    const currentList = opnameListRef.current;
+    const previousList = currentList;
+    const shouldMerge = forceMerge || (Array.isArray(touchedLokasiIds) && touchedLokasiIds.length);
+    if (shouldMerge) {
       try {
         const serverList = await loadMasterTable("stock_opname"); // null = fetch gagal (lihat masterSync.js)
         if (!Array.isArray(serverList)) { syncPending = true; }
@@ -45,17 +55,25 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
         syncPending = true;
       }
     }
-    const currentList = opnameListRef.current;
     const exists = currentList.find(o=>o.id===toSave.id);
     const nl = exists ? currentList.map(o=>o.id===toSave.id?toSave:o) : [...currentList, toSave];
     commitOpnameList(nl);
     if (syncPending) {
-      showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
+      if (failClosed) commitOpnameList(previousList);
+      if (failClosed) showToast("Submit Stock Opname gagal mengambil versi server. Status tetap Draft; coba lagi.", "error");
+      else showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
       return false;
     }
-    await stateRef.current.saveToCloud({opnameList: nl});
-    showToast("✅ Data opname disimpan!");
-    return true;
+    const saved = await stateRef.current.saveToCloud({opnameList: nl});
+    if (saved === false) {
+      commitOpnameList(previousList);
+      showToast(failClosed
+        ? "Submit Stock Opname gagal disimpan ke server. Status tetap Draft; coba lagi."
+        : "Gagal menyimpan Stock Opname ke server. Perubahan dibatalkan; coba lagi.", "error");
+      return false;
+    }
+    if (!silent) showToast("✅ Data opname disimpan!");
+    return toSave;
   }
 
   // Merge per-item: blok (hitungPerLokasi) yang TIDAK disentuh perangkat ini diambil dari versi
@@ -81,20 +99,14 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const onlyOnServer = (serverOpn.items||[]).filter(it=>!localKeys.has(it.katalogId||it.noKatalog));
     return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };
   }
-  async function submitOpname(opn) {
+  async function submitOpname(opn, touchedLokasiIds) {
     if (opn?.flowVersion === 2 && !allBloksSelesai(opn)) {
       showToast("Belum bisa submit: semua material harus selesai dihitung.", "error");
       return false;
     }
     const updated = {...opn, status:"PENDING_ASMAN", submittedAt:Date.now()};
-    // Sesi baru yang langsung di-submit tanpa pernah "Simpan Draft" dulu belum ada di
-    // opnameList sama sekali (startOpname cuma setActiveOpname, tidak append ke list) —
-    // pakai pola exists?map:append sama seperti saveOpname, supaya tidak silently dropped.
-    const currentList = opnameListRef.current;
-    const exists = currentList.find(o=>o.id===opn.id);
-    const nl = exists ? currentList.map(o=>o.id===opn.id?updated:o) : [...currentList, updated];
-    commitOpnameList(nl);
-    await stateRef.current.saveToCloud({opnameList: nl});
+    const saved = await saveOpname(updated, touchedLokasiIds, { silent: true, forceMerge: true, failClosed: true });
+    if (saved === false) return false;
     showToast("📋 Opname disubmit! Menunggu approval Asman.");
     return true;
   }
@@ -104,6 +116,13 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       showToast("Belum bisa approve: semua material harus selesai dihitung.", "error");
       return false;
     }
+    let preparedOpn;
+    try { preparedOpn = await normalizeOpnamePhotos(opn, uploadStockFoto); }
+    catch (error) {
+      showToast(error?.message || "Approval diblokir: foto belum berhasil diunggah.", "error");
+      return false;
+    }
+    opn = preparedOpn;
     let newStocks = [...stocks];
     // Material baru dari SAP (item.katalogId null — belum ada di Master Katalog saat upload)
     // sekarang IKUT approval sesi ini (Asman->Manager), TIDAK ada approval TL terpisah (keputusan
@@ -116,7 +135,9 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     let newKatalogList = [...katalogList];
     const materialBaruDibuat = [];
     const materialBaruKonflik = [];
+    const materialBaruKatalogByCode = new Map();
     const nowOpn = Date.now();
+    const sessionUptId = opn.uptId || opn.upt_id;
     (opn.items||[]).filter(item => !item.katalogId && Number(item.qtsFisik)>0).forEach(item => {
       const noKatalog = String(item.noKatalog||"").trim();
       const namaBarang = String(item.namaBarang||"").trim();
@@ -132,9 +153,11 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
         keterangan: `Material baru terdeteksi dari Stock Opname ${opn.semester} (${opn.jenisAlur})`,
         createdAt: nowOpn,
       }];
+      materialBaruKatalogByCode.set(noKatalog, newKatalogId);
       newStocks = [...newStocks, {
         id: "STK-OPN-" + noKatalog + "-" + nowOpn,
         katalogId: newKatalogId, lokasiId: null,
+        uptId: sessionUptId,
         qty: Number(item.qtsFisik), price: 0, minQty: 0, unit: item.satuan || "-",
         jenisBarang: jenisBarangBaru, name: namaBarang, katalog: noKatalog,
         category: namaBarang.split(";")[0].trim() || "Material",
@@ -209,11 +232,9 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       countedKatalogIds.add(item.katalogId);
       for (const field of ["fotoKeseluruhan","fotoNameplate"]) {
         const val = item[field];
-        if (typeof val === "string" && val.startsWith("data:")) {
-          try {
-            const url = await uploadStockFoto(item.katalogId, field, val, currentUser?.uptId);
-            fotoByKatalog[item.katalogId] = { ...(fotoByKatalog[item.katalogId]||{}), [field]: url };
-          } catch (e) { console.warn("Upload foto opname gagal", item.katalogId, field, e?.message||e); }
+        if (typeof val === "string" && val.startsWith("data:")) throw new Error("Foto legacy belum dinormalisasi.");
+        if (typeof val === "string" && val && !val.startsWith("data:")) {
+          fotoByKatalog[item.katalogId] = { ...(fotoByKatalog[item.katalogId] || {}), [field]: val };
         }
       }
     }
@@ -231,11 +252,34 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     });
 
     // Opname selesai = otomatis unfreeze (kalau masih freeze aktif) — tidak perlu langkah manual.
+    const approvedItems = (opn.items || []).map(item => {
+      const stampedKatalogId = materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
+      return stampedKatalogId ? { ...item, katalogId: stampedKatalogId } : item;
+    });
     const freezeOnFinish = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
-    const updated = {...opn, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish, notulen: notulenList.length ? notulenList : (opn.notulen||[])};
-    const nl = opnameList.map(o=>o.id===opn.id?updated:o);
+    const updated = {...opn, items: approvedItems, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish, notulen: notulenList.length ? notulenList : (opn.notulen||[])};
+    const changedKatalogRows = katalogList.filter(previous => {
+      const next = newKatalogList.find(row => row.id === previous.id);
+      return next && JSON.stringify(previous) !== JSON.stringify(next);
+    }).concat(newKatalogList.filter(next => !katalogList.some(previous => previous.id === next.id)));
+    const changedStockRows = stocks.filter(previous => {
+      const next = newStocks.find(row => row.id === previous.id);
+      return next && JSON.stringify(previous) !== JSON.stringify(next);
+    }).concat(newStocks.filter(next => !stocks.some(previous => previous.id === next.id)));
+    const rpcStockRows = changedStockRows.map(row => ({ ...row, uptId: row.uptId || sessionUptId }));
+    const atomic = await approveStockOpnameAtomically({
+      supabase: supabaseClient,
+      opnameId: opn.id,
+      opnameData: updated,
+      katalogRows: changedKatalogRows,
+      stockRows: rpcStockRows,
+    });
+    if (!atomic.ok) {
+      showToast(`Approval Stock Opname gagal disimpan ke server. Status tetap menunggu Asman; ${atomic.error?.message || "coba lagi"}.`, "error");
+      return false;
+    }
+    const nl = opnameListRef.current.map(o=>o.id===opn.id?updated:o);
     commitOpnameList(nl); setStocks(newStocks); setKatalogList(newKatalogList);
-    await stateRef.current.saveToCloud({opnameList: nl, stocks: newStocks, katalogList: newKatalogList});
     // Ditemukan 2026-07-07: approve/reject Opname tidak pernah lapor ke logApprovalHistory
     // (beda dari semua jenis approval lain — Lokasi, Stock Move/Edit/Delete, Alat Berat,
     // Stock Count), jadi keputusannya tidak pernah muncul di "Riwayat Approval" terpusat.
@@ -313,7 +357,13 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     // Foto ke Storage dulu (sama alasannya dengan updateStockFoto/saveStock — JANGAN
     // base64 mentah masuk jsonb stocks.data, insiden 2026-07-23 & 2026-07-28).
     let fotoUrl = null;
-    try { fotoUrl = await uploadStockFoto(newKatalogId, "fotoKeseluruhan", foto, currentUser?.uptId); }
+    const opnameSession = opnameListRef.current.find(opn => opn.id === opnameId);
+    const sessionUptId = opnameSession?.uptId || opnameSession?.upt_id;
+    if (foto && !sessionUptId) {
+      showToast("Sesi opname tidak memiliki UPT. Foto tidak disimpan.", "error");
+      return null;
+    }
+    try { fotoUrl = await uploadStockFoto(newKatalogId, "fotoKeseluruhan", foto, sessionUptId); }
     catch (e) {
       console.warn("Upload foto material baru (opname) gagal:", newKatalogId, e?.message||e);
       showToast("Gagal upload foto ke server, coba lagi.","error"); return null;
@@ -330,7 +380,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const newStock = {
       id: "STK-OPN-" + code + "-" + now,
       katalogId: newKatalogId, lokasiId: lokasiId || null,
-      uptId: currentUser?.uptId || null,
+      uptId: sessionUptId || null,
       qty: Number(qty) || 0, price: 0, minQty: 0, unit: satuan || "-",
       jenisBarang: "Non-Stock", name: nama, katalog: code,
       category: nama.split(";")[0].trim() || "Material",
@@ -338,11 +388,18 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       pendingOpnameId: opnameId,
       createdAt: now, updatedAt: now,
     };
-    const nk = [...katalogList, newKatalog];
-    const ns = [...stocks, newStock];
+    const previousKatalogList = katalogList;
+    const previousStocks = stocks;
+    const nk = [...previousKatalogList, newKatalog];
+    const ns = [...previousStocks, newStock];
     setKatalogList(nk); setStocks(ns);
     // Cuma 1 baris katalog & 1 baris stok baru ditambah — sync ringan baris itu saja.
-    await stateRef.current.saveToCloud({ katalogList: nk, stocks: ns }, {katalogChangedRows: [newKatalog], stocksChangedRows: [newStock]});
+    const saved = await stateRef.current.saveToCloud({ katalogList: nk, stocks: ns }, {katalogChangedRows: [newKatalog], stocksChangedRows: [newStock]});
+    if (saved === false) {
+      setKatalogList(previousKatalogList); setStocks(previousStocks);
+      showToast("Material baru gagal disimpan ke server. Perubahan dibatalkan; coba lagi.", "error");
+      return null;
+    }
     return { ...newKatalog, fotoKeseluruhan: fotoUrl };
   }
 

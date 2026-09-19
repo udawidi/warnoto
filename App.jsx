@@ -1246,7 +1246,7 @@ export default function PLNWarehouse() {
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
-  } = useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto });
+  } = useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient: supabase });
   const {
     katalogModal, setKatalogModal, katalogForm, setKatalogForm,
     openAddKatalog, openEditKatalog, saveKatalog, deleteKatalog,
@@ -4336,7 +4336,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     heavyEquipment: {eyebrow:"Fleet Operations",title:"Alat Berat & Peminjaman"},
     attb: {eyebrow:"Asset Disposal Governance",title:"MRWI — Penghapusan Aset"},
     maturity: {eyebrow:"Warehouse Maturity Audit",title:"Penilaian Maturity Gudang"},
-    opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="history"?"Riwayat Opname & Stock Count":opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
+    opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="history"?"Riwayat Inventori":opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
     rencana: {eyebrow:"Material Transmisi Utama",title:"MTU KHS"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
@@ -4407,16 +4407,18 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 {/* STOCK OPNAME & STOCK COUNT (digabung 1 menu, dipilih lewat sub-tab sidebar) */}
         <div style={{display:tab==="opname"?"block":"none"}}>
           <div>
-            <div style={{display:"flex",gap:8,marginBottom:16}}>
-              {[{id:"opname",label:"📋 Stock Opname"},{id:"stockCount",label:"📊 Stock Count"},{id:"history",label:"🕘 Riwayat"}].map(s=>(
-                <button key={s.id} style={{padding:"8px 16px",borderRadius: 10,border:`1px solid ${opnameSubTab===s.id?C.accent:C.border}`,background:opnameSubTab===s.id?C.accent:"white",color:opnameSubTab===s.id?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}} onClick={()=>setOpnameSubTab(s.id)}>{s.label}</button>
+            <div className="inventory-assurance-tabs" role="tablist" aria-label="Modul inventori">
+              {[{id:"opname",label:"Stock Opname"},{id:"stockCount",label:"Stock Count"},{id:"history",label:"Riwayat"}].map(s=>(
+                <button type="button" role="tab" aria-selected={opnameSubTab===s.id} className={`inventory-assurance-tab${opnameSubTab===s.id?" is-active":""}`} key={s.id} onClick={()=>setOpnameSubTab(s.id)}>{s.label}</button>
               ))}
             </div>
             {opnameSubTab==="history" && (
-              <div className="opname-history-tabs" style={{display:"flex",gap:8,marginBottom:16}}>
-                {[{id:"opname",label:"📋 Riwayat Opname"},{id:"stockCount",label:"📊 Riwayat Stock Count"}].map(s=>(
-                  <button key={s.id} type="button" style={{padding:"8px 16px",borderRadius:10,border:`1px solid ${opnameHistoryTab===s.id?C.accent:C.border}`,background:opnameHistoryTab===s.id?C.accent:"white",color:opnameHistoryTab===s.id?"white":C.muted,fontWeight:700,fontSize:13,cursor:"pointer"}} onClick={()=>setOpnameHistoryTab(s.id)}>{s.label}</button>
-                ))}
+              <div className="inventory-assurance-toolbar">
+                <label htmlFor="opname-history-type">Jenis riwayat</label>
+                <select id="opname-history-type" value={opnameHistoryTab} onChange={e=>setOpnameHistoryTab(e.target.value)}>
+                  <option value="opname">Opname</option>
+                  <option value="stockCount">Stock Count</option>
+                </select>
               </div>
             )}
             <StockOpnameTab
@@ -4439,6 +4441,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 gudangList={gudangList}
                 lokasiList={lokasiList}
                 addNonStockFoundItem={addNonStockFoundItem}
+                uploadStockFoto={uploadStockFoto}
                 isMobile={isMobile}
                 rolePerms={rolePerms}
                 setStocks={setStocks}

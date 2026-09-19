@@ -1,4 +1,50 @@
 /* Data Stok presentation, scoped away from ATTB and shared tables. */
+.inventory-assurance-tabs { display:inline-flex; width:fit-content; gap:4px; align-items:center; margin-bottom:14px; padding:4px; border:1px solid #dbe3ef; border-radius:12px; background:#f8fafc; }
+.inventory-assurance-tab { min-width:124px; min-height:38px; padding:7px 14px; border:0; border-radius:9px; background:transparent; color:#64748b; font-size:12px; font-weight:800; cursor:pointer; }
+.inventory-assurance-tab:hover { color:#0b4da2; background:#eef5ff; }
+.inventory-assurance-tab.is-active { background:#0b2559; color:#fff; }
+.inventory-assurance-toolbar { display:inline-flex; width:fit-content; align-items:center; gap:8px; margin:0 0 14px; padding:9px 12px; border:1px solid #dbe3ef; border-radius:10px; background:#fff; }
+.inventory-assurance-toolbar label { color:#475569; font-size:12px; font-weight:800; }
+.inventory-assurance-toolbar select { min-height:36px; padding:6px 32px 6px 10px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#172033; font-size:12px; font-weight:750; }
+.inventory-assurance-history { min-width:0; }
+.inventory-assurance-history__title { color:#475569; font-size:12px; font-weight:850; letter-spacing:.08em; text-transform:uppercase; }
+.inventory-assurance-history__row { border-color:#dbe3ef !important; border-radius:10px; }
+.inventory-assurance-history__row--summary { margin-bottom:8px; padding:12px !important; border:1px solid #dbe3ef !important; background:#fff; }
+.inventory-assurance-history__row--expandable { background:#fff; }
+.inventory-assurance-history__row:focus-within { outline:2px solid #93c5fd; outline-offset:2px; }
+.inventory-assurance-history__header:focus-visible { outline:2px solid #2563eb; outline-offset:-2px; }
+.inventory-assurance-history__metrics > div { border:1px solid #e2e8f0; border-radius:8px !important; background:#f8fafc !important; }
+@media (min-width: 641px) {
+  .inventory-assurance-history__row--summary .inventory-assurance-history__metrics { grid-template-columns:repeat(3,minmax(88px,140px)) !important; justify-content:start; }
+  .inventory-assurance-history__row--expandable .inventory-assurance-history__metrics { grid-template-columns:repeat(3,minmax(88px,140px)) !important; justify-content:start; }
+}
+.inventory-assurance-command { display:flex; align-items:center; gap:10px; padding:10px; border:1px solid #dbe3ef; border-radius:10px; background:#f8fafc; }
+.inventory-assurance-command > label { min-height:40px; }
+.inventory-assurance-command__note { margin-top:-4px; }
+[data-theme="dark"] .inventory-assurance-tabs { border-color:#334155; background:#111827; }
+[data-theme="dark"] .inventory-assurance-tab { color:#94a3b8; }
+[data-theme="dark"] .inventory-assurance-tab:hover { color:#bfdbfe; background:#172554; }
+[data-theme="dark"] .inventory-assurance-tab.is-active { background:#1d4ed8; color:#fff; }
+[data-theme="dark"] .inventory-assurance-toolbar { border-color:#334155; background:#111827; }
+[data-theme="dark"] .inventory-assurance-toolbar label { color:#cbd5e1; }
+[data-theme="dark"] .inventory-assurance-toolbar select { border-color:#475569; background:#172033; color:#e2e8f0; }
+[data-theme="dark"] .inventory-assurance-history__title { color:#cbd5e1; }
+[data-theme="dark"] .inventory-assurance-history__row { border-color:#334155 !important; }
+[data-theme="dark"] .inventory-assurance-history__row--summary,
+[data-theme="dark"] .inventory-assurance-history__row--expandable { border-color:#334155 !important; background:#111827; }
+[data-theme="dark"] .inventory-assurance-history__metrics > div { border-color:#334155; background:#172033 !important; }
+[data-theme="dark"] .inventory-assurance-command { border-color:#334155; background:#111827; }
+[data-theme="dark"] .inventory-assurance-command__note { border-color:#1e40af !important; background:#172554 !important; color:#bfdbfe !important; }
+@media (max-width: 640px) {
+  .inventory-assurance-tabs { overflow-x:auto; }
+  .inventory-assurance-tabs { width:100%; }
+  .inventory-assurance-tab { flex:1 0 112px; min-width:112px; min-height:44px; }
+  .inventory-assurance-toolbar { width:100%; align-items:stretch; flex-direction:column; }
+  .inventory-assurance-toolbar select { width:100%; min-height:44px; }
+  .inventory-assurance-command { align-items:stretch; flex-direction:column; }
+  .inventory-assurance-command > label { width:100%; text-align:center; }
+  .inventory-assurance-history__metrics { grid-template-columns:repeat(3,minmax(0,1fr)) !important; gap:5px !important; }
+}
 .stock-search-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .stock-card-table thead th { position: sticky; top: 0; z-index: 2; background: #0b2559; }
 [data-theme="dark"] .stock-card-table thead th { background: #0b1830; }
@@ -56,8 +102,6 @@
 .opname-action-bar { align-items: stretch; }
 .opname-action-bar > button { height: 40px; min-height: 40px; }
 .opname-item-name { vertical-align: top; overflow-wrap: anywhere; }
-.opname-history-tabs { flex-wrap: wrap; }
-.opname-history-tabs > button { min-height: 40px; }
 
 @media (max-width: 768px) {
   .opname-panel { border-radius: 16px !important; }
@@ -78,8 +122,6 @@
   .opname-field-mode__zero-action { align-items: flex-start; flex-direction: column; gap: 4px; }
   .opname-field-mode__zero-action > button { width: 100%; }
   .opname-action-bar > button { height: 44px; min-height: 44px; }
-  .opname-history-tabs { gap: 6px !important; }
-  .opname-history-tabs > button { flex: 1 1 150px; min-height: 44px; padding-inline: 10px !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {
