@@ -3,6 +3,7 @@ import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRigh
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import {
   downloadMaturityDriveEvidence,
+  downloadForm5SPhoto,
   openMaturityDriveEvidence,
   unlinkMaturityDriveEvidence,
   uploadForm5SPhoto,
@@ -1592,18 +1593,41 @@ function format5SDate(value) {
   return new Date(value).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" });
 }
 
-function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList }) {
+function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUptId, gudangList, onPrint }) {
   const isTablet = useIsTablet();
   const [gudangFilter, setGudangFilter] = useState("");
   const [tahunFilter, setTahunFilter] = useState("");
   const [selectedId, setSelectedId] = useState(null);
-  const scoped = (assessments || []).filter(item => (item.upt || "UPT Surabaya") === (selectedUpt || "UPT Surabaya"));
+  const scoped = (assessments || []).filter(item => item.uptId === selectedUptId);
   const years = [...new Set(scoped.map(item => item.tahun).filter(Boolean))].sort((a, b) => b - a);
   const history = scoped
     .filter(item => !gudangFilter || item.gudangId === gudangFilter)
     .filter(item => !tahunFilter || String(item.tahun) === tahunFilter)
     .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  const selected = history.find(item => item.id === selectedId) || history[0] || null;
+  const selected = history.find(item => item.id === selectedId) || null;
+  const [photoUrls, setPhotoUrls] = useState({});
+  const [photoLoading, setPhotoLoading] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    const objectUrls = [];
+    setPhotoUrls({});
+    if (!selected) return undefined;
+    const photos = selected.samplePhotos || [];
+    setPhotoLoading(photos.length > 0);
+    Promise.all(photos.map(async (photo, index) => {
+      try {
+        const result = await downloadForm5SPhoto(selected.id, index);
+        const url = URL.createObjectURL(result.blob);
+        objectUrls.push(url);
+        return [index, { url, name: result.fileName || photo.name || `Foto ${index + 1}` }];
+      } catch {
+        return [index, { url: "", name: photo.name || `Foto ${index + 1}` }];
+      }
+    })).then(entries => {
+      if (!cancelled) setPhotoUrls(Object.fromEntries(entries));
+    }).finally(() => { if (!cancelled) setPhotoLoading(false); });
+    return () => { cancelled = true; objectUrls.forEach(url => URL.revokeObjectURL(url)); };
+  }, [selected?.id]);
 
   return (
     <div>
@@ -1637,21 +1661,25 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
           <div style={{ ...sty.card, padding: 8 }}>
             {history.map(item => {
               const active = selected?.id === item.id;
-              return <button key={item.id} onClick={() => setSelectedId(item.id)} style={{ width: "100%", textAlign: "left", padding: "12px", marginBottom: 5, borderRadius: 10, border: `1px solid ${active ? C.accent : C.border}`, background: active ? "#eff6ff" : C.surface, color: C.text, cursor: "pointer" }}>
+              return <div key={item.id} style={{ width: "100%", textAlign: "left", padding: "12px", marginBottom: 5, borderRadius: 10, border: `1px solid ${active ? C.accent : C.border}`, background: active ? `${C.accent}12` : C.surface, color: C.text }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontWeight: 850 }}><span>{MONTH_LABELS[(item.bulan || 1) - 1]} {item.tahun}</span><span style={{ color: Number(item.scorePercent) >= 80 ? C.green : C.accent }}>{Number(item.scorePercent || 0).toFixed(1)}%</span></div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 5 }}>{item.gudangNama || "Gudang belum diisi"} · {item.auditor || "Auditor belum diisi"}</div>
                 <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>{format5SDate(item.createdAt)}</div>
-              </button>;
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+                  <button onClick={() => setSelectedId(item.id)} style={{ minHeight: 44, padding: "8px 12px", borderRadius: 8, border: `1px solid ${C.accent}`, background: active ? C.accent : "transparent", color: active ? "white" : C.accent, fontWeight: 800, cursor: "pointer" }}>Detail Audit</button>
+                  {onPrint && <button className="approval-btn--cancel" style={{ minHeight: 44 }} onClick={() => onPrint(item)}>Cetak / PDF</button>}
+                </div>
+              </div>;
             })}
           </div>
           {selected && <div id={`form-5s-history-${selected.id}`} style={{ ...sty.card }}>
             <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", gap: 10, marginBottom: 15 }}>
               <div><div style={{ fontSize: 17, fontWeight: 900, color: C.text }}>Detail Audit 5S</div><div style={{ color: C.muted, fontSize: 13, marginTop: 3 }}>{MONTH_LABELS[(selected.bulan || 1) - 1]} {selected.tahun} · {selected.gudangNama || "—"}</div></div>
-              <div style={{ fontSize: 17, fontWeight: 900, color: Number(selected.scorePercent) >= 80 ? C.green : C.accent }}>{Number(selected.scorePercent || 0).toFixed(2)}%</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><div style={{ fontSize: 17, fontWeight: 900, color: Number(selected.scorePercent) >= 80 ? C.green : C.accent }}>{Number(selected.scorePercent || 0).toFixed(2)}%</div><button className="approval-btn--cancel" style={{ minHeight: 44 }} onClick={() => setSelectedId(null)}>Tutup</button></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 9, fontSize: 13, marginBottom: 16 }}>
               <div><strong>Auditor:</strong> {selected.auditor || "—"}</div><div><strong>Diisi:</strong> {format5SDate(selected.createdAt)}</div>
-              <div><strong>UPT:</strong> {selected.upt || "—"}</div><div><strong>Indikator:</strong> {selected.totalChecked}/{selected.totalItems}</div>
+              <div><strong>UPT:</strong> {selectedUpt || "—"}</div><div><strong>Indikator:</strong> {selected.totalChecked}/{selected.totalItems}</div>
               <div style={{ gridColumn: isMobile ? undefined : "1 / -1", wordBreak: "break-all" }}><strong>ID rekam:</strong> {selected.id}</div>
             </div>
             {(selected.checklist || []).map(category => <details key={category.id} open style={{ borderTop: `1px solid ${C.border}`, padding: "11px 0" }}>
@@ -1661,8 +1689,21 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
             </details>)}
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 3, fontSize: 13, whiteSpace: "pre-wrap", color: C.text }}><strong>Catatan / Temuan</strong><br />{selected.catatan || "Tidak ada catatan."}</div>
             <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 12, marginTop: 12, color: C.text, fontSize: 13 }}>
-              <strong>Sampling Foto</strong><br />
-              {(selected.samplePhotos || []).length === 0 ? "Tidak ada foto sampling." : (selected.samplePhotos || []).map((photo, index) => <a key={`${photo.url}-${index}`} href={photo.url} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 7, marginRight: 10, color: C.accent }}>Foto {index + 1}: {photo.name || "Buka foto"}</a>)}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <strong>Sampling Foto</strong>
+                {onPrint && <button className="approval-btn--cancel" onClick={() => onPrint(selected)}>Cetak / PDF</button>}
+              </div>
+              {(selected.samplePhotos || []).length === 0 ? "Tidak ada foto sampling." : (
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8, marginTop: 9 }}>
+                  {(selected.samplePhotos || []).map((photo, index) => {
+                    const loaded = photoUrls[index];
+                    return <div key={`${selected.id}-${index}`} style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.bg }}>
+                      {loaded?.url ? <a href={loaded.url} target="_blank" rel="noreferrer"><img src={loaded.url} alt={loaded.name} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", display: "block" }} /></a> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", color: C.muted }}>{photoLoading ? "Memuat..." : "Foto tidak tersedia"}</div>}
+                      <div style={{ padding: "5px 7px", fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Foto {index + 1}</div>
+                    </div>;
+                  })}
+                </div>
+              )}
             </div>
           </div>}
         </div>
@@ -1671,7 +1712,7 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, gudangList 
   );
 }
 
-export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAssessments = [], saveMaturity5SAssessment, setMaturityAuditEvidence, onBack, isMobile, selectedUpt, uptId, askConfirmDelete, users = [], uptList = [] }) {
+export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAssessments = [], saveMaturity5SAssessment, maturity5SDraft = null, saveMaturity5SDraft, clearMaturity5SDraft, setMaturityAuditEvidence, onBack, isMobile, selectedUpt, uptId, askConfirmDelete, users = [], uptList = [], readOnly = false, defaultSubTab = "entry" }) {
   const isTablet = useIsTablet();
   const compact = isMobile || isTablet;
   const now = new Date();
@@ -1681,16 +1722,35 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const [auditor, setAuditor] = useState(currentUser?.name || "");
   const [catatan, setCatatan] = useState("");
   const [saved, setSaved] = useState(false);
+  const [draftSaved, setDraftSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
-  const [form5SSubTab, setForm5SSubTab] = useState("entry");
+  const [form5SSubTab, setForm5SSubTab] = useState(defaultSubTab);
   const [uploading5S, setUploading5S] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState("");
+  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  const cameraInputRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   const initChecks = () =>
     Object.fromEntries(FORM_5S.map(cat => [cat.id, Array(cat.indicators.length).fill(false)]));
   const [checks, setChecks] = useState(initChecks);
   const [samplePhotos, setSamplePhotos] = useState([]);
+  const [lastSavedRecord, setLastSavedRecord] = useState(null);
+
+  useEffect(() => {
+    if (!maturity5SDraft || maturity5SDraft.uptId !== uptId) return;
+    const draft = maturity5SDraft.data || maturity5SDraft;
+    if (Number.isInteger(draft.bulan)) setBulan(draft.bulan > 11 ? draft.bulan - 1 : draft.bulan);
+    if (Number.isInteger(draft.tahun)) setTahun(draft.tahun);
+    if (typeof draft.gudang === "string") setGudang(draft.gudang);
+    if (typeof draft.auditor === "string") setAuditor(draft.auditor);
+    if (typeof draft.catatan === "string") setCatatan(draft.catatan);
+    if (draft.checks && typeof draft.checks === "object") setChecks({ ...initChecks(), ...draft.checks });
+    if (Array.isArray(draft.samplePhotos)) setSamplePhotos(draft.samplePhotos.map(photo => ({ ...photo, preview: "" })));
+    setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
+  }, [maturity5SDraft, uptId]);
+
 
   const addPhotos = async (files) => {
     const remaining = 3 - samplePhotos.length;
@@ -1701,7 +1761,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     try {
       const uploaded = await Promise.all(taken.map(f => uploadForm5SPhoto({
         file: f,
-        upt: selectedUpt || "UPT Surabaya",
+        uptId,
         bulan,
         tahun,
       })));
@@ -1720,7 +1780,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         preview: URL.createObjectURL(taken[i]),
       }));
       setSamplePhotos(prev => [...prev, ...newEntries]);
-      setSaved(false);
+      setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
     } catch (err) {
       console.warn("Upload foto 5S gagal:", err);
       setPhotoUploadError(err?.message || "Upload foto 5S gagal.");
@@ -1730,8 +1790,12 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   };
 
   const removePhoto = (idx) => {
-    setSamplePhotos(prev => prev.filter((_, i) => i !== idx));
-    setSaved(false);
+    setSamplePhotos(prev => {
+      const removed = prev[idx];
+      if (removed?.preview) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== idx);
+    });
+    setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
   };
 
   const toggle = (catId, idx) => {
@@ -1739,14 +1803,28 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       ...prev,
       [catId]: prev[catId].map((v, i) => (i === idx ? !v : v)),
     }));
-    setSaved(false);
+    setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
   };
 
   const totalItems = FORM_5S.reduce((s, c) => s + c.indicators.length, 0);
   const totalChecked = FORM_5S.reduce((s, c) => s + checks[c.id].filter(Boolean).length, 0);
   const scorePct = totalItems > 0 ? (totalChecked / totalItems) * 100 : 0;
 
-  const handleReset = () => { setChecks(initChecks()); setSamplePhotos([]); setSaved(false); };
+  const handleReset = () => {
+    samplePhotos.forEach(photo => { if (photo?.preview) URL.revokeObjectURL(photo.preview); });
+    setChecks(initChecks()); setSamplePhotos([]); setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
+  };
+
+  const handleSaveDraft = async () => {
+    if (!saveMaturity5SDraft) { setSaveError("Penyimpanan draft belum tersedia."); return; }
+    setSaving(true); setSaveError("");
+    try {
+      const result = await saveMaturity5SDraft({ uptId, bulan, tahun, gudang, auditor, catatan, checks, samplePhotos: samplePhotos.map(({ preview, url, ...photo }) => photo) });
+      if (!result) throw new Error("Draft belum tersimpan.");
+      setDraftSaved(true); setTimeout(() => setDraftSaved(false), 2500);
+    } catch (err) { setSaveError(err?.message || "Draft belum tersimpan."); }
+    finally { setSaving(false); }
+  };
 
   const handlePersist = async () => {
     if (!saveMaturity5SAssessment) {
@@ -1767,6 +1845,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       return;
     }
     const record = {
+      uptId,
       upt: selectedUpt || "UPT Surabaya",
       gudangId: selectedGudang ? selectedGudang.id : null,
       gudangNama: selectedGudang ? selectedGudang.nama : gudang.trim(),
@@ -1788,6 +1867,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       setSaveError("Checklist belum tersimpan. Periksa koneksi lalu coba lagi; isian form tetap dipertahankan.");
       return;
     }
+    setLastSavedRecord(savedRecord);
     setSaved(true);
     if (setMaturityAuditEvidence) {
       const ts = new Date(savedRecord.createdAt).toLocaleString("id-ID");
@@ -1806,7 +1886,8 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       const fotoEntries = samplePhotos.map((photo, index) => ({
         id: "k3_5s_foto",
         name: `Foto Sampling 5S ${index + 1} — ${photo.name}`,
-        url: photo.url,
+        url: `#form-5s-history-${savedRecord.id}`,
+        photoIndex: index,
         size: photo.size,
         auto: true,
         source: "Form Pengisian 5S",
@@ -1821,36 +1902,32 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     setTimeout(() => setSaved(false), 4000);
   };
 
-  const handlePrint = () => {
-    if (!catatan.trim()) {
-      setSaveError("Catatan / Temuan / Tindak Lanjut wajib diisi sebelum mencetak.");
-      return;
-    }
-    if (samplePhotos.length === 0) {
-      setSaveError("Minimal 1 foto sampling wajib diunggah sebelum mencetak.");
-      return;
-    }
-    setSaveError("");
-    const w = window.open("", "_blank"); // sinkron paling awal (anti popup-block/CSP)
-    const selectedGudang = gudangList.find(item => item.id === gudang);
-    const record = {
-      upt: selectedUpt || "UPT Surabaya",
-      uptId,
-      gudangId: selectedGudang ? selectedGudang.id : null,
-      gudangNama: selectedGudang ? selectedGudang.nama : gudang.trim(),
-      bulan: bulan + 1,
-      tahun,
-      auditor: auditor.trim(),
-      checklist: build5SChecklistSnapshot(checks),
-      samplePhotos,
-      totalItems,
-      totalChecked,
-      scorePercent: Number(scorePct.toFixed(2)),
-      catatan: catatan.trim(),
-    };
-    const html = buildForm5SHTML(record, users, uptList);
-    if (w) { w.document.write(html); w.document.close(); }
+  const handlePrintRecord = async record => {
+    const w = window.open("", "_blank");
+    if (!w) { setSaveError("Popup cetak diblokir browser."); return; }
+    w.document.write("<p style='font-family:Arial;padding:24px'>Memuat foto dan dokumen...</p>");
+    w.document.close();
+    const samplePhotosWithBytes = await Promise.all((record.samplePhotos || []).map(async (photo, index) => {
+      try {
+        const result = await downloadForm5SPhoto(record.id, index);
+        return { ...photo, preview: URL.createObjectURL(result.blob), url: "" };
+      } catch { return { ...photo, preview: "", url: "" }; }
+    }));
+    const html = buildForm5SHTML({ ...record, samplePhotos: samplePhotosWithBytes }, users, uptList);
+    w.document.open(); w.document.write(html); w.document.close();
   };
+
+  const handlePrint = () => {
+    if (!lastSavedRecord) {
+      setSaveError("Simpan checklist terlebih dahulu sebelum mencetak.");
+      return;
+    }
+    handlePrintRecord(lastSavedRecord);
+  };
+
+  const markDirtyNumber = setter => event => { setter(Number(event.target.value)); setSaved(false); setDraftSaved(false); setLastSavedRecord(null); };
+  const markDirtyText = setter => event => { setter(event.target.value); setSaved(false); setDraftSaved(false); setLastSavedRecord(null); };
+  const viewTab = readOnly ? "history" : form5SSubTab;
 
   const tdBase = {
     border: `1px solid ${C.border}`,
@@ -1884,12 +1961,12 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
 
       {/* ── Metadata ── */}
       <div style={{ display: "flex", gap: 6, padding: 5, marginBottom: 18, border: `1px solid ${C.border}`, borderRadius: 10, background: C.bg, flexWrap: "wrap" }}>
-        <button onClick={() => setForm5SSubTab("entry")} style={{ border: 0, borderRadius: 10, padding: "9px 13px", cursor: "pointer", fontWeight: 800, background: form5SSubTab === "entry" ? C.accent : "transparent", color: form5SSubTab === "entry" ? "white" : C.text }}>Pengisian 5S</button>
-        <button onClick={() => setForm5SSubTab("history")} style={{ border: 0, borderRadius: 10, padding: "9px 13px", cursor: "pointer", fontWeight: 800, background: form5SSubTab === "history" ? C.accent : "transparent", color: form5SSubTab === "history" ? "white" : C.text }}>History Audit 5S</button>
+        {!readOnly && <button onClick={() => setForm5SSubTab("entry")} style={{ border: 0, borderRadius: 10, padding: "9px 13px", cursor: "pointer", fontWeight: 800, background: viewTab === "entry" ? C.accent : "transparent", color: viewTab === "entry" ? "white" : C.text }}>Pengisian 5S</button>}
+        <button onClick={() => setForm5SSubTab("history")} style={{ border: 0, borderRadius: 10, padding: "9px 13px", cursor: "pointer", fontWeight: 800, background: viewTab === "history" ? C.accent : "transparent", color: viewTab === "history" ? "white" : C.text }}>History Audit 5S</button>
       </div>
 
-      {form5SSubTab === "history" ? (
-        <Form5SHistory C={C} sty={sty} isMobile={isMobile} assessments={maturity5SAssessments} selectedUpt={selectedUpt} gudangList={gudangList} />
+      {viewTab === "history" ? (
+        <Form5SHistory C={C} sty={sty} isMobile={isMobile} assessments={maturity5SAssessments} selectedUpt={selectedUpt} selectedUptId={uptId} gudangList={gudangList} onPrint={handlePrintRecord} />
       ) : <>
       <div style={{ ...sty.card, marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>
@@ -1898,19 +1975,19 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
           <div>
             <label style={sty.label}>Periode Bulan</label>
-            <select style={sty.select} value={bulan} onChange={e => setBulan(Number(e.target.value))}>
+            <select style={sty.select} value={bulan} onChange={markDirtyNumber(setBulan)}>
               {MONTH_LABELS.map((m, i) => <option key={i} value={i}>{m}</option>)}
             </select>
           </div>
           <div>
             <label style={sty.label}>Tahun</label>
             <input style={sty.input} type="number" min={2020} max={2099} value={tahun}
-              onChange={e => setTahun(Number(e.target.value))} />
+              onChange={markDirtyNumber(setTahun)} />
           </div>
           <div>
             <label style={sty.label}>Gudang / Lokasi</label>
             {gudangList.length > 0 ? (
-              <select style={sty.select} value={gudang} onChange={e => setGudang(e.target.value)}>
+              <select style={sty.select} value={gudang} onChange={markDirtyText(setGudang)}>
                 <option value="">-- Pilih Gudang --</option>
                 {gudangList.map(g => (
                   <option key={g.id} value={g.id}>
@@ -1920,13 +1997,13 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               </select>
             ) : (
               <input style={sty.input} placeholder="Nama gudang..." value={gudang}
-                onChange={e => setGudang(e.target.value)} />
+                onChange={markDirtyText(setGudang)} />
             )}
           </div>
           <div>
             <label style={sty.label}>Nama Auditor</label>
             <input style={sty.input} placeholder="Nama auditor..." value={auditor}
-              onChange={e => setAuditor(e.target.value)} />
+              onChange={markDirtyText(setAuditor)} />
           </div>
         </div>
       </div>
@@ -2129,7 +2206,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         </label>
         <textarea
           value={catatan}
-          onChange={e => setCatatan(e.target.value)}
+          onChange={markDirtyText(setCatatan)}
           rows={3}
           placeholder="Tuliskan temuan, rekomendasi perbaikan, atau rencana tindak lanjut..."
           style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}`, fontSize: 13, color: C.text, background: C.surface, outline: "none", boxSizing: "border-box", resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }}
@@ -2147,42 +2224,17 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               Wajib minimal 1 foto sampling implementasi 5S.
             </div>
           </div>
-          {samplePhotos.length < 3 && (
-            <div style={{ display: "flex", gap: 8, flexShrink: 0, marginLeft: 12, flexWrap: "wrap" }}>
-              <label style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 10, cursor: "pointer",
-                background: "linear-gradient(135deg, #2563eb, #1d4ed8)", color: "white", fontSize: 13, fontWeight: 700,
-                border: "none", userSelect: "none",
-              }}>
-                {uploading5S ? "⌛" : "📷 Kamera"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  disabled={uploading5S}
-                  hidden
-                  onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
-                />
-              </label>
-              <label style={{
-                display: "flex", alignItems: "center", gap: 6,
-                padding: "7px 14px", borderRadius: 10, cursor: "pointer",
-                background: "#eff6ff", color: "#1d4ed8", fontSize: 13, fontWeight: 700,
-                border: "1px solid #bfdbfe", userSelect: "none",
-              }}>
-                {uploading5S ? "⌛ Mengunggah..." : "🖼️ Galeri"}
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  disabled={uploading5S}
-                  hidden
-                  onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
-                />
-              </label>
+          {samplePhotos.length < 3 && (<>
+            <div style={{ position: "relative", flexShrink: 0, marginLeft: 12 }}>
+              <button type="button" aria-haspopup="dialog" aria-expanded={photoPickerOpen} disabled={uploading5S} onClick={() => setPhotoPickerOpen(open => !open)} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 10, cursor: uploading5S ? "wait" : "pointer", background: "#1d4ed8", color: "white", fontSize: 13, fontWeight: 800, border: 0 }}>{uploading5S ? "Mengunggah..." : "Tambah Foto"}</button>
+              {photoPickerOpen && <div role="dialog" aria-label="Pilih sumber foto" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 5, display: "grid", gap: 6, minWidth: 170, padding: 8, borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, boxShadow: "0 10px 24px rgba(15,23,42,.14)" }}>
+                <button type="button" onClick={() => { setPhotoPickerOpen(false); cameraInputRef.current?.click(); }} style={{ minHeight: 44, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Kamera</button>
+                <button type="button" onClick={() => { setPhotoPickerOpen(false); galleryInputRef.current?.click(); }} style={{ minHeight: 44, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Galeri</button>
+              </div>}
+              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" disabled={uploading5S} hidden onChange={e => { addPhotos(e.target.files); e.target.value = ""; }} />
+              <input ref={galleryInputRef} type="file" accept="image/*" multiple disabled={uploading5S} hidden onChange={e => { addPhotos(e.target.files); e.target.value = ""; }} />
             </div>
-          )}
+          </>)}
         </div>
 
         {photoUploadError && (
@@ -2209,11 +2261,14 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
               }}>
                 {photo ? (
                   <>
-                    <img
+                    {photo.preview || photo.url ? <img
                       src={photo.preview || photo.url}
                       alt={`Sampling ${slot + 1}`}
                       style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    />
+                    /> : <div style={{ padding: 18, textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
+                      <div aria-hidden="true" style={{ fontSize: 24, marginBottom: 6 }}>📷</div>
+                      Foto tersimpan di server<br />{photo.name || `Sampling ${slot + 1}`}
+                    </div>}
                     <div style={{
                       position: "absolute", bottom: 0, left: 0, right: 0,
                       background: "linear-gradient(to top, rgba(0,0,0,0.65), transparent)",
@@ -2227,7 +2282,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
                         onClick={() => removePhoto(slot)}
                         title="Hapus foto"
                         style={{
-                          width: 22, height: 22, borderRadius: "50%",
+                          width: 44, height: 44, borderRadius: "50%",
                           background: "rgba(255,50,50,0.85)", color: "white",
                           border: "none", cursor: "pointer", fontSize: 13, fontWeight: 900,
                           display: "flex", alignItems: "center", justifyContent: "center",
@@ -2325,11 +2380,19 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
           </div>
         </div>
       )}
+      {draftSaved && !saved && (
+        <div role="status" style={{ marginBottom: 14, padding: "12px 14px", borderRadius: 10, border: "1px solid #bfdbfe", background: "#eff6ff", color: "#1e3a8a", fontSize: 13, fontWeight: 700 }}>
+          Draft Form 5S tersimpan. Data dapat dilanjutkan setelah muat ulang atau login di perangkat lain.
+        </div>
+      )}
 
       {/* ── Action Buttons ── */}
       <div className="approval-actions" style={{ marginTop: 20 }}>
         <button className="approval-btn--cancel" onClick={handleReset}>
           ↺ Reset Form
+        </button>
+        <button className="approval-btn--cancel" onClick={handleSaveDraft} disabled={saving}>
+          💾 Simpan Draft
         </button>
         <button className="approval-btn--cancel" onClick={handlePrint}>
           🖨️ Cetak / PDF

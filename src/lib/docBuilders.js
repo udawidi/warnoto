@@ -1856,7 +1856,7 @@ export async function buildTUG2HTML(katalog, stocks, txns, lokasiList, subGudang
 export function buildForm5SHTML(record, users, uptList) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-  const uptNama = record.upt || resolveUptNama(record.uptId, uptList);
+  const uptNama = (uptList || []).find(u => u.id === record.uptId)?.nama || record.upt || UPT;
   const bulanLabel = months[(record.bulan || 1) - 1] || "-";
   const asmanUser = (users || []).find(u => u.role === "ASMAN" && u.uptId === record.uptId) || {};
 
@@ -1876,12 +1876,12 @@ export function buildForm5SHTML(record, users, uptList) {
 
   const photoGrid = (record.samplePhotos || []).length > 0
     ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">${(record.samplePhotos || []).map(photo => {
-        const src = photo.preview || photo.url;
-        return `<div style="border:1px solid #000;padding:4px;text-align:center"><img src="${esc(src)}" style="max-width:100%;max-height:160px;object-fit:contain" alt="${esc(photo.name || "Foto sampling")}" title="${esc(photo.name || "")}"/></div>`;
+        const src = photo.preview || "";
+        return `<div style="border:1px solid #000;padding:4px;text-align:center">${src ? `<img src="${esc(src)}" style="max-width:100%;max-height:160px;object-fit:contain" alt="${esc(photo.name || "Foto sampling")}" title="${esc(photo.name || "")}"/>` : `<div class="photo-empty">Foto tidak tersedia</div>`}</div>`;
       }).join("")}</div>`
     : `<div class="photo-empty">&lt;&lt;[Belum ada foto sampling]&gt;&gt;</div>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan 5S ${esc(uptNama)} ${esc(bulanLabel)} ${esc(record.tahun)}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan 5S ${esc(uptNama)} ${esc(bulanLabel)} ${esc(record.tahun)} ${esc(record.id || "")}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}

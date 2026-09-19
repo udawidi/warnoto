@@ -7,7 +7,8 @@ import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import {
   getDefaultMaturityAuditHistory, upsertMaturityAssessment, upsertMaturityAudit,
-  insertMaturity5SAssessment, deleteMaturityAuditRow, loadMaturityAuditHistory,
+  insertMaturity5SAssessment, loadMaturity5SDraft, upsertMaturity5SDraft, deleteMaturity5SDraft,
+  deleteMaturityAuditRow, loadMaturityAuditHistory,
   loadAspectReviews, upsertAspectReview, updateMaturityAuditHistoryTarget,
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
@@ -44,11 +45,12 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // profil cache sudah terbaca di atas, jadi UPT user tersedia sejak render pertama.
   const [maturityAuditHistory, setMaturityAuditHistory] = useState(() => readCachedList("pln_maturity_audit_history_v1") ?? getDefaultMaturityAuditHistory(currentUser?.uptId)); // cache/fallback read-only; DB adalah canonical
   const [maturity5SAssessments, setMaturity5SAssessments] = useState(() => readCachedList("pln_maturity_5s_assessments_v1") ?? []); // cache fallback read-only; DB adalah canonical
+  const [maturity5SDraft, setMaturity5SDraft] = useState(null);
 
   const [maturityModal, setMaturityModal] = useState(false);
   const [maturityForm, setMaturityForm] = useState({ level:3, catatan:"", tanggalAsesmen:Date.now() });
   // ─── Penilaian Maturity (audit workflow) — UI state ───────────────────
-  const [maturitySubTab, setMaturitySubTab] = useState("dashboard"); // dashboard | pelaksanaan | history | 5s
+  const [maturitySubTab, setMaturitySubTab] = useState("dashboard"); // dashboard | pelaksanaan | history
   // Peninjau lintas UPT saja. MANAGER dibuang: tiap UPT punya tepat satu MANAGER
   // dan cakupannya HANYA UPT itu (keputusan user 2026-08-02).
   const canSwitchMaturityUpt = hasRole(currentUser, "ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT","SUPERADMIN");
@@ -59,6 +61,17 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Scoping UI Maturity pakai id UPT (FK), bukan kecocokan string nama — nama di
   // Master UPT bisa berbeda ejaan dengan nama yang tersimpan di baris audit.
   const selectedMaturityUptId = uptIdByNama(selectedMaturityUpt);
+  useEffect(() => {
+    if (!currentUser?.id || !selectedMaturityUptId || !hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN")) {
+      setMaturity5SDraft(null);
+      return undefined;
+    }
+    let active = true;
+    loadMaturity5SDraft(selectedMaturityUptId).then(draft => {
+      if (active) setMaturity5SDraft(draft);
+    });
+    return () => { active = false; };
+  }, [currentUser?.id, currentUser?.role, selectedMaturityUptId]);
   // Resync: init useState di atas jalan sekali saat mount, sebelum currentUser/uptList
   // tentu sudah siap (auth async) → bisa nyangkut fallback "UPT Surabaya" selamanya.
   // User UPT biasa (tanpa switcher): selalu paksa ke UPT-nya sendiri kalau beda.
@@ -211,6 +224,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       CLOUD.set("pln_maturity_5s_assessments_v1", next);
       return next;
     });
+    const draftDeleted = await deleteMaturity5SDraft({ id: maturity5SDraft?.id, uptId: entry.uptId });
+    if (draftDeleted) setMaturity5SDraft(null);
     logAudit(currentUser, "CREATE", "maturity_5s_assessment", saved.id, {
       upt: saved.upt, gudang: saved.gudangNama, tahun: saved.tahun,
       bulan: saved.bulan, scorePercent: saved.scorePercent,
@@ -218,10 +233,46 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     return saved;
   }
 
-  function getCurrentMonth5SEvidence(upt) {
+  async function saveMaturity5SDraft(form = {}) {
+    if (!guardMaturityWrite("menyimpan Draft Form 5S")) return null;
+    const uptNama = form.upt || selectedMaturityUpt || "UPT Surabaya";
+    const uptId = form.uptId || uptIdByNama(uptNama) || currentUserUptId || currentUser?.uptId || "";
+    const hasChecklist = Array.isArray(form.checklist)
+      ? form.checklist.some(item => item?.checked || item?.value === true)
+      : Object.values(form.checks || {}).some(values => Array.isArray(values) && values.some(Boolean));
+    const hasContent = Boolean(form.gudangId || form.gudangNama || form.auditor || form.catatan)
+      || hasChecklist || (Array.isArray(form.samplePhotos) && form.samplePhotos.length > 0);
+    if (!uptId || !hasContent) {
+      showToast("Isi draft Form 5S belum ada.", "error");
+      return null;
+    }
+    const saved = await upsertMaturity5SDraft({
+      ...form,
+      ownerId: currentUser?.id,
+      uptId,
+      upt: uptNama,
+      updatedAt: Date.now(),
+    });
+    if (!saved) {
+      showToast("Draft Form 5S belum tersimpan karena server tidak dapat dihubungi.", "error");
+      return null;
+    }
+    if (saved.uptId === selectedMaturityUptId) setMaturity5SDraft(saved);
+    showToast("Draft Form 5S tersimpan.");
+    return saved;
+  }
+
+  async function clearMaturity5SDraft() {
+    const deleted = await deleteMaturity5SDraft({ id: maturity5SDraft?.id, uptId: selectedMaturityUptId });
+    if (deleted) setMaturity5SDraft(null);
+    return deleted;
+  }
+
+  function getCurrentMonth5SEvidence(uptId) {
     const nowD = new Date();
+    if (!uptId) return [];
     const latest = maturity5SAssessments
-      .filter(item => (item.upt || "UPT Surabaya") === (upt || selectedMaturityUpt || "UPT Surabaya")
+      .filter(item => item.uptId === uptId
         && item.tahun === nowD.getFullYear() && item.bulan === nowD.getMonth() + 1)
       .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
     if (!latest) return [];
@@ -242,7 +293,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     const photos = (latest.samplePhotos || []).map((photo, index) => ({
       id: "k3_5s_foto",
       name: `Foto Sampling 5S ${index + 1} — ${photo.name || "Foto"}`,
-      url: photo.url,
+      url: `#form-5s-history-${latest.id}`,
+      photoIndex: index,
       size: photo.size || 0,
       auto: true,
       source: "Form Pengisian 5S",
@@ -252,12 +304,12 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     return [checklistEvidence, ...photos];
   }
 
-  function mergeCurrentMonth5SEvidence(evidence, upt) {
+  function mergeCurrentMonth5SEvidence(evidence, uptId) {
     const existing = Object.entries(evidence || {}).reduce((next, [aspectId, files]) => {
       next[aspectId] = Array.isArray(files) ? [...files] : [];
       return next;
     }, {});
-    const current5S = getCurrentMonth5SEvidence(upt);
+    const current5S = getCurrentMonth5SEvidence(uptId);
     if (!current5S.length) return existing;
     // Bukti otomatis 5S mewakili rekam periode berjalan yang paling baru;
     // bukti manual 4.5 tetap utuh. Ini mencegah skor maturity menghitung
@@ -293,7 +345,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       }
     }));
     setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
-    const evidence = mergeCurrentMonth5SEvidence({}, selectedMaturityUpt);
+    const evidence = mergeCurrentMonth5SEvidence({}, selectedMaturityUptId);
     warehouseAssessments.PERSEDIAAN.evidence = evidence;
     setMaturityAuditForm({ aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments });
     setMaturityAuditEvidence(evidence);
@@ -311,7 +363,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     const normalized = normalizeMaturityAudit(audit);
     const assessments = JSON.parse(JSON.stringify(normalized.warehouseAssessments || createMaturityWarehouseAssessments()));
     const active = assessments.PERSEDIAAN || { aspekScores: {}, evidence: {}, aiAnalysis: {} };
-    const evidence = mergeCurrentMonth5SEvidence(active.evidence || {}, normalized.upt);
+    const evidence = mergeCurrentMonth5SEvidence(active.evidence || {}, normalized.uptId);
     active.evidence = evidence;
     setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
     setMaturityAuditForm({ aspekScores: active.aspekScores || {}, catatanUPT: normalized.catatanUPT || "", catatanUIT: normalized.catatanUIT || "", catatanPusat: normalized.catatanPusat || "", fileUrl: normalized.fileUrl || "", fileNama: normalized.fileNama || "", aiAnalysis: active.aiAnalysis || {}, warehouseAssessments: assessments });
@@ -814,6 +866,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityAudits, setMaturityAudits,
     maturityAuditHistory, setMaturityAuditHistory,
     maturity5SAssessments, setMaturity5SAssessments,
+    maturity5SDraft, setMaturity5SDraft,
     maturityModal, setMaturityModal,
     maturityForm, setMaturityForm,
     maturitySubTab, setMaturitySubTab,
@@ -837,6 +890,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     guardMaturityWrite,
     saveMaturityAssessment,
     saveMaturity5SAssessment,
+    saveMaturity5SDraft,
+    clearMaturity5SDraft,
     getCurrentMonth5SEvidence,
     mergeCurrentMonth5SEvidence,
     calculateItemLevel,

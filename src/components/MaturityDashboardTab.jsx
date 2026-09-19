@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
+import { MaturityAuditEditor } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
 import { normalizeMaturityAudit, countCompletedEvidenceParents } from "../lib/maturityWarehouse.js";
@@ -45,7 +45,7 @@ const HISTORY_STATUS_LABEL = {
 
 export function MaturityDashboardTab({
   C, sty, currentUser, isMobile, hasRole, showToast,
-  maturityAudits, maturityAuditHistory = [], maturity5SAssessments = [], selectedMaturityUpt, selectedMaturityUptId = "", setSelectedMaturityUpt, canSwitchMaturityUpt,
+  maturityAudits, maturityAuditHistory = [], selectedMaturityUpt, selectedMaturityUptId = "", setSelectedMaturityUpt, canSwitchMaturityUpt,
   maturitySubTab, setMaturitySubTab,
   maturityAuditModal, setMaturityAuditModal,
   auditListPage, setAuditListPage,
@@ -57,7 +57,7 @@ export function MaturityDashboardTab({
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
   maturityAuditSaving,
-  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, saveMaturity5SAssessment, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet, exportMaturityAuditPptx,
+  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet, exportMaturityAuditPptx,
   calculateItemLevel, calcMaturityScore,
   saveMaturityTarget,
   gudangList, askConfirmDelete,
@@ -335,7 +335,6 @@ export function MaturityDashboardTab({
                   { id: "dashboard", label: "Dashboard Audit" },
                   { id: "pelaksanaan", label: "Pelaksanaan Audit" },
                   { id: "history", label: "History Audit" },
-                  { id: "5s", label: "Form Pengisian 5S" },
                 ].map(s => (
                   <button key={s.id} onClick={() => setMaturitySubTab(s.id)} style={{
                     ...(isMobile ? {} : { flex: 1 }),
@@ -986,14 +985,6 @@ export function MaturityDashboardTab({
                 </div>
               )}
 
-              {/*  FORM PENGISIAN 5S  */}
-              {maturitySubTab === "5s" && (
-                <Form5STab C={C} sty={sty} currentUser={currentUser} gudangList={gudangList}
-                  maturity5SAssessments={maturity5SAssessments} saveMaturity5SAssessment={saveMaturity5SAssessment}
-                  setMaturityAuditEvidence={setMaturityAuditEvidence} isMobile={isMobile} selectedUpt={selectedMaturityUpt}
-                  uptId={selectedMaturityUptId} users={users} uptList={uptList}
-                  askConfirmDelete={askConfirmDelete} />
-              )}
               {maturityExit && <div role="dialog" aria-modal="true" aria-labelledby="maturity-exit-title" aria-describedby="maturity-exit-description" style={{ position:"fixed", inset:0, zIndex:1000, display:"grid", placeItems:"center", background:"rgba(15,23,42,.42)" }}>
                 <div style={{ background:C.surface, borderRadius:14, padding:24, width:"min(440px, calc(100% - 32px))", boxShadow:"0 16px 48px rgba(0,0,0,.24)" }}>
                   <h3 id="maturity-exit-title" style={{ margin:"0 0 8px", color:C.text }}>Keluar dari Input?</h3>

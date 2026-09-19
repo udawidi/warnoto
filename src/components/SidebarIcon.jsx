@@ -27,6 +27,7 @@ export function SidebarIcon({name, size=18, strokeWidth=1.9}) {
     capacity: <><path d="M3 21V8l9-5 9 5v13"/><path d="M7 21v-8h10v8M7 9h.01M12 9h.01M17 9h.01"/></>,
     forecast: <><path d="M3 20h18M5 17l4-5 4 3 6-8"/><path d="M15 7h4v4"/></>,
     inspection: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 3v3h6V3M9 11h6M9 15h4"/><path d="m14 17 1.5 1.5L19 15"/></>,
+    form: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/><path d="m14 16 1.5 1.5L19 14"/></>,
     ai: <><rect x="5" y="6" width="14" height="13" rx="3"/><path d="M9 11h.01M15 11h.01M9 15h6M12 2v4M8 2h8M3 10v5M21 10v5"/></>,
     request: <><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h3"/><path d="m14 16 2 2 4-4"/></>,
     inbound: <><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></>,

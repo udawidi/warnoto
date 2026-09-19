@@ -229,18 +229,22 @@ test.describe("WARNOTO desktop preservation smoke", () => {
     await expect(page.getByText("Cluster ATTB Usul Hapus", { exact:true })).toBeVisible();
   });
 
-  test("Form 5S exposes an empty persistent-history view without a database fixture", async ({ isolatedPage:page }) => {
-    await openApp(page);
-    await openRoute(page, {
-      tab:"maturity",
-      menuPath:["Penilaian Maturity"],
-      readySelector:'.app-shell[data-current-tab="maturity"]',
-    });
+  test.describe("Form 5S UIT reviewer", () => {
+    test.use({ actorProfile:{ id:"e2e-uit", name:"E2E UIT", username:"e2e-uit", role:"ADMIN_UIT", jabatan:"Admin UIT", avatar:"EU", upt:"", uptId:null, uitId:"UIT-JBM", gudangIds:null } });
 
-    await page.getByRole("button", { name:"Form Pengisian 5S", exact:true }).click();
-    await expect(page.getByRole("button", { name:"Pengisian 5S", exact:true })).toBeVisible();
-    await page.getByRole("button", { name:"History Audit 5S", exact:true }).click();
-    await expect(page.getByText("History Audit 5S", { exact:true }).last()).toBeVisible();
-    await expect(page.getByText("Belum ada hasil Form 5S untuk filter ini.", { exact:true })).toBeVisible();
+    test("exposes an empty persistent-history view without a database fixture", async ({ isolatedPage:page }) => {
+      await openApp(page);
+      await openRoute(page, {
+        tab:"maturity5s",
+        menuPath:["Form Pengisian 5S"],
+        readySelector:'.app-shell[data-current-tab="maturity5s"]',
+      });
+
+      await expect(page.getByText("Ringkasan UPT", { exact:true })).toBeVisible();
+      await expect(page.getByRole("button", { name:"Pengisian 5S", exact:true })).toHaveCount(0);
+      await expect(page.getByText("History Audit 5S", { exact:true }).last()).toBeVisible();
+      await expect(page.getByText("Belum ada hasil Form 5S untuk filter ini.", { exact:true })).toBeVisible();
+      await expect(page.locator('.app-shell[data-current-tab="maturity"]')).toHaveCount(0);
+    });
   });
 });

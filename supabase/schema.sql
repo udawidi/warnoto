@@ -2269,3 +2269,81 @@ create policy "Maturity assessments insert own" on public.maturity_assessments f
 create policy "Maturity assessments update own" on public.maturity_assessments for update to authenticated using (public.can_write_maturity_upt(upt_id)) with check (public.can_write_maturity_upt(upt_id));
 revoke delete on public.maturity_assessments from authenticated;
 grant select, insert, update on public.maturity_assessments to authenticated;
+
+-- Form 5S baru wajib memiliki object foto self-host yang tercatat. Legacy rows
+-- tidak disentuh; backfill-5s mengisi metadata secara bertahap.
+create or replace function public.validate_maturity_5s_photo_storage()
+returns trigger language plpgsql security definer set search_path = public, storage as $$
+declare photo jsonb; storage_path text;
+begin
+  if jsonb_typeof(new.sample_photos) <> 'array' or jsonb_array_length(new.sample_photos) not between 1 and 3 then
+    raise exception 'FORM5S_PHOTO_COUNT_INVALID: Form 5S baru wajib memiliki 1 sampai 3 foto.' using errcode = '23514';
+  end if;
+  for photo in select value from jsonb_array_elements(new.sample_photos) loop
+    storage_path := coalesce(photo->>'storagePath', photo->>'storage_path', '');
+    if storage_path = '' or storage_path not like 'form-5s/' || new.upt_id || '/%' then
+      raise exception 'FORM5S_STORAGE_PATH_INVALID: path foto harus memakai prefix form-5s/<upt_id>/. ' using errcode = '23514';
+    end if;
+    if coalesce(photo->>'storageStatus', photo->>'storage_status', '') <> 'BACKUP_RECORDED' then
+      raise exception 'FORM5S_STORAGE_STATUS_INVALID: foto harus berstatus BACKUP_RECORDED.' using errcode = '23514';
+    end if;
+    if not exists (select 1 from storage.objects where bucket_id = 'maturity-evidence' and name = storage_path) then
+      raise exception 'FORM5S_STORAGE_OBJECT_MISSING: object foto tidak ditemukan di bucket maturity-evidence.' using errcode = '23514';
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+drop trigger if exists trg_validate_maturity_5s_photo_storage on public.maturity_5s_assessments;
+create trigger trg_validate_maturity_5s_photo_storage before insert on public.maturity_5s_assessments
+for each row execute function public.validate_maturity_5s_photo_storage();
+revoke all on function public.validate_maturity_5s_photo_storage() from public;
+grant execute on function public.validate_maturity_5s_photo_storage() to authenticated, service_role;
+notify pgrst, 'reload schema';
+
+-- Form 5S drafts — private owner + active UPT scope. Proposal mirror for the
+-- production migration; apply the migration only after explicit confirmation.
+create table if not exists public.maturity_5s_drafts (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles(id) on delete cascade,
+  upt_id text not null references public.upt(id) on delete restrict,
+  data jsonb not null default '{}'::jsonb check (jsonb_typeof(data) = 'object'),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint maturity_5s_drafts_owner_upt_key unique (owner_id, upt_id)
+);
+create index if not exists idx_maturity_5s_drafts_owner_updated
+  on public.maturity_5s_drafts(owner_id, updated_at desc);
+create index if not exists idx_maturity_5s_drafts_upt
+  on public.maturity_5s_drafts(upt_id);
+create or replace function public.touch_maturity_5s_draft_updated_at()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+drop trigger if exists maturity_5s_drafts_touch_updated_at on public.maturity_5s_drafts;
+create trigger maturity_5s_drafts_touch_updated_at
+  before update on public.maturity_5s_drafts
+  for each row execute function public.touch_maturity_5s_draft_updated_at();
+create or replace function public.can_manage_maturity_5s_draft(p_owner_id uuid, p_upt_id text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.can_write_maturity_upt(p_upt_id)
+    and p_owner_id = auth.uid()
+    and exists (select 1 from public.profiles actor where actor.id = auth.uid() and (actor.role = 'SUPERADMIN' or actor.upt_id = p_upt_id));
+$$;
+revoke all on function public.can_manage_maturity_5s_draft(uuid, text) from public;
+grant execute on function public.can_manage_maturity_5s_draft(uuid, text) to authenticated;
+alter table public.maturity_5s_drafts enable row level security;
+grant select, insert, update, delete on public.maturity_5s_drafts to authenticated;
+grant all on public.maturity_5s_drafts to service_role;
+drop policy if exists "Maturity 5s drafts owner read" on public.maturity_5s_drafts;
+drop policy if exists "Maturity 5s drafts owner insert" on public.maturity_5s_drafts;
+drop policy if exists "Maturity 5s drafts owner update" on public.maturity_5s_drafts;
+drop policy if exists "Maturity 5s drafts owner delete" on public.maturity_5s_drafts;
+create policy "Maturity 5s drafts owner read" on public.maturity_5s_drafts for select to authenticated using (public.can_manage_maturity_5s_draft(owner_id, upt_id));
+create policy "Maturity 5s drafts owner insert" on public.maturity_5s_drafts for insert to authenticated with check (public.can_manage_maturity_5s_draft(owner_id, upt_id));
+create policy "Maturity 5s drafts owner update" on public.maturity_5s_drafts for update to authenticated using (public.can_manage_maturity_5s_draft(owner_id, upt_id)) with check (public.can_manage_maturity_5s_draft(owner_id, upt_id));
+create policy "Maturity 5s drafts owner delete" on public.maturity_5s_drafts for delete to authenticated using (public.can_manage_maturity_5s_draft(owner_id, upt_id));
+notify pgrst, 'reload schema';

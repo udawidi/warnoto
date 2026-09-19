@@ -40,11 +40,17 @@ export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
   return result.evidence;
 }
 
-export async function uploadForm5SPhoto({ file, upt, bulan, tahun }) {
+export async function uploadForm5SPhoto({ file, uptId, bulan, tahun }) {
   const formData = new FormData();
   formData.set("file", file, file.name);
-  const result = await request("upload-5s", { upt, bulan, tahun }, { formData });
+  const result = await request("upload-5s", { uptId, bulan, tahun }, { formData });
   return result.evidence;
+}
+
+export async function downloadForm5SPhoto(assessmentId, photoIndex) {
+  const index = Number(photoIndex);
+  if (!assessmentId || !Number.isInteger(index) || index < 0 || index > 2) throw new Error("Foto Form 5S tidak valid.");
+  return request("download-5s-photo", { assessmentId, photoIndex: index }, { responseType: "blob" });
 }
 
 export const signMaturityDriveEvidence = evidenceId => request("sign", { evidenceId });

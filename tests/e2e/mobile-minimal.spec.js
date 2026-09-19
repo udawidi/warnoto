@@ -20,6 +20,15 @@ const NOTE_CANDIDATE_SURFACES = ["master-warehouse", "master-migration", "master
 test.describe("Mode ringkas HP", () => {
   test.describe.configure({ timeout:180_000 });
 
+  test("Form 5S mandiri menampilkan history scoped tanpa overflow", async ({ isolatedPage:page }) => {
+    await openApp(page);
+    await openRoute(page, { tab:"maturity5s", menuPath:["Form Pengisian 5S"], readySelector:'.app-shell[data-current-tab="maturity5s"]' });
+    await expect(page.getByText("Form Pengisian 5S", { exact:true }).last()).toBeVisible();
+    await expect(page.getByText("History Audit 5S", { exact:true }).last()).toBeVisible();
+    const metrics = await page.evaluate(() => ({ scrollWidth:document.documentElement.scrollWidth, clientWidth:document.documentElement.clientWidth }));
+    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+  });
+
   test("audit maturity dua gudang tetap dapat dipakai pada lebar 360 px", async ({ isolatedPage:page }) => {
     await openApp(page);
     await openRoute(page, { tab:"maturity", menuPath:["Penilaian Maturity"], readySelector:'.app-shell[data-current-tab="maturity"]' });

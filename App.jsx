@@ -60,6 +60,7 @@ import { AttbTab } from "./src/components/AttbTab.jsx";
 import { DataStokTab } from "./src/components/DataStokTab.jsx";
 import { MasterDataTab } from "./src/components/MasterDataTab.jsx";
 import { MaturityDashboardTab } from "./src/components/MaturityDashboardTab.jsx";
+import { Form5SPage } from "./src/components/Form5SPage.jsx";
 import { useMaturity } from "./src/hooks/useMaturity.jsx";
 import { useTugApprovals } from "./src/hooks/useTugApprovals.js";
 import { useTugTransactions } from "./src/hooks/useTugTransactions.js";
@@ -360,6 +361,7 @@ export default function PLNWarehouse() {
     maturityAudits, setMaturityAudits,
     maturityAuditHistory, setMaturityAuditHistory,
     maturity5SAssessments, setMaturity5SAssessments,
+    maturity5SDraft,
     maturityModal, setMaturityModal,
     maturityForm, setMaturityForm,
     maturitySubTab, setMaturitySubTab,
@@ -380,6 +382,8 @@ export default function PLNWarehouse() {
     guardMaturityWrite,
     saveMaturityAssessment,
     saveMaturity5SAssessment,
+    saveMaturity5SDraft,
+    clearMaturity5SDraft,
     getCurrentMonth5SEvidence,
     mergeCurrentMonth5SEvidence,
     calculateItemLevel,
@@ -1061,7 +1065,9 @@ export default function PLNWarehouse() {
       // Form 5S mengikuti aturan yang sama: remote yang berhasil (termasuk
       // kosong) adalah canonical; cache hanya ditampilkan ketika load gagal.
       if (cm5sRemote === null) {
-        setMaturity5SAssessments(cm5s || []);
+        const cacheScope = getScopeUptIds(currentUser, uptList);
+        const scopedCache = cacheScope === null ? (cm5s || []) : (cm5s || []).filter(item => item.uptId && cacheScope.includes(item.uptId));
+        setMaturity5SAssessments(scopedCache);
         loadFailures.push("Form 5S");
       } else {
         setMaturity5SAssessments(cm5sRemote);
@@ -2153,7 +2159,8 @@ export default function PLNWarehouse() {
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama
   // rolePerms belum termuat, can() jatuh ke DEFAULT_PERMS (perilaku existing).
   useEffect(() => {
-    if (currentUser && tab !== "dashboard" && !can(currentUser, "menu." + tab, rolePerms)) setTab("dashboard");
+    const permissionKey = tab === "maturity5s" ? "menu.maturity" : `menu.${tab}`;
+    if (currentUser && tab !== "dashboard" && !can(currentUser, permissionKey, rolePerms)) setTab("dashboard");
   }, [tab, currentUser, rolePerms]);
 
   // Role ULTG cuma punya subnav Reservasi (TUG5). Default state app = penerimaan/TUG3
@@ -4328,6 +4335,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"MRWI",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
     {id:"maturity",icon:<SidebarIcon name="maturity"/>,label:"Penilaian Maturity"},
+    {id:"maturity5s",icon:<SidebarIcon name="form"/>,label:"Form Pengisian 5S",permissionKey:"menu.maturity"},
     {id:"rencana",icon:<SidebarIcon name="calendar"/>,label:"MTU KHS"},
     {id:"forecastStok",icon:<SidebarIcon name="forecast"/>,label:"Forecast Stok"},
     {id:"inspeksiMaterial",icon:<SidebarIcon name="inspection"/>,label:"Inspeksi Material"},
@@ -4335,7 +4343,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     // Integrasi API butuh izin aksi.kelolaApiIntegrasi (bukan cuma menu.*) — mencabut
     // aksi ini di Matrix Izin langsung menyembunyikan menu, sesuai ekspektasi Admin.
     ...(currentUser?.role === "SUPERADMIN" ? [{id:"integrasiApi",icon:<SidebarIcon name="master"/>,label:"Integrasi API"}] : []),
-  ]).filter(n => can(currentUser, "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
+  ]).filter(n => can(currentUser, n.permissionKey || "menu." + n.id, rolePerms)); // RBAC: sembunyikan menu yang izinnya dicabut Admin (default = perilaku existing)
 
   const sidebarCompact = !isMobile && sidebarCollapsed;
   const masterPageTitle = stockSubTab==="katalog"?"Master Katalog Barang":stockSubTab==="satpam"?"Daftar Satpam":stockSubTab==="supplier"?"Master Supplier":stockSubTab==="timmutu"?"Master Tim Mutu":stockSubTab==="organisasi"?"Struktur Organisasi":stockSubTab==="garduInduk"?"Master Gardu Induk":stockSubTab==="akun"?"Kelola Akun":stockSubTab==="migrasi"?"Migrasi Data SAP / Non-SAP":stockSubTab==="auditLog"?"Audit Log":stockSubTab==="perms"?"Matrix Izin":"Master Gudang";
@@ -4348,6 +4356,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     heavyEquipment: {eyebrow:"Fleet Operations",title:"Alat Berat & Peminjaman"},
     attb: {eyebrow:"Asset Disposal Governance",title:"MRWI — Penghapusan Aset"},
     maturity: {eyebrow:"Warehouse Maturity Audit",title:"Penilaian Maturity Gudang"},
+    maturity5s: {eyebrow:"Warehouse 5S",title:"Form Pengisian 5S"},
     opname: {eyebrow:"Inventory Assurance",title:opnameSubTab==="history"?"Riwayat Inventori":opnameSubTab==="stockCount"?"Stock Count":"Stock Opname"},
     rencana: {eyebrow:"Material Transmisi Utama",title:"MTU KHS"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
@@ -4661,7 +4670,6 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               showToast={showToast}
               maturityAudits={maturityAudits}
               maturityAuditHistory={maturityAuditHistory}
-              maturity5SAssessments={maturity5SAssessments}
               selectedMaturityUpt={selectedMaturityUpt}
               selectedMaturityUptId={selectedMaturityUptId}
               setSelectedMaturityUpt={setSelectedMaturityUpt}
@@ -4681,7 +4689,6 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               maturityAspectReviews={maturityAspectReviews}
               setAspectReview={setAspectReview}
               setAspectItemScore={setAspectItemScore}
-              saveMaturity5SAssessment={saveMaturity5SAssessment}
               expandedAspek={expandedAspek}
               setExpandedAspek={setExpandedAspek}
               activeAspectId={activeAspectId}
@@ -4708,6 +4715,21 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               MATURITY_WORKFLOW_COLOR={MATURITY_WORKFLOW_COLOR}
               users={users}
               uptList={uptList}
+            />
+          )}
+
+          {tab === "maturity5s" && (
+            <Form5SPage
+              C={C} sty={sty} currentUser={currentUser} isMobile={isMobile}
+              uptList={uptList} gudangList={gudangList} assessments={maturity5SAssessments}
+              selectedUpt={selectedMaturityUpt} selectedUptId={selectedMaturityUptId}
+              setSelectedUpt={setSelectedMaturityUpt} canSwitchMaturityUpt={canSwitchMaturityUpt}
+              saveMaturity5SAssessment={saveMaturity5SAssessment}
+              maturity5SDraft={maturity5SDraft}
+              saveMaturity5SDraft={saveMaturity5SDraft}
+              clearMaturity5SDraft={clearMaturity5SDraft}
+              setMaturityAuditEvidence={setMaturityAuditEvidence}
+              askConfirmDelete={askConfirmDelete} users={users}
             />
           )}
 

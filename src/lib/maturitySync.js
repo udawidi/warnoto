@@ -37,7 +37,9 @@ const asOptionalUuid = value => {
 
 const asEpoch = (value, fallback = null) => {
   const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : fallback;
+  if (Number.isFinite(parsed)) return parsed;
+  const dateParsed = typeof value === "string" ? Date.parse(value) : NaN;
+  return Number.isFinite(dateParsed) ? dateParsed : fallback;
 };
 const periodKeyFor = value => {
   const date = new Date(asEpoch(value, Date.now()));
@@ -107,6 +109,17 @@ function maturity5SRowToItem(row) {
     catatan: row.catatan || "",
     createdAt: asEpoch(row.created_at),
     createdBy: row.created_by ?? null,
+  };
+}
+
+function maturity5SDraftRowToItem(row) {
+  return {
+    ...(row?.data || {}),
+    id: row?.id || null,
+    ownerId: row?.owner_id || null,
+    uptId: row?.upt_id || null,
+    createdAt: asEpoch(row?.created_at),
+    updatedAt: asEpoch(row?.updated_at),
   };
 }
 
@@ -259,6 +272,64 @@ export const loadMaturityAssessments = () => loadRows("maturity_assessments", as
 export const loadMaturityAudits = () => loadRows("maturity_audits", auditRowToItem);
 export const loadMaturityAuditHistory = () => loadRows("maturity_audit_history", auditHistoryRowToItem);
 export const loadMaturity5SAssessments = () => loadRows("maturity_5s_assessments", maturity5SRowToItem);
+export async function loadMaturity5SDraft(uptId) {
+  if (!supabase || !uptId) return null;
+  const { data, error } = await supabase
+    .from("maturity_5s_drafts")
+    .select("id, owner_id, upt_id, data, created_at, updated_at")
+    .eq("upt_id", uptId)
+    .maybeSingle();
+  if (error) {
+    console.error(`load maturity_5s_drafts: ${error.message}`, error);
+    return null;
+  }
+  return data ? maturity5SDraftRowToItem(data) : null;
+}
+export async function upsertMaturity5SDraft(item = {}) {
+  if (!supabase) return null;
+  if (!item.ownerId || !item.uptId) return null;
+  const data = { ...item };
+  delete data.id;
+  delete data.ownerId;
+  delete data.uptId;
+  delete data.createdAt;
+  delete data.updatedAt;
+  if (Array.isArray(data.samplePhotos)) {
+    data.samplePhotos = data.samplePhotos.map(photo => {
+      const next = { ...(photo || {}) };
+      delete next.preview;
+      return next;
+    });
+  }
+  const row = {
+    ...(item.id ? { id: item.id } : {}),
+    owner_id: item.ownerId,
+    upt_id: item.uptId,
+    data,
+  };
+  const { data: saved, error } = await supabase
+    .from("maturity_5s_drafts")
+    .upsert(row, { onConflict: "owner_id,upt_id" })
+    .select("id, owner_id, upt_id, data, created_at, updated_at")
+    .single();
+  if (error) {
+    console.error(`upsert maturity_5s_drafts: ${error.message}`, error);
+    return null;
+  }
+  return maturity5SDraftRowToItem(saved);
+}
+export async function deleteMaturity5SDraft({ id, uptId } = {}) {
+  if (!supabase || (!id && !uptId)) return false;
+  let query = supabase.from("maturity_5s_drafts").delete();
+  if (id) query = query.eq("id", id);
+  if (uptId) query = query.eq("upt_id", uptId);
+  const { data, error } = await query.select("id");
+  if (error) {
+    console.error(`delete maturity_5s_drafts: ${error.message}`, error);
+    return false;
+  }
+  return Array.isArray(data) && data.length > 0;
+}
 export const upsertMaturityAssessment = item => upsertRow("maturity_assessments", assessmentItemToRow(item));
 export const upsertMaturityAudit = item => upsertRow("maturity_audits", auditItemToRow(item));
 // Riwayat semester tidak punya form input manual — baris terbit dari audit FINAL

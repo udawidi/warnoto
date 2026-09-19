@@ -522,7 +522,9 @@ Deno.serve(async (req) => {
     if (action === "upload-5s") {
       const file = form?.get("file");
       if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau ukurannya melebihi 25 MB." }, 400);
-      const upt = await findUptByName(text(body.upt, 120));
+      const uptId = text(body.uptId, 120);
+      if (!uptId) return json({ ok: false, error: "uptId canonical wajib diisi." }, 400);
+      const upt = await findUptById(uptId);
       await assertUptAccess(ctx, upt, true);
       const period = periodFor(Date.UTC(Number(body.tahun), Number(body.bulan), 1));
       await ensureRoot();
@@ -540,6 +542,31 @@ Deno.serve(async (req) => {
         throw new Error(`Backup self-host foto 5S wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
       }
       return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
+    }
+    if (action === "download-5s-photo") {
+      const assessmentId = text(body.assessmentId, 120);
+      const photoIndex = Number(body.photoIndex);
+      if (!assessmentId || !Number.isInteger(photoIndex) || photoIndex < 0 || photoIndex > 2) return json({ ok: false, error: "assessmentId dan photoIndex wajib valid." }, 400);
+      const { data: assessment, error: assessmentError } = await admin.from("maturity_5s_assessments").select("id,upt_id,sample_photos").eq("id", assessmentId).maybeSingle();
+      if (assessmentError) throw new Error(`Data Form 5S tidak dapat dibaca: ${assessmentError.message}`);
+      if (!assessment) return json({ ok: false, error: "Riwayat Form 5S tidak ditemukan." }, 404);
+      const upt = await findUptById(text(assessment.upt_id, 120));
+      await assertUptAccess(ctx, upt, false);
+      const photos = Array.isArray(assessment.sample_photos) ? assessment.sample_photos : [];
+      const photo = photos[photoIndex];
+      if (!photo) return json({ ok: false, error: "Foto Form 5S tidak ditemukan." }, 404);
+      const storagePath = text(photo.storagePath || photo.storage_path, 500);
+      const driveFileId = text(photo.driveFileId || photo.drive_file_id, 220);
+      const fileName = safeName(photo.name || photo.fileName, `form-5s-${assessmentId}-${photoIndex + 1}.jpg`);
+      const mimeType = text(photo.mimeType, 120) || "application/octet-stream";
+      if (storagePath) {
+        if (!storagePath.startsWith(`form-5s/${upt.id}/`)) return json({ ok: false, error: "Path foto tidak sesuai UPT canonical." }, 409);
+        const { data: blob } = await admin.storage.from("maturity-evidence").download(storagePath);
+        if (blob) return new Response(blob, { headers: { ...corsHeaders, "Content-Type": mimeType, "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`, "X-File-Name": encodeURIComponent(fileName), "Cache-Control": "private, max-age=3600" } });
+      }
+      if (!driveFileId) return json({ ok: false, error: "Foto belum tersedia di self-host atau Drive." }, 404);
+      const response = await driveFetch(`/files/${encodeURIComponent(driveFileId)}?alt=media&supportsAllDrives=true`);
+      return new Response(response.body, { headers: { ...corsHeaders, "Content-Type": mimeType, "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(fileName)}`, "X-File-Name": encodeURIComponent(fileName), "Cache-Control": "private, max-age=3600" } });
     }
     if (action === "export-sheet") {
       const base64 = String(body.base64 || "");
