@@ -42,6 +42,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   const [receiving, setReceiving] = useState(false); // indikator "menerima scan..." dari scanner alat
   const [notFound, setNotFound] = useState(null); // {code, matchIdx}
   const [recountQty, setRecountQty] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const blokAktif = blockList.find(b => b.key === lokasiAktif);
 
@@ -92,18 +93,27 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
     onScanStart: () => { setReceiving(true); setTimeout(() => setReceiving(false), 400); const el = document.activeElement; if (el && typeof el.blur === "function") el.blur(); },
   });
 
-  function handleSimpanQty(lanjutScan) {
+  async function handleSimpanQty(lanjutScan) {
+    if (saving) return;
     if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
-    setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput);
-    showToast(`✔ ${items[itemAktifIdx].namaBarang}: ${qtyInput} ${items[itemAktifIdx].satuan}`);
-    setItemAktifIdx(null); setQtyInput("");
-    setScreen("items");
-    if (lanjutScan && viaCamera) { setScanFor("item"); setScanning(true); }
+    setSaving(true);
+    try {
+      const saved = await setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput);
+      if (!saved) return;
+      showToast(`✔ Tersimpan ke server · ${items[itemAktifIdx].namaBarang}: ${qtyInput} ${items[itemAktifIdx].satuan}`);
+      setItemAktifIdx(null); setQtyInput("");
+      setScreen("items");
+      if (lanjutScan && viaCamera) { setScanFor("item"); setScanning(true); }
+    } finally { setSaving(false); }
   }
 
-  function handleTandaiNihil(realIdx) {
-    setQtyForBlok(realIdx, lokasiAktif, 0);
-    showToast(`0 dicatat — "${items[realIdx].namaBarang}" tidak ditemukan di blok ini.`);
+  async function handleTandaiNihil(realIdx) {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const saved = await setQtyForBlok(realIdx, lokasiAktif, 0);
+      if (saved) showToast(`✔ Tersimpan ke server · 0 dicatat untuk "${items[realIdx].namaBarang}".`);
+    } finally { setSaving(false); }
   }
 
   function resolveCatatDiBlokIni() {
@@ -202,7 +212,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                     </div>
                   </div>
                   <div className="opname-field-mode__zero-action">
-                    <button style={{ ...sty.btn("ghost", "sm") }} onClick={(e) => { e.stopPropagation(); handleTandaiNihil(realIdx); }}>
+                    <button disabled={saving} style={{ ...sty.btn("ghost", "sm"), opacity: saving ? 0.65 : 1 }} onClick={(e) => { e.stopPropagation(); handleTandaiNihil(realIdx); }}>
                       Catat 0 di Blok Ini
                     </button>
                     <span>Material tidak ditemukan secara fisik di blok aktif.</span>
@@ -212,8 +222,8 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
             })}
           </div>
           <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
-            <button className="opname-field-mode__draft" style={{ ...sty.btn("ghost"), flex: 1 }} onClick={onSimpanDraft}><FloppyDisk size={17} weight="bold" aria-hidden="true" />Draft</button>
-            <button className="opname-field-mode__scan" style={{ ...sty.btn("primary"), flex: 2 }} onClick={() => { setScanFor("item"); setScanning(true); }}><Barcode size={17} weight="bold" aria-hidden="true" />Scan</button>
+            <button disabled={saving} className="opname-field-mode__draft" style={{ ...sty.btn("ghost"), flex: 1, opacity: saving ? 0.65 : 1 }} onClick={onSimpanDraft}><FloppyDisk size={17} weight="bold" aria-hidden="true" />{saving ? "Menyimpan..." : "Draft"}</button>
+            <button disabled={saving} className="opname-field-mode__scan" style={{ ...sty.btn("primary"), flex: 2, opacity: saving ? 0.65 : 1 }} onClick={() => { setScanFor("item"); setScanning(true); }}><Barcode size={17} weight="bold" aria-hidden="true" />Scan</button>
           </div>
         </>
       )}
@@ -239,14 +249,14 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                 value={qtyInput} onChange={e => setQtyInput(e.target.value)} />
             </div>
             <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
-              <button style={{ ...sty.btn("primary"), minHeight: 48 }} onClick={() => {
+              <button disabled={saving} style={{ ...sty.btn("primary"), minHeight: 48, opacity: saving ? 0.65 : 1 }} onClick={async () => {
                 if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
-                if (screen === "hitung-usul") { setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput, { usulPindahLokasi: true }); showToast(`✔ Dicatat di blok ini — ${item.namaBarang}: ${qtyInput}`); setItemAktifIdx(null); setQtyInput(""); setScreen("items"); }
+                if (screen === "hitung-usul") { if (saving) return; setSaving(true); try { const saved = await setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput, { usulPindahLokasi: true }); if (!saved) return; showToast(`✔ Tersimpan ke server · ${item.namaBarang}: ${qtyInput}`); setItemAktifIdx(null); setQtyInput(""); setScreen("items"); } finally { setSaving(false); } }
                 else handleSimpanQty(true);
               }}>
-                ✔ Simpan &amp; Scan Berikutnya
+                {saving ? "Menyimpan ke server..." : "✔ Simpan & Scan Berikutnya"}
               </button>
-              <button style={sty.btn("ghost")} onClick={() => handleSimpanQty(false)}>✔ Simpan Saja</button>
+              <button disabled={saving} style={{ ...sty.btn("ghost"), opacity: saving ? 0.65 : 1 }} onClick={() => handleSimpanQty(false)}>{saving ? "Menyimpan ke server..." : "✔ Simpan Saja"}</button>
             </div>
           </>
         );
@@ -301,12 +311,16 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                   value={recountQty} onChange={e => setRecountQty(e.target.value)} />
               </div>
               <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}` }}>
-                <button style={{ ...sty.btn("primary"), width: "100%", minHeight: 48 }} onClick={() => {
+                <button disabled={saving} style={{ ...sty.btn("primary"), width: "100%", minHeight: 48, opacity: saving ? 0.65 : 1 }} onClick={async () => {
+                  if (saving) return;
                   if (recountQty === "" || isNaN(Number(recountQty))) { showToast("Isi qty dulu.", "error"); return; }
-                  confirmRecount(realIdx, recountQty);
-                  setRecountQty("");
+                  setSaving(true);
+                  try {
+                    const saved = await confirmRecount(realIdx, recountQty);
+                    if (saved) { setRecountQty(""); showToast("✔ Hasil hitung ulang tersimpan ke server."); }
+                  } finally { setSaving(false); }
                 }}>
-                  ✔ Konfirmasi
+                  {saving ? "Menyimpan ke server..." : "✔ Konfirmasi"}
                 </button>
               </div>
             </>

@@ -1643,7 +1643,9 @@ export default function PLNWarehouse() {
       : false;
     const stockScopeContext = { profiles: stateRef.current.users, currentUser: stateRef.current.currentUser };
     const scopedCols = item => stockScopeExtraCols(item, stockScopeContext, stockScopeLive);
-    if (overrides.opnameList !== undefined) syncTasks.push({ label: "Stock Opname", promise: syncMasterTable("stock_opname", opn, o => ({ status: o.status || null, ...scopedCols(o) })) });
+    if (overrides.opnameList !== undefined) syncTasks.push({ label: "Stock Opname", promise: hints.opnameChangedRows?.length
+      ? syncMasterTableRows("stock_opname", hints.opnameChangedRows, o => ({ status: o.status || null, ...scopedCols(o) }))
+      : syncMasterTable("stock_opname", opn, o => ({ status: o.status || null, ...scopedCols(o) })) });
     if (overrides.stockCountList !== undefined) syncTasks.push({ label: "Stock Count", promise: syncMasterTable("stock_count", sc, scopedCols) });
     const syncResults = await Promise.all(syncTasks.map(task => task.promise));
     const failedLabels = syncTasks.filter((task, i) => syncResults[i] === false).map(task => task.label);

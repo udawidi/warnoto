@@ -1,6 +1,54 @@
-import { itemCounted } from "./sap.js";
+import { itemCounted, sumHitungPerLokasi } from "./sap.js";
 
 export const SAP_OPNAME_CATEGORIES = ["Cadang", "Persediaan", "Pre Memory"];
+
+export function canRestoreOpnameDraft(opname, draft) {
+  const serverVersion = Number(opname?.updatedAt || 0);
+  const baseVersion = Number(draft?.baseUpdatedAt || 0);
+  return Boolean(draft?.items && serverVersion > 0 && baseVersion === serverVersion);
+}
+
+export function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds = []) {
+  const touched = new Set(touchedLokasiIds);
+  const serverItems = serverOpn.items || [];
+  const catalogKey = item => item?.katalogId || item?.noKatalog;
+  const serverByStockId = new Map();
+  serverItems.filter(item => item.stockId).forEach(item => {
+    if (serverByStockId.has(item.stockId)) throw new Error("Identitas lot Stock Opname duplikat; muat ulang data server.");
+    serverByStockId.set(item.stockId, item);
+  });
+  const claimedServerItems = new Set();
+  const claimServerItem = item => {
+    const exact = item.stockId ? serverByStockId.get(item.stockId) : null;
+    if (exact) {
+      if (claimedServerItems.has(exact)) throw new Error("Identitas lot Stock Opname duplikat; muat ulang data server.");
+      claimedServerItems.add(exact);
+      return exact;
+    }
+    if (item.stockId) return null;
+    const fallbackKey = catalogKey(item);
+    const candidates = fallbackKey ? serverItems.filter(serverItem =>
+      !claimedServerItems.has(serverItem) && catalogKey(serverItem) === fallbackKey) : [];
+    if (candidates.length > 1) throw new Error("Identitas lot Stock Opname ambigu; muat ulang data server.");
+    const fallback = candidates[0] || null;
+    if (fallback) claimedServerItems.add(fallback);
+    return fallback;
+  };
+  const items = (localOpn.items || []).map(item => {
+    const serverItem = claimServerItem(item);
+    if (!serverItem) return item;
+    const mergedHitung = { ...(serverItem.hitungPerLokasi || {}) };
+    touched.forEach(lokasiKey => {
+      const localEntry = (item.hitungPerLokasi || {})[lokasiKey];
+      if (localEntry) mergedHitung[lokasiKey] = localEntry;
+      else delete mergedHitung[lokasiKey];
+    });
+    const qtsFisik = sumHitungPerLokasi(mergedHitung);
+    return { ...serverItem, ...item, hitungPerLokasi: mergedHitung, qtsFisik, selisih: qtsFisik - (serverItem.qtySistem ?? item.qtySistem ?? 0) };
+  });
+  const onlyOnServer = serverItems.filter(item => !claimedServerItems.has(item));
+  return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };
+}
 
 const normalize = value => String(value || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();
 

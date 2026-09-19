@@ -13,7 +13,7 @@ import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
-import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson } from "../lib/stockOpnameFlow.js";
+import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft } from "../lib/stockOpnameFlow.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
@@ -44,6 +44,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // sini, blok lain (device lain) diambil dari server. Ref (bukan state) supaya persist per sesi
   // tanpa perlu direset manual tiap ganti activeOpname.
   const touchedRef = useRef({});
+  const lapanganSaveQueueRef = useRef(Promise.resolve());
   // Fase 1e: dialog pilih gudang setelah PID di-parse & ternyata memuat >1 gudang.
   const [gudangSplitDialog, setGudangSplitDialog] = useState(null);
   const [moveStock, setMoveStock] = useState(null); // {st, lok, gdg} — trigger modal Pindah Blok dari chip
@@ -85,25 +86,32 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       : prev);
   }
 
-  // Fase 2 (autosave lapangan): jaring recovery kalau tab/HP ketutup sebelum "Simpan Draft"
-  // sempat ditekan. Sesi TIDAK punya field updatedAt yang di-bump tiap simpan (cuma dibuatAt
-  // sekali saat dibuat) — jadi restore cukup digerbang oleh status masih "DRAFT" (begitu
-  // submit/approve, status berubah dan draft lokal otomatis diabaikan, tak perlu bandingkan waktu).
+  // Recovery lokal hanya berlaku untuk versi server yang menjadi asal draft tersebut.
+  // Cache lama/legacy tidak boleh menimpa hitungan yang lebih baru dari perangkat lain.
   const draftKey = id => `warnoto_opname_draft_${id}`;
   useEffect(() => {
     if (!activeOpname?.id || activeOpname.status !== "DRAFT") return;
     try {
       const draft = JSON.parse(localStorage.getItem(draftKey(activeOpname.id)) || "null");
-      if (draft?.items) {
+      if (canRestoreOpnameDraft(activeOpname, draft)) {
         setActiveOpname(prev => (prev && prev.id === activeOpname.id ? { ...prev, items: draft.items } : prev));
         showToast("Hitungan lapangan lokal dipulihkan");
+      } else if (draft?.items) {
+        localStorage.removeItem(draftKey(activeOpname.id));
+        showToast("Draft lokal lama tidak dipulihkan agar data server tidak tertimpa.", "error");
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
   useEffect(() => {
     if (!lapanganMode || !activeOpname?.id) return;
-    try { localStorage.setItem(draftKey(activeOpname.id), JSON.stringify({ items: activeOpname.items, at: Date.now() })); } catch {}
+    try {
+      localStorage.setItem(draftKey(activeOpname.id), JSON.stringify({
+        items: activeOpname.items,
+        baseUpdatedAt: activeOpname.updatedAt || null,
+        at: Date.now(),
+      }));
+    } catch {}
   }, [activeOpname, lapanganMode]);
 
   // Fase 1f: filter Gudang/Blok di toolbar tabel item.
@@ -622,14 +630,38 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // (lokasiKey dari blok yang lagi aktif di HP) — beda dari updateItem desktop yang selalu pakai
   // itemLokasiKey (kolaps ke "_TANPA_LOKASI" utk item multi-blok, breakdown per-blok yang
   // sebenarnya memang menyusul di sini). extra dipakai utk flag tambahan (mis. usulPindahLokasi).
-  function setQtyForBlok(realIdx, lokasiKey, qty, extra) {
-    setActiveOpname(prev => {
-      const items = [...prev.items];
-      items[realIdx] = { ...applyQtyToItem(items[realIdx], lokasiKey, qty, currentUser?.id, { markRecount: true }), ...(extra||{}) };
-      if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
-      touchedRef.current[prev.id].add(lokasiKey);
-      return {...prev, items, freeze: ensureAutoFreeze(prev, items[realIdx])};
+  function queueLapanganSave(next, touchedLokasiIds) {
+    setActiveOpname(next); // local recovery remains available when the server is offline
+    const job = lapanganSaveQueueRef.current.then(async () => {
+      try {
+        const saved = await saveOpname(next, touchedLokasiIds, { silent: true, forceMerge: true });
+        setActiveOpname(saved === false ? next : (saved || next));
+        return saved !== false;
+      } catch (error) {
+        setActiveOpname(next);
+        showToast(error?.message || "Gagal menyimpan hitungan ke server. Draft lokal tetap tersedia.", "error");
+        return false;
+      }
     });
+    lapanganSaveQueueRef.current = job;
+    return job;
+  }
+
+  async function saveDesktopQty() {
+    if (!activeOpname) return false;
+    const saved = await queueLapanganSave(activeOpname, [...(touchedRef.current[activeOpname.id] || [])]);
+    if (saved) showToast("✅ Qty fisik tersimpan ke server.");
+    return saved;
+  }
+
+  function setQtyForBlok(realIdx, lokasiKey, qty, extra) {
+    if (!activeOpname) return Promise.resolve(false);
+    const items = [...activeOpname.items];
+    items[realIdx] = { ...applyQtyToItem(items[realIdx], lokasiKey, qty, currentUser?.id, { markRecount: true }), ...(extra||{}) };
+    if (!touchedRef.current[activeOpname.id]) touchedRef.current[activeOpname.id] = new Set();
+    touchedRef.current[activeOpname.id].add(lokasiKey);
+    const next = { ...activeOpname, items, freeze: ensureAutoFreeze(activeOpname, items[realIdx]) };
+    return queueLapanganSave(next, [...touchedRef.current[activeOpname.id]]);
   }
 
   // Fase 2e: konfirmasi hitung ulang (blind — tanpa lihat angka pertama) untuk item selisih.
@@ -637,22 +669,21 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // (applyQtyToItem, kunci dari item.recount.key yang disimpan saat selisih pertama terjadi),
   // keterangan otomatis mencatat kedua angka.
   function confirmRecount(realIdx, qtyKedua) {
-    setActiveOpname(prev => {
-      const items = [...prev.items];
-      const item = items[realIdx];
-      const key = item.recount?.key || itemLokasiKey(item);
-      const firstQty = item.qtsFisik;
-      if (Number(qtyKedua) === Number(firstQty)) {
-        items[realIdx] = { ...item, recount: { perluUlang:false, qtyUlang:Number(qtyKedua), at:Date.now(), by:currentUser?.id, cocok:true } };
-      } else {
-        const updated = applyQtyToItem(item, key, qtyKedua, currentUser?.id);
-        const ket = `${item.keterangan ? item.keterangan+" — " : ""}Hitung ulang: awal ${firstQty}, ulang ${qtyKedua} (dipakai).`;
-        items[realIdx] = { ...updated, keterangan: ket, recount: { perluUlang:false, qtyUlang:Number(qtyKedua), at:Date.now(), by:currentUser?.id, cocok:false } };
-        if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
-        touchedRef.current[prev.id].add(key);
-      }
-      return {...prev, items};
-    });
+    if (!activeOpname) return Promise.resolve(false);
+    const items = [...activeOpname.items];
+    const item = items[realIdx];
+    const key = item.recount?.key || itemLokasiKey(item);
+    const firstQty = item.qtsFisik;
+    if (Number(qtyKedua) === Number(firstQty)) {
+      items[realIdx] = { ...item, recount: { perluUlang:false, qtyUlang:Number(qtyKedua), at:Date.now(), by:currentUser?.id, cocok:true } };
+    } else {
+      const updated = applyQtyToItem(item, key, qtyKedua, currentUser?.id);
+      const ket = `${item.keterangan ? item.keterangan+" — " : ""}Hitung ulang: awal ${firstQty}, ulang ${qtyKedua} (dipakai).`;
+      items[realIdx] = { ...updated, keterangan: ket, recount: { perluUlang:false, qtyUlang:Number(qtyKedua), at:Date.now(), by:currentUser?.id, cocok:false } };
+    }
+    if (!touchedRef.current[activeOpname.id]) touchedRef.current[activeOpname.id] = new Set();
+    touchedRef.current[activeOpname.id].add(key);
+    return queueLapanganSave({ ...activeOpname, items }, [...touchedRef.current[activeOpname.id]]);
   }
 
   function validate() {
@@ -1074,6 +1105,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                                 value={counted ? item.qtsFisik : ""}
                                 ref={el=>{qtyInputRefs.current[realIdx]=el;}}
                                 onChange={e=>updateItem(realIdx,"qtsFisik",e.target.value)}
+                                onBlur={saveDesktopQty}
                                 style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,textAlign:"center"}}/>
                             : <span style={{fontWeight:700}}>{counted?fmtNum(item.qtsFisik):"—"}</span>}
                         </td>

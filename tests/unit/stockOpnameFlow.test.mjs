@@ -1,11 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   SAP_OPNAME_CATEGORIES,
   getSapOpnameCategory,
   isSapOpnameItem,
   opnameProgress,
   childOpnameMatches,
+  canRestoreOpnameDraft,
+  mergeOpnameForSave,
   resolveStockOpnameDocumentIdentity,
   parseStockOpnamePidRefs,
 } from "../../src/lib/stockOpnameFlow.js";
@@ -18,11 +21,82 @@ import {
 } from "../../src/lib/sap.js";
 import { lokasiScanUrlFor } from "../../src/lib/utils.js";
 
+const stockOpnameTabSource = fs.readFileSync(new URL("../../src/components/StockOpnameTab.jsx", import.meta.url), "utf8");
+const lapanganViewSource = fs.readFileSync(new URL("../../src/components/OpnameLapanganView.jsx", import.meta.url), "utf8");
+const stockOpnameHookSource = fs.readFileSync(new URL("../../src/hooks/useStockOpname.js", import.meta.url), "utf8");
+const appSource = fs.readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
+
 test("QR blok publik tetap terbaca sebagai pilihan blok di Mode Lapangan", () => {
   const url = lokasiScanUrlFor("TEST-BLOK A", "123e4567-e89b-42d3-a456-426614174000");
   assert.match(url, /\?loc=TEST-BLOK%20A#t=123e4567-e89b-42d3-a456-426614174000$/);
   assert.equal(extractLokasiIdFromScan(url), "TEST-BLOK A");
   assert.equal(extractLokasiIdFromScan(`https://warnoto.vercel.app${url}`), "TEST-BLOK A");
+});
+
+test("qty fisik tersimpan ke server sebelum UI menyatakan sukses", () => {
+  assert.match(stockOpnameTabSource, /saveOpname\(next, touchedLokasiIds, \{ silent: true, forceMerge: true \}\)/);
+  assert.match(stockOpnameTabSource, /function setQtyForBlok[\s\S]*?return queueLapanganSave\(next,/);
+  assert.match(stockOpnameTabSource, /onBlur=\{saveDesktopQty\}/);
+  assert.match(lapanganViewSource, /const saved = await setQtyForBlok[\s\S]*?if \(!saved\) return;[\s\S]*?Tersimpan ke server/);
+  assert.match(lapanganViewSource, /disabled=\{saving\}/);
+  assert.match(stockOpnameHookSource, /saveToCloud\(\{opnameList: nl\}, \{opnameChangedRows: \[toSave\]\}\)/);
+  assert.match(stockOpnameHookSource, /toSave = \{ \.\.\.toSave, updatedAt: Math\.max\(Date\.now\(\), Number\(toSave\.updatedAt \|\| 0\) \+ 1\) \}/);
+  assert.match(appSource, /hints\.opnameChangedRows\?\.length[\s\S]*?syncMasterTableRows\("stock_opname", hints\.opnameChangedRows/);
+  assert.match(stockOpnameTabSource, /baseUpdatedAt: activeOpname\.updatedAt \|\| null/);
+  assert.match(stockOpnameTabSource, /canRestoreOpnameDraft\(activeOpname, draft\)/);
+});
+
+test("recovery lokal hanya boleh menimpa versi server yang sama", () => {
+  const items = [{ katalogId: "KAT-1", qtsFisik: 5 }];
+  assert.equal(canRestoreOpnameDraft({ updatedAt: 200 }, { baseUpdatedAt: 200, items }), true);
+  assert.equal(canRestoreOpnameDraft({ updatedAt: 201 }, { baseUpdatedAt: 200, items }), false);
+  assert.equal(canRestoreOpnameDraft({}, { items }), false);
+  assert.equal(canRestoreOpnameDraft({ updatedAt: 200 }, { baseUpdatedAt: 200 }), false);
+});
+
+test("merge lintas perangkat hanya mengganti blok dan lot yang disentuh", () => {
+  const server = {
+    id: "OPN-1",
+    items: [
+      { stockId: "STK-1", katalogId: "KAT-1", qtySistem: 10, hitungPerLokasi: { A: { qty: 2, at: 100 }, B: { qty: 3, at: 200 } } },
+      { stockId: "STK-2", katalogId: "KAT-1", qtySistem: 4, hitungPerLokasi: { C: { qty: 4, at: 300 } } },
+      { stockId: "STK-SERVER", katalogId: "KAT-2", qtySistem: 1, hitungPerLokasi: {} },
+    ],
+  };
+  const local = {
+    id: "OPN-1",
+    items: [
+      { stockId: "STK-1", katalogId: "KAT-1", qtySistem: 10, hitungPerLokasi: { A: { qty: 5, at: 400 } } },
+      { stockId: "STK-2", katalogId: "KAT-1", qtySistem: 4, hitungPerLokasi: { C: { qty: 0, at: 300 } } },
+    ],
+  };
+
+  const merged = mergeOpnameForSave(local, server, ["A"]);
+  assert.deepEqual(merged.items[0].hitungPerLokasi, { A: { qty: 5, at: 400 }, B: { qty: 3, at: 200 } });
+  assert.equal(merged.items[0].qtsFisik, 8);
+  assert.deepEqual(merged.items[1].hitungPerLokasi, { C: { qty: 4, at: 300 } });
+  assert.equal(merged.items[2].stockId, "STK-SERVER");
+});
+
+test("merge legacy mencocokkan lot tunggal dan menolak identitas ambigu", () => {
+  const localLegacy = { id: "OPN-1", items: [{ katalogId: "KAT-1", qtySistem: 2, hitungPerLokasi: { A: { qty: 2, at: 400 } } }] };
+  const oneServerLot = { id: "OPN-1", items: [{ stockId: "STK-1", katalogId: "KAT-1", qtySistem: 2, hitungPerLokasi: {} }] };
+  assert.equal(mergeOpnameForSave(localLegacy, oneServerLot, ["A"]).items.length, 1);
+
+  const ambiguousServerLots = {
+    id: "OPN-1",
+    items: [
+      { stockId: "STK-1", katalogId: "KAT-1", hitungPerLokasi: {} },
+      { stockId: "STK-2", katalogId: "KAT-1", hitungPerLokasi: {} },
+    ],
+  };
+  assert.throws(() => mergeOpnameForSave(localLegacy, ambiguousServerLots, ["A"]), /Identitas lot Stock Opname ambigu/);
+
+  const localDifferentLot = { id: "OPN-1", items: [{ ...localLegacy.items[0], stockId: "STK-NEW" }] };
+  assert.equal(mergeOpnameForSave(localDifferentLot, oneServerLot, ["A"]).items.length, 2);
+
+  const duplicateServerLot = { id: "OPN-1", items: [oneServerLot.items[0], { ...oneServerLot.items[0] }] };
+  assert.throws(() => mergeOpnameForSave(localLegacy, duplicateServerLot, ["A"]), /Identitas lot Stock Opname duplikat/);
 });
 
 test("SAP opname hanya mengenal tiga kategori dan menolak Non-SAP", () => {

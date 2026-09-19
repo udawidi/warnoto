@@ -55,7 +55,7 @@ const LOKASI = [
 // masih terlihat di HP — lihat StockOpnameTab.jsx renderPanel().
 const OPNAME_SESSION = {
   id:"OPN-E2E-01", semester:"2026-2", jenisAlur:"SAP", kategori:"Material Cadang", flowVersion:2, status:"DRAFT",
-  dibuatOleh:"e2e-superadmin", dibuatAt:1784505600000, sapUploadedAt:1784505600000, totalRowsSAP:2,
+  dibuatOleh:"e2e-superadmin", dibuatAt:1784505600000, updatedAt:1784505600000, sapUploadedAt:1784505600000, totalRowsSAP:2,
   items:[
     {
       katalogId:"KAT-E2E-01", namaBarang:"Isolator Keramik 150 kV", noKatalog:"301234567", satuan:"BUAH", sapCategory:"Persediaan",

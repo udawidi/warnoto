@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { UPT } from "../constants.js";
 import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
-import { normalizeKatalog, totalQtyForKatalog, sumHitungPerLokasi, itemCounted, allBloksSelesai, stockSapLabel } from "../lib/sap.js";
+import { normalizeKatalog, totalQtyForKatalog, itemCounted, allBloksSelesai, stockSapLabel } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
 import { normalizeOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
+import { mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 
 function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
@@ -55,6 +56,9 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
         syncPending = true;
       }
     }
+    // Version the JSON session itself so a recovery cache from another/older device
+    // cannot silently replace a newer server result.
+    toSave = { ...toSave, updatedAt: Math.max(Date.now(), Number(toSave.updatedAt || 0) + 1) };
     const exists = currentList.find(o=>o.id===toSave.id);
     const nl = exists ? currentList.map(o=>o.id===toSave.id?toSave:o) : [...currentList, toSave];
     commitOpnameList(nl);
@@ -64,7 +68,9 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
       else showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
       return false;
     }
-    const saved = await stateRef.current.saveToCloud({opnameList: nl});
+    // Satu sesi saja yang berubah. Upsert baris ini tanpa reconciliation-delete agar
+    // perangkat dengan cache lama tidak menghapus sesi baru milik perangkat lain.
+    const saved = await stateRef.current.saveToCloud({opnameList: nl}, {opnameChangedRows: [toSave]});
     if (saved === false) {
       commitOpnameList(previousList);
       showToast(failClosed
@@ -76,29 +82,6 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     return toSave;
   }
 
-  // Merge per-item: blok (hitungPerLokasi) yang TIDAK disentuh perangkat ini diambil dari versi
-  // server (punya perangkat lain), blok yang disentuh diambil dari versi lokal. Item lokal yang
-  // tidak ada di server (mis. temuan Non-Stock baru) tetap dipakai. Item yang ada di server tapi
-  // hilang di lokal (device ini belum sempat load versi terbaru) TIDAK dibuang — ikut ditambahkan.
-  function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds) {
-    const touched = new Set(touchedLokasiIds);
-    const serverByKey = new Map((serverOpn.items||[]).map(it=>[it.katalogId || it.noKatalog, it]));
-    const items = (localOpn.items||[]).map(item => {
-      const key = item.katalogId || item.noKatalog;
-      const serverItem = serverByKey.get(key);
-      if (!serverItem) return item;
-      const mergedHitung = { ...(serverItem.hitungPerLokasi||{}) };
-      touched.forEach(lokKey => {
-        const localEntry = (item.hitungPerLokasi||{})[lokKey];
-        if (localEntry) mergedHitung[lokKey] = localEntry; else delete mergedHitung[lokKey];
-      });
-      const qtsFisik = sumHitungPerLokasi(mergedHitung);
-      return { ...serverItem, ...item, hitungPerLokasi: mergedHitung, qtsFisik, selisih: qtsFisik - (serverItem.qtySistem ?? item.qtySistem ?? 0) };
-    });
-    const localKeys = new Set(items.map(it=>it.katalogId || it.noKatalog));
-    const onlyOnServer = (serverOpn.items||[]).filter(it=>!localKeys.has(it.katalogId||it.noKatalog));
-    return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };
-  }
   async function submitOpname(opn, touchedLokasiIds) {
     if (opn?.flowVersion === 2 && !allBloksSelesai(opn)) {
       showToast("Belum bisa submit: semua material harus selesai dihitung.", "error");

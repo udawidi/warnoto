@@ -6,7 +6,7 @@ const { SURFACES } = require("./route-manifest");
 // fixtures.js): 2 item SAP, tiap item 1 blok beda (A-01/B-02), qtsFisik null (progress 0%)
 // supaya tombol "Mulai Hitung" (satu-satunya pintu HP ke mode lapangan) masih terlihat.
 const STOCK_OPNAME = SURFACES.find(s => s.slug === "stock-opname");
-const DRAFT_BUTTON_NAME_CLEAN = /Lanjutkan draft 2026-2\s+\u2014\s+SAP/;
+const DRAFT_BUTTON_NAME_CLEAN = /Lanjutkan opname 2026-2/;
 
 async function openDraftSession(page) {
   await openApp(page);
