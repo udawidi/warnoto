@@ -241,6 +241,10 @@ test.describe("WARNOTO desktop preservation smoke", () => {
       });
 
       await expect(page.getByText("Ringkasan UPT", { exact:true })).toBeVisible();
+      const uptFilter = page.getByRole("combobox", { name:"Filter UPT" });
+      await expect(uptFilter).toBeVisible();
+      await uptFilter.selectOption("UPT-MLG");
+      await expect(uptFilter).toHaveValue("UPT-MLG");
       await expect(page.getByRole("button", { name:"Pengisian 5S", exact:true })).toHaveCount(0);
       await expect(page.getByText("History Audit 5S", { exact:true }).last()).toBeVisible();
       await expect(page.getByText("Belum ada hasil Form 5S untuk filter ini.", { exact:true })).toBeVisible();

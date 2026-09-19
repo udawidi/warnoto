@@ -62,25 +62,43 @@ export function Form5SPage({
 
       {canSwitchMaturityUpt && (
         <div style={{ ...sty.card, padding: isMobile ? 10 : 14, marginBottom: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginBottom: 10 }}>
-            <div style={{ fontSize: 15, fontWeight: 900, color: C.text }}>Ringkasan UPT</div>
-            <div style={{ fontSize: 12, color: C.muted }}>{rows.filter(row => row.latest).length}/{rows.length} UPT sudah mengisi</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", flexDirection: isMobile ? "column" : "row", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: 15, lineHeight: 1.25, fontWeight: 900, color: C.text }}>Ringkasan UPT</div>
+              <div style={{ fontSize: 12, lineHeight: 1.4, color: C.muted, marginTop: 2 }}>{rows.filter(row => row.latest).length}/{rows.length} UPT sudah mengisi</div>
+            </div>
+            <label style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: 6, color: C.muted, fontSize: 12, lineHeight: 1.3 }}>
+              <span>Filter UPT</span>
+              <select
+                aria-label="Filter UPT"
+                value={activeUptId}
+                onChange={event => {
+                  const next = options.find(option => option.id === event.target.value);
+                  if (!next) return;
+                  setSelectedUpt(next.nama);
+                  setHistoryRequest(`${next.id}:${Date.now()}`);
+                }}
+                style={{ minHeight: 44, minWidth: isMobile ? "100%" : 190, maxWidth: "100%", padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface || "white", color: C.text, fontSize: 13, fontWeight: 700 }}
+              >
+                {options.map(option => <option key={option.id} value={option.id}>{option.nama}</option>)}
+              </select>
+            </label>
           </div>
           <div style={{ overflowX: "auto" }}>
             <table className="mobile-card-table" style={{ width: "100%", borderCollapse: "collapse", minWidth: 720 }}>
-              <thead><tr>{["UPT", "Periode terakhir", "Gudang", "Skor", "Pengisian", "Foto", "Backup", "Diperbarui"].map(label => <th key={label} style={{ textAlign: "left", padding: "8px 10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 11, textTransform: "uppercase" }}>{label}</th>)}</tr></thead>
+              <thead><tr>{["UPT", "Periode terakhir", "Gudang", "Skor", "Pengisian", "Foto", "Backup", "Diperbarui"].map(label => <th key={label} style={{ textAlign: "left", padding: "8px 10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 11, lineHeight: 1.3, fontWeight: 800, textTransform: "uppercase" }}>{label}</th>)}</tr></thead>
               <tbody>{rows.map(row => {
                 const active = row.upt.id === activeUptId;
                 const latest = row.latest;
                 return <tr key={row.upt.id} onClick={() => openHistory(row)} style={{ cursor: "pointer", background: active ? `${C.accent}12` : "transparent" }}>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, fontWeight: 800 }}>{row.upt.nama}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted }}>{latest ? `${latest.bulan}/${latest.tahun}` : "Belum mengisi"}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted }}>{latest?.gudangNama || "-"}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, fontWeight: 800 }}>{latest ? `${Number(latest.scorePercent || 0).toFixed(1)}%` : "-"}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted }}>{row.records}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted }}>{row.photos}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: row.storage === "Self-host" ? C.green : C.muted }}>{row.storage}</td>
-                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted }}>{latest?.createdAt ? new Date(latest.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" }) : "-"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, fontSize: 13, fontWeight: 800 }}>{row.upt.nama}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 13 }}>{latest ? `${latest.bulan}/${latest.tahun}` : "Belum mengisi"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 13 }}>{latest?.gudangNama || "-"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, fontSize: 13, fontWeight: 800 }}>{latest ? `${Number(latest.scorePercent || 0).toFixed(1)}%` : "-"}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 13 }}>{row.records}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 13 }}>{row.photos}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: row.storage === "Self-host" ? C.green : C.muted, fontSize: 13 }}>{row.storage}</td>
+                  <td style={{ padding: "10px", borderBottom: `1px solid ${C.border}`, color: C.muted, fontSize: 13 }}>{latest?.createdAt ? new Date(latest.createdAt).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" }) : "-"}</td>
                 </tr>;
               })}</tbody>
             </table>
