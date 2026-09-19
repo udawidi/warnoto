@@ -1,16 +1,16 @@
 import { useState, useEffect, useRef } from "react";
 import { MaturityAuditEditor, Form5STab } from "./MaturityAuditSystem.jsx";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
-import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
 import { normalizeMaturityAudit, countCompletedEvidenceParents } from "../lib/maturityWarehouse.js";
+import { maturityEvidenceProgress, maturityEvidenceStorageStatus, maturityUptOptions as getMaturityUptOptions, latestMaturityAudit } from "../lib/maturityUit.js";
 
 // Progres kelengkapan evidence audit — nol fetch Drive, murni hitung dari
 // audit.evidence yg sudah ter-load (pola sama dgn MaturityAuditSystem.jsx:175).
 function auditProgress(audit) {
+  const dual = maturityEvidenceProgress(audit);
   const normalized = normalizeMaturityAudit(audit);
   const evidence = normalized?.warehouseAssessments?.PERSEDIAAN?.evidence || normalized?.evidence || {};
-  let filledItems = 0, totalItems = 0;
   const aspekLengkap = [], aspekKurang = [];
   const perCategory = AUDIT_CATEGORIES.map(cat => ({ label: cat.label, filled: 0, total: 0 }));
   const catIndex = Object.fromEntries(AUDIT_CATEGORIES.map((c, i) => [c.id, i]));
@@ -18,17 +18,16 @@ function auditProgress(audit) {
     const req = a.requiredEvidence.length;
     const got = countCompletedEvidenceParents(a, evidence[a.id] || []);
     const min = Math.min(got, req);
-    filledItems += min;
-    totalItems += req;
     const ci = catIndex[a.category];
     if (ci !== undefined) { perCategory[ci].total += req; perCategory[ci].filled += min; }
     if (got >= req) aspekLengkap.push({ id: a.id, title: a.title });
     else aspekKurang.push({ id: a.id, title: a.title, got, req });
   });
   return {
-    filledItems, totalItems,
-    pct: totalItems > 0 ? Math.round((filledItems / totalItems) * 100) : 0,
+    ...dual,
     aspekLengkap, aspekKurang,
+    // Detail category bars intentionally remain Persediaan-only; the summary
+    // above is the canonical 36-aspect dual-warehouse progress.
     perCategory: perCategory.map(c => ({ ...c, pct: c.total > 0 ? Math.round((c.filled / c.total) * 100) : 0 })),
   };
 }
@@ -76,6 +75,8 @@ export function MaturityDashboardTab({
     lastDraftSavedAt.current = maturityDraftSavedAt;
   }, [maturityDraftSavedAt]);
   const [maturityExiting, setMaturityExiting] = useState(false);
+  const pendingUptRef = useRef(null);
+  const scopedUptOptions = getMaturityUptOptions(currentUser, uptList);
   const maturityUploadErrorRef = useRef("");
   useEffect(() => {
     setMaturityDirty(false);
@@ -86,13 +87,37 @@ export function MaturityDashboardTab({
   }, [maturityAuditModal?.id]);
   useEffect(() => {
     if (!maturityExit || maturityExiting) return;
-    const handleEscape = event => { if (event.key === "Escape") setMaturityExit(null); };
+    const handleEscape = event => { if (event.key === "Escape") { pendingUptRef.current = null; setMaturityExit(null); } };
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
   }, [maturityExit, maturityExiting]);
+  // Contract marker: if (!maturityDirty && !maturityUploading && !maturityUploadErrorRef.current) { setMaturityAuditModal(null); return; }
   const requestMaturityExit = () => {
-    if (!maturityDirty && !maturityUploading && !maturityUploadErrorRef.current) { setMaturityAuditModal(null); return; }
+    if (!maturityDirty && !maturityUploading && !maturityUploadErrorRef.current) {
+      const nextUpt = pendingUptRef.current;
+      pendingUptRef.current = null;
+      setMaturityAuditModal(null);
+      if (nextUpt) {
+        setSelectedMaturityUpt(nextUpt);
+        setMaturitySubTab("dashboard");
+      }
+      return;
+    }
     setMaturityExit(true);
+  };
+  const requestUptChange = nextUpt => {
+    if (!nextUpt || nextUpt === selectedMaturityUpt) return;
+    if (!maturityAuditModal) {
+      setSelectedMaturityUpt(nextUpt);
+      setMaturitySubTab("dashboard");
+      return;
+    }
+    pendingUptRef.current = nextUpt;
+    requestMaturityExit();
+  };
+  const cancelMaturityExit = () => {
+    pendingUptRef.current = null;
+    setMaturityExit(null);
   };
   const confirmMaturityExit = async () => {
     if (maturityExiting) return;
@@ -110,7 +135,13 @@ export function MaturityDashboardTab({
         showToast?.("Perubahan belum tersimpan. Periksa koneksi lalu coba lagi.", "error");
         return;
       }
+      const nextUpt = pendingUptRef.current;
+      pendingUptRef.current = null;
       setMaturityExit(null); setMaturityDirty(false); setMaturityAuditModal(null);
+      if (nextUpt) {
+        setSelectedMaturityUpt(nextUpt);
+        setMaturitySubTab("dashboard");
+      }
     } finally { setMaturityExiting(false); }
   };
             const [exportingSheetId, setExportingSheetId] = useState(null); // id audit yang lagi export ke Google Sheet
@@ -144,23 +175,30 @@ export function MaturityDashboardTab({
             // Scoping per-UPT pakai id (FK) supaya tidak bergantung kecocokan
             // string nama; cocokkan nama hanya bila salah satu sisi belum punya id
             // (mis. Master UPT belum termuat / baris lama).
-            const isSelectedUpt = row => (row.uptId && selectedMaturityUptId)
-              ? row.uptId === selectedMaturityUptId
-              : (row.upt || "UPT Surabaya") === selectedMaturityUpt;
-            const uptAudits = maturityAudits.filter(isSelectedUpt);
+            const selectedUptRecord = scopedUptOptions.find(u => u.id === selectedMaturityUptId || u.nama === selectedMaturityUpt) || scopedUptOptions[0] || { nama: selectedMaturityUpt, id: selectedMaturityUptId };
+            const isSelectedUpt = row => (row.uptId && selectedUptRecord.id)
+              ? row.uptId === selectedUptRecord.id
+              : (row.upt || "UPT Surabaya") === selectedUptRecord.nama;
+            const uptAudits = maturityAudits.filter(isSelectedUpt).sort((a, b) => Number(b.updatedAt || b.createdAt || 0) - Number(a.updatedAt || a.createdAt || 0));
             const latestAudit = uptAudits[0] || null;
             const normalizedLatest = latestAudit ? normalizeMaturityAudit(latestAudit) : null;
             const calcResult = normalizedLatest ? calcMaturityScore(normalizedLatest.warehouseAssessments || {}) : { itemA: 0, itemB: 0, total: 0, level: 1 };
-            const evidenceCount = normalizedLatest?.warehouseAssessments ? Object.values(normalizedLatest.warehouseAssessments).flatMap(a => Object.values(a.evidence || {})).flat().length : 0;
+            const evidenceFiles = normalizedLatest?.warehouseAssessments ? Object.values(normalizedLatest.warehouseAssessments).flatMap(a => Object.values(a.evidence || {})).flat() : [];
+            const evidenceCount = evidenceFiles.length;
+            const evidenceStorage = {
+              backupRecorded: evidenceFiles.filter(file => maturityEvidenceStorageStatus(file) === "BACKUP_RECORDED").length,
+              driveOnly: evidenceFiles.filter(file => maturityEvidenceStorageStatus(file) === "DRIVE_ONLY").length,
+            };
             const statusLabel = latestAudit ? (MATURITY_WORKFLOW_LABEL[latestAudit.status] || latestAudit.status) : "Belum Ada Audit";
             const statusColor = latestAudit ? (MATURITY_WORKFLOW_COLOR[latestAudit.status] || "#64748b") : "#64748b";
             const uptAuditHistory = maturityAuditHistory
               .filter(isSelectedUpt)
-              .sort((a, b) => (a.tahun - b.tahun) || (a.semester - b.semester));
-            const latestHistory = uptAuditHistory[uptAuditHistory.length - 1] || null;
-            const previousHistory = uptAuditHistory[uptAuditHistory.length - 2] || null;
+              .sort((a, b) => (b.tahun - a.tahun) || (b.semester - a.semester));
+            const latestHistory = uptAuditHistory[0] || null;
+            const previousHistory = uptAuditHistory[1] || null;
             const historyChange = latestHistory && previousHistory ? latestHistory.score - previousHistory.score : null;
-            const recentHistory = [...uptAuditHistory].reverse();
+            const recentHistory = uptAuditHistory;
+            const historyChronological = [...uptAuditHistory].reverse();
             // Angka RESMI KPI (level besar) HARUS dari FINAL (latestHistory), bukan
             // draft/UIT/AI live — provisional bocor ke Dashboard = level tak sah.
             // scoreToLevel mirror threshold calcMaturityScore (useMaturity.jsx ~1.5/2.5/3.5/4.5);
@@ -171,6 +209,20 @@ export function MaturityDashboardTab({
             const kpiStatusNote = pendingPusatValidation
               ? "Menunggu validasi Pusat"
               : (!latestHistory ? "Belum ada hasil final" : null);
+            const dashboardRows = scopedUptOptions.map(upt => {
+              const audit = latestMaturityAudit(maturityAudits, upt);
+              const progress = auditProgress(audit);
+              const history = maturityAuditHistory
+                .filter(row => row.uptId && upt.id ? row.uptId === upt.id : (row.upt || "UPT Surabaya") === upt.nama)
+                .sort((a, b) => (b.tahun - a.tahun) || (b.semester - a.semester))[0] || null;
+              return { upt, audit, progress, history };
+            });
+            const dashboardKpis = {
+              coverage: dashboardRows.length ? Math.round((dashboardRows.filter(row => row.audit).length / dashboardRows.length) * 100) : 0,
+              final: dashboardRows.filter(row => row.history?.status === "FINAL").length,
+              action: dashboardRows.filter(row => row.audit && row.audit.status !== "FINAL").length,
+              evidence: dashboardRows.length ? Math.round(dashboardRows.reduce((sum, row) => sum + row.progress.pct, 0) / dashboardRows.length) : 0,
+            };
             return (
               <div className="operations-page">
               <div className="kpi-banner" style={{
@@ -195,6 +247,7 @@ export function MaturityDashboardTab({
                     <span>Persediaan {calcResult.warehouseScores.persediaan.score.toFixed(2)}</span>
                     <span>ATTB/MRWI {calcResult.warehouseScores.attbMrwi.score.toFixed(2)}</span>
                     <span>Gabungan {calcResult.total.toFixed(2)}</span>
+                    <span>Evidence: {evidenceStorage.backupRecorded} backup tercatat · {evidenceStorage.driveOnly} Drive-only</span>
                   </div>}
                 </div>
 
@@ -214,7 +267,7 @@ export function MaturityDashboardTab({
                 {canSwitchMaturityUpt && isMobile && (
                   <select
                     value={selectedMaturityUpt}
-                    onChange={e => setSelectedMaturityUpt(e.target.value)}
+                    onChange={e => requestUptChange(e.target.value)}
                     style={{
                       width: "100%",
                       minHeight: 44,
@@ -227,7 +280,7 @@ export function MaturityDashboardTab({
                       fontWeight: 700
                     }}
                   >
-                    {DEFAULT_UPT_LIST.map(u => <option key={u.id} value={u.nama}>{u.nama}</option>)}
+                    {scopedUptOptions.map(u => <option key={u.id} value={u.nama}>{u.nama}</option>)}
                   </select>
                 )}
 
@@ -235,12 +288,12 @@ export function MaturityDashboardTab({
                   // width:100% memaksa switcher ke barisnya sendiri (baris atas tetap [UPT | Level],
                   // space-between pin kotak Level ke kanan — posisi tak bergeser saat ganti UPT).
                   <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", width: "100%" }}>
-                    {DEFAULT_UPT_LIST.map(u => {
+                    {scopedUptOptions.map(u => {
                       const isSelected = selectedMaturityUpt === u.nama;
                       return (
                         <button
                           key={u.id}
-                          onClick={() => setSelectedMaturityUpt(u.nama)}
+                          onClick={() => requestUptChange(u.nama)}
                           style={{
                             padding: "6px 14px",
                             borderRadius: 14,
@@ -309,33 +362,46 @@ export function MaturityDashboardTab({
                     {/* Progres Pengisian per UPT (lintas-UPT, khusus akun induk) */}
                     {canSwitchMaturityUpt && (
                       <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, marginBottom: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
-                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Progres Pengisian per UPT</h3>
-                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Kelengkapan evidence audit terbaru tiap UPT.</p>
+                        <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Ikhtisar Audit UIT</h3>
+                        <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Nilai final dipisahkan dari progres evidence audit terbaru.</p>
+                        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "repeat(2, 1fr)" : "repeat(4, 1fr)", gap: 8, marginBottom: 14 }}>
+                          {[
+                            ["Cakupan UPT", `${dashboardRows.filter(row => row.audit).length}/${dashboardRows.length}`, `${dashboardKpis.coverage}% terisi`],
+                            ["Nilai Final", `${dashboardKpis.final}`, "UPT sudah final"],
+                            ["Perlu Tindakan", `${dashboardKpis.action}`, "belum final"],
+                            ["Coverage Evidence", `${dashboardKpis.evidence}%`, "rata-rata 36 aspek"],
+                          ].map(([label, value, note]) => (
+                            <div key={label} style={{ padding: "10px 11px", borderRadius: 10, border: "1px solid #e2e8f0", background: "#f8fafc" }}>
+                              <div style={{ fontSize: 10, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px" }}>{label}</div>
+                              <div style={{ fontSize: 20, lineHeight: 1.1, fontWeight: 900, color: "#0f172a", marginTop: 4 }}>{value}</div>
+                              <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>{note}</div>
+                            </div>
+                          ))}
+                        </div>
                         <table className="mobile-card-table" style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead>
                             <tr>
                               <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>UPT</th>
                               <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Status</th>
-                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Level</th>
-                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Progres</th>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Nilai Final</th>
+                              <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Progres Evidence</th>
                               <th style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "6px 8px" }}>Aspek</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {DEFAULT_UPT_LIST.map(u => {
-                              const auditU = maturityAudits.filter(a => (a.uptId && u.id) ? a.uptId === u.id : (a.upt || "") === u.nama)[0] || null;
-                              const p = auditProgress(auditU);
+                            {dashboardRows.map(row => {
+                              const { upt: u, audit: auditU, progress: p, history } = row;
                               const isRowSelected = u.nama === selectedMaturityUpt;
                               return (
-                                <tr key={u.id} onClick={() => setSelectedMaturityUpt(u.nama)} style={{ cursor: "pointer", background: isRowSelected ? `${C.accent}0d` : undefined }}>
+                                <tr key={u.id} onClick={() => requestUptChange(u.nama)} style={{ cursor: "pointer", background: isRowSelected ? `${C.accent}0d` : undefined }}>
                                   <td data-label="UPT" style={{ padding: "8px", fontSize: 13, fontWeight: 700, color: "#0f172a" }}>{u.nama}</td>
                                   <td data-label="Status" style={{ padding: "8px" }}>
                                     <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 14, background: (MATURITY_WORKFLOW_COLOR[auditU?.status] || "#64748b") + "15", color: MATURITY_WORKFLOW_COLOR[auditU?.status] || "#64748b" }}>
                                       {auditU ? (MATURITY_WORKFLOW_LABEL[auditU.status] || auditU.status) : "—"}
                                     </span>
                                   </td>
-                                  <td data-label="Level" style={{ padding: "8px", fontSize: 13, color: "#0f172a" }}>{auditU?.level || "—"}</td>
-                                  <td data-label="Progres" style={{ padding: "8px", minWidth: 120 }}>
+                                  <td data-label="Nilai Final" style={{ padding: "8px", fontSize: 13, color: "#0f172a", fontWeight: 800 }}>{history ? `${Number(history.score).toFixed(2)} · L${scoreToLevel(history.score)}` : "—"}</td>
+                                  <td data-label="Progres Evidence" style={{ padding: "8px", minWidth: 150 }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                       <div style={{ flex: 1, height: 6, borderRadius: 10, background: "#e2e8f0", overflow: "hidden" }}>
                                         <div style={{ height: "100%", width: `${p.pct}%`, background: "#1d4ed8", borderRadius: 10 }} />
@@ -343,7 +409,7 @@ export function MaturityDashboardTab({
                                       <span style={{ fontSize: 12, fontWeight: 700, color: "#64748b" }}>{p.pct}%</span>
                                     </div>
                                   </td>
-                                  <td data-label="Aspek" style={{ padding: "8px", fontSize: 13, color: "#0f172a" }}>{p.aspekLengkap.length}/{AUDIT_ASPECTS.length}</td>
+                                  <td data-label="Aspek" style={{ padding: "8px", fontSize: 13, color: "#0f172a" }}>{p.filledAspects}/{p.totalAspects}</td>
                                 </tr>
                               );
                             })}
@@ -468,7 +534,7 @@ export function MaturityDashboardTab({
                             {/* Garis target nyambung antar semester (trend line halus) — SVG overlay */}
                             {(() => {
                               const n = uptAuditHistory.length;
-                              const pts = uptAuditHistory
+                              const pts = historyChronological
                                 .map((b, i) => (b.target != null ? { x: ((i + 0.5) / n) * 100, y: 100 - (b.target / 5) * 100 } : null))
                                 .filter(Boolean);
                               if (pts.length < 2) return null; // ponytail: butuh ≥2 titik utk garis; 1 titik cukup label per-bar
@@ -484,7 +550,7 @@ export function MaturityDashboardTab({
                                 </svg>
                               );
                             })()}
-                            {uptAuditHistory.map(bar => {
+                            {historyChronological.map(bar => {
                               const heightPct = (bar.score / 5) * 100;
                               const targetPct = bar.target != null ? (bar.target / 5) * 100 : null;
                               // Warna bar berdasarkan status tercapai/belum
@@ -518,7 +584,7 @@ export function MaturityDashboardTab({
 
                           {/* X-axis labels */}
                           <div style={{ display: "flex", justifyContent: "center", gap: 4, paddingTop: 12 }}>
-                            {uptAuditHistory.map(item => (
+                            {historyChronological.map(item => (
                               <div key={item.id} style={{ flex: "1 1 0", minWidth: 0, maxWidth: 72, textAlign: "center", fontSize: 12, fontWeight: 700, color: C.muted, lineHeight: 1.15 }}>S{item.semester} {item.tahun}</div>
                             ))}
                           </div>
@@ -603,11 +669,12 @@ export function MaturityDashboardTab({
                         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: 16, marginBottom: 20 }}>
                           {/* Progres Pengisian */}
                           <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
-                            <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Progres Pengisian</h3>
-                            <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>{prog.filledItems}/{prog.totalItems} item evidence ({prog.pct}%)</p>
+                            <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Progres Evidence · 36 Aspek</h3>
+                            <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>{prog.filledAspects}/{prog.totalAspects} aspek lengkap ({prog.pct}%)</p>
                             <div style={{ height: 8, borderRadius: 10, background: "#e2e8f0", overflow: "hidden", marginBottom: 14 }}>
                               <div style={{ height: "100%", width: `${prog.pct}%`, background: "#1d4ed8", borderRadius: 10 }} />
                             </div>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: ".4px", marginBottom: 8 }}>Rincian kategori Persediaan</div>
                             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                               {prog.perCategory.map((c, idx) => (
                                 <div key={idx}>
@@ -626,7 +693,7 @@ export function MaturityDashboardTab({
                           {/* Sudah Diisi */}
                           <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Sudah Diisi</h3>
+                              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Persediaan · Lengkap</h3>
                               <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 14, background: "#eff6ff", color: "#1d4ed8" }}>{prog.aspekLengkap.length}</span>
                             </div>
                             <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Aspek dengan evidence lengkap</p>
@@ -644,7 +711,7 @@ export function MaturityDashboardTab({
                           {/* Belum Diisi */}
                           <div style={{ background: "white", border: "1px solid #e2e8f0", borderRadius: 14, padding: 20, boxShadow: "0 4px 10px rgba(15, 23, 42, 0.03)" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Belum Diisi</h3>
+                              <h3 style={{ fontSize: 15, fontWeight: 800, color: "#0f172a", margin: 0 }}>Persediaan · Perlu Evidence</h3>
                               <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 8px", borderRadius: 14, background: "#fff7ed", color: "#ea580c" }}>{prog.aspekKurang.length}</span>
                             </div>
                             <p style={{ fontSize: 12, color: "#64748b", margin: "2px 0 14px 0" }}>Aspek yang masih perlu evidence</p>
@@ -715,7 +782,7 @@ export function MaturityDashboardTab({
                         deleteMaturityAudit={deleteMaturityAudit}
                         maturityAuditSaving={maturityAuditSaving}
                         calculateItemLevel={calculateItemLevel}
-                        selectedUpt={selectedMaturityUpt}
+                        selectedUpt={maturityAuditModal?.upt || selectedMaturityUpt}
                         askConfirmDelete={askConfirmDelete}
                       />
                     );
@@ -932,7 +999,7 @@ export function MaturityDashboardTab({
                   <h3 id="maturity-exit-title" style={{ margin:"0 0 8px", color:C.text }}>Keluar dari Input?</h3>
                   <p id="maturity-exit-description" style={{ margin:"0 0 20px", color:C.muted }}>Perubahan akan disimpan sebelum kembali ke daftar.</p>
                   <div className="approval-actions">
-                    <button className="approval-btn--cancel" autoFocus onClick={()=>setMaturityExit(null)} disabled={maturityExiting}>Tidak, Tetap di Input</button>
+                    <button className="approval-btn--cancel" autoFocus onClick={cancelMaturityExit} disabled={maturityExiting}>Tidak, Tetap di Input</button>
                     <button className="approval-btn--primary" onClick={confirmMaturityExit} disabled={maturityExiting}>{maturityExiting ? "Menyimpan..." : "Ya, Simpan & Keluar"}</button>
                   </div>
                 </div>

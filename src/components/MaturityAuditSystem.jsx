@@ -188,7 +188,7 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
               <div style={{ fontSize: 12, color: C.muted, marginBottom: 16 }}>Untuk berkas PDF/dokumen, unduh atau buka di tab baru untuk melihatnya.</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <button type="button" onClick={() => downloadMaturityDriveEvidence(evidenceId)} style={{ padding: "12px 16px", borderRadius: 10, border: "none", background: C.accent, color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer" }}>⬇ Unduh berkas</button>
-                <button type="button" onClick={() => window.open(state.url, "_blank", "noopener")} style={{ padding: "12px 16px", borderRadius: 10, border: `1px solid ${C.border}`, background: "white", color: C.text, fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Buka di tab baru</button>
+                <a href={state.url} target="_blank" rel="noopener noreferrer" style={{ display: "block", padding: "12px 16px", borderRadius: 10, border: "none", background: C.accent, color: "white", fontWeight: 800, fontSize: 14, textDecoration: "none" }}>Buka berkas</a>
               </div>
             </div>
           ) : (
@@ -327,7 +327,9 @@ export function MaturityAuditEditor({
   const is3D = false; // Disabled to fix click target registration bugs
   const isEdit = maturityAuditModal !== "new";
   const audit = isEdit ? maturityAuditModal : {};
-  const currentUptName = selectedUpt || audit.upt || "UPT Surabaya";
+  // Audit context is immutable while the editor is open. The dashboard selector
+  // may change only after the editor exits and its draft is saved.
+  const currentUptName = audit.upt || selectedUpt || "UPT Surabaya";
   const warehouseAspects = useMemo(() => AUDIT_ASPECTS.filter(a => isMaturityAspectApplicable(a.id, maturityWarehouseType)), [maturityWarehouseType]);
   const warehouseAssessments = useMemo(() => {
     const nested = maturityAuditForm?.warehouseAssessments || {};
@@ -854,6 +856,7 @@ export function MaturityAuditEditor({
                                 const openFile = () => {
                                   if (f.auto && f.url) window.location.hash = f.url.replace(/^#/, "");
                                   else if (f.id) setViewerFile({ id: f.id, name: f.name });
+                                  else setUploadError(`Evidence "${f.name || "tanpa nama"}" belum memiliki ID server dan tidak dapat dibuka.`);
                                 };
                                 return (
                                   <div key={fi} style={{
@@ -1707,6 +1710,9 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         url: res.url,
         size: res.size,
         driveFileId: res.driveFileId,
+        storagePath: res.storagePath,
+        storageSyncedAt: res.storageSyncedAt,
+        storageStatus: res.storageStatus,
         isDrive: res.isDrive,
         syncedToDrive: res.syncedToDrive,
         // Foto Drive privat (webViewLink bukan bytes gambar) — pakai object URL File

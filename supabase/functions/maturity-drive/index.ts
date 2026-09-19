@@ -286,7 +286,14 @@ async function ensureTree(body: any) {
   return { period, root, periodFolder, uptFolder, categoryFolder, aspectFolder, itemFolder };
 }
 function evidenceDto(row: any) {
-  return { id: row.id, itemId: row.item_id, itemLabel: row.item_label, aspectId: row.aspect_id, categoryId: row.category_id, category: row.category_label, upt: row.upt, name: row.file_name, size: Number(row.file_size || 0), mimeType: row.mime_type, driveFileId: row.drive_file_id, driveFolderId: row.drive_folder_id, linkedAt: row.linked_at, isDrive: true, syncedToDrive: true, source: row.source };
+  return { id: row.id, itemId: row.item_id, itemLabel: row.item_label, aspectId: row.aspect_id, categoryId: row.category_id, category: row.category_label, upt: row.upt, name: row.file_name, size: Number(row.file_size || 0), mimeType: row.mime_type, driveFileId: row.drive_file_id, driveFolderId: row.drive_folder_id, storagePath: row.storage_path || null, linkedAt: row.linked_at, isDrive: true, syncedToDrive: true, source: row.source };
+}
+async function backupDriveFileToStorage(driveFile: any, storagePath: string, mimeType = "application/octet-stream") {
+  const response = await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?alt=media&supportsAllDrives=true`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  const { error } = await admin.storage.from("maturity-evidence").upload(storagePath, bytes, { contentType: mimeType, upsert: true });
+  if (error) throw error;
+  return storagePath;
 }
 async function upsertEvidence(input: any) {
   const { data: existing } = await admin.from("maturity_audit_evidence").select("audit_id").eq("drive_file_id", input.driveFile.id).maybeSingle();
@@ -405,7 +412,9 @@ async function reconcileAssignments(audit: any, upt: any, itemFolders: any[], ac
     try {
       const driveFile = await driveJson(`/files/${encodeURIComponent(row.drive_file_id)}?fields=id,name,mimeType,size,md5Checksum,parents&supportsAllDrives=true`);
       if (row.target_folder_id && (driveFile.parents || []).includes(row.target_folder_id)) {
-        await upsertEvidence({ auditId: audit.id, upt, aspectId: row.target_aspect_id, itemId: row.target_item_id, itemLabel: row.target_item_label, categoryId: row.target_category_id, categoryLabel: row.target_category_label, folderId: row.target_folder_id, driveFile, source: "ASSIGN", actorId });
+        const storagePath = storageKey(audit.period_key, upt.id, row.target_category_id, row.target_aspect_id, row.target_item_id, driveFile.name);
+        await backupDriveFileToStorage(driveFile, storagePath, driveFile.mimeType || "application/octet-stream");
+        await upsertEvidence({ auditId: audit.id, upt, aspectId: row.target_aspect_id, itemId: row.target_item_id, itemLabel: row.target_item_label, categoryId: row.target_category_id, categoryLabel: row.target_category_label, folderId: row.target_folder_id, driveFile, source: "ASSIGN", actorId, storagePath });
         const { error: doneError } = await admin.from("maturity_audit_drive_unassigned").update({ assignment_state: "ACTIVE", last_error: null, assigned_at: nowMs(), updated_at: nowMs() }).eq("id", row.id);
         if (doneError) throw new Error(doneError.message);
       } else if ((driveFile.parents || []).includes(row.source_folder_id)) {
@@ -446,7 +455,9 @@ async function syncAudit(body: any, ctx: any) {
     const { itemId, itemLabel, categoryLabel } = aspectEvidenceMeta(meta);
     for (const driveFile of files) {
       if (driveFile.mimeType === "application/vnd.google-apps.folder") continue;
-      await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId, itemLabel, categoryId: meta.categoryId, categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id });
+      const storagePath = storageKey(audit.period_key, upt.id, meta.categoryId, meta.aspectId, itemId, driveFile.name);
+      await backupDriveFileToStorage(driveFile, storagePath, driveFile.mimeType || "application/octet-stream");
+      await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId, itemLabel, categoryId: meta.categoryId, categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id, storagePath });
       await admin.from("maturity_audit_drive_unassigned").update({ assignment_state: "ACTIVE", last_error: null, updated_at: nowMs() }).eq("audit_id", auditId).eq("drive_file_id", driveFile.id);
     }
   }
@@ -496,19 +507,15 @@ Deno.serve(async (req) => {
       const canonicalBody = { ...body, upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
       const tree = await ensureTree(canonicalBody);
       const driveFile = await uploadDriveFile(file, tree.itemFolder.drive_folder_id, tree.itemFolder.mapping_key);
-      // Backup self-host best-effort: Drive tetap sumber wajib, ini cadangan
-      // agar file tetap terbaca kalau token Drive habis. Kegagalan di sini
-      // TIDAK boleh menggagalkan upload (Drive sudah aman).
       const storagePath = storageKey(tree.period.key, context.upt.name, text(body.categoryId), text(body.aspectId), text(body.itemId), file.name);
-      let storagePathSaved: string | null = null;
       try {
         const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: true });
         if (storageError) throw storageError;
-        storagePathSaved = storagePath;
       } catch (storageError) {
-        console.warn(`Backup self-host evidence gagal (${storagePath}):`, storageError instanceof Error ? storageError.message : storageError);
+        await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive gagal setelah backup self-host gagal:", cleanupError));
+        throw new Error(`Backup self-host evidence wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
       }
-      const row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id, storagePath: storagePathSaved });
+      const row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id, storagePath });
       await event(text(body.auditId), "EVIDENCE_UPLOADED", ctx.user.id, { evidenceId: row.id, driveFileId: driveFile.id, itemId: body.itemId });
       return json({ ok: true, evidence: evidenceDto(row), folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id });
     }
@@ -524,7 +531,15 @@ Deno.serve(async (req) => {
       const uptFolder = await ensureFolder({ mappingKey: `${base}:upt`, name: safeName(upt.name, "UPT"), parentFolderId: periodFolder.drive_folder_id, periodKey: period.key, folderType: "UPT", parentMappingKey: periodFolder.mapping_key, metadata: { upt: upt.name } });
       const form5sFolder = await ensureFolder({ mappingKey: `${base}:form5s`, name: "Form 5S", parentFolderId: uptFolder.drive_folder_id, periodKey: period.key, folderType: "FORM5S", parentMappingKey: uptFolder.mapping_key, metadata: { upt: upt.name } });
       const driveFile = await uploadDriveFile(file, form5sFolder.drive_folder_id, form5sFolder.mapping_key);
-      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), driveFileId: driveFile.id, isDrive: true, syncedToDrive: true } });
+      const storagePath = storageKey("form-5s", upt.id, `${Number(body.tahun)}-${String(Number(body.bulan) + 1).padStart(2, "0")}`, driveFile.id, file.name);
+      try {
+        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: true });
+        if (storageError) throw storageError;
+      } catch (storageError) {
+        await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive 5S gagal setelah backup self-host gagal:", cleanupError));
+        throw new Error(`Backup self-host foto 5S wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
+      }
+      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
     }
     if (action === "export-sheet") {
       const base64 = String(body.base64 || "");
@@ -560,7 +575,9 @@ Deno.serve(async (req) => {
       if (markingError) throw new Error(`State assignment tidak dapat disimpan: ${markingError.message}`);
       try {
         await driveJson(`/files/${encodeURIComponent(unassigned.drive_file_id)}?addParents=${encodeURIComponent(tree.itemFolder.drive_folder_id)}&removeParents=${encodeURIComponent((file.parents || []).join(","))}&fields=id,name,mimeType,size,md5Checksum`, { method: "PATCH" });
-        const row = await upsertEvidence({ auditId, upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile: file, source: "ASSIGN", actorId: ctx.user.id });
+        const storagePath = storageKey(context.audit.period_key, context.upt.id, text(body.categoryId), text(body.aspectId), text(body.itemId), file.name);
+        await backupDriveFileToStorage(file, storagePath, file.mimeType || "application/octet-stream");
+        const row = await upsertEvidence({ auditId, upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile: file, source: "ASSIGN", actorId: ctx.user.id, storagePath });
         const { error: activeError } = await admin.from("maturity_audit_drive_unassigned").update({ assignment_state: "ACTIVE", last_error: null, updated_at: nowMs() }).eq("id", unassigned.id);
         if (activeError) throw new Error(`State assignment tidak dapat diselesaikan: ${activeError.message}`);
         await event(auditId, "EVIDENCE_ASSIGNED", ctx.user.id, { evidenceId: row.id, driveFileId: unassigned.drive_file_id });
@@ -622,12 +639,55 @@ Deno.serve(async (req) => {
       if (error || !data?.signedUrl) return json({ ok: true, url: null });
       return json({ ok: true, url: data.signedUrl, mime: evidence.mime_type, fileName: evidence.file_name });
     }
+    if (action === "backfill-5s") {
+      if (!NATIONAL_ROLES.has(ctx.profile.role)) return json({ ok: false, error: "Hanya Pusat/Superadmin yang dapat menjalankan sinkronisasi foto 5S lama." }, 403);
+      const limit = Math.max(1, Math.min(100, Number(body.limit) || 100));
+      const uptId = text(body.uptId);
+      let query = admin.from("maturity_5s_assessments").select("id,upt_id,bulan,tahun,sample_photos").not("sample_photos", "is", null).limit(limit);
+      if (uptId) query = query.eq("upt_id", uptId);
+      const { data: rows, error: rowsError } = await query;
+      if (rowsError) throw new Error(`Data Form 5S tidak dapat dibaca: ${rowsError.message}`);
+      let processed = 0; let okCount = 0; let failed = 0;
+      for (const row of rows || []) {
+        processed++;
+        const photos = Array.isArray(row.sample_photos) ? row.sample_photos.map((photo: any) => ({ ...photo })) : [];
+        let changed = false;
+        for (let index = 0; index < photos.length; index++) {
+          const photo = photos[index];
+          const driveFileId = text(photo?.driveFileId || photo?.drive_file_id);
+          if (!driveFileId || (photo?.storagePath && photo?.storageSyncedAt)) continue;
+          try {
+            const fileName = text(photo?.name || photo?.fileName, 160) || `foto-${index + 1}.jpg`;
+            const storagePath = storageKey("form-5s", row.upt_id, `${Number(row.tahun)}-${String(Number(row.bulan)).padStart(2, "0")}`, driveFileId, fileName);
+            const response = await driveFetch(`/files/${encodeURIComponent(driveFileId)}?alt=media&supportsAllDrives=true`);
+            const bytes = new Uint8Array(await response.arrayBuffer());
+            const { error: uploadError } = await admin.storage.from("maturity-evidence").upload(storagePath, bytes, { contentType: text(photo?.mimeType, 120) || "application/octet-stream", upsert: true });
+            if (uploadError) throw uploadError;
+            photos[index] = { ...photo, driveFileId, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED" };
+            changed = true;
+            okCount++;
+          } catch (backfillError) {
+            failed++;
+            console.warn(`Backfill foto 5S gagal ${row.id}/${driveFileId}:`, backfillError instanceof Error ? backfillError.message : backfillError);
+          }
+        }
+        if (changed) {
+          const { error: updateError } = await admin.from("maturity_5s_assessments").update({ sample_photos: photos }).eq("id", row.id);
+          if (updateError) throw new Error(`Metadata foto 5S tidak dapat diperbarui: ${updateError.message}`);
+        }
+      }
+      return json({ ok: failed === 0, processed, ok_count: okCount, failed });
+    }
     if (action === "backfill") {
       if (!NATIONAL_ROLES.has(ctx.profile.role)) return json({ ok: false, error: "Hanya Pusat/Superadmin yang dapat menjalankan sinkronisasi evidence lama." }, 403);
       const limit = Math.max(1, Math.min(25, Number(body.limit) || 15));
       const uptId = text(body.uptId);
-      let query = admin.from("maturity_audit_evidence").select("id, audit_id, aspect_id, item_id, category_id, upt, upt_id, drive_file_id, file_name, mime_type").is("storage_path", null).is("unlinked_at", null);
+      const repairMissing = body.repairMissing === true || body.repairMissing === "true";
+      const evidenceIds = Array.isArray(body.evidenceIds) ? body.evidenceIds.map((id) => text(id, 120)).filter(Boolean).slice(0, 25) : [];
+      let query = admin.from("maturity_audit_evidence").select("id, audit_id, aspect_id, item_id, category_id, upt, upt_id, drive_file_id, file_name, mime_type, storage_path").is("unlinked_at", null);
+      if (!repairMissing) query = query.is("storage_path", null);
       if (uptId) query = query.eq("upt_id", uptId);
+      if (evidenceIds.length) query = query.in("id", evidenceIds);
       const { data: rows, error: rowsError } = await query.limit(limit);
       if (rowsError) throw new Error(`Gagal mengambil evidence lama: ${rowsError.message}`);
       const auditIds = [...new Set((rows || []).map((row) => row.audit_id))];
@@ -637,8 +697,13 @@ Deno.serve(async (req) => {
       for (const row of rows || []) {
         const periodKey = periodByAudit.get(row.audit_id);
         if (!periodKey) { console.warn(`Backfill skip evidence ${row.id}: audit ${row.audit_id} tanpa period_key.`); failed++; continue; }
-        const storagePath = storageKey(periodKey, row.upt, row.category_id, row.aspect_id, row.item_id, row.file_name);
+        const canonicalStoragePath = storageKey(periodKey, row.upt, row.category_id, row.aspect_id, row.item_id, row.file_name);
+        const storagePath = repairMissing && evidenceIds.length ? canonicalStoragePath : (row.storage_path || canonicalStoragePath);
         try {
+          if (repairMissing && row.storage_path && !evidenceIds.length) {
+            const { data: existingObject, error: objectError } = await admin.storage.from("maturity-evidence").download(row.storage_path);
+            if (!objectError && existingObject) continue;
+          }
           const resp = await driveFetch(`/files/${encodeURIComponent(row.drive_file_id)}?alt=media&supportsAllDrives=true`);
           const bytes = new Uint8Array(await resp.arrayBuffer());
           const { error: uploadError } = await admin.storage.from("maturity-evidence").upload(storagePath, bytes, { contentType: row.mime_type || "application/octet-stream", upsert: true });

@@ -40,8 +40,14 @@ test.describe("Mode ringkas HP", () => {
     const manualCriteria = page.getByText("Yang harus diperiksa checker", { exact:true }).locator("xpath=..");
     await expect(manualCriteria.locator('ol[type="a"] > li')).toHaveCount(3);
 
-    const metrics = await page.evaluate(() => ({ scrollWidth:document.documentElement.scrollWidth, clientWidth:document.documentElement.clientWidth }));
-    expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    for (const viewport of [{ width:360, height:800 }, { width:390, height:844 }, { width:412, height:915 }, { width:768, height:1024 }]) {
+      await page.setViewportSize(viewport);
+      await expect(persediaan).toBeVisible();
+      await expect(attb).toBeVisible();
+      await expect(page.getByRole("button", { name:/Analisa AI/ }).first()).toBeVisible();
+      const metrics = await page.evaluate(() => ({ scrollWidth:document.documentElement.scrollWidth, clientWidth:document.documentElement.clientWidth }));
+      expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1);
+    }
   });
 
   test("mobile-card-table row: td tersembunyi lalu terbuka saat focus", async ({ isolatedPage:page }) => {

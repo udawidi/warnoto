@@ -48,10 +48,10 @@ function assessmentRowToItem(row) {
   return {
     ...(row.data || {}),
     id: row.id,
+    uptId: row.upt_id ?? row.data?.uptId ?? null,
     createdAt: asEpoch(row.created_at, row.data?.createdAt),
     createdBy: row.created_by ?? row.data?.createdBy ?? null,
     tanggalAsesmen: asEpoch(row.assessment_at, row.data?.tanggalAsesmen),
-    createdBy: row.created_by ?? row.data?.createdBy ?? null,
   };
 }
 
@@ -114,6 +114,7 @@ function assessmentItemToRow(item) {
   return {
     id: item.id,
     data: item,
+    upt_id: item.uptId || null,
     created_at: asEpoch(item.createdAt, Date.now()),
     assessment_at: asEpoch(item.tanggalAsesmen, Date.now()),
     level: Math.min(5, Math.max(1, Number(item.level) || 1)),
@@ -207,6 +208,16 @@ async function upsertRow(table, row) {
   return true;
 }
 
+async function updateRow(table, id, patch) {
+  if (!supabase || !id) return null;
+  const { data, error } = await supabase.from(table).update(patch).eq("id", id).select().single();
+  if (error) {
+    console.error(`update ${table}: ${error.message}`, error);
+    return null;
+  }
+  return data;
+}
+
 async function upsertRows(table, rows) {
   if (!supabase || rows.length === 0) return rows.length === 0;
   const { error } = await supabase.from(table).upsert(rows, { onConflict: "id" });
@@ -253,6 +264,11 @@ export const upsertMaturityAudit = item => upsertRow("maturity_audits", auditIte
 // Riwayat semester tidak punya form input manual — baris terbit dari audit FINAL
 // yang sudah disetujui. Writer ini disediakan untuk rantai approval itu.
 export const upsertMaturityAuditHistory = item => upsertRow("maturity_audit_history", auditHistoryItemToRow(item));
+export const updateMaturityAuditHistoryTarget = ({ id, target, updatedAt = Date.now(), updatedBy = null }) => updateRow("maturity_audit_history", id, {
+  target: target == null ? null : Math.min(5, Math.max(0, Number(target) || 0)),
+  updated_at: asEpoch(updatedAt, Date.now()),
+  updated_by: asOptionalUuid(updatedBy),
+});
 export const upsertMaturityAssessments = items => upsertRows("maturity_assessments", items.map(assessmentItemToRow));
 export const upsertMaturityAudits = items => upsertRows("maturity_audits", items.map(auditItemToRow));
 export const deleteMaturityAssessment = id => deleteRow("maturity_assessments", id);

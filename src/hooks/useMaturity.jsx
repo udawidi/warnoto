@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { uid, fmtDateOnly } from "../lib/utils.js";
 import { CLOUD } from "../lib/cloud.js";
 import { logAudit } from "../lib/audit.js";
@@ -8,7 +8,7 @@ import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import {
   getDefaultMaturityAuditHistory, upsertMaturityAssessment, upsertMaturityAudit,
   insertMaturity5SAssessment, deleteMaturityAuditRow, loadMaturityAuditHistory,
-  loadAspectReviews, upsertAspectReview, upsertMaturityAuditHistory,
+  loadAspectReviews, upsertAspectReview, updateMaturityAuditHistoryTarget,
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
 import { exportMaturitySheet } from "../lib/maturityDrive.js";
@@ -20,6 +20,7 @@ import {
   countCompletedEvidenceParents, countRequiredEvidenceUnits,
   canonicalMaturityItemId, maturityItemIdsForReview, selectedMaturityRequiredItems,
 } from "../lib/maturityWarehouse.js";
+import { maturityUptOptions as getMaturityUptOptions } from "../lib/maturityUit.js";
 
 // Sama persis dengan readCachedList() di App.jsx — duplikasi 1 baris di sini
 // lebih murah & lebih aman (hindari circular import App.jsx <-> hook) daripada
@@ -32,6 +33,11 @@ function readCachedList(key) {
 // diekstrak murni dari PLNWarehouse() (App.jsx), TANPA perubahan logic.
 // deps: cross-dependency dari luar domain maturity (dioper dari komponen pemanggil).
 export function useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL }) {
+  const maturityUptListKey = (uptList || []).map(u => `${u.id}:${u.nama}:${u.uitId || ""}`).join("|");
+  const maturityUptOptions = useMemo(
+    () => getMaturityUptOptions(currentUser, uptList),
+    [currentUser?.role, currentUser?.uitId, currentUser?.uptId, maturityUptListKey]
+  );
   const [maturityAssessments, setMaturityAssessments] = useState(() => readCachedList("pln_maturity_v1") ?? []); // cache fallback read-only; DB adalah canonical
   const [maturityAudits, setMaturityAudits] = useState(() => readCachedList("pln_maturity_audits_v1") ?? []); // cache fallback read-only; DB adalah canonical
   // Fallback default hanya berlaku untuk UPT pemilik angkanya (lihat getDefaultMaturityAuditHistory);
@@ -47,7 +53,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // dan cakupannya HANYA UPT itu (keputusan user 2026-08-02).
   const canSwitchMaturityUpt = hasRole(currentUser, "ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT","SUPERADMIN");
   const [selectedMaturityUpt, setSelectedMaturityUpt] = useState(() => {
-    const match = (uptList.length ? uptList : DEFAULT_UPT_LIST).find(u => u.id === currentUser?.uptId);
+    const match = maturityUptOptions.find(u => u.id === currentUser?.uptId) || maturityUptOptions[0];
     return match?.nama || "UPT Surabaya";
   });
   // Scoping UI Maturity pakai id UPT (FK), bukan kecocokan string nama — nama di
@@ -56,18 +62,26 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Resync: init useState di atas jalan sekali saat mount, sebelum currentUser/uptList
   // tentu sudah siap (auth async) → bisa nyangkut fallback "UPT Surabaya" selamanya.
   // User UPT biasa (tanpa switcher): selalu paksa ke UPT-nya sendiri kalau beda.
-  // Peninjau lintas-UPT (switcher aktif): resync SEKALI saja di awal, lalu biarkan bebas pilih.
+  // Peninjau lintas-UPT (switcher aktif): init sekali setelah scope tersedia, lalu
+  // biarkan bebas pilih. Jika pilihan lama di luar scope, pulihkan ke option pertama.
   const didInitUptRef = useRef(false);
   useEffect(() => {
-    const ownUptNama = (uptList.length ? uptList : DEFAULT_UPT_LIST).find(u => u.id === currentUser?.uptId)?.nama;
-    if (!ownUptNama) return;
     if (!canSwitchMaturityUpt) {
+      const ownUptNama = maturityUptOptions.find(u => u.id === currentUser?.uptId)?.nama;
+      if (!ownUptNama) return;
       if (ownUptNama !== selectedMaturityUpt) setSelectedMaturityUpt(ownUptNama);
-    } else if (!didInitUptRef.current) {
-      didInitUptRef.current = true;
-      setSelectedMaturityUpt(ownUptNama);
+      return;
     }
-  }, [currentUser?.uptId, uptList, canSwitchMaturityUpt]);
+    if (!maturityUptOptions.length) return;
+    const selectedOption = maturityUptOptions.find(u => u.nama === selectedMaturityUpt);
+    if (!didInitUptRef.current) {
+      didInitUptRef.current = true;
+      const ownUptNama = maturityUptOptions.find(u => u.id === currentUser?.uptId)?.nama;
+      setSelectedMaturityUpt(ownUptNama || maturityUptOptions[0].nama);
+    } else if (!selectedOption) {
+      setSelectedMaturityUpt(maturityUptOptions[0].nama);
+    }
+  }, [currentUser?.uptId, currentUser?.uitId, maturityUptListKey, maturityUptOptions, canSwitchMaturityUpt]);
   const [maturityAuditModal, setMaturityAuditModal] = useState(null); // null | {isNew:true,...} (new) | auditObj (edit/review)
   const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments: createMaturityWarehouseAssessments() });
   const maturityAuditFormRef = useRef(maturityAuditForm);
@@ -149,7 +163,17 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Simpan 1 entri baru riwayat Maturity Level Gudang (khusus Admin, input manual)
   async function saveMaturityAssessment(form) {
     if (!guardMaturityWrite("menyimpan Asesmen Maturity")) return false;
-    const entry = { id:`MAT-${uid().slice(-8)}`, level:form.level, catatan:form.catatan||"", tanggalAsesmen:form.tanggalAsesmen||Date.now(), createdBy:currentUser.id, createdAt:Date.now() };
+    const uptNama = form.upt || selectedMaturityUpt || "UPT Surabaya";
+    const entry = {
+      id:`MAT-${uid().slice(-8)}`,
+      level:form.level,
+      catatan:form.catatan||"",
+      tanggalAsesmen:form.tanggalAsesmen||Date.now(),
+      createdBy:currentUser.id,
+      createdAt:Date.now(),
+      upt: uptNama,
+      uptId: form.uptId || uptIdByNama(uptNama) || currentUserUptId || currentUser?.uptId || null,
+    };
     const saved = await upsertMaturityAssessment(entry);
     if (!saved) {
       showToast("Asesmen Maturity tidak tersimpan karena server tidak dapat dihubungi.", "error");
@@ -473,14 +497,15 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Set target nilai maturity per baris riwayat (UPT/tahun/semester) — item harus
   // sudah ada (row lahir dari trigger DB saat audit FINAL), jadi ini UPDATE murni,
   // bukan CREATE. Gate role dicek di komponen (canSwitchMaturityUpt) sebelum tombol
-  // ini kepanggil; di sini tetap upsert row apa adanya (server RLS jadi pagar terakhir).
+  // ini kepanggil; server RLS tetap menjadi pagar terakhir.
   async function saveMaturityTarget(item, target) {
-    const entry = { ...item, target };
-    const saved = await upsertMaturityAuditHistory(entry);
+    const updatedAt = Date.now();
+    const saved = await updateMaturityAuditHistoryTarget({ id: item.id, target, updatedAt, updatedBy: currentUser?.id });
     if (!saved) {
       showToast("Target tidak tersimpan karena server tidak dapat dihubungi.", "error");
       return;
     }
+    const entry = { ...item, target, updatedAt, updatedBy: currentUser?.id || null };
     setMaturityAuditHistory(current => current.map(h => h.id === entry.id ? entry : h));
     logAudit(currentUser, "UPDATE", "maturity_audit_history_target", entry.id, { target });
     showToast(`Target ${entry.upt} S${entry.semester} ${entry.tahun} disimpan.`);
@@ -793,6 +818,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityForm, setMaturityForm,
     maturitySubTab, setMaturitySubTab,
     canSwitchMaturityUpt,
+    maturityUptOptions,
     selectedMaturityUpt, setSelectedMaturityUpt,
     selectedMaturityUptId,
     maturityAuditModal, setMaturityAuditModal,
