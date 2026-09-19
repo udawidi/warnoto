@@ -286,7 +286,7 @@ async function ensureTree(body: any) {
   return { period, root, periodFolder, uptFolder, categoryFolder, aspectFolder, itemFolder };
 }
 function evidenceDto(row: any) {
-  return { id: row.id, itemId: row.item_id, itemLabel: row.item_label, aspectId: row.aspect_id, categoryId: row.category_id, category: row.category_label, upt: row.upt, name: row.file_name, size: Number(row.file_size || 0), mimeType: row.mime_type, driveFileId: row.drive_file_id, driveFolderId: row.drive_folder_id, isDrive: true, syncedToDrive: true, source: row.source };
+  return { id: row.id, itemId: row.item_id, itemLabel: row.item_label, aspectId: row.aspect_id, categoryId: row.category_id, category: row.category_label, upt: row.upt, name: row.file_name, size: Number(row.file_size || 0), mimeType: row.mime_type, driveFileId: row.drive_file_id, driveFolderId: row.drive_folder_id, linkedAt: row.linked_at, isDrive: true, syncedToDrive: true, source: row.source };
 }
 async function upsertEvidence(input: any) {
   const { data: existing } = await admin.from("maturity_audit_evidence").select("audit_id").eq("drive_file_id", input.driveFile.id).maybeSingle();

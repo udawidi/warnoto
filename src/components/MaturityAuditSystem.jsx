@@ -640,12 +640,13 @@ export function MaturityAuditEditor({
                     const itemReview = reviewKeyIds.map(itemId => maturityAspectReviews[`${maturityAspectKey(maturityWarehouseType, activeAspect.id)}::${itemId}`]).find(Boolean)
                       || (maturityWarehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewKeyIds.map(itemId => maturityAspectReviews[`${activeAspect.id}::${itemId}`]).find(Boolean) : undefined);
                     const itemReviewState = itemReview?.state || "PENDING";
-                    const itemLatestAt = Math.max(0, ...itemFiles.map(f => Number(f.savedAt || f.uploadedAt || f.createdAt || 0) || Date.parse(f.savedAt || f.uploadedAt || f.createdAt || "") || 0));
+                    const itemLatestAt = Math.max(0, ...itemFiles.map(f => Number(f.savedAt || f.uploadedAt || f.createdAt || f.linkedAt || 0) || Date.parse(f.savedAt || f.uploadedAt || f.createdAt || f.linkedAt || "") || 0));
                     const itemReviewAt = Number(itemReview?.reviewedAt || 0) || Date.parse(itemReview?.reviewedAt || "") || 0;
                     const itemReviewStale = Boolean(itemReview?.reviewedAt) && itemLatestAt > itemReviewAt;
-                    const parentReviewLocks = itemReviewState === "CHECKED" && !itemReviewStale;
-                    const itemReviewColor = parentReviewLocks ? C.green : itemReviewState === "REJECTED" ? "#dc2626" : C.muted;
-                    const itemReviewLabel = parentReviewLocks ? "✓ Checked" : itemReviewState === "REJECTED" ? "✗ Rejected" : "Menunggu Review";
+                    const effectiveItemReviewState = itemReviewStale ? "PENDING" : itemReviewState;
+                    const parentReviewLocks = effectiveItemReviewState === "CHECKED";
+                    const itemReviewColor = parentReviewLocks ? C.green : effectiveItemReviewState === "REJECTED" ? "#dc2626" : C.muted;
+                    const itemReviewLabel = parentReviewLocks ? "✓ Checked" : effectiveItemReviewState === "REJECTED" ? "✗ Rejected" : "Menunggu Review";
                     const checkerCriteria = [...(eviItem.manualCriteria || []), ...(eviItem.displayDetails || [])];
                     return (
                       <div key={eviItem.id} style={{
@@ -782,7 +783,8 @@ export function MaturityAuditEditor({
                                         })
                                       }));
                                     }
-                                    const newFiles = uploadedFiles.map(res => ({ ...res, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath }));
+                                    const uploadLinkedAt = Date.now();
+                                    const newFiles = uploadedFiles.map(res => ({ ...res, linkedAt: res.linkedAt || uploadLinkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath }));
                                     setMaturityAuditEvidence(previous => ({
                                       ...previous,
                                       [activeAspect.id]: [...(previous[activeAspect.id] || []), ...newFiles],
@@ -828,10 +830,10 @@ export function MaturityAuditEditor({
                             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
                               <span style={{ fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 14, background: `${itemReviewColor}22`, color: itemReviewColor, border: `1.5px solid ${itemReviewColor}55`, whiteSpace: "nowrap", alignSelf: "flex-start" }}>{parentReviewLocks ? "🔒 " : ""}{itemReviewLabel}</span>
                               {itemReviewStale && <span style={{ fontSize: 12, color: "#b45309", fontWeight: 700, wordBreak: "break-word" }}>Evidence berubah setelah review — perlu re-review</span>}
-                              {itemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
+                              {effectiveItemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
                             </div>
                             {canReviewUIT && isUploaded && (
-                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={(id, item, state, note) => setAspectReview(id, item, state, note, maturityWarehouseType)} disabled={maturityAuditSaving} isMobile={isMobile} state={itemReviewState} />
+                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={(id, item, state, note) => setAspectReview(id, item, state, note, maturityWarehouseType)} disabled={maturityAuditSaving} isMobile={isMobile} state={effectiveItemReviewState} />
                             )}
                           </div>
                         )}

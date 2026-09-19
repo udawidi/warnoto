@@ -279,7 +279,7 @@ export function evaluateMaturityWarehouseGate(aspects, assessments, reviews = {}
   };
   const filesFor = ({ type, aspect }) => assessments?.[type]?.evidence?.[aspect.id] || [];
   const toEpoch = value => Number(value) || (value ? Date.parse(value) || 0 : 0);
-  const latestFileAt = files => Math.max(0, ...files.map(file => toEpoch(file?.savedAt || file?.uploadedAt || file?.createdAt)));
+  const latestFileAt = files => Math.max(0, ...files.map(file => toEpoch(file?.savedAt || file?.uploadedAt || file?.createdAt || file?.linkedAt)));
   const reviewIsCurrent = (review, files) => {
     if (!review || review.state !== "CHECKED") return false;
     return toEpoch(review.reviewedAt) >= latestFileAt(files);

@@ -14,6 +14,7 @@ const hookSource = await readFile(new URL("../../src/hooks/useMaturity.jsx", imp
 const accountHookSource = await readFile(new URL("../../src/hooks/useAccountAdmin.js", import.meta.url), "utf8");
 const dashSource = await readFile(new URL("../../src/components/MaturityDashboardTab.jsx", import.meta.url), "utf8");
 const editorSource = await readFile(new URL("../../src/components/MaturityAuditSystem.jsx", import.meta.url), "utf8");
+const driveSource = await readFile(new URL("../../supabase/functions/maturity-drive/index.ts", import.meta.url), "utf8");
 const rolesSource = await readFile(new URL("../../src/lib/roles.js", import.meta.url), "utf8");
 const permsSource = await readFile(new URL("../../src/lib/perms.js", import.meta.url), "utf8");
 const akunSource = await readFile(new URL("../../src/components/AkunModals.jsx", import.meta.url), "utf8");
@@ -129,6 +130,12 @@ test("UI maturity discope pakai id UPT, bukan kecocokan nama", () => {
   // Daftar/riwayat audit tidak boleh lagi membaca koleksi mentah lintas UPT.
   assert.doesNotMatch(dashSource, /maturityAudits\.slice\(/);
   assert.doesNotMatch(dashSource, /maturityAudits\.filter\(a => a\.status === "FINAL"\)/);
+});
+
+test("upload ulang evidence membuat reject UIT stale", () => {
+  assert.match(driveSource, /function evidenceDto\(row: any\)[\s\S]*?linkedAt: row\.linked_at/);
+  assert.match(editorSource, /f\.savedAt \|\| f\.uploadedAt \|\| f\.createdAt \|\| f\.linkedAt/);
+  assert.match(editorSource, /const uploadLinkedAt = Date\.now\(\);[\s\S]*?linkedAt: res\.linkedAt \|\| uploadLinkedAt/);
 });
 
 test("keluar input maturity menunggu upload dan simpan draft", () => {

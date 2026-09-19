@@ -85,6 +85,15 @@ test("manual criteria never create child gate or review requirements", () => {
   assert.deepEqual(result.missingSubpoints, []);
 });
 
+test("upload ulang setelah reject membuat review lama tidak current", () => {
+  const aspect = AUDIT_ASPECTS.find(item => item.id === "3.5");
+  const files = [{ itemId: "exops_tug10", linkedAt: 200 }];
+  const reviews = { "PERSEDIAAN::3.5::exops_tug10": { state: "CHECKED", reviewedAt: 100, finalScore: 4 } };
+  const result = evaluateMaturityWarehouseGate([aspect], { PERSEDIAAN: { evidence: { "3.5": files } } }, reviews);
+  assert.equal(result.allItemsChecked, false);
+  assert.equal(result.allItemsScored, false);
+});
+
 test("legacy shared evidence remains assigned to Persediaan only", () => {
   const audit = normalizeMaturityAudit({ id: "legacy", aspekScores: { "3.4": { upt: 4 } }, evidence: { "3.4": [{ id: "old" }] } });
   assert.deepEqual(audit.warehouseAssessments.PERSEDIAAN.evidence["3.4"], [{ id: "old" }]);
