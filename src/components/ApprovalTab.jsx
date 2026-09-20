@@ -72,8 +72,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   // bilang 0/"selesai" padahal ada 1 item nyata di bawahnya) dan sidebar juga
   // tidak ikut kasih notifikasi badge untuk ini. Tambahkan ke hitungan supaya
   // konsisten.
-  const pendingStockMoves = hasRole(currentUser, "TL") ? (stocks||[]).filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL")
-    : hasRole(currentUser, "ASMAN") ? (stocks||[]).filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") : [];
+  const pendingStockMoves = hasRole(currentUser, "TL") ? (stocks||[]).filter(s=>s.lokasiMovePending && ["TL", "ASMAN"].includes(s.lokasiMoveApprover)) : [];
   const pendingStockEdits = hasRole(currentUser, "TL") ? (stocks||[]).filter(s=>s.editPending) : [];
   const pendingStockDeletes = hasRole(currentUser, "TL") ? (stocks||[]).filter(s=>s.deletePending) : [];
   const pendingStockCount = pendingStockMoves.length + pendingStockEdits.length + pendingStockDeletes.length;

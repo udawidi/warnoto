@@ -24,7 +24,6 @@ export function ApprovalHubTab({
   approveLokasiChange, rejectLokasiChange,
   ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, ultgPengajuanUntukAdopt, adoptTUG5ULTG, openDraftTug9,
   approvalStokPage, setApprovalStokPage, approveStockMove, rejectStockMove, renderApprovalPager,
-  approvalStokGudangPage, setApprovalStokGudangPage,
   approvalEditStokPage, setApprovalEditStokPage, approveStockEdit, rejectStockEdit,
   approvalHapusStokPage, setApprovalHapusStokPage, approveStockDelete, rejectStockDelete,
   heavyEquipmentLoans, approvalAlatBeratPage, setApprovalAlatBeratPage, heavyEquipmentList,
@@ -52,8 +51,8 @@ export function ApprovalHubTab({
   const capCount = hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0;
   const lokasiCount = hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0;
   const stokCount = hasRole(currentUser, "TL")
-    ? stocks.filter(s=>(s.lokasiMovePending&&s.lokasiMoveApprover==="TL")||s.editPending||s.deletePending).length
-    : hasRole(currentUser, "ASMAN") ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0;
+    ? stocks.filter(s=>(s.lokasiMovePending&&["TL", "ASMAN"].includes(s.lokasiMoveApprover))||s.editPending||s.deletePending).length
+    : 0;
   const alatBeratCount = hasRole(currentUser, "ASMAN") ? heavyEquipmentPendingCount : 0;
   const opnameCount = hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0;
   const stockCountCount = hasRole(currentUser, "ASMAN", "TL") ? stockCountPendingCount : 0;
@@ -147,8 +146,8 @@ export function ApprovalHubTab({
       />
 
       {/* Perpindahan gudang oleh ADMIN wajib direview TL. */}
-      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && hasRole(currentUser, "TL") && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL") && (()=>{
-        const list = stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="TL");
+      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && hasRole(currentUser, "TL") && stocks.some(s=>s.lokasiMovePending && ["TL", "ASMAN"].includes(s.lokasiMoveApprover)) && (()=>{
+        const list = stocks.filter(s=>s.lokasiMovePending && ["TL", "ASMAN"].includes(s.lokasiMoveApprover));
         const paged = list.slice((approvalStokPage-1)*approvalPageSize, approvalStokPage*approvalPageSize);
         return (
           <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
@@ -170,34 +169,6 @@ export function ApprovalHubTab({
               );
             })}
             {renderApprovalPager(approvalStokPage, setApprovalStokPage, list.length)}
-          </div>
-        );
-      })()}
-
-      {/* ── BAGIAN: Pemindahan Gudang Data Stok — pindah Gudang oleh TL, wajib approval Asman UPT ── */}
-      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && hasRole(currentUser, "ASMAN") && stocks.some(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN") && (()=>{
-        const list = stocks.filter(s=>s.lokasiMovePending && s.lokasiMoveApprover==="ASMAN");
-        const paged = list.slice((approvalStokGudangPage-1)*approvalPageSize, approvalStokGudangPage*approvalPageSize);
-        return (
-          <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
-            <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>📦 Pemindahan Gudang Data Stok ({list.length})</div>
-            {paged.map(s=>{
-              const pemohon = users.find(u=>u.id===s.moveRequestedBy);
-              const lokAsal = lokasiList.find(l=>l.id===s.lokasiId);
-              return (
-                <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10}}>
-                  <div>
-                    <div style={{fontSize:12,fontWeight:700}}>{s.name}</div>
-                    <div style={{fontSize:12,color:C.muted}}>{lokAsal?.kode||"—"} → {s.pendingLokasiKode} • Diajukan oleh {pemohon?.name||"?"} • {fmtDate(s.moveRequestedAt)}</div>
-                  </div>
-                  <div className="approval-actions approval-actions--compact">
-                    <button className="approval-btn--approve" onClick={()=>approveStockMove(s.id)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
-                    <button className="approval-btn--reject" onClick={()=>rejectStockMove(s.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
-                  </div>
-                </div>
-              );
-            })}
-            {renderApprovalPager(approvalStokGudangPage, setApprovalStokGudangPage, list.length)}
           </div>
         );
       })()}

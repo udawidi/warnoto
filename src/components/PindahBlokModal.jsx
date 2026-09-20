@@ -1,7 +1,7 @@
 // Modal "Pindah Blok" — dipisah dari kolom Gudang/Blok tabel Data Stok (batch 1
 // simplifikasi tampilan). Logic ADMIN/TL & semantik approval TL lintas-gudang
 // dipindah VERBATIM dari DataStokTab (kolom Gudang/Blok lama), tidak diubah.
-import { buildAdminStockLocationUpdate } from "../lib/stockLocationApproval.js";
+import { approveStockLocationMove, buildAdminStockLocationUpdate } from "../lib/stockLocationApproval.js";
 import { hasRole } from "../lib/roles.js";
 import { sortBlokOptions } from "../lib/masterSync.js";
 
@@ -74,16 +74,18 @@ export function PindahBlokModal({
               onChange={async e => {
                 const newLokasiId = e.target.value;
                 const lokSel = lokasiList.find(l => l.id === newLokasiId);
-                // TL yang pindahkan stok yang SUDAH punya lokasi ke Gudang lain wajib
-                // approval Asman (TL sendiri yang biasanya approve pemindahan Admin,
-                // jadi pemindahan lintas Gudang oleh TL butuh persetujuan Asman UPT).
+                if (!lokSel) {
+                  showToast("Lokasi tujuan tidak ditemukan.", "error");
+                  return;
+                }
+                // TL adalah titik akhir approval pemindahan lokasi material.
                 // Isi lokasi PERTAMA KALI (lok kosong) tetap langsung tanpa approval,
                 // sama seperti pindah blok dalam Gudang yang sama.
                 const pindahGudang = !!lok && (lokSel?.gudangId || null) !== (lok?.gudangId || null);
                 let updated, msg;
                 if (pindahGudang) {
-                  updated = { ...st, lokasiMovePending: true, lokasiMoveApprover: "ASMAN", pendingLokasiId: newLokasiId, pendingLokasiKode: lokSel?.kode || "-", moveRequestedBy: currentUser.id, moveRequestedAt: Date.now() };
-                  msg = `📨 Pemindahan ${st.name} ke Gudang lain (${lokSel?.kode || "-"}) diajukan! Menunggu approval Asman.`;
+                  updated = approveStockLocationMove(st, lokSel, currentUser.id);
+                  msg = `📍 Pemindahan ${st.name} ke Gudang lain (${lokSel?.kode || "-"}) langsung disimpan.`;
                 } else {
                   updated = { ...st, lokasiId: newLokasiId, lokasi: lokSel?.kode || "-", lokasiMovePending: false, lokasiMoveApprover: null, pendingLokasiId: null, pendingLokasiKode: null };
                   msg = `📍 Blok ${st.name} → ${lokSel?.kode || "-"}`;

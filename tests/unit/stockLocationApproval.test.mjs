@@ -97,6 +97,21 @@ test("TL approval applies the concrete target warehouse and location", () => {
   assert.equal(approved.moveApprovedBy, "TL-1");
 });
 
+test("TL direct cross-warehouse move applies the same approval metadata", () => {
+  const approved = approveStockLocationMove(
+    { id: "STK-2", gudangId: "G1", lokasiId: "L1", lokasi: "BLOK-1" },
+    { id: "L2", gudangId: "G2", kode: "BLOK-2" },
+    "TL-1",
+    789,
+  );
+
+  assert.equal(approved.gudangId, "G2");
+  assert.equal(approved.lokasiId, "L2");
+  assert.equal(approved.lokasiMovePending, false);
+  assert.equal(approved.moveApprovedBy, "TL-1");
+  assert.equal(approved.moveApprovedAt, 789);
+});
+
 test("TL rejection preserves the canonical warehouse and location", () => {
   const pending = {
     id: "STK-1",

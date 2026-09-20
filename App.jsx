@@ -1301,7 +1301,6 @@ export default function PLNWarehouse() {
     approvalTypeFilter, setApprovalTypeFilter,
     approvalPageSize, setApprovalPageSize,
     approvalStokPage, setApprovalStokPage,
-    approvalStokGudangPage, setApprovalStokGudangPage,
     approvalEditStokPage, setApprovalEditStokPage,
     approvalHapusStokPage, setApprovalHapusStokPage,
     approvalAlatBeratPage, setApprovalAlatBeratPage,
@@ -4339,7 +4338,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"kapasitasGudang",icon:<SidebarIcon name="capacity"/>,label:"Kapasitas Gudang"},
     {id:"master",icon:<SidebarIcon name="master"/>,label:"Master Data"},
     {id:"transaction",icon:<SidebarIcon name="transaction"/>,label:"TUG"},
-    ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge:myPendingApprovals.length + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "ADMIN","TL") ? ultgPengajuanUntukAdopt.length : 0) + (hasRole(currentUser, "TL") ? stocks.filter(s=>(s.lokasiMovePending&&s.lokasiMoveApprover==="TL")||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? stocks.filter(s=>s.lokasiMovePending&&s.lokasiMoveApprover==="ASMAN").length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0) + (hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0)}] : []),
+    ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge:myPendingApprovals.length + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "ADMIN","TL") ? ultgPengajuanUntukAdopt.length : 0) + (hasRole(currentUser, "TL") ? scopedStocks.filter(s=>(s.lokasiMovePending&&["TL", "ASMAN"].includes(s.lokasiMoveApprover))||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0) + (hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0)}] : []),
     {id:"heavyEquipment",icon:<SidebarIcon name="equipment"/>,label:"Alat Berat",badge:(hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"MRWI",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
@@ -4748,17 +4747,16 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         {tab==="approval" && hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG") && (
           <ApprovalHubTab
             currentUser={currentUser} sty={sty} C={C} isMobile={isMobile}
-            myPendingApprovals={myPendingApprovals} gudangCapacityImports={gudangCapacityImports} lokasiList={lokasiList} stocks={stocks}
+            myPendingApprovals={myPendingApprovals} gudangCapacityImports={gudangCapacityImports} lokasiList={lokasiList} stocks={scopedStocks}
             heavyEquipmentPendingCount={heavyEquipmentPendingCount} opnameList={opnameList} stockCountPendingCount={stockCountPendingCount}
             approvalTypeFilter={approvalTypeFilter} setApprovalTypeFilter={setApprovalTypeFilter} approvalPageSize={approvalPageSize} setApprovalPageSize={setApprovalPageSize}
-            enrichedStocks={enrichedStocks} katalogList={katalogList} users={users}
+            enrichedStocks={scopedEnrichedStocks} katalogList={katalogList} users={users}
             approveTxn={approveTxn} rejectTxn={rejectTxn} prepareReview={prepareCanonicalTugReview} uptList={uptList}
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik} konfirmasiDraftTUG8={konfirmasiDraftTUG8}
             startCapacityApproval={startCapacityApproval} rejectCapacityImport={rejectCapacityImport}
             approveLokasiChange={approveLokasiChange} rejectLokasiChange={rejectLokasiChange}
             ultgList={ultgList} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG} ultgPengajuanUntukAdopt={ultgPengajuanUntukAdopt} adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
             approvalStokPage={approvalStokPage} setApprovalStokPage={setApprovalStokPage} approveStockMove={approveStockMove} rejectStockMove={rejectStockMove} renderApprovalPager={renderApprovalPager}
-            approvalStokGudangPage={approvalStokGudangPage} setApprovalStokGudangPage={setApprovalStokGudangPage}
             approvalEditStokPage={approvalEditStokPage} setApprovalEditStokPage={setApprovalEditStokPage} approveStockEdit={approveStockEdit} rejectStockEdit={rejectStockEdit}
             approvalHapusStokPage={approvalHapusStokPage} setApprovalHapusStokPage={setApprovalHapusStokPage} approveStockDelete={approveStockDelete} rejectStockDelete={rejectStockDelete}
             heavyEquipmentLoans={heavyEquipmentLoans} approvalAlatBeratPage={approvalAlatBeratPage} setApprovalAlatBeratPage={setApprovalAlatBeratPage} heavyEquipmentList={heavyEquipmentList}

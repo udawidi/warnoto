@@ -23,3 +23,9 @@ test("Approval history has permanent TUG subtype filter", () => {
   assert.match(hub, /x\.docType==="TUG3"\?"TUG-3\/4"/);
   assert.match(hub, /setApprovalHistoryPage\(1\); \}, \[historyTugFilter\]/);
 });
+
+test("legacy Asman stock moves remain in the TL queue only", () => {
+  assert.match(approval, /\["TL", "ASMAN"\]\.includes\(s\.lokasiMoveApprover\)/);
+  assert.match(hub, /\["TL", "ASMAN"\]\.includes\(s\.lokasiMoveApprover\)/);
+  assert.doesNotMatch(hub, /hasRole\(currentUser, "ASMAN"\) && stocks\.some\(s=>s\.lokasiMovePending/);
+});

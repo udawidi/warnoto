@@ -17,7 +17,6 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
   const [approvalTypeFilter, setApprovalTypeFilter] = useState("ALL");
   const [approvalPageSize, setApprovalPageSize] = useState(10);
   const [approvalStokPage, setApprovalStokPage] = useState(1);
-  const [approvalStokGudangPage, setApprovalStokGudangPage] = useState(1);
   const [approvalEditStokPage, setApprovalEditStokPage] = useState(1);
   const [approvalHapusStokPage, setApprovalHapusStokPage] = useState(1);
   const [approvalAlatBeratPage, setApprovalAlatBeratPage] = useState(1);
@@ -32,7 +31,7 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
   const [approvalHistoryDateTo, setApprovalHistoryDateTo] = useState("");
   const [approvalHistoryShowAll, setApprovalHistoryShowAll] = useState(false);
   useEffect(() => {
-    setApprovalStokPage(1); setApprovalStokGudangPage(1); setApprovalEditStokPage(1);
+    setApprovalStokPage(1); setApprovalEditStokPage(1);
     setApprovalHapusStokPage(1); setApprovalAlatBeratPage(1); setApprovalOpnamePage(1); setApprovalHistoryPage(1);
   }, [approvalTypeFilter, approvalPageSize, approvalHistoryMineOnly, approvalHistorySearch, approvalHistoryDateFrom, approvalHistoryDateTo]);
 
@@ -83,7 +82,6 @@ export function useApprovalHub({ currentUser, showToast, stateRef, logApprovalHi
     approvalTypeFilter, setApprovalTypeFilter,
     approvalPageSize, setApprovalPageSize,
     approvalStokPage, setApprovalStokPage,
-    approvalStokGudangPage, setApprovalStokGudangPage,
     approvalEditStokPage, setApprovalEditStokPage,
     approvalHapusStokPage, setApprovalHapusStokPage,
     approvalAlatBeratPage, setApprovalAlatBeratPage,
