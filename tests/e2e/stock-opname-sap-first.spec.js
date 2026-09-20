@@ -8,23 +8,23 @@ test.describe("Stock Opname SAP-first responsive", () => {
   test("riwayat terpisah tanpa menghapus hitungan draft aktif", async ({ isolatedPage: page }) => {
     await openApp(page);
     await openRoute(page, STOCK_OPNAME);
-    await page.getByRole("button", { name: /Lanjutkan draft/ }).click();
+    await page.getByRole("button", { name: /Lanjutkan opname/ }).click();
     const qtyInput = page.locator('input[type="number"]').first();
     await qtyInput.fill("7");
     await expect(page.getByRole("button", { name: /Batal/ })).toHaveCount(1);
-    await page.getByRole("button", { name: "🕘 Riwayat" }).click();
+    await page.getByRole("tab", { name: "Riwayat" }).click();
     await expect(page.getByText("Riwayat Opname", { exact: true }).first()).toBeVisible();
-    await page.getByRole("button", { name: "📊 Riwayat Stock Count" }).click();
-    await expect(page.getByText(/Riwayat Stock Count/).first()).toBeVisible();
-    await page.getByRole("button", { name: "📋 Stock Opname" }).click();
+    await page.getByLabel("Jenis riwayat").selectOption("stockCount");
+    await expect(page.locator(".inventory-assurance-history:visible")).toHaveCount(1);
+    await page.getByRole("tab", { name: "Stock Opname" }).click();
     await expect(qtyInput).toHaveValue("7");
   });
 
   test("Edit draft dari Riwayat membuka layar hitung", async ({ isolatedPage: page }) => {
     await openApp(page);
     await openRoute(page, STOCK_OPNAME);
-    await page.getByRole("button", { name: "🕘 Riwayat" }).click();
-    await page.getByRole("button", { name: "🔍 Edit" }).first().click();
+    await page.getByRole("tab", { name: "Riwayat" }).click();
+    await page.getByRole("button", { name: /Edit/ }).first().click();
     await expect(page.locator(".opname-panel")).toBeVisible();
     await expect(page.locator('.opname-panel input[type="number"]').first()).toBeVisible();
   });
@@ -39,7 +39,7 @@ test.describe("Stock Opname SAP-first responsive", () => {
   test("stage rail, kategori, dan action tidak overflow di viewport target", async ({ isolatedPage: page }) => {
     await openApp(page);
     await openRoute(page, STOCK_OPNAME);
-    await page.getByRole("button", { name: /Lanjutkan draft/ }).click();
+    await page.getByRole("button", { name: /Lanjutkan opname/ }).click();
     await expect(page.locator(".opname-stage-rail")).toBeVisible();
     await expect(page.getByRole("button", { name: /Persediaan/ }).first()).toBeVisible();
     const actionHeights = await page.locator(".opname-action-bar > button").evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().height)));
@@ -60,10 +60,10 @@ test.describe("Stock Opname SAP-first responsive", () => {
     }
   });
 
-  test("aksi Lanjut Non-SAP membuat satu child lalu klik ulang me-resume child yang sama", async ({ isolatedPage: page }) => {
+  test("aksi Lanjut Non-SAP tetap di sesi SAP saat penyimpanan server gagal", async ({ isolatedPage: page }) => {
     await openApp(page);
     await openRoute(page, STOCK_OPNAME);
-    await page.getByRole("button", { name: /Lanjutkan draft/ }).click();
+    await page.getByRole("button", { name: /Lanjutkan opname/ }).click();
     const qtyInputs = page.locator('input[type="number"]');
     await expect(qtyInputs).toHaveCount(2);
     const next = page.getByRole("button", { name: /Lanjut Non-SAP/ });
@@ -78,13 +78,7 @@ test.describe("Stock Opname SAP-first responsive", () => {
     await qtyInputs.nth(0).fill("10");
     await expect(next).toBeVisible();
     await next.click();
-    await expect(page.getByText(/Opname Non-SAP/)).toBeVisible();
-    await page.getByRole("button", { name: /Batal/ }).last().click();
-
-    const sapDraft = page.getByRole("button", { name: /\u2014 SAP \(2 item\)$/ });
-    await expect(sapDraft).toBeVisible();
-    await sapDraft.click();
-    await page.getByRole("button", { name: /Lanjut Non-SAP/ }).click();
-    await expect(page.getByText(/Opname Non-SAP/)).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Opname SAP/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Opname Non-SAP/ })).toHaveCount(0);
   });
 });

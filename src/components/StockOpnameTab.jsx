@@ -7,14 +7,14 @@ import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { buildStockOpnamePackageHTML, downloadLembarHitungHTML } from "../lib/docBuilders.js";
-import { applyMaraNameSearch, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sapBadgeStyleForLabel, sourceLotLabel, getSourceLot, sourceLotRowsForCatalog } from "../lib/sap.js";
+import { applyMaraNameSearch, normalizeKatalog, extractKatalogIdFromScan, sumHitungPerLokasi, applyQtyToItem, itemCounted, allBloksSelesai, getItemBlocks, blokKeyOf, blokProgress, resolveSapLabel, stockSapLabel, sourceLotLabel, getSourceLot, sourceLotRowsForCatalog } from "../lib/sap.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft } from "../lib/stockOpnameFlow.js";
-import { ArrowRight, Barcode, CheckCircle, FileArrowUp } from "@phosphor-icons/react";
+import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
@@ -75,6 +75,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   useEffect(() => {
     if (!activeOpname) return;
     setSapCategoryFilter("");
+    setFilterGudangId(""); setFilterLokasiId(""); setFilterJenis("");
     setFreezeSel(new Set(activeOpname.freeze?.gudangIds || (activeOpname.gudangId ? [activeOpname.gudangId] : [])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
@@ -523,11 +524,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         const bin = itemSapLabel(it).startsWith("SAP") ? "SAP" : "Non-SAP";
         if (bin !== filterJenis) return false;
       }
-      if (!filterGudangId) return true;
       const bd = it.lokasiBreakdown||[];
-      if (filterGudangId==="__NONE__") return !bd.length;
       if (filterLokasiId) return bd.some(b=>b.lokasiId===filterLokasiId);
-      return bd.some(b=>b.gudangId===filterGudangId);
+      if (filterGudangId==="__NONE__") return !bd.length;
+      if (filterGudangId) return bd.some(b=>b.gudangId===filterGudangId);
+      return true;
     });
   }
 
@@ -734,6 +735,17 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const isReadOnly = activeOpname.status!=="DRAFT";
     const items = activeOpname.items||[];
     const countedItem = item => itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 });
+    // Sesi v2 selalu scoped ke 1 gudang (freeze) — dropdown Gudang jadi no-op, sembunyikan.
+    // Deteksi via blok item, sama pola dengan freeze scope (baris ~800).
+    const sesiGudangIds = new Set();
+    for (const it of items) {
+      for (const b of getItemBlocks(it, lokasiList, gudangList)) {
+        if (b.gudangId) sesiGudangIds.add(b.gudangId);
+      }
+    }
+    if (!sesiGudangIds.size && activeOpname.gudangId) sesiGudangIds.add(activeOpname.gudangId);
+    const singleGudangId = sesiGudangIds.size <= 1 ? ([...sesiGudangIds][0] || activeOpname.gudangId || null) : null;
+    const isSingleGudang = !!singleGudangId && sesiGudangIds.size <= 1;
     const filteredIndexed = getFilteredIndexed();
     const totalPages = Math.ceil(filteredIndexed.length/pageSize);
     const pageEntries = filteredIndexed.slice(page*pageSize, (page+1)*pageSize);
@@ -1002,25 +1014,52 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   </div>
                 ) : <div/>}
                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                  <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterGudangId}
-                    onChange={e=>{setFilterGudangId(e.target.value);setFilterLokasiId("");setPage(0);}}>
-                    <option value="">Semua Gudang</option>
-                    {sortedGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
-                    <option value="__NONE__">Tanpa Lokasi</option>
-                  </select>
-                  {filterGudangId && filterGudangId!=="__NONE__" && (
-                    <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterLokasiId}
-                      onChange={e=>{setFilterLokasiId(e.target.value);setPage(0);}}>
-                      <option value="">Semua Blok</option>
-                      {sortedLokasiList.filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                  {isSingleGudang ? (() => {
+                    // Blok yang benar-benar ada di sesi ini (reuse pola getItemBlocks di chip progres),
+                    // fallback ke daftar lokasi gudang kalau item belum punya blok sama sekali.
+                    const seen = new Set();
+                    let bloks = [];
+                    for (const it of items) {
+                      for (const b of getItemBlocks(it, lokasiList, gudangList)) {
+                        if (seen.has(b.lokasiId)) continue;
+                        seen.add(b.lokasiId);
+                        bloks.push(b);
+                      }
+                    }
+                    if (!bloks.length) bloks = sortedLokasiList.filter(l=>l.gudangId===singleGudangId).map(l=>({lokasiId:l.id, lokasiKode:l.kode}));
+                    bloks.sort((a,b)=>(a.lokasiKode||"").localeCompare(b.lokasiKode||"",undefined,{numeric:true}));
+                    return (
+                      <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterLokasiId}
+                        onChange={e=>{const v=e.target.value; setFilterLokasiId(v); setFilterGudangId(v?singleGudangId:""); setPage(0);}}>
+                        <option value="">Semua Blok</option>
+                        {bloks.map(b=><option key={b.lokasiId||"none"} value={b.lokasiId||""}>{b.lokasiKode||"Tanpa Lokasi"}</option>)}
+                      </select>
+                    );
+                  })() : (
+                    <>
+                      <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterGudangId}
+                        onChange={e=>{setFilterGudangId(e.target.value);setFilterLokasiId("");setPage(0);}}>
+                        <option value="">Semua Gudang</option>
+                        {sortedGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
+                        <option value="__NONE__">Tanpa Lokasi</option>
+                      </select>
+                      {filterGudangId && filterGudangId!=="__NONE__" && (
+                        <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterLokasiId}
+                          onChange={e=>{setFilterLokasiId(e.target.value);setPage(0);}}>
+                          <option value="">Semua Blok</option>
+                          {sortedLokasiList.filter(l=>l.gudangId===filterGudangId).map(l=><option key={l.id} value={l.id}>{l.kode}</option>)}
+                        </select>
+                      )}
+                    </>
+                  )}
+                  {activeOpname.flowVersion < 2 && (
+                    <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterJenis}
+                      onChange={e=>{setFilterJenis(e.target.value);setPage(0);}}>
+                      <option value="">Semua Jenis</option>
+                      <option value="SAP">SAP</option>
+                      <option value="Non-SAP">Non-SAP</option>
                     </select>
                   )}
-                  <select style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterJenis}
-                    onChange={e=>{setFilterJenis(e.target.value);setPage(0);}}>
-                    <option value="">Semua Jenis</option>
-                    <option value="SAP">SAP</option>
-                    <option value="Non-SAP">Non-SAP</option>
-                  </select>
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}>
                   Tampilkan:
@@ -1033,63 +1072,66 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 </div>
               </div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                {(() => { const thBase = {padding:"7px 8px",fontSize:12,fontWeight:700,letterSpacing:".3px",textTransform:"uppercase"}; return (
                 <thead>
                   <tr style={{background:C.sidebar,color:"white"}}>
-                    {!isMobile && <th style={{padding:"7px 8px",textAlign:"center",width:36}}>No</th>}
-                    <th style={{padding:"7px 8px",textAlign:"left"}}>Nama Barang</th>
-                    {!isMobile && <th style={{padding:"7px 8px",textAlign:"center"}}>No Katalog</th>}
-                    <th style={{padding:"7px 8px",textAlign:"center"}}>Sat</th>
-                    {!isMobile && <th style={{padding:"7px 8px",textAlign:"center"}}>Qty Sistem</th>}
-                    {isSAP && <th style={{padding:"7px 8px",textAlign:"center"}}>Qty SAP</th>}
-                    <th style={{padding:"7px 8px",textAlign:"center"}}>Qty Fisik</th>
-                    <th style={{padding:"7px 8px",textAlign:"center"}}>Selisih</th>
-                    <th style={{padding:"7px 8px",textAlign:"center"}}>Status</th>
-                    {!isSAP && <th style={{padding:"7px 8px",textAlign:"center"}}>📍 Lokasi *</th>}
-                    <th style={{padding:"7px 8px",textAlign:"left"}}>Keterangan</th>
-                    <th style={{padding:"7px 8px",textAlign:"center"}}>📷 Foto</th>
+                    {!isMobile && <th style={{...thBase,textAlign:"center",width:36}}>No</th>}
+                    <th style={{...thBase,textAlign:"left"}}>Nama Barang</th>
+                    {!isMobile && <th style={{...thBase,textAlign:"center"}}>No Katalog</th>}
+                    <th style={{...thBase,textAlign:"center"}}>Sat</th>
+                    {!isMobile && <th style={{...thBase,textAlign:"center"}}>Qty Sistem</th>}
+                    {isSAP && <th style={{...thBase,textAlign:"center"}}>Qty SAP</th>}
+                    <th style={{...thBase,textAlign:"center"}}>Qty Fisik</th>
+                    <th style={{...thBase,textAlign:"center"}}>Selisih</th>
+                    <th style={{...thBase,textAlign:"center"}}>Status</th>
+                    {!isSAP && <th style={{...thBase,textAlign:"center"}}>Lokasi *</th>}
+                    <th style={{...thBase,textAlign:"left"}}>Keterangan</th>
+                    <th style={{...thBase,textAlign:"center"}}>Foto</th>
                   </tr>
                 </thead>
+                ); })()}
                 <tbody>
                   {pageEntries.map(({it:item, idx:realIdx})=>{
                     const isHighlighted = highlightIdx===realIdx;
                     const counted = countedItem(item);
                     const rowBg = isHighlighted ? "#dbeafe" : "white";
                     const statusBadge = item.statusItem==="SESUAI"
-                      ? {bg:"#dcfce7",fg:"#166534",label:"✅ Sesuai"}
+                      ? {bg:"#dcfce7",fg:"#166534",label:"Sesuai"}
                       : item.statusItem==="TIDAK_ADA_DI_SAP"
-                      ? {bg:"#f3f4f6",fg:"#6b7280",label:"○ Tdk di SAP"}
+                      ? {bg:"#f3f4f6",fg:"#6b7280",label:"Tdk di SAP"}
                       : item.statusItem==="TIDAK_ADA_DI_SISTEM"
-                      ? {bg:"#fef3c7",fg:"#92400e",label:"⚠️ Tdk di Sistem"}
+                      ? {bg:"#fef3c7",fg:"#92400e",label:"Tdk di Sistem"}
                       : item.statusItem==="MATERIAL_BARU_NONSAP"
-                      ? {bg:"#dbeafe",fg:"#1e40af",label:"🆕 Baru (Non-Stock)"}
-                      : {bg:"#fee2e2",fg:"#991b1b",label:"🔴 Selisih"};
+                      ? {bg:"#dbeafe",fg:"#1e40af",label:"Baru (Non-Stock)"}
+                      : {bg:"#fee2e2",fg:"#991b1b",label:"Selisih"};
                     const itemGudangId = lokasiList?.find(l=>l.id===item.lokasiId)?.gudangId || "";
                     return (
                       <tr className="mobile-card-table__row" key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none","--opname-accent":counted?statusBadge.fg:"#dbe3ef"}}>
                         {!isMobile && <td data-label="No" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
                         <td data-label="Nama Barang" className="mobile-card-table__title opname-item-name" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?180:260,overflowWrap:"anywhere",whiteSpace:"normal",lineHeight:1.35,minWidth:0}}>
                           <div style={{fontWeight:700,overflowWrap:"anywhere",whiteSpace:"normal"}}>{item.namaBarang}</div>
-                          {(() => { const lbl = itemSapLabel(item); const bs = sapBadgeStyleForLabel(lbl); return (
-                            <span style={{display:"flex",alignItems:"center",gap:4,fontSize:11,color:C.muted,marginTop:3,whiteSpace:"normal",overflowWrap:"anywhere"}}>
-                              <span style={{width:6,height:6,borderRadius:"50%",background:bs.fg,flexShrink:0}}/> {lbl}
-                            </span>
-                          ); })()}
+                          <div style={{fontSize:12,color:C.muted,marginTop:3,whiteSpace:"normal",overflowWrap:"anywhere"}}>{itemSapLabel(item)}</div>
                           {item.statusItem==="TIDAK_ADA_DI_SISTEM" && (
-                            <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#92400e",whiteSpace:"normal"}}>🆕 Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
+                            <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:10,padding:"6px 10px",marginTop:4,whiteSpace:"normal"}}>Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>
                           )}
                           {item.statusItem==="MATERIAL_BARU_NONSAP" && (
-                            <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color: "#1d4ed8",whiteSpace:"normal"}}>🆕 Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " ⚠️ Belum dicocokkan ke MARA."}</div>
+                            <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#1d4ed8",background:"#dbeafe",border:"1px solid #93c5fd",borderRadius:10,padding:"6px 10px",marginTop:4,whiteSpace:"normal"}}>Ditemukan saat opname — sudah aktif sebagai "Pending Approval", dikonfirmasi penuh saat Manager approve sesi ini.{item.belumDicocokkanMara && " Belum dicocokkan ke MARA."}</div>
                           )}
-                          {/* Fase 1f: chip blok — item bisa tersebar di beberapa lokasi dalam gudang ini */}
+                          {/* Fase 1f: item bisa tersebar di beberapa lokasi dalam gudang ini */}
                           {item.lokasiBreakdown && item.lokasiBreakdown.length>0 && (
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:4}}>
+                            <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:5,alignItems:"flex-start"}}>
                               {item.lokasiBreakdown.slice(0,3).map((b,bi)=>{
                                 const st = !isReadOnly && b.stockId ? stocks.find(s=>s.id===b.stockId) : null;
-                                return (
-                                  <span key={bi} onClick={st ? ()=>setMoveStock({ st, lok: lokasiList.find(l=>l.id===st.lokasiId)||null, gdg: gudangList.find(g=>g.id===st.gudangId)||null }) : undefined}
-                                    title={st ? "Ubah lokasi" : undefined}
-                                    style={{fontSize:12,padding:"1px 6px",borderRadius:999,background:"#f1f5f9",color:C.muted,fontWeight:600,cursor:st?"pointer":"default"}}>{b.lokasiKode||"?"} · {b.sourceLabel} ({b.qty})</span>
-                                );
+                                const box = {display:"inline-flex",flexDirection:"column",gap:1,padding:"3px 9px",borderRadius:8,border:`1px solid ${st?`${C.accent}55`:C.border}`,background:st?`${C.accent}0f`:"#f8fafc",textAlign:"left",maxWidth:"100%"};
+                                const content = <>
+                                  <span style={{fontSize:12,color:st?C.accent:C.text}}><strong style={{fontWeight:700}}>{b.lokasiKode||"Tanpa Lokasi"}</strong> · {b.qty}</span>
+                                  <span style={{fontSize:12,color:C.muted,overflowWrap:"anywhere"}}>{b.sourceLabel}</span>
+                                </>;
+                                return st
+                                  ? <button type="button" key={bi} title="Ketuk untuk ubah lokasi"
+                                      onClick={()=>setMoveStock({ st, lok: lokasiList.find(l=>l.id===st.lokasiId)||null, gdg: gudangList.find(g=>g.id===st.gudangId)||null })}
+                                      style={{...box,font:"inherit",cursor:"pointer"}}>{content}</button>
+                                  : <span key={bi} style={box}>{content}</span>;
                               })}
                               {item.lokasiBreakdown.length>3 && <span style={{fontSize:12,color:C.muted}}>+{item.lokasiBreakdown.length-3} lagi</span>}
                             </div>
@@ -1114,8 +1156,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {!counted?"—":item.selisih===0?"—":(item.selisih>0?"+":"")+fmtNum(item.selisih)}
                         </td>
                         <td data-label="Status" className="is-key" style={{padding:"6px 8px"}}>
-                          <span title={counted?"Sudah dihitung":"Belum dihitung"} style={{marginRight:4,fontSize:12,fontWeight:700,color:counted?"#16a34a":"#9ca3af"}}>
-                            {counted?"✓":"•"}
+                          <span title={counted?"Sudah dihitung":"Belum dihitung"} style={{marginRight:4,display:"inline-flex",verticalAlign:"middle",color:counted?"#16a34a":"#9ca3af"}}>
+                            {counted ? <CheckCircle size={14} weight="fill"/> : "•"}
                           </span>
                           {!counted ? (
                             <span style={{padding:"2px 6px",borderRadius:10,fontSize:12,fontWeight:700,background:"#f3f4f6",color:"#6b7280"}}>Belum dihitung</span>
@@ -1126,7 +1168,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           )}
                         </td>
                         {!isSAP && (
-                          <td data-label="📍 Lokasi" className="is-key" style={{padding:"4px 6px"}}>
+                          <td data-label="Lokasi" className="is-key" style={{padding:"4px 6px"}}>
                             {!isReadOnly ? (
                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
                                 <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); }}
@@ -1151,7 +1193,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             ? <textarea rows={2} value={item.keterangan||""}
                                 onChange={e=>updateItem(realIdx,"keterangan",e.target.value)}
                                 placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
-                                style={{width:"100%",minHeight:32,padding:"6px 8px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
+                                style={{width:"100%",minHeight:32,padding:"6px 8px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:13,resize:"none",fontFamily:"inherit"}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
                           {(!isSAP || item.statusItem==="MATERIAL_BARU_NONSAP") && activeOpname.stage==="REKONSILIASI" && !isReadOnly && (
                             <div style={{marginTop:4}}>
@@ -1166,14 +1208,14 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             </div>
                           )}
                         </td>
-                        <td data-label="📷 Foto" className="is-key" style={{padding:"4px 6px"}}>
+                        <td data-label="Foto" className="is-key" style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                            {[["fotoKeseluruhan","🖼️","Foto Keseluruhan"],["fotoNameplate","🏷️","Foto Nameplate"]].map(([field,icon,label])=>(
+                            {[["fotoKeseluruhan",Image,"Foto Keseluruhan"],["fotoNameplate",Tag,"Foto Nameplate"]].map(([field,Icon,label])=>(
                               <label key={field} title={label}
                                 style={{width:28,height:28,borderRadius: 10,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReadOnly?"default":"pointer",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
                                 {item[field]
                                   ? <img src={item[field]} alt={label} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                                  : <span style={{fontSize:12,color: "#64748b"}}>{icon}</span>}
+                                  : <Icon size={16} color="#64748b"/>}
                                 {!isReadOnly && (
                                   <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
                                     onChange={e=>{
