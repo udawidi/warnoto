@@ -3,6 +3,7 @@
 // (katalog, satpam, timmutu, organisasi, gudang, akun, migrasi, auditLog, perms).
 // JSX/logic tidak diubah — hanya relokasi.
 import { useState } from "react";
+import { Printer, QrCode } from "@phosphor-icons/react";
 import { supabase } from "../supabaseClient.js";
 import { can } from "../lib/perms.js";
 import { ROLES, hasRole, roleTier, getScopeUptIds, inScopeUpt } from "../lib/roles.js";
@@ -56,7 +57,11 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
       if (error) { popup.close(); showToast?.("QR publik belum siap. Terapkan migrasi lokasi public_token terlebih dahulu.", "error"); return; }
       const tokenByLokasi = Object.fromEntries((data || []).map(row => [row.id, row.public_token]).filter(([, token]) => token));
       if (list.some(l => !tokenByLokasi[l.id])) { popup.close(); showToast?.("Token QR blok belum tersedia. Terapkan migrasi lokasi public_token terlebih dahulu.", "error"); return; }
-      const html = await buildLabelBlokHTML(list, gudang, tokenByLokasi);
+      const enrichedList = list.map(l => {
+        const sub = subGudangList.find(sg => sg.id === l.subGudangId);
+        return { ...l, subGudangNama: sub?.nama, subGudangKode: sub?.kode };
+      });
+      const html = await buildLabelBlokHTML(enrichedList, { ...gudang, uptNama: uptList.find(u => u.id === gudang?.uptId)?.nama }, tokenByLokasi);
       popup.document.open();
       popup.document.write(html);
       popup.document.close();
@@ -505,7 +510,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                         </div>
                         <div className="master-warehouse-card__actions">
                           {bloklokasi.length > 0 && (
-                            <button title="Cetak semua QR blok gudang" style={sty.btn("ghost","sm")} onClick={e=>{e.stopPropagation();printBlokLabels(bloklokasi,g);}}>QR {isMobile ? "" : "Blok"}</button>
+                            <button title="Cetak semua kartu QR blok gudang" aria-label="Cetak semua kartu QR blok gudang" style={{...sty.btn("ghost","sm"),display:"inline-flex",alignItems:"center",gap:6}} onClick={e=>{e.stopPropagation();printBlokLabels(bloklokasi,g);}}><Printer size={15} weight="bold" />{isMobile ? "QR" : "Cetak Semua QR"}</button>
                           )}
                           {hasRole(currentUser, "TL") && (
                             <div className="master-warehouse-card__admin-actions" style={{display:"flex",gap:6}} onClick={e=>e.stopPropagation()}>
@@ -711,7 +716,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                           </div>
                                           <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
                                             <span style={{fontSize:12,color:n>0?C.accent:C.muted,fontWeight:700}}>{n} item</span>
-                                            <button title="Cetak QR blok" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>printBlokLabels([l],g)}>QR</button>
+                                            <button title="Cetak kartu QR blok" aria-label={`Cetak kartu QR ${l.kode || l.nama || "blok"}`} style={{...sty.btn("ghost","sm"),padding:"2px 8px",display:"inline-flex",alignItems:"center",gap:4}} onClick={()=>printBlokLabels([l],g)}><QrCode size={15} weight="bold" />{isMobile ? "" : "Cetak QR"}</button>
                                             {hasRole(currentUser, "TL") && <button title="Edit" style={{...sty.btn("ghost","sm"),padding:"2px 8px"}} onClick={()=>openEditLokasi(l)}>✏️</button>}
                                             {hasRole(currentUser, "TL") && <button title="Hapus" style={{...sty.btn("danger","sm"),padding:"2px 8px"}} onClick={()=>requestDeleteLokasi(l)}>🗑️</button>}
                                           </div>

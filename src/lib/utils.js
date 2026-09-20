@@ -434,7 +434,7 @@ export const PUBLIC_APP_ORIGIN = (() => {
   const fromEnv = import.meta.env?.VITE_PUBLIC_APP_URL;
   if (fromEnv) return String(fromEnv).replace(/\/+$/, "");
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return LOCAL_ORIGIN_RE.test(origin) ? "https://warnoto.vercel.app" : origin;
+  return LOCAL_ORIGIN_RE.test(origin) ? "https://pln.warnoto.com" : origin;
 })();
 
 // URL halaman scan publik untuk satu katalog — satu-satunya tempat format ini dibentuk.

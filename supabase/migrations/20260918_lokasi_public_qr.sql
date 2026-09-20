@@ -26,12 +26,14 @@ returns jsonb
 language sql
 stable
 security definer
-set search_path = public
+set search_path = pg_catalog
 as $$
   select case
     when l.id is null or l.public_token is distinct from p_token then null::jsonb
     else jsonb_build_object(
+      'upt', coalesce(u.data->>'nama', u.data->>'kode', u.id),
       'gudang', coalesce(g.data->>'nama', g.data->>'kode', g.id),
+      'subgudang', coalesce(sg.data->>'nama', sg.data->>'kode', ''),
       'blok', coalesce(l.data->>'kode', l.data->>'nama', l.id),
       'materials', coalesce((
         select jsonb_agg(
@@ -61,6 +63,8 @@ as $$
   end
   from public.lokasi l
   left join public.gudang g on g.id = l.gudang_id
+  left join public.upt u on u.id = g.upt_id
+  left join public.sub_gudang sg on sg.id = nullif(l.data->>'subGudangId', '')
   where l.id = p_lokasi_id;
 $$;
 

@@ -1603,24 +1603,35 @@ export async function buildLabelBlokHTML(lokasiList, gudang, tokenByLokasi = {})
   }
   const labels = await Promise.all((lokasiList || []).map(async (l) => {
     const scanUrl = lokasiScanUrlFor(l.id, tokenByLokasi[l.id] || l.public_token);
-    const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 220 });
-    return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(l.kode || l.nama || "-")}</div><div class="meta">${esc(gudang?.nama || gudang?.kode || "-")}</div></div>`;
+    const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 480, errorCorrectionLevel: "M" });
+    const locationName = l.nama && l.nama !== l.kode ? `${l.kode || "-"} · ${l.nama}` : (l.kode || l.nama || "-");
+    const subName = l.subGudangNama || l.subGudangKode || "";
+    return `<article class="label"><img class="pln-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/><div class="eyebrow">KARTU LOKASI GUDANG</div><div class="brand">PT PLN (PERSERO)</div><div class="rule"></div><div class="nm">${esc(locationName)}</div><div class="meta">${esc(gudang?.uptNama || "")} ${gudang?.uptNama ? "·" : ""} ${esc(gudang?.nama || gudang?.kode || "-")}</div>${subName ? `<div class="sub">Sub Gudang · ${esc(subName)}</div>` : ""}<img class="qr" src="${qr}" alt="QR ${esc(locationName)}"/><div class="hint">Scan untuk melihat material &amp; qty<br/>atau mulai Stock Opname Mode Lapangan</div><div class="footer">${esc(gudang?.kode || "-")}</div></article>`;
   }));
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>Cetak Label QR Blok — ${labels.length} label</title>
 <style>
-  @page { size: A4; margin: 8mm; }
+  @page { size: A6 portrait; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; background: #e5e7eb; }
+  body { font-family: Arial, Helvetica, sans-serif; background: #e5e7eb; color: #0f172a; }
   .bar { position: sticky; top: 0; background: #0b2559; color: #fff; padding: 10px 16px; text-align: center; font-size: 13px; font-weight: 700; z-index: 10; }
-  .bar button { background: #16a34a; color: #fff; border: none; border-radius: 6px; padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; margin-left: 12px; }
-  .sheet { display: flex; flex-wrap: wrap; gap: 3mm; padding: 8mm; }
-  .label { width: 5cm; height: 5cm; border: 1px dashed #94a3b8; border-radius: 4px; padding: 2.5mm; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; background: #fff; page-break-inside: avoid; overflow: hidden; }
-  .label img { width: 30mm; height: 30mm; }
-  .label .nm { font-size: 9px; font-weight: 700; line-height: 1.15; margin-top: 1.5mm; max-height: 2.3em; overflow: hidden; }
-  .label .meta { font-size: 7px; color: #374151; margin-top: 0.5mm; }
-  @media print { .bar { display: none; } body { background: #fff; } .sheet { padding: 0; } }
+  .bar button { background: #16a34a; color: #fff; border: none; border-radius: 10px; padding: 8px 18px; font-size: 13px; font-weight: 700; cursor: pointer; margin-left: 12px; }
+  .sheet { display: flex; flex-direction: column; align-items: center; gap: 8mm; padding: 10mm; }
+  .label { width: 105mm; height: 148mm; border: 1px solid #cbd5e1; border-radius: 5mm; padding: 8mm 9mm 7mm; display: flex; flex-direction: column; align-items: center; text-align: center; background: #fff; page-break-after: always; overflow: hidden; position: relative; }
+  .pln-logo { position: absolute; top: 7mm; left: 8mm; width: 10mm; height: auto; object-fit: contain; }
+  .label:last-child { page-break-after: auto; }
+  .label:before { content: ""; width: 12mm; height: 4mm; border: 1px solid #94a3b8; border-radius: 4mm; margin-bottom: 4mm; }
+  .eyebrow { color: #1d4ed8; font-size: 7px; font-weight: 800; letter-spacing: 1.1px; }
+  .brand { color: #0b2559; font-size: 9px; font-weight: 800; letter-spacing: .4px; margin-top: 1.5mm; }
+  .rule { width: 100%; height: 1px; background: #dbe3ef; margin: 3mm 0 4mm; }
+  .label .nm { color: #0b2559; font-size: 20px; font-weight: 900; line-height: 1.08; max-width: 88mm; overflow-wrap: anywhere; }
+  .label .meta { font-size: 10px; font-weight: 700; color: #334155; margin-top: 2mm; max-width: 88mm; overflow-wrap: anywhere; }
+  .label .sub { font-size: 9px; color: #64748b; margin-top: 1.5mm; max-width: 88mm; overflow-wrap: anywhere; }
+  .label .qr { width: 48mm; height: 48mm; margin: 6mm 0 4mm; image-rendering: pixelated; }
+  .hint { font-size: 8px; color: #475569; line-height: 1.35; }
+  .footer { margin-top: auto; font-size: 8px; color: #64748b; letter-spacing: .7px; }
+  @media print { .bar { display: none; } body { background: #fff; } .sheet { padding: 0; gap: 0; } .label { border: 1px solid #cbd5e1; border-radius: 5mm; } }
 </style></head><body>
-<div class="bar">🏷️ ${labels.length} label QR blok lokasi 5×5 cm — potong per kotak, tempel di rak <button onclick="window.print()">🖨️ Print / Save PDF</button></div>
+<div class="bar">${labels.length} kartu QR blok lokasi · format A6 <button onclick="window.print()">Print / Save PDF</button></div>
 <div class="sheet">${labels.join("")}</div>
 </body></html>`;
 }
