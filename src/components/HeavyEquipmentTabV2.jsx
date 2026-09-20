@@ -1,19 +1,20 @@
 // Komponen HeavyEquipmentTabV2 — dipindah dari App.jsx (refactor Fase 5b).
 import { useState } from "react";
 import { UIT } from "../constants.js";
-import { hasRole, getUserUptScope, roleTier } from "../lib/roles.js";
+import { getUserUptScope, roleTier } from "../lib/roles.js";
 import { downloadHeavyEquipmentLoanHTML } from "../lib/docBuilders.js";
-import { canApproveHeavyEquipmentLoan, canCompleteHeavyEquipmentLoan, EQUIPMENT_CATEGORIES, getEquipmentCategory, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
+import { canApproveHeavyEquipmentLoan, canCompleteHeavyEquipmentLoan, EQUIPMENT_CATEGORIES, getEquipmentCategory, getHeavyEquipmentUptId, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
 import { RiwayatPerjalananPanel } from "./RiwayatPerjalananPanel.jsx";
 import { fmtDateOnly } from "../lib/utils.js";
+import { supabase } from "../supabaseClient.js";
 
 const LOAN_APPROVAL_ATTESTATIONS = [
   ["alat", "Saya sudah memeriksa alat, ketersediaan, dan kondisinya."],
   ["pekerjaan", "Saya sudah memeriksa nama pekerjaan dan keperluan peminjaman."],
   ["durasi", "Saya sudah memeriksa durasi peminjaman (tanggal ambil-kembali)."],
-  ["setuju", "Saya setuju alat dipinjamkan ke UPT peminjam."],
+  ["setuju", "Saya setuju alat dipinjamkan kepada pihak peminjam."],
 ];
 
 const LOAN_RETURN_CHECKS = [
@@ -67,11 +68,12 @@ function SuratIzinField({ value, onChange, showToast }) {
   </label>;
 }
 
-function EquipmentFields({ form, setForm, sty, showToast }) {
+function EquipmentFields({ form, setForm, sty, showToast, lockedUpt = false, gudangOptions = [] }) {
   return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-    {EQUIPMENT_FORM_FIELDS.map(([key,label]) => <label key={key} style={sty.label}>{label}
-      <input style={sty.input} value={form[key]||""} onChange={e=>setForm(current=>({...current,[key]:e.target.value}))}/>
-    </label>)}
+    {EQUIPMENT_FORM_FIELDS.map(([key,label]) => <label key={key} style={sty.label}>{key === "lokasi" && gudangOptions.length ? "Gudang / lokasi" : label}
+      {key === "lokasi" && gudangOptions.length
+        ? <select style={sty.input} value={form.gudangId||""} onChange={e=>{const gudang=gudangOptions.find(item=>item.id===e.target.value);setForm(current=>({...current,gudangId:gudang?.id||"",lokasi:gudang?.nama||""}));}}><option value="">Pilih gudang</option>{gudangOptions.map(g=><option key={g.id} value={g.id}>{g.nama||g.id}</option>)}</select>
+        : <input style={sty.input} value={form[key]||""} disabled={lockedUpt && key === "upt"} onChange={e=>setForm(current=>({...current,[key]:e.target.value}))}/>}</label>)}
     <label style={sty.label}>Kategori
       <select style={sty.input} value={form.kategori||""} onChange={e=>setForm(current=>({...current,kategori:e.target.value}))}>
         <option value="">Pilih kategori</option>
@@ -81,6 +83,16 @@ function EquipmentFields({ form, setForm, sty, showToast }) {
     <label style={{...sty.label,display:"flex",alignItems:"center",gap:6}}>
       <input type="checkbox" checked={!!form.tracked} onChange={e=>setForm(current=>({...current,tracked:e.target.checked}))}/>
       Lacak lokasi
+    </label>
+    <label style={sty.label}>Jenis Aset
+      <select style={sty.input} value={form.assetType||"ALAT_BERAT"} onChange={e=>setForm(current=>({...current,assetType:e.target.value}))}>
+        <option value="ALAT_BERAT">Alat Berat</option>
+        <option value="ALAT_BANTU">Alat Bantu</option>
+      </select>
+    </label>
+    <label style={{...sty.label,display:"flex",alignItems:"center",gap:6}}>
+      <input type="checkbox" checked={!!form.isCrossUptBorrowable} onChange={e=>setForm(current=>({...current,isCrossUptBorrowable:e.target.checked}))}/>
+      Boleh dipinjam UPT lain
     </label>
     <SuratIzinField value={form.suratIzinAlat} onChange={v=>setForm(current=>({...current,suratIzinAlat:v}))} showToast={showToast}/>
   </div>;
@@ -104,12 +116,12 @@ function EquipmentPhotoInput({ foto, nama, handleImg, setForm, sty, C, showToast
   </>;
 }
 
-export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList, users, sty, C, handleImg, setLightboxImg, saveEdit, createEquipment, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
+export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList, gudangList = [], users, sty, C, handleImg, setLightboxImg, saveEdit, createEquipment, createLoan, approveLoan, rejectLoan, completeLoan, showToast }) {
   const myUpt = getUserUptScope(currentUser, uptList);
   const isMSB = currentUser?.role === "MSB" || currentUser?.role === "Manager UIT";
   // SUPERADMIN/Pusat tak punya UPT sendiri (myUpt kosong) → tak bisa dikunci sebagai peminjam.
   // Mereka (dan MSB) memilih UPT peminjam manual lewat selector; UPT ADMIN/TL biasa tetap terkunci.
-  const canChooseRequesterUpt = isMSB || !myUpt;
+  const canChooseRequesterUpt = currentUser?.role === "TL" || isMSB || !myUpt;
   // Dulu 2 sub-tab terpisah ("List Alat" vs "Peminjaman & Histori") dengan filter UPT yang
   // di-reset kontradiktif tiap pindah tab (list pakai UPT sendiri, loans di-reset ke "Semua UPT"
   // padahal unifiedLoans-nya sendiri tidak pernah benar-benar difilter UPT) — digabung jadi 1
@@ -127,13 +139,14 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [kondisiFilter, setKondisiFilter] = useState("ALL");
   const [loanCategoryFilter, setLoanCategoryFilter] = useState("ALL");
-  const [loanForm, setLoanForm] = useState({equipmentId:"", requesterUpt:myUpt||"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  const [loanForm, setLoanForm] = useState({equipmentIds:[], equipmentId:"", borrowerType:"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [reviewingLoan, setReviewingLoan] = useState(null);
   const [attested, setAttested] = useState({});
   const [returningLoan, setReturningLoan] = useState(null);
   const [returnChecked, setReturnChecked] = useState({});
+  const [returnEvidence, setReturnEvidence] = useState("");
   const [returnSubmitting, setReturnSubmitting] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [editForm, setEditForm] = useState({statusAlat:"LAYAK", foto:null});
@@ -165,23 +178,23 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     ...normalizedLoans.map(l=>l.ownerUpt),
     ...normalizedLoans.map(l=>l.requesterUpt),
   ].filter(Boolean))).sort();
-  const canManage = hasRole(currentUser, "ADMIN","TL");
-  // HAR UIT boleh MENGAJUKAN peminjaman (lintas UPT) tanpa hak kelola/edit/tambah alat.
-  const canRequestLoan = canManage || hasRole(currentUser, "HAR_UIT");
-  const canEditAll = hasRole(currentUser, "ADMIN");
+  const canManage = currentUser?.role === "TL";
+  const canRequestLoan = canManage;
+  const canEditAll = currentUser?.role === "TL";
   // Riwayat Perjalanan (Live Location BATCH 3a) — gate ADMIN/TL/UIT/PUSAT (sesuai plan Fase 3b).
   const canSeeRiwayatPerjalanan = canManage || isMultiUptViewer;
   const [addingEquipment, setAddingEquipment] = useState(false);
-  const blankEquipment = () => ({upt:myUpt||"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", foto:null});
+  const ownedGudang = gudangList.filter(g => !g?.__gi && (g.uptId || g.upt_id) === currentUser?.uptId);
+  const blankEquipment = () => ({upt:myUpt||"", uptId:currentUser?.uptId||"", gudangId:"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", assetType:"ALAT_BERAT", isCrossUptBorrowable:false, foto:null});
   const [addForm, setAddForm] = useState(blankEquipment);
   const [savingEquipment, setSavingEquipment] = useState(false);
   // Ajukan Peminjaman = "kita mau pinjam alat", jadi alat yang ditawarkan HARUS di luar UPT
   // sendiri (non-MSB) — pinjam alat sendiri lewat form sendiri tidak masuk akal. MSB/Manager UIT
   // memfasilitasi peminjaman UPT mana pun, jadi tetap lihat semua alat.
   const borrowableEquipment = equipmentList
-    .filter(e => e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat) && (isMSB || e.upt!==myUpt))
+    .filter(e => (getHeavyEquipmentUptId(e, uptList) === currentUser?.uptId || (!getHeavyEquipmentUptId(e, uptList) && e.upt === myUpt)) && e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat))
     .sort((a,b) => (a.upt||"").localeCompare(b.upt||"") || (a.nama||"").localeCompare(b.nama||""));
-  const selectedEquipment = equipmentList.find(e=>e.id===loanForm.equipmentId);
+  const selectedEquipment = equipmentList.find(e=>e.id===(loanForm.equipmentIds?.[0] || loanForm.equipmentId));
   const requesterOptions = selectedEquipment ? uptOptions.filter(u=>u!==selectedEquipment.upt) : uptOptions;
   const pendingCount = scopedLoans.filter(isPendingHeavyEquipmentLoan).length;
   const dipinjamCount = scopedLoans.filter(l=>l.runtimeStatus==="DIPINJAM").length;
@@ -313,8 +326,15 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
 
 
   async function submitLoan() {
-    await createLoan(loanForm);
-    setLoanForm({equipmentId:"", requesterUpt:myUpt||"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+    const ok = await createLoan({ ...loanForm, equipmentId:loanForm.equipmentIds?.[0] || loanForm.equipmentId });
+    if (ok) setLoanForm({equipmentIds:[], equipmentId:"", borrowerType:"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  }
+
+  async function openEvidence(path) {
+    if (!path || !supabase) return;
+    const { data, error } = await supabase.storage.from("heavy-equipment-evidence").createSignedUrl(path, 300);
+    if (error || !data?.signedUrl) { showToast?.("Bukti foto tidak dapat dibuka.", "error"); return; }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
   // Kondisi overview data
@@ -335,8 +355,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     <div className="operations-page heavy-equipment-page">
       <OperationsHero
         eyebrow="Fleet Operations"
-        title="Alat Berat & Peminjaman"
-        description="Pantau kesiapan alat, perpindahan antar-UPT, dan keputusan peminjaman dalam satu workspace."
+        title="Alat Berat & Alat Bantu"
+        description="Catat alat kerja, peminjaman, bukti serah-terima, dan pengembalian per UPT."
         scope={uptFilterControllable ? (myUptSelected||"Semua UPT") : `UPT ${myUpt||"Surabaya"}`}
         metrics={[
           {label:"Total alat",value:scopedEquipment.length},
@@ -371,7 +391,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
 
       {viewMode==="armada" && (<>
       {/* ── SECTION: Daftar Alat Berat ── */}
-      <div className="operations-section-heading"><div><span>Fleet Registry</span><h2>Daftar Alat Berat</h2></div><div style={{display:"flex",alignItems:"center",gap:8}}><small>{filteredEquipment.length} alat sesuai filter</small>{canEditAll&&<button style={sty.btn("primary","sm")} onClick={()=>{setAddForm(blankEquipment());setAddingEquipment(true);}}>+ Tambah Alat Berat</button>}</div></div>
+      <div className="operations-section-heading"><div><span>Fleet Registry</span><h2>Daftar Alat Berat &amp; Alat Bantu</h2></div><div style={{display:"flex",alignItems:"center",gap:8}}><small>{filteredEquipment.length} alat sesuai filter</small>{canEditAll&&<button style={sty.btn("primary","sm")} onClick={()=>{setAddForm(blankEquipment());setAddingEquipment(true);}}>+ Tambah Alat</button>}</div></div>
       {/* Kategori (kiri, wrap) + dropdown kondisi ringkas (kanan) — satu baris, hilangkan dualisme chip. */}
       <div className="equipment-filter-layout" style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap",marginBottom:10}}>
         <div className="operations-category-filters heavy-category-strip" role="tablist" aria-label="Kategori alat berat" style={{flex:1,minWidth:0,marginBottom:0}}>
@@ -465,31 +485,40 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             role non-MSB (Surabaya selalu peminjam di form ini, lihat borrowableEquipment). */}
         {canRequestLoan && (
           <div className="operations-form-panel" style={sty.card}>
-            <div style={{fontSize:13,fontWeight:900,marginBottom:10}}>Ajukan Peminjaman</div>
+            <div style={{fontSize:13,fontWeight:900,marginBottom:10}}>Catat Peminjaman</div>
             <div style={{marginBottom:8}}>
-              <label style={sty.label}>Alat {!isMSB && <span style={{fontWeight:400,color:C.muted}}>(di luar UPT {myUpt||"Surabaya"})</span>}</label>
-              <select style={sty.select} value={loanForm.equipmentId} onChange={e=>setLoanForm(f=>({...f,equipmentId:e.target.value,requesterUpt:canChooseRequesterUpt?"":(myUpt||"")}))}>
-                <option value="">-- Pilih alat --</option>
-                {borrowableEquipment.map(e=><option key={e.id} value={e.id}>{e.upt} - {e.nama} ({e.kapasitas||"-"})</option>)}
+              <label style={sty.label}>Alat milik UPT {myUpt||"-"}</label>
+              <div className="equipment-batch-picker" role="group" aria-label="Pilih alat yang dipinjam">
+                {borrowableEquipment.map(e=>{
+                  const checked=(loanForm.equipmentIds||[]).includes(e.id);
+                  return <label key={e.id} className={checked?"is-selected":""}><input type="checkbox" checked={checked} onChange={()=>setLoanForm(f=>{const ids=f.equipmentIds||[];const equipmentIds=ids.includes(e.id)?ids.filter(id=>id!==e.id):[...ids,e.id];return {...f,equipmentIds,equipmentId:equipmentIds[0]||""};})}/><span><b>{e.nama}</b><small>{e.nomorSeri||e.id} · {e.lokasi||"Lokasi belum diisi"}</small></span></label>;
+                })}
+                {!borrowableEquipment.length && <div style={{padding:10,fontSize:12,color:C.muted}}>Tidak ada alat tersedia.</div>}
+              </div>
+              <div style={{fontSize:12,color:C.muted,marginTop:5}}>{loanForm.equipmentIds.length} alat dipilih. Pemilik: <b>{selectedEquipment?.upt||myUpt||"-"}</b></div>
+            </div>
+            <div style={{marginBottom:8}}>
+              <label style={sty.label}>Jenis Peminjam</label>
+              <select style={sty.select} value={loanForm.borrowerType} onChange={e=>setLoanForm(f=>({...f,borrowerType:e.target.value,requesterUpt:"",requesterUptId:""}))}>
+                <option value="UPT">UPT</option><option value="ULTG">ULTG</option><option value="GI">GI</option><option value="VENDOR">Vendor</option><option value="UNIT_LAIN">Unit lain</option>
               </select>
-              {selectedEquipment&&<div style={{fontSize:12,color:C.muted,marginTop:3}}>Pemilik: <b>{selectedEquipment.upt}</b></div>}
             </div>
-            <div style={{marginBottom:8}}>
+            {loanForm.borrowerType === "UPT" ? <div style={{marginBottom:8}}>
               <label style={sty.label}>UPT Peminjam</label>
-              {canChooseRequesterUpt ? (
-                <select style={sty.select} value={loanForm.requesterUpt} onChange={e=>setLoanForm(f=>({...f,requesterUpt:e.target.value}))}>
-                  <option value="">-- Pilih UPT --</option>
-                  {requesterOptions.map(u=><option key={u} value={u}>{u}</option>)}
-                </select>
-              ) : (
-                <div style={{...sty.input,background:"#f3f4f6",color:C.muted,display:"flex",alignItems:"center"}}>UPT {myUpt||"Surabaya"}</div>
-              )}
-            </div>
+              {canChooseRequesterUpt ? <select style={sty.select} value={loanForm.requesterUpt} onChange={e=>{const u=uptList.find(x=>x.nama?.replace(/^UPT\s+/i,"")===e.target.value);setLoanForm(f=>({...f,requesterUpt:e.target.value,requesterUptId:u?.id||""}));}}><option value="">-- Pilih UPT --</option>{requesterOptions.map(u=><option key={u} value={u}>{u}</option>)}</select> : <div style={{...sty.input,background:"#f3f4f6",color:C.muted,display:"flex",alignItems:"center"}}>UPT {myUpt||"Surabaya"}</div>}
+            </div> : <>
+              <div style={{marginBottom:8}}><label style={sty.label}>Nama organisasi / unit</label><input style={sty.input} value={loanForm.borrowerName} onChange={e=>setLoanForm(f=>({...f,borrowerName:e.target.value}))}/></div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}><label style={sty.label}>PIC<input style={sty.input} value={loanForm.borrowerPic} onChange={e=>setLoanForm(f=>({...f,borrowerPic:e.target.value}))}/></label><label style={sty.label}>Kontak<input style={sty.input} value={loanForm.borrowerContact} onChange={e=>setLoanForm(f=>({...f,borrowerContact:e.target.value}))}/></label></div>
+            </>}
             <div style={{marginBottom:8}}><label style={sty.label}>Nama Pekerjaan</label><input style={sty.input} value={loanForm.namaPekerjaan} onChange={e=>setLoanForm(f=>({...f,namaPekerjaan:e.target.value}))} placeholder="Contoh: Penggantian PMT Bay Trafo 1"/></div>
             <div className="equipment-loan-dates" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}><div><label style={sty.label}>Tgl Ambil</label><input style={sty.input} type="date" value={loanForm.tanggalAmbil} onChange={e=>setLoanForm(f=>({...f,tanggalAmbil:e.target.value}))}/></div><div><label style={sty.label}>Tgl Kembali</label><input style={sty.input} type="date" value={loanForm.tanggalKembali} onChange={e=>setLoanForm(f=>({...f,tanggalKembali:e.target.value}))}/></div></div>
             <div style={{marginBottom:8}}><label style={sty.label}>Keperluan</label><textarea style={{...sty.input,minHeight:60}} value={loanForm.keperluan} onChange={e=>setLoanForm(f=>({...f,keperluan:e.target.value}))}/></div>
             <div style={{marginBottom:10}}><label style={sty.label}>Catatan</label><input style={sty.input} value={loanForm.catatan} onChange={e=>setLoanForm(f=>({...f,catatan:e.target.value}))}/></div>
-            <button style={{...sty.btn("primary"),width:"100%"}} onClick={submitLoan}>Ajukan Peminjaman</button>
+            <label style={{...sty.label,marginBottom:10}}>Foto serah-terima <span style={{color:C.red}}>*</span>
+              <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" style={{...sty.input,padding:6}} onChange={e=>{handleImg(e,img=>setLoanForm(f=>({...f,pickupEvidence:img})),err=>showToast?.(`Gagal memproses foto: ${err?.message||"file tidak dapat dibaca"}.`,"error"));e.target.value="";}}/>
+              {loanForm.pickupEvidence && <img src={loanForm.pickupEvidence} alt="Bukti serah-terima" style={{width:"100%",height:90,objectFit:"cover",marginTop:6,borderRadius:8}}/>}
+            </label>
+            <button style={{...sty.btn("primary"),width:"100%"}} onClick={submitLoan}>Simpan Peminjaman</button>
           </div>
         )}
 
@@ -524,6 +553,9 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             {unifiedLoans.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada data peminjaman.</div>}
             {unifiedLoans.map(loan=>{
               const eq=equipmentList.find(e=>e.id===loan.equipmentId);
+              const batchLoans=loan.loanBatchId ? normalizedLoans.filter(item=>item.loanBatchId===loan.loanBatchId) : [loan];
+              const batchEquipment=batchLoans.map(item=>equipmentList.find(e=>e.id===item.equipmentId)).filter(Boolean);
+              const isBatchLead=batchLoans[0]?.id===loan.id;
               const isActive=["PENDING_OWNER_ASMAN","TERJADWAL","DIPINJAM","OVERDUE"].includes(loan.runtimeStatus);
               const hariDiff=Math.round((new Date(loan.tanggalKembali)-new Date(loan.tanggalAmbil))/86400000)+1;
               const durasiLabel=Number.isFinite(hariDiff)?`${loan.tanggalAmbil} - ${loan.tanggalKembali} (${hariDiff} hari)`:"-";
@@ -544,9 +576,15 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                     <div><span className="equipment-fact-label">Pemohon</span><span className="equipment-fact-value">{pemohon?.name||"?"}</span></div>
                     <div><span className="equipment-fact-label">Diajukan</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{fmtDateOnly(loan.requestedAt)}</span></div>
                     <div><span className="equipment-fact-label">Keperluan</span><span className="equipment-fact-value" style={{WebkitLineClamp:2,WebkitBoxOrient:"vertical",display:"-webkit-box",overflow:"hidden"}}>{loan.keperluan||"-"}</span></div>
+                    {loan.loanBatchId && <div><span className="equipment-fact-label">Batch</span><span className="equipment-fact-value">{loan.loanBatchId}</span></div>}
+                    {loan.borrowerPic && <div><span className="equipment-fact-label">PIC / Kontak</span><span className="equipment-fact-value">{loan.borrowerPic}{loan.borrowerContact?` · ${loan.borrowerContact}`:""}</span></div>}
                     {loan.approvedBy && <div><span className="equipment-fact-label">Disetujui</span><span className="equipment-fact-value">{penyetuju?.name||"-"} · {fmtDateOnly(loan.approvedAt)}</span></div>}
                     {loan.catatanApproval && <div><span className="equipment-fact-label">Catatan approval</span><span className="equipment-fact-value">{loan.catatanApproval}</span></div>}
                   </div>
+                  {(loan.pickupEvidencePath || loan.returnEvidencePath) && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                    {loan.pickupEvidencePath && <button style={sty.btn("ghost","sm")} onClick={()=>openEvidence(loan.pickupEvidencePath)}>Lihat foto keluar</button>}
+                    {loan.returnEvidencePath && <button style={sty.btn("ghost","sm")} onClick={()=>openEvidence(loan.returnEvidencePath)}>Lihat foto kembali</button>}
+                  </div>}
                   {isActive&&isPendingHeavyEquipmentLoan(loan)&&canApproveHeavyEquipmentLoan(currentUser,loan,uptList)&&(
                     <div className="equipment-loan-card__approval" style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                       {rejectingId===loan.id
@@ -557,8 +595,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                   {isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)&&(
                     <button aria-label="Tandai Alat Kembali" style={{...sty.btn("ghost","sm"),marginTop:6}} onClick={()=>setReturningLoan(loan)}>Tandai Alat Kembali</button>
                   )}
-                  {["TERJADWAL","DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
-                    <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, eq, users, showToast)}>Cetak dokumen</button>
+                  {isBatchLead && ["TERJADWAL","DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
+                    <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, batchEquipment.length?batchEquipment:eq, users, showToast)}>Cetak dokumen batch</button>
                   )}
                 </div>
               );
@@ -621,7 +659,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         const loan = returningLoan;
         const eq = equipmentList.find(e=>e.id===loan.equipmentId);
         const allReturnChecked = LOAN_RETURN_CHECKS.every(([key])=>returnChecked[key]);
-        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); };
+        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); setReturnEvidence(""); };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
             <div role="dialog" aria-label="Konfirmasi Alat Kembali" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -641,9 +679,13 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                   </label>
                 ))}
               </div>
+              <label style={{...sty.label,marginBottom:14}}>Foto pengembalian <span style={{color:C.red}}>*</span>
+                <input type="file" accept="image/jpeg,image/png,image/webp" capture="environment" style={{...sty.input,padding:6}} onChange={e=>{handleImg(e,img=>setReturnEvidence(img),err=>showToast?.(`Gagal memproses foto: ${err?.message||"file tidak dapat dibaca"}.`,"error"));e.target.value="";}}/>
+                {returnEvidence && <img src={returnEvidence} alt="Bukti pengembalian" style={{width:"100%",height:90,objectFit:"cover",marginTop:6,borderRadius:8}}/>}
+              </label>
               <div style={{display:"flex",gap:10}}>
                 <button className="approval-btn--cancel" style={{flex:1}} onClick={closeReturn}>Batal</button>
-                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked || returnSubmitting} onClick={async()=>{setReturnSubmitting(true);try { if (await completeLoan(loan.id)) closeReturn(); } finally { setReturnSubmitting(false); }}}>{returnSubmitting?"Menyimpan…":"Tandai Sudah Kembali"}</button>
+                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked || !returnEvidence || returnSubmitting} onClick={async()=>{setReturnSubmitting(true);try { if (await completeLoan(loan.id,{returnEvidence})) closeReturn(); } finally { setReturnSubmitting(false); }}}>{returnSubmitting?"Menyimpan…":"Tandai Sudah Kembali"}</button>
               </div>
             </div>
           </div>
@@ -659,7 +701,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             <div role="dialog" aria-label="Edit Alat Berat" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
               <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{eq.nama} - {eq.upt}</div>
-              {canManage && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty} showToast={showToast}/>}
+              {canManage && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty} showToast={showToast} lockedUpt gudangOptions={ownedGudang}/>}
               <EquipmentPhotoInput foto={editForm.foto} nama={eq.nama} handleImg={handleImg} setForm={setEditForm} sty={sty} C={C} showToast={showToast}/>
               <div style={{marginBottom:16}}>
                 <label style={sty.label}>Status Alat</label>
@@ -680,7 +722,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       {addingEquipment && <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
         <div role="dialog" aria-label="Tambah Alat Berat" style={{...sty.card,width:520,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
           <h3 style={{fontSize:15,fontWeight:800,marginBottom:12}}>Tambah Alat Berat</h3>
-          <EquipmentFields form={addForm} setForm={setAddForm} sty={sty} showToast={showToast}/>
+          <EquipmentFields form={addForm} setForm={setAddForm} sty={sty} showToast={showToast} lockedUpt gudangOptions={ownedGudang}/>
           <EquipmentPhotoInput foto={addForm.foto} nama={addForm.nama||"Alat berat baru"} handleImg={handleImg} setForm={setAddForm} sty={sty} C={C} showToast={showToast}/>
           <label style={{...sty.label,marginTop:10}}>Status Alat
             <select style={sty.select} value={addForm.statusAlat} onChange={e=>setAddForm(form=>({...form,statusAlat:e.target.value}))}>{STATUS_ALAT_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}</select>

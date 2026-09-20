@@ -17,10 +17,10 @@ const uptList = [
 
 const ownerLoan = { id: "LOAN-1", equipmentId: "HE-1", ownerUpt: "Surabaya", requesterUpt: "Gresik", status: "DIPINJAM" };
 
-test("owner return gate accepts only ADMIN/TL at the equipment owner UPT", () => {
-  assert.equal(canCompleteHeavyEquipmentLoan({ role: "ADMIN", uptId: "UPT-SBY" }, ownerLoan, uptList), true);
-  assert.equal(canCompleteHeavyEquipmentLoan({ role: "ADMIN", uptId: "UPT-SBY" }, { ...ownerLoan, status: "OVERDUE" }, uptList), true);
+test("owner return gate accepts only TL at the equipment owner UPT", () => {
+  assert.equal(canCompleteHeavyEquipmentLoan({ role: "ADMIN", uptId: "UPT-SBY" }, ownerLoan, uptList), false);
   assert.equal(canCompleteHeavyEquipmentLoan({ role: "TL", upt: "UPT Surabaya" }, ownerLoan, uptList), true);
+  assert.equal(canCompleteHeavyEquipmentLoan({ role: "TL", uptId: "UPT-SBY" }, { ...ownerLoan, ownerUptId: "UPT-SBY", status: "OVERDUE" }, uptList), true);
   assert.equal(canCompleteHeavyEquipmentLoan({ role: "ASMAN", uptId: "UPT-SBY" }, ownerLoan, uptList), false);
   assert.equal(canCompleteHeavyEquipmentLoan({ role: "ADMIN", uptId: "UPT-GSK" }, ownerLoan, uptList), false);
   assert.equal(canCompleteHeavyEquipmentLoan({ role: "SUPERADMIN", uptId: "UPT-SBY" }, ownerLoan, uptList), false);
@@ -43,9 +43,9 @@ test("UPT names normalize the legacy prefix and case", () => {
 test("return hook is server-first and exposes an atomic RPC", () => {
   const hook = fs.readFileSync(path.join(root, "src/hooks/useHeavyEquipment.js"), "utf8");
   const returnBlock = hook.slice(hook.indexOf("async function completeHeavyEquipmentLoan"));
-  assert.match(hook, /rpc\("complete_heavy_equipment_loan"/);
-  assert.match(returnBlock, /setHeavyEquipmentLoans\(nextLoans\)/);
-  assert.match(returnBlock, /if \(error\s*\|\|/);
+  assert.match(hook, /rpc\("complete_heavy_equipment_batch"/);
+  assert.match(returnBlock, /setHeavyEquipmentLoans\(prev/);
+  assert.match(returnBlock, /returnEvidence/);
   assert.match(returnBlock, /catch \(rpcError\)/);
   assert.match(returnBlock, /return false/);
   assert.doesNotMatch(returnBlock, /saveToCloud/);

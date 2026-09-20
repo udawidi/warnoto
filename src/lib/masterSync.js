@@ -117,9 +117,19 @@ export async function loadMasterTable(table) {
     try { data = await fetchAll(); }
     catch (error) { console.error(`loadMasterTable(${table}): ${error.message}`, error); return null; }
   }
-  return data.map(row => (table === "stock_opname" || table === "stock_count")
-    ? mapStockScopeRow(row)
-    : ({ ...row.data, id: row.id }));
+  return data.map(row => {
+    if (table === "stock_opname" || table === "stock_count") return mapStockScopeRow(row);
+    const item = { ...row.data, id: row.id };
+    if (table === "heavy_equipment") {
+      item.uptId = row.upt_id || item.uptId || item.upt_id || null;
+      item.isCrossUptBorrowable = row.is_cross_upt_borrowable ?? item.isCrossUptBorrowable ?? item.is_cross_upt_borrowable ?? false;
+    }
+    if (table === "heavy_equipment_loans") {
+      item.ownerUptId = row.owner_upt_id || item.ownerUptId || item.owner_upt_id || null;
+      item.requesterUptId = row.requester_upt_id || item.requesterUptId || item.requester_upt_id || null;
+    }
+    return item;
+  });
 }
 
 // extraCols(item) => kolom tambahan per baris (FK/status) di luar id & data, opsional

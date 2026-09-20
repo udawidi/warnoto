@@ -209,7 +209,7 @@ export async function uploadPhotoToStorage(dataUrl, bucket, path) {
   const blob = dataUrlToBlob(dataUrl);
   const { error } = await supabase.storage.from(bucket).upload(path, blob, { upsert: true, contentType: blob.type });
   if (error) throw error;
-  return bucket === "tug-docs-private"
+  return ["tug-docs-private", "heavy-equipment-evidence"].includes(bucket)
     ? `priv:${path}`                                                     // render via signed URL
     : supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
 }

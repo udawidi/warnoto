@@ -8,7 +8,7 @@ import { katalogSapLabel } from "./sap.js";
 import { canonicalKatalogCode } from "./normalizeKatalogCode.js";
 import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
-import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
+import { getHeavyEquipmentBorrowerLabel, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
 import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel, itemCounted } from "./sap.js";
 import { resolveStockPhotoUrl } from "./stockCache.js";
 import { childOpnameMatches } from "./stockOpnameFlow.js";
@@ -911,34 +911,37 @@ export function downloadTUG5HTML(txn, katalogList, uitList, users, showToast, ul
 // ─── PEMINJAMAN ALAT BERAT DOCUMENT BUILDER ─────────────────────────────
 export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+  const equipmentRows = Array.isArray(equipment) ? equipment : [equipment];
   const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
   const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
+  const borrowerLabel = loan.borrowerType && loan.borrowerType !== "UPT" ? getHeavyEquipmentBorrowerLabel(loan) : `UPT ${requesterUpt||"-"}`;
   const pemohon = (users||[]).find(u=>u.id===loan.requestedBy) || {};
   const asmanUser = (users||[]).find(u=>u.id===loan.approvedBy) || {};
   const isApproved = !!loan.approvedBy;
   const tanggalApprove = loan.approvedAt ? fmtDate(loan.approvedAt) : "";
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Peminjaman Alat Berat ${esc(loan.id)}</title>
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Peminjaman Alat ${esc(loan.id)}</title>
 <style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:14px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:14px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:4px 6px;font-size:10.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.sig-row{display:flex;justify-content:space-around;margin-top:30px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:50px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto}}</style></head><body>
 <div class="print-bar">📄 Dokumen Peminjaman Alat Berat siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
 <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
   <div><b>PT PLN (PERSERO)</b><br/>UPT ${esc(ownerUpt||"-")}</div>
-  <div style="font-weight:800;font-size:13px">SURAT PEMINJAMAN<br/>ALAT BERAT</div>
+  <div style="font-weight:800;font-size:13px">SURAT PEMINJAMAN<br/>ALAT KERJA</div>
 </div>
-<div class="doctitle"><h2>BERITA ACARA PEMINJAMAN ALAT BERAT / ANGKAT-ANGKUT</h2><div class="docno">${esc(loan.id)}</div></div>
+<div class="doctitle"><h2>BERITA ACARA PEMINJAMAN ALAT BERAT / ALAT BANTU</h2><div class="docno">${esc(loan.id)}</div></div>
 <table class="meta">
-  <tr><td class="label">Nama Alat</td><td class="colon">:</td><td>${esc(equipment?.nama||"-")} (${esc(equipment?.merkType||"-")}, ${esc(equipment?.kapasitas||"-")})</td></tr>
-  <tr><td class="label">Nomor Seri / Aset</td><td class="colon">:</td><td>${esc(equipment?.nomorSeri||loan.equipmentId||"-")}</td></tr>
-  <tr><td class="label">UPT Pemilik Alat</td><td class="colon">:</td><td>UPT ${esc(ownerUpt||"-")} — ${esc(equipment?.lokasi||"-")}</td></tr>
-  <tr><td class="label">UPT Peminjam</td><td class="colon">:</td><td>UPT ${esc(requesterUpt||"-")}</td></tr>
+  <tr><td class="label">Daftar Alat</td><td class="colon">:</td><td><ul>${equipmentRows.map(row=>`<li>${esc(row?.nama||row?.id||loan.equipmentId||"-")} — ${esc(row?.merkType||"-")}, ${esc(row?.kapasitas||"-")} — Seri ${esc(row?.nomorSeri||"-")} — ${esc(row?.lokasi||"-")}</li>`).join("")}</ul></td></tr>
+  <tr><td class="label">Jumlah Unit</td><td class="colon">:</td><td>${equipmentRows.length}</td></tr>
+  <tr><td class="label">UPT Pemilik Alat</td><td class="colon">:</td><td>UPT ${esc(ownerUpt||"-")} — ${esc(equipmentRows[0]?.lokasi||"-")}</td></tr>
+  <tr><td class="label">Peminjam</td><td class="colon">:</td><td>${esc(borrowerLabel)}</td></tr>
+  <tr><td class="label">PIC / Kontak</td><td class="colon">:</td><td>${esc(loan.borrowerPic||"-")} / ${esc(loan.borrowerContact||"-")}</td></tr>
   <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${esc(loan.namaPekerjaan||"-")}</td></tr>
   <tr><td class="label">Keperluan</td><td class="colon">:</td><td>${esc(loan.keperluan||"-")}</td></tr>
   <tr><td class="label">Tanggal Peminjaman</td><td class="colon">:</td><td>${esc(loan.tanggalAmbil||"-")} s/d ${esc(loan.tanggalKembali||"-")}</td></tr>
   <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${esc(pemohon.name||"-")}${loan.catatan?` • Catatan: ${esc(loan.catatan)}`:""}</td></tr>
 </table>
-<p style="font-size:10px;margin-bottom:20px">Dokumen ini menjadi bukti persetujuan peminjaman alat berat/angkat-angkut antar UPT sebagaimana rincian di atas. Alat wajib dikembalikan dalam kondisi baik selambat-lambatnya pada tanggal yang tercantum.</p>
+<p style="font-size:10px;margin-bottom:20px">Dokumen ini menjadi bukti pencatatan peminjaman alat sebagaimana rincian di atas. Alat wajib dikembalikan dalam kondisi baik selambat-lambatnya pada tanggal yang tercantum.</p>
 <div class="sig-row">
   <div class="sig-col">
     <b>ASMAN KONSTRUKSI<br/>UPT ${esc(ownerUpt||"-")} (Pemilik Alat)</b>

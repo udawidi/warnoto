@@ -68,8 +68,8 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
     <div className="dashboard-heavy-summary" style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${overdueLoans.length?C.red:C.accent}`,cursor:"pointer"}} onClick={()=>setTab("heavyEquipment")}>
       <div className="dashboard-heavy-summary__heading">
         <div>
-          <div style={{fontSize:13,fontWeight:900}}><Tractor weight="fill" size={17} style={{verticalAlign:"-0.15em",marginRight:5}}/>Ringkasan Alat Berat</div>
-          <div style={{fontSize:12,color:C.muted}}>Scope: <b>{scopeLabel}</b> — status peminjaman, ketersediaan &amp; kondisi alat.</div>
+          <div style={{fontSize:13,fontWeight:900}}><Tractor weight="fill" size={17} style={{verticalAlign:"-0.15em",marginRight:5}}/>Ringkasan Alat Berat &amp; Alat Bantu</div>
+          <div style={{fontSize:12,color:C.muted}}>Scope: <b>{scopeLabel}</b> — status peminjaman, bukti serah-terima, ketersediaan &amp; kondisi alat.</div>
         </div>
         <button style={sty.btn("ghost","sm")} onClick={(e)=>{e.stopPropagation(); setTab("heavyEquipment");}}>Buka Menu</button>
       </div>

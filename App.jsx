@@ -1127,7 +1127,7 @@ export default function PLNWarehouse() {
         CLOUD.set("pln_heavy_equipment_v1", heFresh); // refresh cache dgn data terbaru dari server
       } else {
         setHeavyEquipmentList(heLocal);
-        if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null }));
+        if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable }));
       }
       if (chelRemote === null) {
         // Fetch GAGAL — tampilkan lokal untuk UX, JANGAN push ke server.
@@ -1137,13 +1137,10 @@ export default function PLNWarehouse() {
         setHeavyEquipmentLoans(chelRemote);
         CLOUD.set("pln_heavy_equipment_loans_v1", chelRemote); // refresh cache dgn data terbaru dari server
       } else {
-        setHeavyEquipmentLoans(helLocal);
-        if (helLocal.length > 0) syncMasterTable("heavy_equipment_loans", helLocal, l => ({
-          equipment_id: l.equipmentId || null,
-          status: l.status || null,
-          owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
-          requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
-        }));
+        // Server adalah sumber tunggal loan. Cache lama tidak boleh di-seed lewat
+        // direct table write karena lifecycle baru wajib melewati RPC atomik.
+        setHeavyEquipmentLoans([]);
+        CLOUD.set("pln_heavy_equipment_loans_v1", []);
       }
       const attbLocal = cattb || [];
       if (cattbRemote === null) {
@@ -1613,22 +1610,9 @@ export default function PLNWarehouse() {
     if (overrides.heavyEquipmentList !== undefined) {
       const heHint = hints.heavyEquipmentChangedRows;
       syncTasks.push({ label: "Alat Berat", promise: (Array.isArray(heHint) && heHint.length > 0)
-        ? syncMasterTableRows("heavy_equipment", heHint, e => ({ upt: e.upt || null }))
-        : syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null })) });
+        ? syncMasterTableRows("heavy_equipment", heHint, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable }))
+        : syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable })) });
     }
-    if (overrides.heavyEquipmentLoans !== undefined) syncTasks.push({ label: "Peminjaman Alat Berat", promise: (Array.isArray(hints.heavyEquipmentLoansChangedRows) && hints.heavyEquipmentLoansChangedRows.length > 0)
-      ? syncMasterTableRows("heavy_equipment_loans", hints.heavyEquipmentLoansChangedRows, l => ({
-        equipment_id: l.equipmentId || null,
-        status: l.status || null,
-        owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
-        requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
-      }))
-      : syncMasterTable("heavy_equipment_loans", hel, l => ({
-      equipment_id: l.equipmentId || null,
-      status: l.status || null,
-      owner_upt: getHeavyEquipmentLoanOwnerUpt(l) || null,
-      requester_upt: getHeavyEquipmentLoanRequesterUpt(l) || null,
-    })) });
     // ATTB (pipeline penghapusan aset material) — auto-backup ke Supabase tiap kali
     // berubah, pola sama seperti heavy_equipment (lihat schema.sql section 23).
     if (overrides.attbList !== undefined) syncTasks.push({ label: "ATTB", promise: syncMasterTable("attb_list", attb, e => ({ upt: e.upt || null, stage: e.stage || null })) });
@@ -4619,6 +4603,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             loans={heavyEquipmentLoans}
             currentUser={currentUser}
             uptList={uptList}
+            gudangList={gudangList}
             users={users}
             sty={sty}
             C={C}

@@ -3,8 +3,8 @@ const path = require("node:path");
 const { test, expect, CLOUD_FIXTURES } = require("./fixtures");
 const { openApp, openRoute } = require("./support/responsive");
 
-const ADMIN = { id:"e2e-admin", name:"E2E Admin", username:"admin-e2e", role:"ADMIN", jabatan:"Admin Gudang", avatar:"AD", upt:"Surabaya", gudangIds:null };
-const TL = { id:"e2e-tl", name:"E2E TL", username:"tl-e2e", role:"TL", jabatan:"Team Leader", avatar:"TL", upt:"Surabaya", gudangIds:null };
+const ADMIN = { id:"e2e-admin", name:"E2E Admin", username:"admin-e2e", role:"ADMIN", jabatan:"Admin Gudang", avatar:"AD", upt:"Surabaya", uptId:"UPT-SBY", gudangIds:null };
+const TL = { id:"e2e-tl", name:"E2E TL", username:"tl-e2e", role:"TL", jabatan:"Team Leader", avatar:"TL", upt:"Surabaya", uptId:"UPT-SBY", gudangIds:null };
 const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XwG6WQAAAABJRU5ErkJggg==", "base64");
 
 async function openFleetForE2E(page) {
@@ -15,19 +15,19 @@ async function openFleetForE2E(page) {
 
 test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
   test.describe("Admin", () => {
-    test.use({ actorProfile:ADMIN });
+    test.use({ actorProfile:TL });
 
     test("dapat membuka form tambah dan mengisi seluruh field operasional", async ({ isolatedPage:page }) => {
       await openFleetForE2E(page);
-      await page.getByRole("button", { name:"+ Tambah Alat Berat", exact:true }).click();
+      await page.getByRole("button", { name:"+ Tambah Alat", exact:true }).click();
       const dialog = page.getByRole("dialog", { name:"Tambah Alat Berat" });
       await expect(dialog).toBeVisible();
-      for (const label of ["UPT","Lokasi","Nama","Jenis","Merk/Type","Kapasitas","No. Seri","Tahun","Kondisi"]) {
+      for (const label of ["UPT","Nama","Jenis","Merk/Type","Kapasitas","No. Seri","Tahun","Kondisi"]) {
         await expect(dialog.getByLabel(label, { exact:true })).toBeVisible();
       }
+      await expect(dialog.getByRole("combobox", { name:"Gudang / lokasi" })).toBeVisible();
       await expect(dialog.locator('input[accept=".pdf,image/*"]')).toHaveCount(1);
-      await dialog.getByLabel("UPT", { exact:true }).fill("Surabaya");
-      await dialog.getByLabel("Lokasi", { exact:true }).fill("Gudang E2E");
+      await dialog.getByRole("combobox", { name:"Gudang / lokasi" }).selectOption("GDG-E2E-01");
       await dialog.getByLabel("Nama", { exact:true }).fill("Forklift Tambahan E2E");
       await dialog.getByLabel("Jenis", { exact:true }).fill("Angkat Angkut");
       await dialog.getByLabel("Merk/Type", { exact:true }).fill("TestLift");
@@ -92,33 +92,26 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
   });
 
   test.describe("TL", () => {
-    test.use({ actorProfile:TL });
+    test.use({ actorProfile:ADMIN });
 
     test("tidak melihat tombol tambah dan dapat membuka editor alat", async ({ isolatedPage:page }) => {
       await openFleetForE2E(page);
-      await expect(page.getByRole("button", { name:"+ Tambah Alat Berat", exact:true })).toHaveCount(0);
-      await page.getByRole("button", { name:"Edit data alat", exact:true }).first().click();
-      const dialog = page.getByRole("dialog", { name:"Edit Alat Berat" });
-      await expect(dialog).toBeVisible();
-      await expect(dialog.getByLabel("UPT", { exact:true })).toBeVisible();
-      await expect(dialog.getByLabel("Nama", { exact:true })).toBeVisible();
-      await dialog.locator("select").last().selectOption("MAINTENANCE");
-      await expect(dialog.locator("select").last()).toHaveValue("MAINTENANCE");
+      await expect(page.getByRole("button", { name:"+ Tambah Alat", exact:true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name:"Edit data alat", exact:true })).toHaveCount(0);
     });
   });
 
   test.describe("gagal sinkron", () => {
-    test.use({ actorProfile:ADMIN });
+    test.use({ actorProfile:TL });
 
     test("modal tambah tetap terbuka agar input tidak hilang", async ({ isolatedPage:page }) => {
       // Tidak memasang warnoto_demo: fixture memutus Supabase, sehingga upsert
       // dengan sengaja gagal tanpa ada koneksi atau data self-host yang disentuh.
       await openApp(page);
       await openRoute(page, { tab:"heavyEquipment", menuPath:["Alat Berat"], readySelector:".heavy-equipment-page" });
-      await page.getByRole("button", { name:"+ Tambah Alat Berat", exact:true }).click();
+      await page.getByRole("button", { name:"+ Tambah Alat", exact:true }).click();
       const dialog = page.getByRole("dialog", { name:"Tambah Alat Berat" });
-      await dialog.getByLabel("UPT", { exact:true }).fill("Surabaya");
-      await dialog.getByLabel("Lokasi", { exact:true }).fill("Gudang E2E gagal sync");
+      await dialog.getByRole("combobox", { name:"Gudang / lokasi" }).selectOption("GDG-E2E-01");
       await dialog.getByLabel("Nama", { exact:true }).fill("Forklift Jangan Hilang");
       await dialog.getByRole("button", { name:/Simpan/ }).click();
       await expect(dialog).toBeVisible();
@@ -132,7 +125,9 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
     const app = fs.readFileSync(path.resolve(__dirname, "../..", "App.jsx"), "utf8");
     const hook = fs.readFileSync(path.resolve(__dirname, "../..", "src/hooks/useHeavyEquipment.js"), "utf8");
     const sync = fs.readFileSync(path.resolve(__dirname, "../..", "src/lib/masterSync.js"), "utf8");
-    expect(app).toContain('syncMasterTableRows("heavy_equipment", heHint, e => ({ upt: e.upt || null }))');
+    expect(app).toContain('syncMasterTableRows("heavy_equipment", heHint, e => ({ upt: e.upt || null, upt_id: e.uptId || null');
+    expect(hook).toContain('checkout_heavy_equipment_batch');
+    expect(hook).toContain('heavy-equipment-evidence');
     expect(hook).toContain("{heavyEquipmentChangedRows:[item]}");
     expect(hook).toContain("{heavyEquipmentChangedRows:[next.find(eq=>eq.id===equipmentId)]}");
     expect(hook).toContain('if (_isDataUrl(item.foto))');
@@ -161,6 +156,7 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
       await expect(dialog).toBeVisible();
       await dialog.getByRole("checkbox").first().check();
       await dialog.getByRole("checkbox").last().check();
+      await dialog.locator('input[type="file"]').setInputFiles({ name:"return.png", mimeType:"image/png", buffer:ONE_PIXEL_PNG });
       await dialog.getByRole("button", { name:"Tandai Sudah Kembali" }).click();
       await expect(page.getByText("Server pengembalian alat belum tersedia.")).toBeVisible();
       await expect(dialog).toBeVisible();
@@ -173,6 +169,22 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
         await openFleetForE2E(page);
         await expect(page.getByRole("button", { name:"Tandai Alat Kembali", exact:true })).toHaveCount(0);
       });
+    });
+  });
+
+  test.describe("mobile 360", () => {
+    test.use({ actorProfile:TL });
+    test("registry dan form peminjaman tidak overflow horizontal", async ({ isolatedPage:page }) => {
+      await page.setViewportSize({ width:360, height:800 });
+      await openFleetForE2E(page);
+      await page.getByRole("tab", { name:/Peminjaman & Histori/ }).click();
+      await expect(page.locator(".equipment-loan-layout")).toBeVisible();
+      const layout = await page.locator(".heavy-equipment-page").evaluate(root => ({
+        overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+        columns:getComputedStyle(root.querySelector(".equipment-loan-layout")).gridTemplateColumns,
+      }));
+      expect(layout.overflow).toBeLessThanOrEqual(1);
+      expect(layout.columns.trim().split(/\s+/)).toHaveLength(1);
     });
   });
 });

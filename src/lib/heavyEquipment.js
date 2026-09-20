@@ -84,7 +84,18 @@ export function normalizeHeavyEquipmentRecord(eq) {
   if (statusAlat === "BUTUH_PERBAIKAN" || statusAlat === "BUTUH_PEREMAJAAN") statusAlat = "RUSAK";
   let availabilityStatus = eq.availabilityStatus;
   if (availabilityStatus === "MAINTENANCE") { statusAlat = "MAINTENANCE"; availabilityStatus = "TERSEDIA"; }
-  return { ...eq, statusAlat: statusAlat || "LAYAK", availabilityStatus: availabilityStatus || "TERSEDIA", kategori: eq.kategori || "", tracked: !!eq.tracked };
+  return {
+    ...eq,
+    // Typed scope is authoritative after migration. Keep the legacy name only
+    // as a display snapshot for old rows and printable documents.
+    uptId: eq.uptId || eq.upt_id || null,
+    assetType: eq.assetType || (String(eq.kategori || "").toLowerCase() === "pendukung" ? "ALAT_BANTU" : "ALAT_BERAT"),
+    isCrossUptBorrowable: eq.isCrossUptBorrowable ?? eq.is_cross_upt_borrowable ?? false,
+    statusAlat: statusAlat || "LAYAK",
+    availabilityStatus: availabilityStatus || "TERSEDIA",
+    kategori: eq.kategori || "",
+    tracked: !!eq.tracked,
+  };
 }
 
 export const DEFAULT_HEAVY_EQUIPMENT = HEAVY_EQUIPMENT_RAW.trim().split("\n").map(line => {
@@ -126,12 +137,45 @@ export function normalizeHeavyEquipmentUptName(value) {
   return stripUptPrefix(String(value || "").replace(/\s+/g, " ").trim()).toUpperCase();
 }
 
+export function getHeavyEquipmentUptId(item, uptList = []) {
+  if (item?.uptId || item?.upt_id) return item.uptId || item.upt_id;
+  const name = normalizeHeavyEquipmentUptName(item?.upt || item?.ownerUpt);
+  return uptList.find(u => normalizeHeavyEquipmentUptName(u?.nama || u?.name) === name)?.id || null;
+}
+
+export function getHeavyEquipmentLoanOwnerUptId(loan, uptList = []) {
+  return loan?.ownerUptId || loan?.owner_upt_id || getHeavyEquipmentUptId({ upt: getHeavyEquipmentLoanOwnerUpt(loan) }, uptList);
+}
+
+export function getHeavyEquipmentLoanRequesterUptId(loan, uptList = []) {
+  return loan?.requesterUptId || loan?.requester_upt_id || getHeavyEquipmentUptId({ upt: getHeavyEquipmentLoanRequesterUpt(loan) }, uptList);
+}
+
+export function getHeavyEquipmentBorrowerLabel(value) {
+  const borrower = value?.borrower || value;
+  const type = borrower?.borrowerType || borrower?.type;
+  const name = borrower?.borrowerName || borrower?.name;
+  if (type && name) return `${type}: ${name}`;
+  return name || type || getHeavyEquipmentLoanRequesterUpt(value) || "-";
+}
+
+export function isHeavyEquipmentVisibleToUpt(item, viewerUptId, isNational = false) {
+  if (isNational) return true;
+  const ownerId = item?.uptId || item?.upt_id;
+  return !ownerId || ownerId === viewerUptId || !!(item?.isCrossUptBorrowable ?? item?.is_cross_upt_borrowable);
+}
+
 export function canCompleteHeavyEquipmentLoan(user, loan, uptList) {
-  if (!user || !["ADMIN", "TL"].includes(user.role)) return false;
+  if (!user || user.role !== "TL") return false;
   if (!loan?.id || !loan?.equipmentId || !["DIPINJAM", "APPROVED", "OVERDUE"].includes(normalizeHeavyEquipmentLoanStatus(loan.status))) return false;
-  const ownerUpt = normalizeHeavyEquipmentUptName(getHeavyEquipmentLoanOwnerUpt(loan));
-  const userUpt = normalizeHeavyEquipmentUptName(getUserUptScope(user, uptList));
-  return !!ownerUpt && !!userUpt && ownerUpt === userUpt;
+  const ownerId = getHeavyEquipmentLoanOwnerUptId(loan, uptList);
+  // Legacy rows have no typed owner id. Keep a TL-only display-name gate
+  // for those rows only; migrated/new rows are TL-only and ID-first.
+  if (!(loan?.ownerUptId || loan?.owner_upt_id)) {
+    const ownerUpt = normalizeHeavyEquipmentUptName(getHeavyEquipmentLoanOwnerUpt(loan));
+    return !!ownerUpt && ownerUpt === normalizeHeavyEquipmentUptName(getUserUptScope(user, uptList));
+  }
+  return !!ownerId && !!user?.uptId && ownerId === user.uptId;
 }
 
 export function normalizeHeavyEquipmentLoanStatus(status) {
@@ -170,13 +214,14 @@ export function getHeavyEquipmentLoanRuntimeStatus(loan, now = Date.now()) {
 }
 
 export function canApproveHeavyEquipmentLoan(user, loan, uptList) {
-  if (user?.role === "SUPERADMIN") return true; // full-access, bypass scope UPT di bawah
   if (user?.role !== "ASMAN") return false;
   const userUpt = getUserUptScope(user, uptList);
   // Approval discope ke UNIT PEMILIK alat (ownerUpt): Asman UPT pemilik yang MENGIZINKAN alatnya
   // dipinjam UPT lain (keputusan user 2026-08-10 — sebelumnya keliru discope ke requesterUpt,
   // padahal pesan error, requiredApproverUpt, dan label PDF semua "pemilik alat"). WAJIB match
   // persis — ownerUpt kosong = tak ada yang boleh approve (deny-by-default), cegah celah data rusak.
+  const ownerId = getHeavyEquipmentLoanOwnerUptId(loan, uptList);
+  if (ownerId && user?.uptId) return ownerId === user.uptId;
   const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
   return !!ownerUpt && userUpt === ownerUpt;
 }

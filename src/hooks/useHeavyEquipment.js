@@ -1,14 +1,12 @@
 import { useState } from "react";
 import { uid } from "../lib/utils.js";
-import { hasRole } from "../lib/roles.js";
 import { logAudit } from "../lib/audit.js";
 import { compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "../lib/supabaseSync.js";
 import {
   normalizeHeavyEquipmentRecord,
-  getHeavyEquipmentLoanOwnerUpt,
-  getHeavyEquipmentLoanRequesterUpt,
-  getHeavyEquipmentLoanReturnDate,
-  getHeavyEquipmentLoanJobName,
+  getHeavyEquipmentUptId,
+  getHeavyEquipmentLoanOwnerUptId,
+  normalizeHeavyEquipmentUptName,
   isPendingHeavyEquipmentLoan,
   isActiveHeavyEquipmentLoan,
   getHeavyEquipmentLoanRuntimeStatus,
@@ -52,25 +50,28 @@ async function uploadSuratIzin(dataUrl, equipmentId, showToast) {
 // saveToCloud diakses lewat stateRef.current (bukan langsung sbg param) karena hook ini
 // dipanggil sebelum saveToCloud (useCallback) didefinisikan di PLNWarehouse — stateRef.current.saveToCloud
 // diisi belakangan (lihat App.jsx setelah definisi saveToCloud), sama pola dgn stateRef utk data state.
-export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, logApprovalHistory, supabaseClient }) {
+export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, supabaseClient }) {
   const [heavyEquipmentList, setHeavyEquipmentList] = useState(() => readCachedList("pln_heavy_equipment_v1") ?? []);
   const [heavyEquipmentLoans, setHeavyEquipmentLoans] = useState(() => readCachedList("pln_heavy_equipment_loans_v1") ?? []);
 
   async function saveHeavyEquipmentEdit(equipmentId, updates) {
-    if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL yang bisa mengubah data alat.","error"); return false; }
+    if (currentUser?.role !== "TL") { showToast("Hanya TL yang bisa mengubah registry alat.","error"); return false; }
     const alat = heavyEquipmentList.find(eq=>eq.id===equipmentId);
     if (!alat) return false;
+    const ownerUptId = getHeavyEquipmentUptId(alat, uptList);
+    const ownsLegacy = !ownerUptId && currentUser?.uptId && normalizeHeavyEquipmentUptName(alat.upt) === normalizeHeavyEquipmentUptName(currentUser.upt);
+    if ((!ownerUptId || ownerUptId !== currentUser?.uptId) && !ownsLegacy) { showToast("Alat berada di luar UPT akun.", "error"); return false; }
     if (["MAINTENANCE","KIR"].includes(updates.statusAlat) && alat.availabilityStatus==="DIPINJAM") {
       showToast("Alat sedang dipinjam, tidak bisa diubah ke status ini.","error"); return false;
     }
     // Foto ke Storage dulu (pola sama dengan Data Stok — JANGAN base64 mentah masuk
     // jsonb heavy_equipment.data, cegah pola insiden 2026-07-23 & 2026-07-28 terulang
     // di tabel lain). Bucket reuse "tug-photos" (sudah publik), folder alat-berat/.
-    const canEditAllHeavyEquipment = hasRole(currentUser, "ADMIN","TL");
+    const canEditAllHeavyEquipment = currentUser?.role === "TL";
     // Jangan menyebarkan properti yang tidak memiliki input (id, availabilityStatus,
     // metadata audit, dst.) ketika Admin membuka form lengkap. Untuk TL, payload
     // sengaja hanya dua field yang memang diizinkan.
-    const editableFields = ["upt","lokasi","nama","jenis","merkType","kapasitas","nomorSeri","tahun","kondisi","suratIzinAlat","statusAlat","kategori","tracked"];
+    const editableFields = ["upt","gudangId","lokasi","nama","jenis","merkType","kapasitas","nomorSeri","tahun","kondisi","suratIzinAlat","statusAlat","kategori","tracked","assetType","isCrossUptBorrowable"];
     let upd = canEditAllHeavyEquipment
       ? Object.fromEntries(editableFields.map(key => [key, updates[key] ?? alat[key] ?? ""]))
       : { statusAlat: updates.statusAlat ?? alat.statusAlat };
@@ -109,10 +110,12 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
   }
 
   async function createHeavyEquipment(form) {
-    if (!hasRole(currentUser, "ADMIN")) { showToast("Hanya Admin Gudang yang bisa menambah alat.", "error"); return false; }
-    if (!form?.upt || !form?.nama?.trim() || !form?.lokasi?.trim()) { showToast("UPT, nama, dan lokasi wajib diisi.", "error"); return false; }
+    if (currentUser?.role !== "TL") { showToast("Hanya TL yang bisa menambah alat.", "error"); return false; }
+    const uptId = currentUser?.uptId || form?.uptId;
+    const uptName = uptList.find(u => u.id === uptId)?.nama?.replace(/^UPT\s+/i, "") || form?.upt;
+    if (!uptId || !uptName || !form?.nama?.trim() || !form?.lokasi?.trim()) { showToast("UPT, nama, dan lokasi wajib diisi.", "error"); return false; }
     const now = Date.now();
-    let item = normalizeHeavyEquipmentRecord({ ...form, id:`HE-${uid().slice(-8)}`, availabilityStatus:"TERSEDIA", createdAt:now, createdBy:currentUser.id, updatedAt:now, updatedBy:currentUser.id, source:"Input Admin Gudang" });
+    let item = normalizeHeavyEquipmentRecord({ ...form, uptId, upt:uptName, id:`HE-${uid().slice(-8)}`, availabilityStatus:"TERSEDIA", createdAt:now, createdBy:currentUser.id, updatedAt:now, updatedBy:currentUser.id, source:"Input TL UPT" });
     if (_isDataUrl(item.foto)) {
       let compressedPhoto;
       try { compressedPhoto = await compressImage(item.foto, {maxBytes:1_000_000}); }
@@ -135,41 +138,47 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
   }
 
   async function createHeavyEquipmentLoan(form) {
-    if (!hasRole(currentUser, "ADMIN","TL","HAR_UIT")) { showToast("Hanya Admin/TL/HAR UIT yang bisa mengajukan peminjaman alat.","error"); return; }
-    if (!form.equipmentId || !form.requesterUpt || !form.namaPekerjaan?.trim() || !form.tanggalAmbil || !form.tanggalKembali || !form.keperluan?.trim()) {
-      showToast("Lengkapi alat, UPT peminjam, nama pekerjaan, tanggal, dan keperluan.","error"); return;
+    if (currentUser?.role !== "TL") { showToast("Hanya TL UPT pemilik yang bisa mencatat peminjaman alat.","error"); return false; }
+    const equipmentIds = [...new Set(form?.equipmentIds || (form?.equipmentId ? [form.equipmentId] : []))];
+    if (!equipmentIds.length || !form.namaPekerjaan?.trim() || !form.tanggalAmbil || !form.tanggalKembali || !form.keperluan?.trim()) {
+      showToast("Lengkapi alat, nama pekerjaan, tanggal, dan keperluan.","error"); return false;
     }
-    const alat = heavyEquipmentList.find(eq=>eq.id===form.equipmentId);
-    if (!alat) { showToast("Alat tidak ditemukan.","error"); return; }
-    if (alat.availabilityStatus === "DIPINJAM") { showToast("Alat sedang dipinjam, tidak bisa diajukan lagi.","error"); return; }
-    if (alat.statusAlat === "MAINTENANCE") { showToast("Alat sedang maintenance, tidak bisa dipinjam UPT lain.","error"); return; }
-    if (alat.statusAlat === "KIR") { showToast("Alat sedang KIR, tidak bisa dipinjam UPT lain.","error"); return; }
-    if (alat.upt === form.requesterUpt) { showToast("Peminjaman harus antar UPT. Pilih UPT peminjam yang berbeda dari UPT pemilik alat.","error"); return; }
-    if (heavyEquipmentLoans.some(l => l.equipmentId === form.equipmentId && isActiveHeavyEquipmentLoan(l))) { showToast("Alat sudah ada peminjaman aktif (menunggu ACC atau sedang dipinjam), tidak bisa diajukan lagi.","error"); return; }
-    const loan = {
-      id: `HLOAN-${uid().slice(-8)}`,
-      equipmentId: form.equipmentId,
-      ownerUpt: alat.upt,
-      requesterUpt: form.requesterUpt,
-      fromUpt: alat.upt,
-      toUpt: form.requesterUpt,
-      namaPekerjaan: form.namaPekerjaan.trim(),
-      tanggalAmbil: form.tanggalAmbil,
-      tanggalKembali: form.tanggalKembali,
-      tanggalMulai: form.tanggalAmbil,
-      tanggalSelesai: form.tanggalKembali,
-      keperluan: form.keperluan.trim(),
-      catatan: form.catatan || "",
-      status: "PENDING_OWNER_ASMAN",
-      requestedBy: currentUser.id,
-      requestedAt: Date.now(),
-      requiredApprover: "ASMAN",
-      requiredApproverUpt: alat.upt,
-    };
-    const nextLoans = [loan, ...heavyEquipmentLoans];
-    setHeavyEquipmentLoans(nextLoans);
-    await stateRef.current.saveToCloud({heavyEquipmentLoans: nextLoans}, {heavyEquipmentLoansChangedRows: [loan]});
-    showToast("Peminjaman alat diajukan. Menunggu approval Asman.");
+    if (form.tanggalKembali < form.tanggalAmbil) { showToast("Tanggal kembali tidak boleh sebelum tanggal ambil.", "error"); return false; }
+    const assets = equipmentIds.map(id => heavyEquipmentList.find(eq => eq.id === id));
+    if (assets.some(eq => !eq)) { showToast("Ada alat yang tidak ditemukan.", "error"); return false; }
+    const ownerIds = [...new Set(assets.map(eq => getHeavyEquipmentUptId(eq, uptList) || (normalizeHeavyEquipmentUptName(eq.upt) === normalizeHeavyEquipmentUptName(currentUser?.upt) ? currentUser?.uptId : null)).filter(Boolean))];
+    if (ownerIds.length !== 1) { showToast("Semua alat dalam satu transaksi harus milik UPT yang sama.", "error"); return false; }
+    if (ownerIds[0] !== currentUser?.uptId) { showToast("Peminjaman hanya dapat dicatat oleh TL UPT pemilik alat.", "error"); return false; }
+    if (assets.some(eq => eq.availabilityStatus === "DIPINJAM" || ["MAINTENANCE", "KIR"].includes(eq.statusAlat) || heavyEquipmentLoans.some(l => l.equipmentId === eq.id && isActiveHeavyEquipmentLoan(l)))) {
+      showToast("Ada alat yang tidak tersedia untuk dipinjam.", "error"); return false;
+    }
+    const borrowerType = form.borrowerType || "UPT";
+    const requesterUptId = borrowerType === "UPT" ? form.requesterUptId : null;
+    if (borrowerType === "UPT" && (!requesterUptId || requesterUptId === ownerIds[0])) { showToast("Pilih UPT peminjam yang berbeda dari pemilik alat.", "error"); return false; }
+    if (borrowerType === "UPT" && assets.some(eq => !eq.isCrossUptBorrowable)) { showToast("Ada alat yang belum diizinkan untuk peminjaman lintas-UPT.", "error"); return false; }
+    if (borrowerType !== "UPT" && (!form.borrowerName?.trim() || !form.borrowerPic?.trim() || !form.borrowerContact?.trim())) { showToast("Nama organisasi, PIC, dan kontak wajib diisi.", "error"); return false; }
+    if (!supabaseClient?.rpc) { showToast("Server peminjaman alat belum tersedia.", "error"); return false; }
+    const batchId = `HE-BATCH-${uid().slice(-12)}`;
+    const evidence = form.pickupEvidence || form.fotoKeluar;
+    if (!evidence) { showToast("Foto serah-terima wajib diunggah.", "error"); return false; }
+    let evidencePath = `${ownerIds[0]}/${batchId}/pickup.jpg`;
+    try {
+      const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
+      await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath), 30_000, "unggah bukti serah-terima");
+      const borrower = { borrowerType, borrowerName: form.borrowerName || form.requesterUpt || "", borrowerRefId: requesterUptId, borrowerPic: form.borrowerPic || "", borrowerContact: form.borrowerContact || "" };
+      const { data, error } = await supabaseClient.rpc("checkout_heavy_equipment_batch", { p_equipment_ids: equipmentIds, p_borrower: borrower, p_job: { batchId, namaPekerjaan: form.namaPekerjaan.trim(), tanggalAmbil: form.tanggalAmbil, tanggalKembali: form.tanggalKembali, keperluan: form.keperluan.trim(), catatan: form.catatan || "", requestedBy: currentUser.id }, p_pickup_evidence_path: evidencePath });
+      if (error || !data?.batchId) throw error || new Error("Respons server tidak lengkap.");
+      const returnedLoans = Array.isArray(data.loans) ? data.loans : [];
+      const returnedEquipment = Array.isArray(data.equipment) ? data.equipment : [];
+      setHeavyEquipmentLoans(prev => [...returnedLoans, ...prev.filter(l => !returnedLoans.some(row => row.id === l.id))]);
+      if (returnedEquipment.length) setHeavyEquipmentList(prev => prev.map(eq => returnedEquipment.find(row => row.id === eq.id) || eq));
+      showToast(borrowerType === "UPT" ? "Peminjaman tercatat. Menunggu approval Asman pemilik." : "Peminjaman alat tercatat.");
+      return true;
+    } catch (e) {
+      await supabaseClient.storage?.from("heavy-equipment-evidence").remove([evidencePath]).catch(() => {});
+      showToast(`Gagal menyimpan peminjaman: ${e?.message || "server tidak dapat dihubungi."}`, "error");
+      return false;
+    }
   }
 
   async function approveHeavyEquipmentLoan(loanId, catatan="") {
@@ -178,16 +187,15 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     if (!canApproveHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya Asman UPT pemilik alat yang bisa approve peminjaman ini.","error"); return; }
     const alatCek = heavyEquipmentList.find(eq => eq.id === loan.equipmentId);
     const bentrok = heavyEquipmentLoans.some(l => l.id !== loanId && l.equipmentId === loan.equipmentId && isActiveHeavyEquipmentLoan(l));
-    if (alatCek?.availabilityStatus === "DIPINJAM" || bentrok) { showToast("Alat sudah dipinjam / di-ACC untuk peminjaman lain, tidak bisa disetujui.","error"); return; }
-    const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
-    const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
-    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ownerUpt, requesterUpt, status:"DIPINJAM", approvedBy:currentUser.id, approvedAt:Date.now(), catatanApproval:catatan } : l);
-    const nextEquipment = heavyEquipmentList.map(eq=>eq.id===loan.equipmentId ? { ...eq, availabilityStatus:"DIPINJAM", activeLoanId:loanId, borrowedToUpt:requesterUpt, borrowedJobName:getHeavyEquipmentLoanJobName(loan), borrowedUntil:getHeavyEquipmentLoanReturnDate(loan) } : eq);
-    setHeavyEquipmentLoans(nextLoans);
-    setHeavyEquipmentList(nextEquipment);
-    await stateRef.current.saveToCloud({heavyEquipmentLoans: nextLoans, heavyEquipmentList: nextEquipment}, {heavyEquipmentLoansChangedRows: [nextLoans.find(l=>l.id===loanId)]});
-    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"APPROVED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, items:[{label:heavyEquipmentList.find(eq=>eq.id===loan.equipmentId)?.nama||loan.equipmentId}], requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
+    if (bentrok || (alatCek?.availabilityStatus === "DIPINJAM" && alatCek?.activeLoanId && alatCek.activeLoanId !== loanId)) { showToast("Alat sudah terkait peminjaman lain, tidak bisa disetujui.","error"); return false; }
+    if (!supabaseClient?.rpc) { showToast("Server approval peminjaman belum tersedia.", "error"); return false; }
+    const { data, error } = await supabaseClient.rpc("approve_heavy_equipment_batch", { p_loan_id: loanId, p_decision: "APPROVED", p_catatan: catatan || null });
+    if (error || !data?.loans) { showToast(`Gagal menyetujui peminjaman: ${error?.message || "respons server tidak lengkap."}`, "error"); return false; }
+    const rows = Array.isArray(data.loans) ? data.loans : [];
+    setHeavyEquipmentLoans(prev => prev.map(l => rows.find(row => row.id === l.id) || l));
+    if (Array.isArray(data.equipment)) setHeavyEquipmentList(prev => prev.map(eq => data.equipment.find(row => row.id === eq.id) || eq));
     showToast("Peminjaman alat disetujui.");
+    return true;
   }
 
   async function rejectHeavyEquipmentLoan(loanId, reason) {
@@ -195,38 +203,40 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, l
     const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
     if (!loan || !isPendingHeavyEquipmentLoan(loan)) return;
     if (!canApproveHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya Asman UPT pemilik alat yang bisa menolak peminjaman ini.","error"); return; }
-    const ownerUpt = getHeavyEquipmentLoanOwnerUpt(loan);
-    const requesterUpt = getHeavyEquipmentLoanRequesterUpt(loan);
-    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ownerUpt, requesterUpt, status:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason.trim() } : l);
-    setHeavyEquipmentLoans(nextLoans);
-    await stateRef.current.saveToCloud({heavyEquipmentLoans: nextLoans}, {heavyEquipmentLoansChangedRows: [nextLoans.find(l=>l.id===loanId)]});
-    await logApprovalHistory({type:"HEAVY_EQUIPMENT_LOAN", decision:"REJECTED", title:`Peminjaman alat ${loan.equipmentId}: ${ownerUpt} -> ${requesterUpt}`, items:[{label:heavyEquipmentList.find(eq=>eq.id===loan.equipmentId)?.nama||loan.equipmentId}], requestedBy:loan.requestedBy, requestedAt:loan.requestedAt});
+    if (!supabaseClient?.rpc) { showToast("Server approval peminjaman belum tersedia.", "error"); return false; }
+    const { data, error } = await supabaseClient.rpc("approve_heavy_equipment_batch", { p_loan_id: loanId, p_decision: "REJECTED", p_catatan: reason.trim() });
+    if (error || !data?.loans) { showToast(`Gagal menolak peminjaman: ${error?.message || "respons server tidak lengkap."}`, "error"); return false; }
+    const rows = Array.isArray(data.loans) ? data.loans : [];
+    setHeavyEquipmentLoans(prev => prev.map(l => rows.find(row => row.id === l.id) || l));
+    if (Array.isArray(data.equipment)) setHeavyEquipmentList(prev => prev.map(eq => data.equipment.find(row => row.id === eq.id) || eq));
     showToast("Peminjaman alat ditolak.", "error");
+    return true;
   }
 
-  async function completeHeavyEquipmentLoan(loanId) {
+  async function completeHeavyEquipmentLoan(loanId, returnForm = {}) {
     const loan = heavyEquipmentLoans.find(l=>l.id===loanId);
     if (!loan || !["DIPINJAM","OVERDUE"].includes(getHeavyEquipmentLoanRuntimeStatus(loan))) return false;
-    if (!canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya ADMIN/TL UPT pemilik alat yang bisa menandai alat kembali.","error"); return false; }
+    if (!canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya TL UPT pemilik alat yang bisa menandai alat kembali.","error"); return false; }
     if (!supabaseClient?.rpc) { showToast("Server pengembalian alat belum tersedia.", "error"); return false; }
-    let data;
-    let error;
+    const evidence = returnForm.returnEvidence || returnForm.fotoKembali;
+    if (!evidence) { showToast("Foto pengembalian wajib diunggah.", "error"); return false; }
+    const ownerId = getHeavyEquipmentLoanOwnerUptId(loan, uptList);
+    const evidencePath = `${ownerId}/${loan.loanBatchId || loan.data?.loanBatchId || loanId}/return-${loanId}.jpg`;
     try {
-      ({ data, error } = await supabaseClient.rpc("complete_heavy_equipment_loan", { p_loan_id: loanId }));
+      const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
+      await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath), 30_000, "unggah bukti pengembalian");
+      const { data, error } = await supabaseClient.rpc("complete_heavy_equipment_batch", { p_loan_ids: [loanId], p_return_evidence_path: evidencePath, p_condition_note: returnForm.conditionNote || "" });
+      if (error || !data?.loans) throw error || new Error("Respons server tidak lengkap.");
+      const rows = Array.isArray(data.loans) ? data.loans : [];
+      setHeavyEquipmentLoans(prev => prev.map(l => rows.find(row => row.id === l.id) || l));
+      if (Array.isArray(data.equipment)) setHeavyEquipmentList(prev => prev.map(eq => data.equipment.find(row => row.id === eq.id) || eq));
+      showToast("Alat ditandai sudah kembali.");
+      return true;
     } catch (rpcError) {
+      await supabaseClient.storage?.from("heavy-equipment-evidence").remove([evidencePath]).catch(() => {});
       showToast(`Gagal menandai alat kembali: ${rpcError?.message || "Server tidak dapat dihubungi."}`, "error");
       return false;
     }
-    if (error || !data?.loan || !data?.equipment) {
-      showToast(`Gagal menandai alat kembali: ${error?.message || "Respons server tidak lengkap."}`, "error");
-      return false;
-    }
-    const nextLoans = heavyEquipmentLoans.map(l=>l.id===loanId ? { ...l, ...data.loan } : l);
-    const nextEquipment = heavyEquipmentList.map(eq=>eq.id===loan.equipmentId ? { ...eq, ...data.equipment } : eq);
-    setHeavyEquipmentLoans(nextLoans);
-    setHeavyEquipmentList(nextEquipment);
-    showToast("Alat ditandai sudah kembali.");
-    return true;
   }
 
   return {
