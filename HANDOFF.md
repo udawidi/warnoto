@@ -748,5 +748,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-20 Codex: **QR Blok Gudang aktif di production; kartu A6, scan publik, dan Mode Lapangan terverifikasi; kode siap dirilis ke `main`.**
 - 2026-09-20 Codex: **Alat Berat & Alat Bantu per-UPT aktif di production; migration self-host, bucket private, RPC atomik, RLS owner/requester, dan bundle Vercel terverifikasi.**
+- 2026-09-20 Claude: **Redesign tabel Stock Opname > Pelaksanaan (kartu putih + aksen border-kiri, Keterangan jadi textarea, kartu diperluas ke tablet ≤1024px); skema versi carry-at-100 via `scripts/bump.mjs` + pad tampilan sidebar; versi 2.0.97; pushed 08d294a, verifikasi visual tablet oleh user.**
