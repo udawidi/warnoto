@@ -32,6 +32,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Frontend dev role (Kevin `kevinnsetiawan`, user 2026-08-12):** boleh edit presentasi (`src/components/*`, `src/theme.js`, `src/index.css`, JSX `App.jsx`) + **push langsung ke `main` tanpa PR**. Zona terlarang: state/handler/`saveToCloud`/`src/lib/*`/`src/hooks/*`/schema/workflows/deps. Aturan lengkap di `.github/ROLE_FRONTEND_DEVELOPER.md`. **Proteksi `main` DILONGGARKAN**: required PR review + required status check `build` DIHAPUS (force_push tetap off). Jaring rollback: Vercel Instant Rollback (UI) + tag `snapshot-YYYY-MM-DD` harian (`.github/workflows/daily-snapshot.yml`) + dump DB per-jam `vps-backup`.
 
 ### Fitur canonical
+- **Alat Berat & Alat Bantu per-UPT (2026-09-20, production aktif):** aset memakai `heavy_equipment.upt_id` wajib dan flag `is_cross_upt_borrowable`; peminjaman memakai `owner_upt_id` wajib serta `requester_upt_id` opsional. TL UPT pemilik mengelola aset, checkout batch, dan pengembalian parsial; pinjaman antar-UPT menunggu ASMAN UPT pemilik, sedangkan vendor/GI/unit lain langsung aktif. Semua perubahan status pinjaman berjalan lewat RPC atomik. Bukti pickup/pengembalian disimpan di bucket private `heavy-equipment-evidence` dengan prefix UPT pemilik. Riwayat hanya terbaca UPT pemilik/peminjam atau role nasional. Migration `20260920_heavy_equipment_upt_id_loans.sql` sudah diterapkan ke production self-host.
 - **QR Blok Lokasi Gudang (2026-09-20, production aktif):** `lokasi.public_token` adalah bearer token UUID unik yang dicetak di fragment URL `?loc=<id>#t=<token>`. RPC baca-saja `public_block_stock(text,uuid)` hanya dapat dieksekusi `anon`/`authenticated`, memakai `search_path=pg_catalog`, dan mengembalikan identitas UPT/gudang/subgudang/blok serta material dengan qty positif. Mode Lapangan hanya memakai `loc` untuk memilih blok yang memang ada di sesi opname aktif. Kartu cetak = A6 portrait dengan logo PLN, garis pembatas, dan QR 48 mm; domain canonical `https://pln.warnoto.com`.
 - **MTU KHS (2026-09-13, production aktif):** workspace memakai database canonical, RLS, approval, import 2024/2026, drawing, dan hierarki `UIT > UPT > ULTG > GI > Bay`. Material fisik 2024 direkonsiliasi TL tanpa backfill/mutasi stok; sisa fisik dapat ditautkan ke stok dengan UPT+katalog sama. Material 2026 diterima parsial melalui draft TUG-3 lalu TUG-4/final Asman; final menambah stok atomik dan idempoten. Pengeluaran hanya referensi TUG-8/9 `FINAL_APPROVED`, tidak memutasi stok dari MTU. `SUPERVISI` dikecualikan. Migration `20260913_mtu_khs_tug_lifecycle.sql` sudah diterapkan.
 - **TUG canonical hanya TUG-8/TUG-9** (tabel/RPC self-host, review-first Admin→TL→Asman, nomor server dari counter UPT). **TUG-15/Laporan di luar scope canonical.** TUG legacy hanya baseline, tanpa replay stok.
@@ -66,6 +67,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Alat Berat & Alat Bantu per-UPT aktif di production (`05a941d`, 2026-09-20).** UI mendukung delapan plat sebagai aset individual, peminjaman batch ke vendor/GI/unit lain/UPT, approval ASMAN untuk lintas-UPT, pengembalian sebagian, dan bukti private. Migration diterapkan atomik setelah backup `/mnt/backup2/manual/warnoto_pre_alat_bantu_05a941d.dump`. Backfill memetakan 51/51 aset dan 2/2 riwayat; bucket private dan tiga RPC aktif. Uji RLS: TL Bali melihat 0 loan, TL Gresik 1 loan sebagai peminjam, TL Surabaya 1 loan sebagai pemilik. Unit test 347/347, E2E 11/11, build, diff-check, bundle production, dan schema self-host lulus.
 
 - **QR Blok Gudang aktif di production (2026-09-20).** Migration `20260918_lokasi_public_qr.sql` diterapkan atomik setelah backup; 296/296 lokasi memiliki token unik, token salah menghasilkan `null`, dan sampel blok mengembalikan material sesuai lokasi. Master Gudang dapat mencetak satu atau seluruh kartu QR A6; scan publik menampilkan lokasi dan material/qty tanpa login; Mode Lapangan menerima QR yang sama. Localhost memverifikasi tombol, preview AREA-B6, logo PLN, garis cetak, halaman error token, dan nol error console. Full test 344/344 serta build lulus.
 
@@ -607,6 +610,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- TL UPT Surabaya mencatat plat sebagai delapan aset individual `PB-SBY-01` sampai `PB-SBY-08`, memilih gudang/lokasi aktual, dan membiarkan akses lintas-UPT nonaktif kecuali memang boleh dipinjam UPT lain. Jangan membuat lokasi atau nomor seri tebakan.
 - Smoke UI GI setelah deploy pada akun TL: cari GI, buka editor, cek titik peta dan toggle dashboard. Uji simpan edit lokasi nyata hanya pada GI yang disetujui pengguna; jangan mengubah data produksi sebagai uji coba.
 - Verifikasi end-to-end approval TUG-3 tujuan GI sampai Data Stok menampilkan lokasi GI sesuai UPT; cek konsol setelah memilih GI lalu kembali ke gudang biasa.
 
@@ -731,6 +735,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - `node scripts/rehearse_tug_canonical_postgres.mjs`
 - `npx playwright test tests/e2e/desktop.spec.js --project=desktop-smoke --grep "canonical derived TUG-8 draft"`
 - `node --test tests/unit/heavyEquipmentPhoto.test.mjs tests/unit/stockLocationApproval.test.mjs`
+- `node --test tests/unit/heavyEquipmentReturn.test.mjs tests/unit/heavyEquipmentSupportTools.test.mjs`
 - `npx playwright test tests/e2e/heavy-equipment.spec.js --project=desktop-smoke --workers=1`
 - `npx playwright test tests/e2e/tug15-legacy.spec.js --project=desktop-smoke --project=tug15-mobile --workers=1`
 - `node --test tests/unit/approvalTugFilter.contract.test.mjs tests/unit/tug10ApprovalFlow.contract.test.mjs`
@@ -743,5 +748,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-19 Codex: **Maturity UIT/popup migrasi dan Inspeksi Material UIT selesai; migration Draft diterapkan ke self-host, RLS CRUD lintas-UPT terverifikasi, seluruh 325 test dan build lulus; siap dirilis ke `main` atas izin user.**
 - 2026-09-20 Codex: **QR Blok Gudang aktif di production; kartu A6, scan publik, dan Mode Lapangan terverifikasi; kode siap dirilis ke `main`.**
+- 2026-09-20 Codex: **Alat Berat & Alat Bantu per-UPT aktif di production; migration self-host, bucket private, RPC atomik, RLS owner/requester, dan bundle Vercel terverifikasi.**

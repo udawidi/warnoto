@@ -35,8 +35,8 @@
 ## Phase 7: Validation and Self-Host
 
 - [X] T015 Run targeted tests, full tests, E2E, build, and diff audit
-- [ ] T016 Apply and verify migration on self-host with backup and rollback-safe preflight
-- [ ] T017 Perform localhost self-host smoke and mark all tasks complete
+- [X] T016 Apply and verify migration on self-host with backup and rollback-safe preflight
+- [X] T017 Perform localhost self-host smoke and mark all tasks complete
 
 ## Dependencies
 
