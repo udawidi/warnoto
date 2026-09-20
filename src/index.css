@@ -1813,6 +1813,7 @@
   .opname-card-table .mobile-card-table__row > td[data-label="Qty Sistem"],
   .opname-card-table .mobile-card-table__row > td[data-label="Qty SAP"],
   .opname-card-table .mobile-card-table__row > td[data-label="Selisih"] { white-space: nowrap !important; }
+  .opname-card-table .mobile-card-table__row { border-left-color: var(--opname-accent,#dbe3ef) !important; }
 
   /* Stock Count draft: kartu tanpa expand-per-focus (tabIndex dihapus) —
      angka SAP/Aplikasi/Selisih tetap satu baris. No Katalog & Rekomendasi
@@ -1906,6 +1907,26 @@
   .migration-upload-card :is(button,label[style*="cursor"]) { width: auto !important; min-height: 44px !important; padding: 7px 10px !important; }
   .migration-upload-card--legacy > div[style*="display: flex"] { gap: 6px !important; }
   .migration-upload-grid { display: block !important; }
+}
+
+/* Stock Opname: kartu berlaku sampai tablet (769-1024px) supaya 9 kolom tak
+   scroll horizontal di layar tanggung. Duplikasi inti dari .mobile-card-table
+   (768px) di atas — sengaja tak menaikkan breakpoint global karena dipakai
+   tabel lain juga. */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .opname-card-table { overflow: visible !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+  .opname-card-table table,
+  .opname-card-table tbody { display: block; width: 100%; min-width: 0 !important; }
+  .opname-card-table thead { display: none; }
+  .opname-card-table tbody { display: grid; gap: 12px; }
+  .opname-card-table .mobile-card-table__row { display: grid; grid-template-columns: 1fr; width: 100%; min-width: 0; overflow: hidden; border: 1px solid #dbe3ef !important; border-left-width: 4px !important; border-left-color: var(--opname-accent,#dbe3ef) !important; border-radius: 14px; background: #fff; box-shadow: 0 8px 20px -20px rgba(15,23,42,.8); }
+  .opname-card-table .mobile-card-table__row > td { display: grid; grid-column: 1/-1; grid-template-columns: 96px minmax(0,1fr); min-width: 0 !important; max-width: none !important; align-items: start; gap: 8px; padding: 8px 12px !important; border-top: 1px solid #eef2f7; white-space: normal !important; overflow-wrap: anywhere; }
+  .opname-card-table .mobile-card-table__row > td:first-child { border-top: 0; }
+  .opname-card-table .mobile-card-table__row > td::before { color: #64748b; content: attr(data-label); font-size: 12px; font-weight: 800; letter-spacing: .25px; text-transform: uppercase; }
+  .opname-card-table .mobile-card-table__row > td[data-label="Selisih"],
+  .opname-card-table .mobile-card-table__row > td[data-label="Qty Sistem"],
+  .opname-card-table .mobile-card-table__row > td[data-label="Qty SAP"] { white-space: nowrap !important; }
+  .opname-card-table .mobile-card-table__row :is(select,input,textarea) { width: 100% !important; max-width: none !important; }
 }
 
 /* ── DARK MODE ─────────────────────────────────────────────────────────────

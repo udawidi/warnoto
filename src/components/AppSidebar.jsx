@@ -44,7 +44,7 @@ export function AppSidebar({
               <div style={{color:"white",fontWeight:800,fontSize:17,letterSpacing:".5px"}}>WARNOTO</div>
               <div style={{color:"rgba(255,255,255,0.6)",fontSize:12,letterSpacing:".5px",textTransform:"uppercase",whiteSpace:"nowrap",minWidth:0,overflow:"hidden",textOverflow:"ellipsis"}}>{uptNama}</div>
               <div style={{color:"rgba(255,255,255,0.42)",fontSize:11,letterSpacing:".4px",marginTop:2}}>
-                V{__APP_VERSION__}
+                V{__APP_VERSION__.replace(/(\d+)$/, n => n.padStart(2, "0"))}
               </div>
             </div>
             {isMobile && (

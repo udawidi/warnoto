@@ -1053,7 +1053,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   {pageEntries.map(({it:item, idx:realIdx})=>{
                     const isHighlighted = highlightIdx===realIdx;
                     const counted = countedItem(item);
-                    const rowBg = isHighlighted ? "#dbeafe" : !counted ? "white" : item.statusItem==="MATERIAL_BARU_NONSAP" ? "#eff6ff" : item.statusItem==="SESUAI"?"white":item.statusItem==="TIDAK_ADA_DI_SISTEM"?"#fefce8":item.statusItem==="TIDAK_ADA_DI_SAP"?"#f8fafc":"#fff5f5";
+                    const rowBg = isHighlighted ? "#dbeafe" : "white";
                     const statusBadge = item.statusItem==="SESUAI"
                       ? {bg:"#dcfce7",fg:"#166534",label:"✅ Sesuai"}
                       : item.statusItem==="TIDAK_ADA_DI_SAP"
@@ -1065,7 +1065,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       : {bg:"#fee2e2",fg:"#991b1b",label:"🔴 Selisih"};
                     const itemGudangId = lokasiList?.find(l=>l.id===item.lokasiId)?.gudangId || "";
                     return (
-                      <tr className="mobile-card-table__row" key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none"}}>
+                      <tr className="mobile-card-table__row" key={realIdx} style={{borderBottom:`1px solid ${C.border}`,background:rowBg,outline:isHighlighted?`2px solid #3b82f6`:"none","--opname-accent":counted?statusBadge.fg:"#dbe3ef"}}>
                         {!isMobile && <td data-label="No" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
                         <td data-label="Nama Barang" className="mobile-card-table__title opname-item-name" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?180:260,overflowWrap:"anywhere",whiteSpace:"normal",lineHeight:1.35,minWidth:0}}>
                           <div style={{fontWeight:700,overflowWrap:"anywhere",whiteSpace:"normal"}}>{item.namaBarang}</div>
@@ -1148,10 +1148,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         )}
                         <td data-label="Keterangan" className="is-key" style={{padding:"4px 6px"}}>
                           {!isReadOnly
-                            ? <input value={item.keterangan||""}
+                            ? <textarea rows={2} value={item.keterangan||""}
                                 onChange={e=>updateItem(realIdx,"keterangan",e.target.value)}
                                 placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
-                                style={{width:130,padding:"3px 6px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:12}}/>
+                                style={{width:"100%",minHeight:32,padding:"6px 8px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:13,resize:"vertical",fontFamily:"inherit"}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
                           {(!isSAP || item.statusItem==="MATERIAL_BARU_NONSAP") && activeOpname.stage==="REKONSILIASI" && !isReadOnly && (
                             <div style={{marginTop:4}}>
