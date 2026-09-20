@@ -22,9 +22,12 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
       await page.getByRole("button", { name:"+ Tambah Alat", exact:true }).click();
       const dialog = page.getByRole("dialog", { name:"Tambah Alat Berat" });
       await expect(dialog).toBeVisible();
-      for (const label of ["UPT","Nama","Jenis","Merk/Type","Kapasitas","No. Seri","Tahun","Kondisi"]) {
+      for (const label of ["UPT","Nama","Jenis","Merk/Type","Kapasitas","No. Seri","Tahun","Spesifikasi","Kondisi"]) {
         await expect(dialog.getByLabel(label, { exact:true })).toBeVisible();
       }
+      await dialog.getByRole("combobox", { name:"Mode pencatatan", exact:true }).selectOption("QUANTITY");
+      await expect(dialog.getByRole("spinbutton", { name:"Jumlah total", exact:true })).toBeVisible();
+      await expect(dialog.getByRole("textbox", { name:"Satuan", exact:true })).toHaveValue("unit");
       await expect(dialog.getByRole("combobox", { name:"Gudang / lokasi" })).toBeVisible();
       await expect(dialog.locator('input[accept=".pdf,image/*"]')).toHaveCount(1);
       await dialog.getByRole("combobox", { name:"Gudang / lokasi" }).selectOption("GDG-E2E-01");
@@ -185,6 +188,47 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
       }));
       expect(layout.overflow).toBeLessThanOrEqual(1);
       expect(layout.columns.trim().split(/\s+/)).toHaveLength(1);
+    });
+  });
+
+  test.describe("pool kuantitas fixture", () => {
+    test.use({
+      actorProfile:TL,
+      cloudOverrides: {
+        pln_heavy_equipment_v1: [{ ...CLOUD_FIXTURES.pln_heavy_equipment_v1[0], id:"HE-E2E-POOL-01", nama:"Plat Besi Trafo Pool", upt:"Surabaya", uptId:"UPT-SBY", trackingMode:"QUANTITY", quantityTotal:8, unit:"unit", statusAlat:"LAYAK", availabilityStatus:"TERSEDIA" }],
+        pln_heavy_equipment_loans_v1: [{ ...CLOUD_FIXTURES.pln_heavy_equipment_loans_v1[0], id:"LOAN-E2E-POOL-01", equipmentId:"HE-E2E-POOL-01", ownerUpt:"Surabaya", ownerUptId:"UPT-SBY", requesterUpt:"Gresik", requesterUptId:"UPT-GRS", status:"DIPINJAM", quantityBorrowed:5, quantityReturnedGood:2, quantityReturnedDamaged:0, quantityReturnedLost:0, returnEvents:[{ id:"RETURN-E2E-01", good:2, damaged:0, lost:0, remainingAfter:3, actorId:"e2e-tl", occurredAt:1784505600000, evidencePath:"UPT-SBY/LOAN-E2E-POOL-01/return-1.jpg", conditionNote:"Kondisi baik" }] }],
+      },
+    });
+
+    test("menampilkan saldo, timeline detail, dan modal return parsial", async ({ isolatedPage:page }) => {
+      await openFleetForE2E(page);
+      const poolCard = page.locator(".equipment-card").filter({ hasText:"Plat Besi Trafo Pool" });
+      await expect(poolCard).toBeVisible();
+      await expect(poolCard.getByText("8 unit", { exact:true })).toBeVisible();
+      await expect(poolCard.getByText("5 unit", { exact:true })).toBeVisible();
+      await expect(poolCard.getByText(/Dipinjam \/ reservasi/)).toBeVisible();
+      await page.getByRole("tab", { name:/Peminjaman & Histori/ }).click();
+      await expect(page.getByText(/Timeline pengembalian/)).toBeVisible();
+      await expect(page.getByText(/E2E TL/)).toBeVisible();
+      await expect(page.getByRole("button", { name:"Lihat bukti", exact:true })).toBeVisible();
+      await page.getByRole("button", { name:"Tandai Alat Kembali", exact:true }).first().click();
+      const dialog = page.getByRole("dialog", { name:"Konfirmasi Alat Kembali" });
+      await expect(dialog).toBeVisible();
+      await expect(dialog.getByLabel("Baik", { exact:true })).toBeVisible();
+      await expect(dialog.getByLabel("Rusak", { exact:true })).toBeVisible();
+      await expect(dialog.getByLabel("Hilang", { exact:true })).toBeVisible();
+      await dialog.getByLabel("Baik", { exact:true }).fill("4");
+      await dialog.locator('input[type="file"]').setInputFiles({ name:"return.png", mimeType:"image/png", buffer:ONE_PIXEL_PNG });
+      await dialog.locator('input[type="checkbox"]').nth(0).check();
+      await dialog.locator('input[type="checkbox"]').nth(1).check();
+      await expect(dialog.getByRole("button", { name:"Tandai Sudah Kembali", exact:true })).toBeDisabled();
+    });
+
+    test("pool tetap tanpa overflow pada 360px", async ({ isolatedPage:page }) => {
+      await page.setViewportSize({ width:360, height:800 });
+      await openFleetForE2E(page);
+      const overflow = await page.locator(".heavy-equipment-page").evaluate(() => document.documentElement.scrollWidth-document.documentElement.clientWidth);
+      expect(overflow).toBeLessThanOrEqual(1);
     });
   });
 });

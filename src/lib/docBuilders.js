@@ -919,6 +919,11 @@ export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
   const asmanUser = (users||[]).find(u=>u.id===loan.approvedBy) || {};
   const isApproved = !!loan.approvedBy;
   const tanggalApprove = loan.approvedAt ? fmtDate(loan.approvedAt) : "";
+  const quantityRows = equipmentRows.map(row => ({ row, loan: row?.__loan || loan, quantity: row?.trackingMode === "QUANTITY" ? (row?.__loan?.quantityBorrowed || loan.quantityBorrowed || 1) : 1 }));
+  const totalQuantity = quantityRows.reduce((sum, item) => sum + item.quantity, 0);
+  const returnEvents = quantityRows.flatMap(({row,loan:rowLoan}) => (Array.isArray(rowLoan?.returnEvents) ? rowLoan.returnEvents : (Array.isArray(rowLoan?.data?.returnEvents) ? rowLoan.data.returnEvents : [])).map(event => ({...event, equipmentName: row?.nama || row?.id || loan.equipmentId, sourceLoan: rowLoan})));
+  const eventActorName = event => (users||[]).find(user=>user.id===(event.actorId||event.actor_id))?.name || event.actorId || event.actor_id || "-";
+  const eventDate = event => event.occurredAt ? fmtDate(event.occurredAt) : "-";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Peminjaman Alat ${esc(loan.id)}</title>
 <style>@page{size:A4 portrait;margin:10mm}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:14px}.doctitle h2{font-size:14px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da;margin-top:2px}table.meta{width:100%;margin-bottom:14px;border:1px solid #ccc;border-radius:4px;padding:8px}table.meta td{padding:4px 6px;font-size:10.5px}table.meta td.label{width:150px}table.meta td.colon{width:10px}.sig-row{display:flex;justify-content:space-around;margin-top:30px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:50px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto}}</style></head><body>
@@ -931,8 +936,8 @@ export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
 </div>
 <div class="doctitle"><h2>BERITA ACARA PEMINJAMAN ALAT BERAT / ALAT BANTU</h2><div class="docno">${esc(loan.id)}</div></div>
 <table class="meta">
-  <tr><td class="label">Daftar Alat</td><td class="colon">:</td><td><ul>${equipmentRows.map(row=>`<li>${esc(row?.nama||row?.id||loan.equipmentId||"-")} — ${esc(row?.merkType||"-")}, ${esc(row?.kapasitas||"-")} — Seri ${esc(row?.nomorSeri||"-")} — ${esc(row?.lokasi||"-")}</li>`).join("")}</ul></td></tr>
-  <tr><td class="label">Jumlah Unit</td><td class="colon">:</td><td>${equipmentRows.length}</td></tr>
+  <tr><td class="label">Daftar Alat</td><td class="colon">:</td><td><ul>${quantityRows.map(({row,quantity})=>`<li>${esc(row?.nama||row?.id||loan.equipmentId||"-")} — ${quantity} ${esc(row?.unit||"unit")} — ${esc(row?.specification||row?.merkType||"-")}, ${esc(row?.kapasitas||"-")} — Seri ${esc(row?.nomorSeri||"-")} — ${esc(row?.lokasi||"-")}</li>`).join("")}</ul></td></tr>
+  <tr><td class="label">Jumlah Unit</td><td class="colon">:</td><td>${totalQuantity}</td></tr>
   <tr><td class="label">UPT Pemilik Alat</td><td class="colon">:</td><td>UPT ${esc(ownerUpt||"-")} — ${esc(equipmentRows[0]?.lokasi||"-")}</td></tr>
   <tr><td class="label">Peminjam</td><td class="colon">:</td><td>${esc(borrowerLabel)}</td></tr>
   <tr><td class="label">PIC / Kontak</td><td class="colon">:</td><td>${esc(loan.borrowerPic||"-")} / ${esc(loan.borrowerContact||"-")}</td></tr>
@@ -941,6 +946,7 @@ export function buildHeavyEquipmentLoanHTML(loan, equipment, users) {
   <tr><td class="label">Tanggal Peminjaman</td><td class="colon">:</td><td>${esc(loan.tanggalAmbil||"-")} s/d ${esc(loan.tanggalKembali||"-")}</td></tr>
   <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${esc(pemohon.name||"-")}${loan.catatan?` • Catatan: ${esc(loan.catatan)}`:""}</td></tr>
 </table>
+${returnEvents.length ? `<h3 style="font-size:12px;margin:12px 0 6px">Timeline Pengembalian</h3><table style="width:100%;border-collapse:collapse;border:1px solid #ccc"><tr><th style="text-align:left;padding:5px;border-bottom:1px solid #ccc">Alat / waktu / pelaku</th><th style="padding:5px;border-bottom:1px solid #ccc">Baik</th><th style="padding:5px;border-bottom:1px solid #ccc">Rusak</th><th style="padding:5px;border-bottom:1px solid #ccc">Hilang</th><th style="padding:5px;border-bottom:1px solid #ccc">Saldo</th><th style="text-align:left;padding:5px;border-bottom:1px solid #ccc">Catatan</th></tr>${returnEvents.map((event,index)=>`<tr><td style="padding:5px">${esc(event.equipmentName)}<br/>${esc(eventDate(event))}<br/>${esc(eventActorName(event))}</td><td style="padding:5px;text-align:center">${event.good||0}</td><td style="padding:5px;text-align:center">${event.damaged||0}</td><td style="padding:5px;text-align:center">${event.lost||0}</td><td style="padding:5px;text-align:center">${event.remainingAfter??"-"}</td><td style="padding:5px">${esc(event.conditionNote||"-")}</td></tr>`).join("")}</table>` : ""}
 <p style="font-size:10px;margin-bottom:20px">Dokumen ini menjadi bukti pencatatan peminjaman alat sebagaimana rincian di atas. Alat wajib dikembalikan dalam kondisi baik selambat-lambatnya pada tanggal yang tercantum.</p>
 <div class="sig-row">
   <div class="sig-col">

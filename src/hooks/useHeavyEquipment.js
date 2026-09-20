@@ -4,6 +4,9 @@ import { logAudit } from "../lib/audit.js";
 import { compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "../lib/supabaseSync.js";
 import {
   normalizeHeavyEquipmentRecord,
+  normalizeHeavyEquipmentLoan,
+  heavyEquipmentQuantityBalance,
+  getHeavyEquipmentLoanRemainingQuantity,
   getHeavyEquipmentUptId,
   getHeavyEquipmentLoanOwnerUptId,
   normalizeHeavyEquipmentUptName,
@@ -71,7 +74,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     // Jangan menyebarkan properti yang tidak memiliki input (id, availabilityStatus,
     // metadata audit, dst.) ketika Admin membuka form lengkap. Untuk TL, payload
     // sengaja hanya dua field yang memang diizinkan.
-    const editableFields = ["upt","gudangId","lokasi","nama","jenis","merkType","kapasitas","nomorSeri","tahun","kondisi","suratIzinAlat","statusAlat","kategori","tracked","assetType","isCrossUptBorrowable"];
+    const editableFields = ["upt","gudangId","lokasi","nama","jenis","merkType","kapasitas","nomorSeri","tahun","kondisi","suratIzinAlat","statusAlat","kategori","tracked","assetType","isCrossUptBorrowable","trackingMode","quantityTotal","unit","specification"];
     let upd = canEditAllHeavyEquipment
       ? Object.fromEntries(editableFields.map(key => [key, updates[key] ?? alat[key] ?? ""]))
       : { statusAlat: updates.statusAlat ?? alat.statusAlat };
@@ -114,6 +117,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     const uptId = currentUser?.uptId || form?.uptId;
     const uptName = uptList.find(u => u.id === uptId)?.nama?.replace(/^UPT\s+/i, "") || form?.upt;
     if (!uptId || !uptName || !form?.nama?.trim() || !form?.lokasi?.trim()) { showToast("UPT, nama, dan lokasi wajib diisi.", "error"); return false; }
+    if (form?.trackingMode === "QUANTITY" && (!Number.isInteger(Number(form.quantityTotal)) || Number(form.quantityTotal) < 1)) { showToast("Jumlah awal pool wajib berupa bilangan bulat positif.", "error"); return false; }
     const now = Date.now();
     let item = normalizeHeavyEquipmentRecord({ ...form, uptId, upt:uptName, id:`HE-${uid().slice(-8)}`, availabilityStatus:"TERSEDIA", createdAt:now, createdBy:currentUser.id, updatedAt:now, updatedBy:currentUser.id, source:"Input TL UPT" });
     if (_isDataUrl(item.foto)) {
@@ -149,7 +153,24 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     const ownerIds = [...new Set(assets.map(eq => getHeavyEquipmentUptId(eq, uptList) || (normalizeHeavyEquipmentUptName(eq.upt) === normalizeHeavyEquipmentUptName(currentUser?.upt) ? currentUser?.uptId : null)).filter(Boolean))];
     if (ownerIds.length !== 1) { showToast("Semua alat dalam satu transaksi harus milik UPT yang sama.", "error"); return false; }
     if (ownerIds[0] !== currentUser?.uptId) { showToast("Peminjaman hanya dapat dicatat oleh TL UPT pemilik alat.", "error"); return false; }
-    if (assets.some(eq => eq.availabilityStatus === "DIPINJAM" || ["MAINTENANCE", "KIR"].includes(eq.statusAlat) || heavyEquipmentLoans.some(l => l.equipmentId === eq.id && isActiveHeavyEquipmentLoan(l)))) {
+    const hasQuantityPool = assets.some(eq => normalizeHeavyEquipmentRecord(eq).trackingMode === "QUANTITY");
+    const quantities = Object.fromEntries(assets.map(eq => {
+      const raw = form.quantities?.[eq.id] ?? form.quantityByEquipmentId?.[eq.id] ?? form.quantity ?? 1;
+      return [eq.id, Number(raw)];
+    }));
+    if (assets.some(eq => ["MAINTENANCE", "KIR"].includes(eq.statusAlat))) {
+      showToast("Ada alat yang tidak tersedia untuk dipinjam.", "error"); return false;
+    }
+    if (hasQuantityPool) {
+      const invalidQuantity = assets.some(eq => {
+        const normalized = normalizeHeavyEquipmentRecord(eq);
+        const quantity = quantities[eq.id];
+        if (!Number.isInteger(quantity) || quantity < 1) return true;
+        if (normalized.trackingMode === "UNIT" && quantity !== 1) return true;
+        return normalized.trackingMode === "QUANTITY" && quantity > heavyEquipmentQuantityBalance(normalized, heavyEquipmentLoans).available;
+      });
+      if (invalidQuantity) { showToast("Jumlah pinjaman melebihi saldo tersedia.", "error"); return false; }
+    } else if (assets.some(eq => eq.availabilityStatus === "DIPINJAM" || heavyEquipmentLoans.some(l => l.equipmentId === eq.id && isActiveHeavyEquipmentLoan(l)))) {
       showToast("Ada alat yang tidak tersedia untuk dipinjam.", "error"); return false;
     }
     const borrowerType = form.borrowerType || "UPT";
@@ -166,9 +187,14 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
       const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
       await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath), 30_000, "unggah bukti serah-terima");
       const borrower = { borrowerType, borrowerName: form.borrowerName || form.requesterUpt || "", borrowerRefId: requesterUptId, borrowerPic: form.borrowerPic || "", borrowerContact: form.borrowerContact || "" };
-      const { data, error } = await supabaseClient.rpc("checkout_heavy_equipment_batch", { p_equipment_ids: equipmentIds, p_borrower: borrower, p_job: { batchId, namaPekerjaan: form.namaPekerjaan.trim(), tanggalAmbil: form.tanggalAmbil, tanggalKembali: form.tanggalKembali, keperluan: form.keperluan.trim(), catatan: form.catatan || "", requestedBy: currentUser.id }, p_pickup_evidence_path: evidencePath });
+      const job = { batchId, namaPekerjaan: form.namaPekerjaan.trim(), tanggalAmbil: form.tanggalAmbil, tanggalKembali: form.tanggalKembali, keperluan: form.keperluan.trim(), catatan: form.catatan || "", requestedBy: currentUser.id };
+      const rpcName = hasQuantityPool ? "checkout_heavy_equipment_batch_v2" : "checkout_heavy_equipment_batch";
+      const rpcArgs = hasQuantityPool
+        ? { p_items: equipmentIds.map(equipmentId => ({ equipmentId, quantity: quantities[equipmentId] })), p_borrower: borrower, p_job: job, p_pickup_evidence_path: evidencePath }
+        : { p_equipment_ids: equipmentIds, p_borrower: borrower, p_job: job, p_pickup_evidence_path: evidencePath };
+      const { data, error } = await supabaseClient.rpc(rpcName, rpcArgs);
       if (error || !data?.batchId) throw error || new Error("Respons server tidak lengkap.");
-      const returnedLoans = Array.isArray(data.loans) ? data.loans : [];
+      const returnedLoans = Array.isArray(data.loans) ? data.loans.map(normalizeHeavyEquipmentLoan) : [];
       const returnedEquipment = Array.isArray(data.equipment) ? data.equipment : [];
       setHeavyEquipmentLoans(prev => [...returnedLoans, ...prev.filter(l => !returnedLoans.some(row => row.id === l.id))]);
       if (returnedEquipment.length) setHeavyEquipmentList(prev => prev.map(eq => returnedEquipment.find(row => row.id === eq.id) || eq));
@@ -186,8 +212,9 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     if (!loan || !isPendingHeavyEquipmentLoan(loan)) return;
     if (!canApproveHeavyEquipmentLoan(currentUser, loan, uptList)) { showToast("Hanya Asman UPT pemilik alat yang bisa approve peminjaman ini.","error"); return; }
     const alatCek = heavyEquipmentList.find(eq => eq.id === loan.equipmentId);
-    const bentrok = heavyEquipmentLoans.some(l => l.id !== loanId && l.equipmentId === loan.equipmentId && isActiveHeavyEquipmentLoan(l));
-    if (bentrok || (alatCek?.availabilityStatus === "DIPINJAM" && alatCek?.activeLoanId && alatCek.activeLoanId !== loanId)) { showToast("Alat sudah terkait peminjaman lain, tidak bisa disetujui.","error"); return false; }
+    const isQuantityPool = normalizeHeavyEquipmentRecord(alatCek || {}).trackingMode === "QUANTITY";
+    const bentrok = !isQuantityPool && heavyEquipmentLoans.some(l => l.id !== loanId && l.equipmentId === loan.equipmentId && isActiveHeavyEquipmentLoan(l));
+    if (bentrok || (!isQuantityPool && alatCek?.availabilityStatus === "DIPINJAM" && alatCek?.activeLoanId && alatCek.activeLoanId !== loanId)) { showToast("Alat sudah terkait peminjaman lain, tidak bisa disetujui.","error"); return false; }
     if (!supabaseClient?.rpc) { showToast("Server approval peminjaman belum tersedia.", "error"); return false; }
     const { data, error } = await supabaseClient.rpc("approve_heavy_equipment_batch", { p_loan_id: loanId, p_decision: "APPROVED", p_catatan: catatan || null });
     if (error || !data?.loans) { showToast(`Gagal menyetujui peminjaman: ${error?.message || "respons server tidak lengkap."}`, "error"); return false; }
@@ -221,15 +248,31 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     const evidence = returnForm.returnEvidence || returnForm.fotoKembali;
     if (!evidence) { showToast("Foto pengembalian wajib diunggah.", "error"); return false; }
     const ownerId = getHeavyEquipmentLoanOwnerUptId(loan, uptList);
-    const evidencePath = `${ownerId}/${loan.loanBatchId || loan.data?.loanBatchId || loanId}/return-${loanId}.jpg`;
+    const evidencePath = `${ownerId}/${loan.loanBatchId || loan.data?.loanBatchId || loanId}/return-${loanId}-${uid().slice(-10)}.jpg`;
     try {
       const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
       await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath), 30_000, "unggah bukti pengembalian");
-      const { data, error } = await supabaseClient.rpc("complete_heavy_equipment_batch", { p_loan_ids: [loanId], p_return_evidence_path: evidencePath, p_condition_note: returnForm.conditionNote || "" });
-      if (error || !data?.loans) throw error || new Error("Respons server tidak lengkap.");
-      const rows = Array.isArray(data.loans) ? data.loans : [];
+      const equipment = heavyEquipmentList.find(eq => eq.id === loan.equipmentId);
+      const isQuantityLoan = normalizeHeavyEquipmentRecord(equipment || {}).trackingMode === "QUANTITY" || Number(loan.quantityBorrowed || loan.quantity_borrowed) > 1;
+      const remaining = getHeavyEquipmentLoanRemainingQuantity(loan);
+      const good = Number(returnForm.good ?? returnForm.quantityGood ?? returnForm.quantityReturnedGood ?? (isQuantityLoan ? remaining : 1));
+      const damaged = Number(returnForm.damaged ?? returnForm.quantityDamaged ?? returnForm.quantityReturnedDamaged ?? 0);
+      const lost = Number(returnForm.lost ?? returnForm.quantityLost ?? returnForm.quantityReturnedLost ?? 0);
+      if (![good, damaged, lost].every(Number.isInteger) || good < 0 || damaged < 0 || lost < 0 || good + damaged + lost < 1 || good + damaged + lost > remaining) {
+        throw new Error("Jumlah pengembalian tidak valid atau melebihi sisa pinjaman.");
+      }
+      if ((damaged > 0 || lost > 0) && !returnForm.conditionNote?.trim()) throw new Error("Catatan kondisi wajib untuk barang rusak atau hilang.");
+      const rpcArgs = isQuantityLoan
+        ? { p_loan_id: loanId, p_good: good, p_damaged: damaged, p_lost: lost, p_return_evidence_path: evidencePath, p_condition_note: returnForm.conditionNote || "" }
+        : { p_loan_ids: [loanId], p_return_evidence_path: evidencePath, p_condition_note: returnForm.conditionNote || "" };
+      const { data, error } = isQuantityLoan
+        ? await supabaseClient.rpc("complete_heavy_equipment_quantity_loan", rpcArgs)
+        : await supabaseClient.rpc("complete_heavy_equipment_batch", rpcArgs);
+      if (error || (isQuantityLoan ? !data?.loan : !data?.loans)) throw error || new Error("Respons server tidak lengkap.");
+      const rows = Array.isArray(data.loans) ? data.loans.map(normalizeHeavyEquipmentLoan) : (data.loan ? [normalizeHeavyEquipmentLoan(data.loan)] : []);
       setHeavyEquipmentLoans(prev => prev.map(l => rows.find(row => row.id === l.id) || l));
-      if (Array.isArray(data.equipment)) setHeavyEquipmentList(prev => prev.map(eq => data.equipment.find(row => row.id === eq.id) || eq));
+      const returnedEquipment = Array.isArray(data.equipment) ? data.equipment : (data.equipment ? [data.equipment] : []);
+      if (returnedEquipment.length) setHeavyEquipmentList(prev => prev.map(eq => returnedEquipment.find(row => row.id === eq.id) || eq));
       showToast("Alat ditandai sudah kembali.");
       return true;
     } catch (rpcError) {

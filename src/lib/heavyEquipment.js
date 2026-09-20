@@ -91,10 +91,60 @@ export function normalizeHeavyEquipmentRecord(eq) {
     uptId: eq.uptId || eq.upt_id || null,
     assetType: eq.assetType || (String(eq.kategori || "").toLowerCase() === "pendukung" ? "ALAT_BANTU" : "ALAT_BERAT"),
     isCrossUptBorrowable: eq.isCrossUptBorrowable ?? eq.is_cross_upt_borrowable ?? false,
+    trackingMode: normalizeHeavyEquipmentTrackingMode(eq.trackingMode ?? eq.tracking_mode),
+    quantityTotal: normalizePositiveHeavyEquipmentQuantity(eq.quantityTotal ?? eq.quantity_total, 1),
     statusAlat: statusAlat || "LAYAK",
     availabilityStatus: availabilityStatus || "TERSEDIA",
     kategori: eq.kategori || "",
     tracked: !!eq.tracked,
+  };
+}
+
+export function normalizeHeavyEquipmentTrackingMode(value) {
+  return String(value || "").toUpperCase() === "QUANTITY" ? "QUANTITY" : "UNIT";
+}
+
+function normalizePositiveHeavyEquipmentQuantity(value, fallback = 1) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function normalizeHeavyEquipmentLoan(loan = {}) {
+  return {
+    ...loan,
+    quantityBorrowed: normalizePositiveHeavyEquipmentQuantity(loan.quantityBorrowed ?? loan.quantity_borrowed, 1),
+    quantityReturnedGood: Math.max(0, Number(loan.quantityReturnedGood ?? loan.quantity_returned_good) || 0),
+    quantityReturnedDamaged: Math.max(0, Number(loan.quantityReturnedDamaged ?? loan.quantity_returned_damaged) || 0),
+    quantityReturnedLost: Math.max(0, Number(loan.quantityReturnedLost ?? loan.quantity_returned_lost) || 0),
+  };
+}
+
+export function getHeavyEquipmentLoanRemainingQuantity(loan) {
+  const normalized = normalizeHeavyEquipmentLoan(loan);
+  return Math.max(0, normalized.quantityBorrowed - normalized.quantityReturnedGood - normalized.quantityReturnedDamaged - normalized.quantityReturnedLost);
+}
+
+export function heavyEquipmentQuantityBalance(equipment, loans = []) {
+  const normalizedEquipment = normalizeHeavyEquipmentRecord(equipment || {});
+  const relevantLoans = loans
+    .filter(loan => !normalizedEquipment.id || loan?.equipmentId === normalizedEquipment.id)
+    .map(normalizeHeavyEquipmentLoan);
+  const reserved = relevantLoans
+    .filter(isActiveHeavyEquipmentLoan)
+    .reduce((sum, loan) => sum + getHeavyEquipmentLoanRemainingQuantity(loan), 0);
+  const damaged = relevantLoans
+    .filter(loan => normalizeHeavyEquipmentLoanStatus(loan.status) !== "REJECTED")
+    .reduce((sum, loan) => sum + loan.quantityReturnedDamaged, 0);
+  const lost = relevantLoans
+    .filter(loan => normalizeHeavyEquipmentLoanStatus(loan.status) !== "REJECTED")
+    .reduce((sum, loan) => sum + loan.quantityReturnedLost, 0);
+  const total = normalizedEquipment.quantityTotal;
+  return {
+    total,
+    reserved,
+    available: Math.max(0, total - reserved - damaged - lost),
+    damaged,
+    lost,
   };
 }
 

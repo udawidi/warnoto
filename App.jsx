@@ -743,9 +743,17 @@ export default function PLNWarehouse() {
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
+      // Resolve the UPT catalog first so Stock Opname/Count can add a typed
+      // client-side filter. If this lookup fails, the loader deliberately omits
+      // the filter and PostgreSQL RLS remains the boundary.
+      const uptLoadPromise = loadMasterTable("upt");
+      const stockScopeLoad = table => uptLoadPromise.then(remoteUpts => {
+        const uptIds = Array.isArray(remoteUpts) ? getScopeUptIds(currentUser, remoteUpts) : undefined;
+        return loadMasterTable(table, { uptIds });
+      });
       const masterLoads = [
         loadMasterTable("uit"),
-        loadMasterTable("upt"),
+        uptLoadPromise,
         loadMasterTable("ultg"),
         loadMasterTable("gudang"),
         loadMasterTable("sub_gudang"),
@@ -758,8 +766,8 @@ export default function PLNWarehouse() {
         loadWarehouseCapacityImports(),
         loadMasterTable("heavy_equipment"),
         loadMasterTable("heavy_equipment_loans"),
-        loadMasterTable("stock_opname"),
-        loadMasterTable("stock_count"),
+        stockScopeLoad("stock_opname"),
+        stockScopeLoad("stock_count"),
         loadMasterTable("attb_list"),
         loadMasterTable("supplier"),
       ];
@@ -1006,28 +1014,38 @@ export default function PLNWarehouse() {
       // (mis. dua sesi disync barengan) → jangan diandalkan utk recency.
       const byRecency = (a, b) => (b.uploadedAt || 0) - (a.uploadedAt || 0);
       const scLocal = [...(csc || [])].sort(byRecency);
+      // A scoped user's cache is usable only when each record carries its typed
+      // UPT. National users may retain legacy cache; scoped users fail closed.
+      const knownStockScope = Array.isArray(cupt)
+        ? getScopeUptIds(currentUser, cupt)
+        : (getScopeUptIds(currentUser, []) === null ? null : (currentUser?.uptId ? [currentUser.uptId] : []));
+      const scopedStockCache = rows => knownStockScope === null
+        ? rows
+        : rows.filter(row => row?.uptId && knownStockScope.includes(row.uptId));
       if (copnRemote === null) {
         // Fetch GAGAL — tampilkan lokal untuk UX, JANGAN push ke server.
-        setOpnameList(opnLocal);
+        setOpnameList(scopedStockCache(opnLocal));
         loadFailures.push("Stock Opname");
       } else if (copnRemote.length > 0) {
         setOpnameList(copnRemote);
         CLOUD.set("pln_opname_v1", copnRemote); // refresh cache dgn data terbaru dari server
       } else {
-        setOpnameList(opnLocal);
-        if (opnLocal.length > 0) syncMasterTable("stock_opname", opnLocal, o => ({ status: o.status || null }));
+        // Successful empty response is canonical. Never seed a scoped server
+        // table from a browser cache that may belong to another UPT.
+        setOpnameList([]);
+        CLOUD.set("pln_opname_v1", []);
       }
       if (cscRemote === null) {
         // Fetch GAGAL — tampilkan lokal untuk UX, JANGAN push ke server.
-        setStockCountList(scLocal);
+        setStockCountList(scopedStockCache(scLocal));
         loadFailures.push("Stock Count");
       } else if (cscRemote.length > 0) {
         const scSorted = [...cscRemote].sort(byRecency);
         setStockCountList(scSorted);
         CLOUD.set("pln_stockcount_v1", scSorted); // refresh cache dgn data terbaru dari server
       } else {
-        setStockCountList(scLocal);
-        if (scLocal.length > 0) syncMasterTable("stock_count", scLocal);
+        setStockCountList([]);
+        CLOUD.set("pln_stockcount_v1", []);
       }
       setApprovalHistoryList(cah || []);
       // DB adalah canonical. Cache Maturity hanya dipakai bila remote gagal;
@@ -1127,7 +1145,7 @@ export default function PLNWarehouse() {
         CLOUD.set("pln_heavy_equipment_v1", heFresh); // refresh cache dgn data terbaru dari server
       } else {
         setHeavyEquipmentList(heLocal);
-        if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable }));
+        if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable, tracking_mode: e.trackingMode || "UNIT", quantity_total: Number(e.quantityTotal) || 1 }));
       }
       if (chelRemote === null) {
         // Fetch GAGAL — tampilkan lokal untuk UX, JANGAN push ke server.
@@ -1261,7 +1279,7 @@ export default function PLNWarehouse() {
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
-  } = useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient: supabase });
+  } = useStockOpname({ currentUser, stockScopeUptIds: (uptList.length || currentUser?.uptId) ? getScopeUptIds(currentUser, uptList) : undefined, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient: supabase });
   const {
     katalogModal, setKatalogModal, katalogForm, setKatalogForm,
     openAddKatalog, openEditKatalog, saveKatalog, deleteKatalog,
@@ -1610,8 +1628,8 @@ export default function PLNWarehouse() {
     if (overrides.heavyEquipmentList !== undefined) {
       const heHint = hints.heavyEquipmentChangedRows;
       syncTasks.push({ label: "Alat Berat", promise: (Array.isArray(heHint) && heHint.length > 0)
-        ? syncMasterTableRows("heavy_equipment", heHint, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable }))
-        : syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable })) });
+        ? syncMasterTableRows("heavy_equipment", heHint, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable, tracking_mode: e.trackingMode || "UNIT", quantity_total: Number(e.quantityTotal) || 1 }))
+        : syncMasterTable("heavy_equipment", he, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable, tracking_mode: e.trackingMode || "UNIT", quantity_total: Number(e.quantityTotal) || 1 })) });
     }
     // ATTB (pipeline penghapusan aset material) — auto-backup ke Supabase tiap kali
     // berubah, pola sama seperti heavy_equipment (lihat schema.sql section 23).
@@ -3969,9 +3987,14 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const scopedOpnameList = dataScope === null ? opnameList : opnameList.filter(o => {
     const gudangUptId = gudangList.find(g => g.id === o.gudangId)?.uptId || gudangList.find(g => g.id === o.gudangId)?.upt_id || null;
     const creatorUptId = users.find(u => u.id === o.dibuatOleh)?.uptId || users.find(u => u.id === o.dibuatOleh)?.upt_id || null;
-    return inScopeUpt(o.uptId || o.upt_id || gudangUptId || creatorUptId, dataScope);
+    const resolvedUptId = o.uptId || o.upt_id || gudangUptId || creatorUptId;
+    return Boolean(resolvedUptId) && inScopeUpt(resolvedUptId, dataScope);
   });
-  const scopedStockCountList = dataScope === null ? stockCountList : stockCountList.filter(sc => inScopeUpt(users.find(u => u.id === sc.uploadedBy)?.uptId || null, dataScope));
+  const scopedStockCountList = dataScope === null ? stockCountList : stockCountList.filter(sc => {
+    const creatorUptId = users.find(u => u.id === sc.uploadedBy)?.uptId || users.find(u => u.id === sc.uploadedBy)?.upt_id || null;
+    const resolvedUptId = sc.uptId || sc.upt_id || creatorUptId;
+    return Boolean(resolvedUptId) && inScopeUpt(resolvedUptId, dataScope);
+  });
   // UPT adalah pagar pertama; gudang_ids hanya mempersempit scope itu.
   // Tier nasional (SUPERADMIN global + ADMIN_LOG_PUSAT/PLN Pusat) = dataScope null →
   // tidak dilimit (lihat semua gudang/kapasitas); UIT/UPT tetap mengikuti hierarki unitnya.

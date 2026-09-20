@@ -3,11 +3,11 @@ import { useState } from "react";
 import { UIT } from "../constants.js";
 import { getUserUptScope, roleTier } from "../lib/roles.js";
 import { downloadHeavyEquipmentLoanHTML } from "../lib/docBuilders.js";
-import { canApproveHeavyEquipmentLoan, canCompleteHeavyEquipmentLoan, EQUIPMENT_CATEGORIES, getEquipmentCategory, getHeavyEquipmentUptId, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
+import { canApproveHeavyEquipmentLoan, canCompleteHeavyEquipmentLoan, EQUIPMENT_CATEGORIES, getEquipmentCategory, getHeavyEquipmentUptId, getHeavyEquipmentLoanJobName, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanRuntimeStatus, getHeavyEquipmentLoanStartDate, heavyEquipmentQuantityBalance, getHeavyEquipmentLoanRemainingQuantity, isPendingHeavyEquipmentLoan, normalizeHeavyEquipmentLoanStatus } from "../lib/heavyEquipment.js";
 import { OperationsHero } from "./OperationsHero.jsx";
 import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
 import { RiwayatPerjalananPanel } from "./RiwayatPerjalananPanel.jsx";
-import { fmtDateOnly } from "../lib/utils.js";
+import { fmtDate, fmtDateOnly } from "../lib/utils.js";
 import { supabase } from "../supabaseClient.js";
 
 const LOAN_APPROVAL_ATTESTATIONS = [
@@ -19,13 +19,13 @@ const LOAN_APPROVAL_ATTESTATIONS = [
 
 const LOAN_RETURN_CHECKS = [
   ["fisik", "Alat sudah kembali secara fisik ke gudang."],
-  ["kondisi", "Kondisi alat sudah diperiksa, tidak ada kerusakan/kehilangan baru."],
+  ["kondisi", "Kondisi alat sudah diperiksa dan jumlah baik/rusak/hilang sesuai hasil fisik."],
 ];
 
 const EQUIPMENT_FORM_FIELDS = [
   ["upt", "UPT"], ["lokasi", "Lokasi"], ["nama", "Nama"], ["jenis", "Jenis"],
   ["merkType", "Merk/Type"], ["kapasitas", "Kapasitas"], ["nomorSeri", "No. Seri"],
-  ["tahun", "Tahun"], ["kondisi", "Kondisi"],
+  ["tahun", "Tahun"], ["specification", "Spesifikasi"], ["kondisi", "Kondisi"],
 ];
 
 // Dokumen berupa data URL (baru diupload, belum tersimpan) atau URL/path yang sudah
@@ -68,7 +68,7 @@ function SuratIzinField({ value, onChange, showToast }) {
   </label>;
 }
 
-function EquipmentFields({ form, setForm, sty, showToast, lockedUpt = false, gudangOptions = [] }) {
+function EquipmentFields({ form, setForm, sty, showToast, lockedUpt = false, gudangOptions = [], canChangeTracking = true, hasLoanHistory = false }) {
   return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
     {EQUIPMENT_FORM_FIELDS.map(([key,label]) => <label key={key} style={sty.label}>{key === "lokasi" && gudangOptions.length ? "Gudang / lokasi" : label}
       {key === "lokasi" && gudangOptions.length
@@ -84,6 +84,16 @@ function EquipmentFields({ form, setForm, sty, showToast, lockedUpt = false, gud
       <input type="checkbox" checked={!!form.tracked} onChange={e=>setForm(current=>({...current,tracked:e.target.checked}))}/>
       Lacak lokasi
     </label>
+    <label style={sty.label}>Mode pencatatan
+      <select style={sty.input} value={form.trackingMode||"UNIT"} disabled={!canChangeTracking || hasLoanHistory} onChange={e=>setForm(current=>({...current,trackingMode:e.target.value,quantityTotal:e.target.value==="QUANTITY"?(current.quantityTotal||1):1}))}>
+        <option value="UNIT">Per aset</option><option value="QUANTITY">Pool kuantitas</option>
+      </select>
+      {hasLoanHistory && <small style={{display:"block",color:"#64748b",marginTop:3}}>Terkunci karena sudah memiliki riwayat peminjaman.</small>}
+    </label>
+    {form.trackingMode === "QUANTITY" && <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+      <label style={sty.label}>Jumlah total<input style={sty.input} type="number" min="1" step="1" inputMode="numeric" value={form.quantityTotal||1} disabled={!canChangeTracking || hasLoanHistory} onChange={e=>setForm(current=>({...current,quantityTotal:Math.max(1,Number(e.target.value)||1)}))}/></label>
+      <label style={sty.label}>Satuan<input style={sty.input} value={form.unit||"unit"} disabled={!canChangeTracking || hasLoanHistory} onChange={e=>setForm(current=>({...current,unit:e.target.value}))}/></label>
+    </div>}
     <label style={sty.label}>Jenis Aset
       <select style={sty.input} value={form.assetType||"ALAT_BERAT"} onChange={e=>setForm(current=>({...current,assetType:e.target.value}))}>
         <option value="ALAT_BERAT">Alat Berat</option>
@@ -139,7 +149,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [kondisiFilter, setKondisiFilter] = useState("ALL");
   const [loanCategoryFilter, setLoanCategoryFilter] = useState("ALL");
-  const [loanForm, setLoanForm] = useState({equipmentIds:[], equipmentId:"", borrowerType:"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  const [loanForm, setLoanForm] = useState({equipmentIds:[], equipmentId:"", quantityByEquipmentId:{}, borrowerType:"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [reviewingLoan, setReviewingLoan] = useState(null);
@@ -147,6 +157,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const [returningLoan, setReturningLoan] = useState(null);
   const [returnChecked, setReturnChecked] = useState({});
   const [returnEvidence, setReturnEvidence] = useState("");
+  const [returnQuantities, setReturnQuantities] = useState({good:0,damaged:0,lost:0,conditionNote:""});
   const [returnSubmitting, setReturnSubmitting] = useState(false);
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [editForm, setEditForm] = useState({statusAlat:"LAYAK", foto:null});
@@ -185,7 +196,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const canSeeRiwayatPerjalanan = canManage || isMultiUptViewer;
   const [addingEquipment, setAddingEquipment] = useState(false);
   const ownedGudang = gudangList.filter(g => !g?.__gi && (g.uptId || g.upt_id) === currentUser?.uptId);
-  const blankEquipment = () => ({upt:myUpt||"", uptId:currentUser?.uptId||"", gudangId:"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", assetType:"ALAT_BERAT", isCrossUptBorrowable:false, foto:null});
+  const blankEquipment = () => ({upt:myUpt||"", uptId:currentUser?.uptId||"", gudangId:"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", specification:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", assetType:"ALAT_BERAT", trackingMode:"UNIT", quantityTotal:1, unit:"unit", isCrossUptBorrowable:false, foto:null});
   const [addForm, setAddForm] = useState(blankEquipment);
   const [savingEquipment, setSavingEquipment] = useState(false);
   // Ajukan Peminjaman = "kita mau pinjam alat", jadi alat yang ditawarkan HARUS di luar UPT
@@ -202,9 +213,6 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   // Alat yang ter-scope ke UPT aktif (non-MSB dikunci ke UPT sendiri) — dipakai KPI di bawah &
   // status grid. Dulu 3 count ini dihitung dari equipmentList mentah tanpa filter UPT.
   const scopedEquipment = equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter) && (!uitScopeNames||uitScopeNames.has(e.upt)));
-  const issueCount = scopedEquipment.filter(e=>["PERLU_SERVICE","RUSAK"].includes(e.statusAlat)).length;
-  const availableCount = scopedEquipment.filter(e=>e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
-  const maintenanceCount = scopedEquipment.filter(e=>e.statusAlat==="MAINTENANCE").length;
 
   // 5 status alat yang bisa dipilih Admin/TL lewat tombol Edit Alat
   const STATUS_ALAT_OPTIONS = [
@@ -327,7 +335,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
 
   async function submitLoan() {
     const ok = await createLoan({ ...loanForm, equipmentId:loanForm.equipmentIds?.[0] || loanForm.equipmentId });
-    if (ok) setLoanForm({equipmentIds:[], equipmentId:"", borrowerType:"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+    if (ok) setLoanForm({equipmentIds:[], equipmentId:"", quantityByEquipmentId:{}, borrowerType:"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   }
 
   async function openEvidence(path) {
@@ -347,9 +355,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     {id:"PERLU_SERVICE", label:"Perlu Servis", color:"#f59e0b", count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="PERLU_SERVICE").length},
     {id:"RUSAK",    label:"Rusak",          color:C.red,      count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="RUSAK").length},
   ].filter(g=>g.id==="ALL"||g.count>0);
-  const scopedMaintenance = scopedEquipment.filter(e=>["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
-  const scopedAvailable = scopedEquipment.filter(e=>!activeLoanForEquipment(e.id) && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
-  const scopedBorrowed = scopedEquipment.filter(e=>activeLoanForEquipment(e.id)?.runtimeStatus==="DIPINJAM").length;
+  const scopedPhysicalBalances = scopedEquipment.map(e=>({equipment:e,balance:heavyEquipmentQuantityBalance(e, scopedLoans)}));
+  const scopedPhysicalTotal = scopedPhysicalBalances.reduce((sum,item)=>sum+item.balance.total,0);
+  const scopedAvailable = scopedPhysicalBalances.reduce((sum,item)=>["MAINTENANCE","KIR"].includes(item.equipment.statusAlat)?sum:sum+item.balance.available,0);
+  const scopedBorrowed = scopedPhysicalBalances.reduce((sum,item)=>sum+item.balance.reserved,0);
+  const scopedMaintenance = scopedPhysicalBalances.reduce((sum,item)=>["MAINTENANCE","KIR"].includes(item.equipment.statusAlat)?sum+item.balance.total:sum,0);
 
   return (
     <div className="operations-page heavy-equipment-page">
@@ -359,9 +369,9 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         description="Catat alat kerja, peminjaman, bukti serah-terima, dan pengembalian per UPT."
         scope={uptFilterControllable ? (myUptSelected||"Semua UPT") : `UPT ${myUpt||"Surabaya"}`}
         metrics={[
-          {label:"Total alat",value:scopedEquipment.length},
+          {label:"Total fisik",value:scopedPhysicalTotal},
           {label:"Tersedia",value:scopedAvailable},
-          {label:"Dipinjam",value:scopedBorrowed},
+          {label:"Dipinjam / reservasi",value:scopedBorrowed},
           {label:"Maintenance / KIR",value:scopedMaintenance},
           {label:"Pending approval",value:pendingCount,alert:pendingCount>0},
           {label:"Overdue",value:overdueCount,alert:overdueCount>0},
@@ -430,6 +440,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         {filteredEquipment.map(eq=>{
           const activeLoan = activeLoanForEquipment(eq.id);
           const lastLoan = latestLoanForEquipment(eq.id);
+          const quantityBalance = eq.trackingMode === "QUANTITY" ? heavyEquipmentQuantityBalance(eq, normalizedLoans) : null;
           return (
             <div key={eq.id} className="operations-card equipment-card" style={{...sty.card,padding:14,display:"flex",flexDirection:"column",gap:10,borderLeft:activeLoan?`4px solid ${loanBorderColor(activeLoan.runtimeStatus)}`:undefined}}>
               <div style={{height:150,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -441,8 +452,10 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
               </div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}><Badge metaKey={eq.statusAlat}/><span style={{padding:"3px 9px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#f3f4f6",color:C.muted}}>{eq.jenis}</span></div>
               <div className="equipment-spec-grid">
+                {quantityBalance && <><div><span className="equipment-fact-label">Total</span><span className="equipment-fact-value">{quantityBalance.total} {eq.unit||"unit"}</span></div><div><span className="equipment-fact-label">Tersedia</span><span className="equipment-fact-value">{quantityBalance.available} {eq.unit||"unit"}</span></div><div><span className="equipment-fact-label">Dipinjam / reservasi</span><span className="equipment-fact-value">{quantityBalance.reserved}</span></div><div><span className="equipment-fact-label">Rusak / hilang</span><span className="equipment-fact-value">{quantityBalance.damaged} / {quantityBalance.lost}</span></div></>}
                 <div><span className="equipment-fact-label">Merk/Type</span><span className="equipment-fact-value">{eq.merkType||"-"}</span></div>
                 <div><span className="equipment-fact-label">Kapasitas</span><span className="equipment-fact-value">{eq.kapasitas||"-"}</span></div>
+                {eq.specification && <div><span className="equipment-fact-label">Spesifikasi</span><span className="equipment-fact-value">{eq.specification}</span></div>}
                 <div><span className="equipment-fact-label">Tahun</span><span className="equipment-fact-value">{eq.tahun||"-"}</span></div>
                 <div><span className="equipment-fact-label">No. Seri</span><span className="equipment-fact-value">{eq.nomorSeri||"-"}</span></div>
                 <div><span className="equipment-fact-label">Kondisi</span><span className="equipment-fact-value">{eq.kondisi||"-"}</span></div>
@@ -496,6 +509,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 {!borrowableEquipment.length && <div style={{padding:10,fontSize:12,color:C.muted}}>Tidak ada alat tersedia.</div>}
               </div>
               <div style={{fontSize:12,color:C.muted,marginTop:5}}>{loanForm.equipmentIds.length} alat dipilih. Pemilik: <b>{selectedEquipment?.upt||myUpt||"-"}</b></div>
+              {loanForm.equipmentIds.map(id=>{const item=equipmentList.find(e=>e.id===id);const balance=item?.trackingMode === "QUANTITY" ? heavyEquipmentQuantityBalance(item, normalizedLoans) : null;return balance&&<label key={`qty-${id}`} style={{...sty.label,marginTop:6}}>Jumlah {item.nama} <span style={{color:C.muted}}>(tersedia {balance.available} {item.unit||"unit"})</span><input style={sty.input} type="number" min="1" max={balance.available} step="1" inputMode="numeric" value={loanForm.quantityByEquipmentId?.[id]||1} onChange={e=>setLoanForm(f=>({...f,quantityByEquipmentId:{...f.quantityByEquipmentId,[id]:Math.min(balance.available,Math.max(1,Number(e.target.value)||1))}}))}/></label>;})}
             </div>
             <div style={{marginBottom:8}}>
               <label style={sty.label}>Jenis Peminjam</label>
@@ -572,6 +586,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                   </div>
                   <div style={{fontSize:13,fontWeight:700,marginBottom:6,WebkitLineClamp:2,WebkitBoxOrient:"vertical",display:"-webkit-box",overflow:"hidden"}}>{loan.namaPekerjaan||"-"}</div>
                   <div className="equipment-loan-facts" style={{marginBottom:isActive?6:0}}>
+                    {eq?.trackingMode === "QUANTITY" && <div><span className="equipment-fact-label">Jumlah</span><span className="equipment-fact-value">{loan.quantityBorrowed||1} {eq.unit||"unit"} • sisa {getHeavyEquipmentLoanRemainingQuantity(loan)}</span></div>}
                     <div><span className="equipment-fact-label">Durasi</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{durasiLabel}</span></div>
                     <div><span className="equipment-fact-label">Pemohon</span><span className="equipment-fact-value">{pemohon?.name||"?"}</span></div>
                     <div><span className="equipment-fact-label">Diajukan</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{fmtDateOnly(loan.requestedAt)}</span></div>
@@ -581,6 +596,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                     {loan.approvedBy && <div><span className="equipment-fact-label">Disetujui</span><span className="equipment-fact-value">{penyetuju?.name||"-"} · {fmtDateOnly(loan.approvedAt)}</span></div>}
                     {loan.catatanApproval && <div><span className="equipment-fact-label">Catatan approval</span><span className="equipment-fact-value">{loan.catatanApproval}</span></div>}
                   </div>
+                  {(() => { const events=Array.isArray(loan.returnEvents)?loan.returnEvents:(Array.isArray(loan.data?.returnEvents)?loan.data.returnEvents:[]); return events.length>0 && <div className="heavy-loan-timeline" aria-label="Timeline pengembalian"><b>Timeline pengembalian</b>{events.map((event,index)=>{const actor=users.find(u=>u.id===(event.actorId||event.actor_id));return <div key={event.id||index} style={{fontSize:12,color:C.muted,marginTop:4}}>#{index+1} • {event.occurredAt?fmtDate(event.occurredAt):"waktu tidak tercatat"} • {actor?.name||event.actorId||"aktor tidak tercatat"} • baik {event.good||0}, rusak {event.damaged||0}, hilang {event.lost||0} • saldo {event.remainingAfter??"-"}{event.conditionNote?` • ${event.conditionNote}`:""}{event.evidencePath&&<button style={{...sty.btn("ghost","sm"),marginLeft:6}} onClick={()=>openEvidence(event.evidencePath)}>Lihat bukti</button>}</div>;})}</div>; })()}
                   {(loan.pickupEvidencePath || loan.returnEvidencePath) && <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
                     {loan.pickupEvidencePath && <button style={sty.btn("ghost","sm")} onClick={()=>openEvidence(loan.pickupEvidencePath)}>Lihat foto keluar</button>}
                     {loan.returnEvidencePath && <button style={sty.btn("ghost","sm")} onClick={()=>openEvidence(loan.returnEvidencePath)}>Lihat foto kembali</button>}
@@ -596,7 +612,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                     <button aria-label="Tandai Alat Kembali" style={{...sty.btn("ghost","sm"),marginTop:6}} onClick={()=>setReturningLoan(loan)}>Tandai Alat Kembali</button>
                   )}
                   {isBatchLead && ["TERJADWAL","DIPINJAM","OVERDUE","SELESAI"].includes(loan.runtimeStatus) && (
-                    <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, batchEquipment.length?batchEquipment:eq, users, showToast)}>Cetak dokumen batch</button>
+                    <button style={{...sty.btn("ghost","sm"),marginTop:6,marginLeft:isActive&&["DIPINJAM","OVERDUE"].includes(loan.runtimeStatus)&&canCompleteHeavyEquipmentLoan(currentUser, loan, uptList)?6:0}} onClick={()=>downloadHeavyEquipmentLoanHTML(loan, batchEquipment.length?batchEquipment.map(item=>({...item,__loan:batchLoans.find(itemLoan=>itemLoan.equipmentId===item.id)||loan})):eq, users, showToast)}>Cetak dokumen batch</button>
                   )}
                 </div>
               );
@@ -635,6 +651,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 <div><b>Keperluan:</b> {loan.keperluan||"-"}</div>
                 {loan.catatan && <div><b>Catatan:</b> {loan.catatan}</div>}
                 <div><b>Durasi:</b> {loan.tanggalAmbil} s/d {loan.tanggalKembali} ({hariLabel})</div>
+                {eq?.trackingMode === "QUANTITY" && <div><b>Jumlah:</b> {loan.quantityBorrowed||1} {eq.unit||"unit"} • sisa {getHeavyEquipmentLoanRemainingQuantity(loan)}</div>}
                 <div><b>Diajukan oleh:</b> {pemohon?.name||"?"}</div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
@@ -658,8 +675,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       {returningLoan && (()=>{
         const loan = returningLoan;
         const eq = equipmentList.find(e=>e.id===loan.equipmentId);
+        const remaining = getHeavyEquipmentLoanRemainingQuantity(loan);
+        const isQuantityLoan = eq?.trackingMode === "QUANTITY";
+        const returnedSum = Number(returnQuantities.good||0)+Number(returnQuantities.damaged||0)+Number(returnQuantities.lost||0);
         const allReturnChecked = LOAN_RETURN_CHECKS.every(([key])=>returnChecked[key]);
-        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); setReturnEvidence(""); };
+        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); setReturnEvidence(""); setReturnQuantities({good:0,damaged:0,lost:0,conditionNote:""}); };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
             <div role="dialog" aria-label="Konfirmasi Alat Kembali" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -670,7 +690,13 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 <div style={{fontSize:12,color:C.muted}}>{loan.ownerUpt} → {loan.requesterUpt}</div>
                 <div><b>Pekerjaan:</b> {loan.namaPekerjaan||"-"}</div>
                 <div><b>Rencana kembali:</b> {loan.tanggalKembali||"-"}</div>
+                {isQuantityLoan && <div><b>Sisa belum kembali:</b> {remaining} {eq.unit||"unit"}</div>}
               </div>
+              {isQuantityLoan && <div className="heavy-return-quantities" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:10}}>
+                {[['good','Baik'],['damaged','Rusak'],['lost','Hilang']].map(([key,label])=><label key={key} style={sty.label}>{label}<input style={sty.input} type="number" min="0" max={remaining} inputMode="numeric" value={returnQuantities[key]} onChange={e=>setReturnQuantities(v=>({...v,[key]:Math.max(0,Number(e.target.value)||0)}))}/></label>)}
+                <label style={{...sty.label,gridColumn:"1 / -1"}}>Catatan kondisi {Number(returnQuantities.damaged||0)+Number(returnQuantities.lost||0)>0&&<span style={{color:C.red}}>*</span>}<textarea style={{...sty.input,minHeight:56}} value={returnQuantities.conditionNote} onChange={e=>setReturnQuantities(v=>({...v,conditionNote:e.target.value}))}/></label>
+                {returnedSum>remaining && <div style={{gridColumn:"1 / -1",color:C.red,fontSize:12}}>Jumlah pengembalian melebihi sisa {remaining}.</div>}
+              </div>}
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
                 {LOAN_RETURN_CHECKS.map(([key,label])=>(
                   <label key={key} style={{display:"flex",alignItems:"flex-start",gap:8,fontSize:12}}>
@@ -685,7 +711,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
               </label>
               <div style={{display:"flex",gap:10}}>
                 <button className="approval-btn--cancel" style={{flex:1}} onClick={closeReturn}>Batal</button>
-                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked || !returnEvidence || returnSubmitting} onClick={async()=>{setReturnSubmitting(true);try { if (await completeLoan(loan.id,{returnEvidence})) closeReturn(); } finally { setReturnSubmitting(false); }}}>{returnSubmitting?"Menyimpan…":"Tandai Sudah Kembali"}</button>
+                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked || !returnEvidence || returnSubmitting || (isQuantityLoan && (returnedSum<1 || returnedSum>remaining || ((Number(returnQuantities.damaged||0)+Number(returnQuantities.lost||0)>0)&&!returnQuantities.conditionNote.trim())))} onClick={async()=>{setReturnSubmitting(true);try { if (await completeLoan(loan.id,{returnEvidence,quantityReturnedGood:isQuantityLoan?Number(returnQuantities.good||0):remaining,quantityReturnedDamaged:isQuantityLoan?Number(returnQuantities.damaged||0):0,quantityReturnedLost:isQuantityLoan?Number(returnQuantities.lost||0):0,conditionNote:returnQuantities.conditionNote})) closeReturn(); } finally { setReturnSubmitting(false); }}}>{returnSubmitting?"Menyimpan…":"Tandai Sudah Kembali"}</button>
               </div>
             </div>
           </div>
@@ -701,7 +727,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
             <div role="dialog" aria-label="Edit Alat Berat" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
               <h3 style={{fontSize:15,fontWeight:800,marginBottom:4}}>✏️ Edit Alat</h3>
               <div style={{fontSize:12,color:C.muted,marginBottom:16}}>{eq.nama} - {eq.upt}</div>
-              {canManage && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty} showToast={showToast} lockedUpt gudangOptions={ownedGudang}/>}
+              {canManage && <EquipmentFields form={editForm} setForm={setEditForm} sty={sty} showToast={showToast} lockedUpt gudangOptions={ownedGudang} canChangeTracking={eq.trackingMode !== "QUANTITY"} hasLoanHistory={normalizedLoans.some(loan=>loan.equipmentId===eq.id)}/>}
               <EquipmentPhotoInput foto={editForm.foto} nama={eq.nama} handleImg={handleImg} setForm={setEditForm} sty={sty} C={C} showToast={showToast}/>
               <div style={{marginBottom:16}}>
                 <label style={sty.label}>Status Alat</label>

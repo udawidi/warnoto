@@ -173,6 +173,8 @@
 .equipment-placeholder { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid #cbd5e1; border-radius: 10px; color: #64748b; font-size: 12px; font-weight: 900; letter-spacing: 1px; }
 .equipment-spec-grid, .equipment-loan-facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
 .equipment-spec-grid > div, .equipment-loan-facts > div { min-width: 0; }
+.heavy-return-quantities input, .equipment-loan-layout input[type="number"] { min-height: 44px; }
+.heavy-loan-timeline { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border, #e5e7eb); }
 .equipment-fact-label { display: block; font-size: 12px; color: #64748b; margin-bottom: 2px; }
 .equipment-fact-value { font-size: 13px; overflow-wrap: anywhere; }
 .operations-form-panel { padding: 16px !important; border-radius: 12px !important; box-shadow: 0 1px 2px rgba(15,23,42,.04) !important; }
@@ -196,6 +198,8 @@
 [data-theme="dark"] .equipment-batch-picker > label:hover,
 [data-theme="dark"] .equipment-batch-picker > label.is-selected { border-color: #3b82f6; background: #172554; }
 @media (max-width: 767px) {
+  .heavy-equipment-page .heavy-return-quantities { grid-template-columns: 1fr !important; }
+  .heavy-equipment-page .heavy-return-quantities label:last-of-type { grid-column: auto !important; }
   .heavy-equipment-page .equipment-loan-layout { grid-template-columns: 1fr !important; }
   .heavy-equipment-page .equipment-loan-dates { grid-template-columns: 1fr !important; }
   .heavy-equipment-page .equipment-condition-filter { width: 100% !important; }

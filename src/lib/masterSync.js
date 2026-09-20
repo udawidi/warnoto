@@ -96,13 +96,19 @@ export function extractLatLngFromAddress(text) {
   }
 }
 
-export async function loadMasterTable(table) {
+export async function loadMasterTable(table, { uptIds } = {}) {
   if (!supabase) return null;
+  if ((table === "stock_opname" || table === "stock_count") && Array.isArray(uptIds) && uptIds.length === 0) return [];
   const pageSize = 1000; // PostgREST default max-rows; explicit paging prevents silent truncation.
   const fetchAll = async () => {
     const rows = [];
     for (let from = 0; ; from += pageSize) {
-      const { data, error } = await supabase.from(table).select("*").order("id", { ascending: true }).range(from, from + pageSize - 1);
+      let query = supabase.from(table).select("*").order("id", { ascending: true }).range(from, from + pageSize - 1);
+      // Defense-in-depth only. RLS remains the security boundary. Undefined means
+      // scope belum diketahui (mis. UPT master gagal dimuat), jadi jangan filter
+      // client dan biarkan server policy menentukan baris yang boleh terlihat.
+      if (Array.isArray(uptIds)) query = query.in("upt_id", uptIds);
+      const { data, error } = await query;
       if (error) throw error;
       rows.push(...(data || []));
       if (!data || data.length < pageSize) return rows;
@@ -123,10 +129,16 @@ export async function loadMasterTable(table) {
     if (table === "heavy_equipment") {
       item.uptId = row.upt_id || item.uptId || item.upt_id || null;
       item.isCrossUptBorrowable = row.is_cross_upt_borrowable ?? item.isCrossUptBorrowable ?? item.is_cross_upt_borrowable ?? false;
+      item.trackingMode = row.tracking_mode || item.trackingMode || item.tracking_mode || "UNIT";
+      item.quantityTotal = row.quantity_total ?? item.quantityTotal ?? item.quantity_total ?? 1;
     }
     if (table === "heavy_equipment_loans") {
       item.ownerUptId = row.owner_upt_id || item.ownerUptId || item.owner_upt_id || null;
       item.requesterUptId = row.requester_upt_id || item.requesterUptId || item.requester_upt_id || null;
+      item.quantityBorrowed = row.quantity_borrowed ?? item.quantityBorrowed ?? item.quantity_borrowed ?? 1;
+      item.quantityReturnedGood = row.quantity_returned_good ?? item.quantityReturnedGood ?? item.quantity_returned_good ?? 0;
+      item.quantityReturnedDamaged = row.quantity_returned_damaged ?? item.quantityReturnedDamaged ?? item.quantity_returned_damaged ?? 0;
+      item.quantityReturnedLost = row.quantity_returned_lost ?? item.quantityReturnedLost ?? item.quantity_returned_lost ?? 0;
     }
     return item;
   });

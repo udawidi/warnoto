@@ -1,6 +1,6 @@
 // Komponen HeavyEquipmentDashboardSummary — dipindah dari App.jsx (refactor Fase 4e).
 import { hasRole, getUserUptScope } from "../lib/roles.js";
-import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanRuntimeStatus, isPendingHeavyEquipmentLoan, getEquipmentCategory, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName } from "../lib/heavyEquipment.js";
+import { getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanRuntimeStatus, isPendingHeavyEquipmentLoan, getEquipmentCategory, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName, heavyEquipmentQuantityBalance } from "../lib/heavyEquipment.js";
 import { Tractor, Warning, PushPin } from "@phosphor-icons/react";
 
 export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [], C, sty, setTab, currentUser, uptList }) {
@@ -14,7 +14,11 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
   const overdueLoans = scopedLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="OVERDUE");
   const pendingLoans = scopedLoans.filter(isPendingHeavyEquipmentLoan);
   const borrowedLoans = scopedLoans.filter(l=>getHeavyEquipmentLoanRuntimeStatus(l)==="DIPINJAM");
-  const availableCount = scopedEquipment.filter(e=>e.availabilityStatus!=="DIPINJAM" && !["MAINTENANCE","KIR"].includes(e.statusAlat)).length;
+  const physicalBalances = scopedEquipment.map(e=>({equipment:e,balance:heavyEquipmentQuantityBalance(e, scopedLoans)}));
+  const physicalTotal = physicalBalances.reduce((sum,item)=>sum+item.balance.total,0);
+  const physicalAvailable = physicalBalances.reduce((sum,item)=>["MAINTENANCE","KIR"].includes(item.equipment.statusAlat)?sum:sum+item.balance.available,0);
+  const physicalBorrowed = physicalBalances.reduce((sum,item)=>sum+item.balance.reserved,0);
+  const availableCount = physicalAvailable;
   const issueCount = scopedEquipment.filter(e=>["PERLU_SERVICE","RUSAK"].includes(e.statusAlat)).length;
   const catIcons = {
     crane:(
@@ -88,9 +92,9 @@ export function HeavyEquipmentDashboardSummary({ equipmentList = [], loans = [],
       {/* KPI status */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(100px,1fr))",gap:8}}>
         {[
-          {label:"Total", val:scopedEquipment.length, color:C.accent},
+          {label:"Total", val:physicalTotal, color:C.accent},
           {label:"Tersedia", val:availableCount, color:C.green},
-          {label:"Dipinjam", val:borrowedLoans.length, color:"#c2410c"},
+          {label:"Dipinjam / Reservasi", val:physicalBorrowed, color:"#c2410c"},
           {label:"Overdue", val:overdueLoans.length, color:overdueLoans.length?C.red:C.green},
           {label:"Pending", val:pendingLoans.length, color:pendingLoans.length?"#92400e":C.green},
           {label:"Perlu Tindakan", val:issueCount, color:issueCount?C.red:C.green},

@@ -17,7 +17,7 @@ function readCachedList(key) {
 // read-only, approval temuan selisih per item). saveToCloud/uploadStockFoto diakses lewat
 // stateRef.current / param langsung (hoisted function) — sama pola dgn hook lain, lihat
 // useHeavyEquipment.js untuk penjelasan lengkap TDZ.
-export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient }) {
+export function useStockOpname({ currentUser, stockScopeUptIds, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient }) {
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
   const opnameListRef = useRef(opnameList);
   const commitOpnameList = next => { opnameListRef.current = next; setOpnameList(next); };
@@ -44,7 +44,7 @@ export function useStockOpname({ currentUser, showToast, stateRef, logApprovalHi
     const shouldMerge = forceMerge || (Array.isArray(touchedLokasiIds) && touchedLokasiIds.length);
     if (shouldMerge) {
       try {
-        const serverList = await loadMasterTable("stock_opname"); // null = fetch gagal (lihat masterSync.js)
+        const serverList = await loadMasterTable("stock_opname", { uptIds: stockScopeUptIds }); // null = fetch gagal (lihat masterSync.js)
         if (!Array.isArray(serverList)) { syncPending = true; }
         else {
           const serverOpn = serverList.find(o=>o.id===opn.id);
