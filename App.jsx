@@ -4477,6 +4477,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 setStocks={setStocks}
                 saveToCloud={saveToCloud}
                 visibleGudangList={visibleGudangList}
+                stockVisibleGudangList={visibleTugGudangList}
                 stockGudangFilter={stockGudangFilter}
                 setStockGudangFilter={setStockGudangFilter}
                 showWork={opnameSubTab==="opname"}

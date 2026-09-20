@@ -107,10 +107,14 @@ const GI_CLOUD_OVERRIDES = {
   pln_stocks_v4: [{ ...STOCKS[0], uptId:"UPT-SBY", gudangId:"GI-E2E-01", lokasiId:"GILOK-E2E-01" }, STOCKS[1]],
   pln_gudang_v1: [...GUDANG,
     { id:"GI-E2E-01", nama:"GI E2E Surabaya", kode:"GIE2E", alamat:"Lokasi fixture", uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"E2E-01", giActive:true, lat:-7.2575, lng:112.7521, mapSourceUrl:"https://www.openstreetmap.org/?mlat=-7.2575&mlon=112.7521" },
+    { id:"GI-E2E-02", nama:"GI E2E PBG", kode:"GIE2EPBG", alamat:"Lokasi fixture", uptId:"UPT-PBG", __gi:true, __giFixture:true, giId:"E2E-02", giActive:true },
     { id:"GI-E2E-INACTIVE", nama:"GI Inactive", kode:"GIINACTIVE", alamat:"Lokasi fixture", uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"INACTIVE", giActive:false },
     { id:"GI-E2E-MISSING", nama:"GI Missing Pair", kode:"GIMISSING", alamat:"Lokasi fixture", uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"MISSING", giActive:true },
   ],
-  pln_lokasi_v4: [...LOKASI, { id:"GILOK-E2E-01", kode:"GI-E2E-01", keterangan:"Gardu Induk fixture", gudangId:"GI-E2E-01", subGudangId:null, uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"E2E-01", giActive:true }],
+  pln_lokasi_v4: [...LOKASI,
+    { id:"GILOK-E2E-01", kode:"GI-E2E-01", keterangan:"Gardu Induk fixture", gudangId:"GI-E2E-01", subGudangId:null, uptId:"UPT-SBY", __gi:true, __giFixture:true, giId:"E2E-01", giActive:true },
+    { id:"GILOK-E2E-02", kode:"GI-E2E-02", keterangan:"Gardu Induk fixture", gudangId:"GI-E2E-02", subGudangId:null, uptId:"UPT-PBG", __gi:true, __giFixture:true, giId:"E2E-02", giActive:true },
+  ],
 };
 
 const FORBIDDEN_HOSTS = [

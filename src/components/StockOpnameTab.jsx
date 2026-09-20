@@ -19,7 +19,7 @@ import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phos
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
-  setStocks, saveToCloud, visibleGudangList, stockGudangFilter, setStockGudangFilter,
+  setStocks, saveToCloud, visibleGudangList, stockVisibleGudangList, stockGudangFilter, setStockGudangFilter,
   uploadStockFoto, showWork=true, showHistory=true, onOpenWork }) {
 
   const sortedGudangList = [...(gudangList || [])].sort((a,b) => String(a.kode || a.nama || "").localeCompare(String(b.kode || b.nama || ""), "id", { numeric:true, sensitivity:"base" }));
@@ -1514,7 +1514,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         <PindahBlokModal C={C} sty={sty} currentUser={currentUser}
           st={moveStock.st} lok={moveStock.lok} gdg={moveStock.gdg}
           stocks={stocks} setStocks={setStocks} lokasiList={lokasiList}
-          visibleGudangList={visibleGudangList} stockGudangFilter={stockGudangFilter}
+          visibleGudangList={stockVisibleGudangList || visibleGudangList} stockGudangFilter={stockGudangFilter}
           setStockGudangFilter={setStockGudangFilter} saveToCloud={saveToCloud}
           showToast={showToast} onClose={handleCloseMove} />
       )}

@@ -451,7 +451,7 @@ export function DataStokTab({
               <PindahBlokModal
                 C={C} sty={sty} currentUser={currentUser}
                 st={moveStock.st} lok={moveStock.lok} gdg={moveStock.gdg}
-                stocks={stocks} setStocks={setStocks} lokasiList={lokasiList} visibleGudangList={visibleGudangList}
+                stocks={stocks} setStocks={setStocks} lokasiList={lokasiList} visibleGudangList={stockVisibleGudangList || visibleGudangList}
                 stockGudangFilter={stockGudangFilter} setStockGudangFilter={setStockGudangFilter}
                 saveToCloud={saveToCloud} showToast={showToast}
                 onClose={()=>setMoveStock(null)}

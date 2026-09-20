@@ -48,6 +48,23 @@ test.describe("GI fixture selection stays local to e2e", () => {
     await expect(page.getByRole("link", { name: /Buka peta internet/ })).toHaveAttribute("href", /openstreetmap\.org/);
   });
 
+  test("stock move modal offers only paired GI in the stock UPT", async ({ isolatedPage: page }) => {
+    await openApp(page);
+    await openRoute(page, { tab: "stock", menuPath: ["Data Stok"], readySelector: ".stock-page" });
+
+    const stockRow = page.locator(".stock-page tbody tr").filter({ hasText: "Isolator Keramik 150 kV" }).first();
+    await expect(stockRow).toBeVisible();
+    await stockRow.getByRole("button", { name: "Pindah Blok" }).click();
+
+    const gudangSelect = page.locator("select").filter({ has: page.locator('option[value="GI-E2E-01"]') }).last();
+    await expect(gudangSelect.locator('option[value="GI-E2E-01"]')).toHaveCount(1);
+    await expect(gudangSelect.locator('option[value="GI-E2E-02"]')).toHaveCount(0);
+    await gudangSelect.selectOption("GI-E2E-01");
+
+    const blokSelect = page.locator("select").last();
+    await expect(blokSelect.locator('option[value="GILOK-E2E-01"]')).toHaveCount(1);
+  });
+
   test("dashboard shows GI markers only when GI is enabled", async ({ isolatedPage: page }) => {
     await openApp(page);
     const map = page.locator(".dashboard-map-card");

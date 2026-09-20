@@ -36,7 +36,7 @@ export function PindahBlokModal({
               setStockGudangFilter(prev => ({ ...prev, [st.id]: v }));
             }}>
             <option value="">-- Pilih Gudang --</option>
-            {visibleGudangList.filter(g => !st.uptId || g.uptId === st.uptId).map(g => <option key={g.id} value={g.id}>{g.kode || g.nama}</option>)}
+            {visibleGudangList.filter(g => !st.uptId || g.uptId === st.uptId).map(g => <option key={g.id} value={g.id}>{g.__gi ? `⚡ ${g.nama || g.kode}` : (g.kode || g.nama)}</option>)}
           </select>
         ) : (
           <div style={{ fontSize: 12, color: C.text }}>{gdg?.kode || gdg?.nama || "—"}</div>
