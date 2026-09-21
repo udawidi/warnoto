@@ -13,7 +13,7 @@ import { OpnameLapanganView } from "./OpnameLapanganView.jsx";
 import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
-import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft } from "../lib/stockOpnameFlow.js";
+import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft, mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
@@ -45,6 +45,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // tanpa perlu direset manual tiap ganti activeOpname.
   const touchedRef = useRef({});
   const lapanganSaveQueueRef = useRef(Promise.resolve());
+  const activeOpnameRef = useRef(activeOpname);
+  const desktopSaveTimerRef = useRef(null);
+  const desktopDirtyRef = useRef(new Set());
+  const editGenerationRef = useRef({});
+  const [desktopSaveState, setDesktopSaveState] = useState("idle");
   // Fase 1e: dialog pilih gudang setelah PID di-parse & ternyata memuat >1 gudang.
   const [gudangSplitDialog, setGudangSplitDialog] = useState(null);
   const [moveStock, setMoveStock] = useState(null); // {st, lok, gdg} — trigger modal Pindah Blok dari chip
@@ -73,6 +78,25 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Fase F: metadata paket resmi disimpan pada JSON sesi selesai agar lintas perangkat.
   const [baPrintOpn, setBaPrintOpn] = useState(null);
   const [baForm, setBaForm] = useState(null);
+  useEffect(() => { activeOpnameRef.current = activeOpname; }, [activeOpname]);
+  useEffect(() => () => {
+    if (desktopSaveTimerRef.current) clearTimeout(desktopSaveTimerRef.current);
+  }, []);
+  useEffect(() => {
+    if (!activeOpname?.id) return;
+    const incoming = opnameList.find(opn => opn.id === activeOpname.id);
+    if (!incoming || Number(incoming.updatedAt || 0) <= Number(activeOpname.updatedAt || 0)) return;
+    const dirty = desktopDirtyRef.current.has(activeOpname.id);
+    setActiveOpname(prev => {
+      if (!prev || prev.id !== incoming.id) return prev;
+      if (!dirty) return incoming;
+      try {
+        return mergeOpnameForSave(prev, incoming, [...(touchedRef.current[incoming.id] || [])]);
+      } catch {
+        return prev;
+      }
+    });
+  }, [opnameList, activeOpname?.id, activeOpname?.updatedAt]);
   useEffect(() => {
     if (!activeOpname) return;
     setSapCategoryFilter("");
@@ -95,6 +119,27 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Recovery lokal hanya berlaku untuk versi server yang menjadi asal draft tersebut.
   // Cache lama/legacy tidak boleh menimpa hitungan yang lebih baru dari perangkat lain.
   const draftKey = id => `warnoto_opname_draft_${id}`;
+  function persistDraftLocal(opn) {
+    if (!opn?.id || opn.status !== "DRAFT") return;
+    try {
+      localStorage.setItem(draftKey(opn.id), JSON.stringify({
+        items: opn.items,
+        baseUpdatedAt: opn.updatedAt || null,
+        at: Date.now(),
+      }));
+    } catch {}
+  }
+
+  function scheduleDesktopSave(delay = 450) {
+    if (!activeOpnameRef.current?.id || activeOpnameRef.current.status !== "DRAFT") return;
+    setDesktopSaveState("saving");
+    if (desktopSaveTimerRef.current) clearTimeout(desktopSaveTimerRef.current);
+    desktopSaveTimerRef.current = setTimeout(() => {
+      desktopSaveTimerRef.current = null;
+      saveDesktopQty();
+    }, delay);
+  }
+
   useEffect(() => {
     if (!activeOpname?.id || activeOpname.status !== "DRAFT") return;
     try {
@@ -110,7 +155,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
   useEffect(() => {
-    if (!lapanganMode || !activeOpname?.id) return;
+    if (!activeOpname?.id || (!lapanganMode && !desktopDirtyRef.current.has(activeOpname.id) && desktopSaveState !== "error")) return;
     try {
       localStorage.setItem(draftKey(activeOpname.id), JSON.stringify({
         items: activeOpname.items,
@@ -118,7 +163,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         at: Date.now(),
       }));
     } catch {}
-  }, [activeOpname, lapanganMode]);
+  }, [activeOpname, lapanganMode, desktopSaveState]);
 
   // Fase 1f: filter Gudang/Blok di toolbar tabel item.
   const [filterGudangId, setFilterGudangId] = useState("");
@@ -498,9 +543,32 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   // Kontrak tombol Batal (Fase 0): sesi belum tersimpan (belum pernah saveOpname/submitOpname)
   // → konfirmasi buang. Sesi sudah tersimpan → tutup panel saja, tetap DRAFT di daftar.
-  function handleBatal() {
-    const persisted = opnameList.some(o=>o.id===activeOpname.id);
+  function clearDesktopDraftTracking(id) {
+    if (desktopSaveTimerRef.current) {
+      clearTimeout(desktopSaveTimerRef.current);
+      desktopSaveTimerRef.current = null;
+    }
+    if (id) {
+      desktopDirtyRef.current.delete(id);
+      delete editGenerationRef.current[id];
+      try { localStorage.removeItem(draftKey(id)); } catch {}
+    }
+    setDesktopSaveState("idle");
+  }
+
+  async function handleBatal() {
+    if (!activeOpname?.id) return;
+    const id = activeOpname.id;
+    const persisted = opnameList.some(o=>o.id===id);
     if (!persisted && !window.confirm("Buang sesi opname ini? Data yang sudah diisi belum tersimpan dan akan hilang.")) return;
+    if (persisted && desktopDirtyRef.current.has(id)) {
+      const saved = await saveDesktopQty();
+      if (!saved || desktopDirtyRef.current.has(id)) {
+        showToast("Perubahan belum tersimpan. Sesi tetap dibuka agar dapat diperbaiki.", "error");
+        return;
+      }
+    }
+    clearDesktopDraftTracking(id);
     setActiveOpname(null); setValidationErrors([]); setHighlightIdx(null);
   }
 
@@ -562,6 +630,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   }
 
   function updateItem(realIdx, field, value) {
+    if (activeOpname?.id) {
+      desktopDirtyRef.current.add(activeOpname.id);
+      bumpEditGeneration(activeOpname.id);
+    }
     setActiveOpname(prev=>{
       const items = [...prev.items];
       const before = items[realIdx];
@@ -578,7 +650,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         items[realIdx] = applyQtyToItem(items[realIdx], key, value, currentUser?.id);
         if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
         touchedRef.current[prev.id].add(key);
-        return {...prev, items};
+        const next = {...prev, items};
+        activeOpnameRef.current = next;
+        return next;
       } else if (field==="lokasiId") {
         // Non-SAP: kalau qty sudah sempat diisi sebelum lokasi dipilih/diganti, pindahkan entri
         // hitungPerLokasi ke kunci lokasi yang baru supaya tidak nyangkut di "_TANPA_LOKASI".
@@ -593,7 +667,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           touchedRef.current[prev.id].add(newKey);
         }
       }
-      return {...prev, items};
+      const next = {...prev, items};
+      activeOpnameRef.current = next;
+      return next;
     });
   }
 
@@ -626,15 +702,36 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // (lokasiKey dari blok yang lagi aktif di HP) — beda dari updateItem desktop yang selalu pakai
   // itemLokasiKey (kolaps ke "_TANPA_LOKASI" utk item multi-blok, breakdown per-blok yang
   // sebenarnya memang menyusul di sini). extra dipakai utk flag tambahan (mis. usulPindahLokasi).
-  function queueLapanganSave(next, touchedLokasiIds) {
+  function bumpEditGeneration(id) {
+    if (!id) return 0;
+    const next = (editGenerationRef.current[id] || 0) + 1;
+    editGenerationRef.current[id] = next;
+    return next;
+  }
+
+  function queueLapanganSave(next, touchedLokasiIds, { generation = null } = {}) {
     setActiveOpname(next); // local recovery remains available when the server is offline
+    activeOpnameRef.current = next;
     const job = lapanganSaveQueueRef.current.then(async () => {
       try {
         const saved = await saveOpname(next, touchedLokasiIds, { silent: true, forceMerge: true });
-        setActiveOpname(saved === false ? next : (saved || next));
+        const isLatest = generation === null || editGenerationRef.current[next.id] === generation;
+        if (isLatest) {
+          const resolved = saved === false ? next : (saved || next);
+          setActiveOpname(resolved);
+          activeOpnameRef.current = resolved;
+        } else if (saved === false) {
+          // A newer local edit owns the active state; keep it available for the next retry.
+          setDesktopSaveState("error");
+          persistDraftLocal(activeOpnameRef.current || next);
+        }
         return saved !== false;
       } catch (error) {
-        setActiveOpname(next);
+        const isLatest = generation === null || editGenerationRef.current[next.id] === generation;
+        if (isLatest) {
+          setActiveOpname(next);
+          activeOpnameRef.current = next;
+        }
         showToast(error?.message || "Gagal menyimpan hitungan ke server. Draft lokal tetap tersedia.", "error");
         return false;
       }
@@ -644,9 +741,33 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   }
 
   async function saveDesktopQty() {
-    if (!activeOpname) return false;
-    const saved = await queueLapanganSave(activeOpname, [...(touchedRef.current[activeOpname.id] || [])]);
-    if (saved) showToast("✅ Qty fisik tersimpan ke server.");
+    if (desktopSaveTimerRef.current) {
+      clearTimeout(desktopSaveTimerRef.current);
+      desktopSaveTimerRef.current = null;
+    }
+    const opn = activeOpnameRef.current;
+    if (!opn) return false;
+    if (!desktopDirtyRef.current.has(opn.id)) {
+      setDesktopSaveState("saved");
+      return true;
+    }
+    setDesktopSaveState("saving");
+    persistDraftLocal(opn);
+    const generation = editGenerationRef.current[opn.id] || 0;
+    const saved = await queueLapanganSave(opn, [...(touchedRef.current[opn.id] || [])], { generation });
+    const isLatest = editGenerationRef.current[opn.id] === generation;
+    if (saved && isLatest) {
+      desktopDirtyRef.current.delete(opn.id);
+      setDesktopSaveState("saved");
+      try { localStorage.removeItem(draftKey(opn.id)); } catch {}
+    } else if (saved && !isLatest) {
+      // The request saved an older snapshot. Requeue the current ref without clearing its dirty bit.
+      setDesktopSaveState("saving");
+      scheduleDesktopSave(0);
+    } else {
+      setDesktopSaveState("error");
+      persistDraftLocal(activeOpnameRef.current || opn);
+    }
     return saved;
   }
 
@@ -657,7 +778,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     if (!touchedRef.current[activeOpname.id]) touchedRef.current[activeOpname.id] = new Set();
     touchedRef.current[activeOpname.id].add(lokasiKey);
     const next = { ...activeOpname, items };
-    return queueLapanganSave(next, [...touchedRef.current[activeOpname.id]]);
+    const generation = bumpEditGeneration(activeOpname.id);
+    return queueLapanganSave(next, [...touchedRef.current[activeOpname.id]], { generation });
   }
 
   // Fase 2e: konfirmasi hitung ulang (blind — tanpa lihat angka pertama) untuk item selisih.
@@ -679,7 +801,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     }
     if (!touchedRef.current[activeOpname.id]) touchedRef.current[activeOpname.id] = new Set();
     touchedRef.current[activeOpname.id].add(key);
-    return queueLapanganSave({ ...activeOpname, items }, [...touchedRef.current[activeOpname.id]]);
+    const generation = bumpEditGeneration(activeOpname.id);
+    return queueLapanganSave({ ...activeOpname, items }, [...touchedRef.current[activeOpname.id]], { generation });
   }
 
   function validate() {
@@ -1141,7 +1264,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                             ? <input type="number" inputMode="decimal" min="0" placeholder="hitung…"
                                 value={counted ? item.qtsFisik : ""}
                                 ref={el=>{qtyInputRefs.current[realIdx]=el;}}
-                                onChange={e=>updateItem(realIdx,"qtsFisik",e.target.value)}
+                                onChange={e=>{ updateItem(realIdx,"qtsFisik",e.target.value); scheduleDesktopSave(); }}
                                 onBlur={saveDesktopQty}
                                 style={{width:64,padding:"4px 6px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12,textAlign:"center"}}/>
                             : <span style={{fontWeight:700}}>{counted?fmtNum(item.qtsFisik):"—"}</span>}
@@ -1166,12 +1289,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           <td data-label="Lokasi" className="is-key" style={{padding:"4px 6px"}}>
                             {!isReadOnly ? (
                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                                <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); }}
+                                <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); scheduleDesktopSave(0); }}
                                   style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
                                   <option value="">-- Gudang --</option>
                                   {sortedGudangList.map(g=><option key={g.id} value={g.id}>{g.kode||g.nama}</option>)}
                                 </select>
-                                <select value={item.lokasiId||""} onChange={e=>updateItem(realIdx,"lokasiId",e.target.value)}
+                                <select value={item.lokasiId||""} onChange={e=>{ updateItem(realIdx,"lokasiId",e.target.value); scheduleDesktopSave(0); }}
                                   disabled={!itemGudangId && !item._gudangTmp}
                                   style={{width:110,padding:"3px 4px",border:`1px solid ${!item.lokasiId?C.red:C.border}`,borderRadius: 10,fontSize:12}}>
                                   <option value="">-- Blok --</option>
@@ -1186,14 +1309,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         <td data-label="Keterangan" className="is-key" style={{padding:"4px 6px"}}>
                           {!isReadOnly
                             ? <textarea rows={2} value={item.keterangan||""}
-                                onChange={e=>updateItem(realIdx,"keterangan",e.target.value)}
+                                onChange={e=>{ updateItem(realIdx,"keterangan",e.target.value); scheduleDesktopSave(); }}
+                                onBlur={saveDesktopQty}
                                 placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
                                 style={{width:"100%",minHeight:32,padding:"6px 8px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:13,resize:"none",fontFamily:"inherit"}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
                           {(!isSAP || item.statusItem==="MATERIAL_BARU_NONSAP") && activeOpname.stage==="REKONSILIASI" && !isReadOnly && (
                             <div style={{marginTop:4}}>
                               <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:2}}>Pindah ke SAP:</label>
-                              <select value={item.pindahJenis||""} onChange={e=>updateItem(realIdx,"pindahJenis",e.target.value)}
+                              <select value={item.pindahJenis||""} onChange={e=>{ updateItem(realIdx,"pindahJenis",e.target.value); scheduleDesktopSave(0); }}
                                 style={{...sty.select,width:130,paddingTop:3,paddingBottom:3,paddingLeft:6,paddingRight:6,minHeight:"unset",fontSize:12}}>
                                 <option value="">-- pindahkan? --</option>
                                 <option value="Cadang">Cadang</option>
@@ -1256,6 +1380,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 Sengaja HANYA di sini (bawah tabel), bukan di header juga (keluhan 2026-07-07). */}
             {!isReadOnly && (
               <div className="approval-actions opname-action-bar" style={{marginBottom:16}}>
+                {desktopSaveState !== "idle" && <span role="status" style={{fontSize:12,color:desktopSaveState === "error" ? C.red : C.muted,alignSelf:"center"}}>
+                  {desktopSaveState === "saving" ? "Menyimpan..." : desktopSaveState === "error" ? "Gagal — draft lokal dipertahankan" : "Tersimpan"}
+                </span>}
                 <button className="approval-btn--cancel" onClick={handleBatal}>✕ Batal</button>
                 <button className="approval-btn--cancel" onClick={async ()=>{ const ok = await saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]); if (ok) { try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {} } }}>💾 Simpan Draft</button>
                 {allBloksSelesai(activeOpname) && activeOpname.stage!=="REKONSILIASI" ? (

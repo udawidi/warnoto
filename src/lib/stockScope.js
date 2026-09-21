@@ -23,7 +23,8 @@ export function mapStockScopeRow(row) {
   const uptId = row && Object.prototype.hasOwnProperty.call(row, "upt_id")
     ? row.upt_id
     : data.uptId;
-  return { ...data, id: row?.id, ...(uptId !== undefined ? { uptId } : {}) };
+  const updatedAt = row?.updated_at ? new Date(row.updated_at).getTime() : data.updatedAt;
+  return { ...data, id: row?.id, ...(uptId !== undefined ? { uptId } : {}), ...(updatedAt ? { updatedAt } : {}) };
 }
 
 export function resetStockScopeSchemaProbe() { schemaProbe = null; }

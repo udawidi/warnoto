@@ -6,6 +6,7 @@ const migration = await readFile(new URL("../../supabase/migrations/20260921_sto
 const verifier = await readFile(new URL("../../supabase/verify_stock_opname_freeze_realtime.sql", import.meta.url), "utf8");
 const hook = await readFile(new URL("../../src/hooks/useStockOpname.js", import.meta.url), "utf8");
 const tab = await readFile(new URL("../../src/components/StockOpnameTab.jsx", import.meta.url), "utf8");
+const stockScope = await readFile(new URL("../../src/lib/stockScope.js", import.meta.url), "utf8");
 
 test("freeze migration is transactional, idempotent, and Realtime-ready", () => {
   assert.match(migration, /begin;[\s\S]*commit;/i);
@@ -34,4 +35,27 @@ test("verifier is read-only and checks all new invariants", () => {
     assert.match(verifier, new RegExp(token));
   }
   assert.doesNotMatch(verifier, /\b(insert\s+into|update\s+public\.|delete\s+from|alter\s+table)\b/i);
+});
+
+test("client resync and desktop autosave preserve newer or dirty edits", () => {
+  assert.match(hook, /postgres_changes/);
+  assert.match(hook, /visibilitychange/);
+  assert.match(hook, /SUBSCRIBED|CHANNEL_ERROR|TIMED_OUT/);
+  assert.match(hook, /pendingSaveIdsRef/);
+  assert.match(hook, /maybeSingle\(\)/);
+  assert.match(hook, /mapStockScopeRow/);
+  assert.match(stockScope, /row\?\.updated_at/);
+  assert.match(tab, /mergeOpnameForSave\(prev, incoming/);
+  assert.match(tab, /scheduleDesktopSave\(\)/);
+  assert.match(tab, /scheduleDesktopSave\(0\)/);
+  assert.match(tab, /onBlur=\{saveDesktopQty\}/);
+  assert.match(tab, /Menyimpan\.\.\./);
+  assert.match(tab, /Tersimpan/);
+  assert.match(tab, /draft lokal dipertahankan/);
+  assert.match(tab, /editGenerationRef/);
+  assert.match(tab, /const isLatest = generation === null/);
+  assert.match(tab, /if \(saved && isLatest\)/);
+  assert.match(tab, /scheduleDesktopSave\(0\)/);
+  assert.match(tab, /clearDesktopDraftTracking/);
+  assert.match(tab, /Perubahan belum tersimpan/);
 });

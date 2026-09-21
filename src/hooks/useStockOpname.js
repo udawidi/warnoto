@@ -7,6 +7,7 @@ import { loadMasterTable } from "../lib/masterSync.js";
 import { normalizeOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
 import { mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
+import { mapStockScopeRow } from "../lib/stockScope.js";
 
 function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
@@ -25,15 +26,79 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   const [stockCountList, setStockCountList] = useState(() => readCachedList("pln_stockcount_v1") ?? []); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [opnameExpanded, setOpnameExpanded] = useState(false); // sidebar accordion state for Stock Opname & Stock Count (digabung 1 menu)
   const [opnameSubTab, setOpnameSubTab] = useState("opname"); // "opname" | "stockCount"
+  const pendingSaveIdsRef = useRef(new Set());
+
+  // Supabase Realtime is RLS-scoped. Keep only newer rows so reconnect/focus
+  // resync cannot roll back a newer local/server session.
+  const mergeIncomingRows = rows => {
+    if (!Array.isArray(rows) || !rows.length) return;
+    const current = opnameListRef.current;
+    let changed = false;
+    const next = current.map(local => {
+      const incoming = rows.find(row => row?.id === local?.id);
+      if (!incoming || pendingSaveIdsRef.current.has(incoming.id)) return local;
+      if (Number(incoming.updatedAt || 0) < Number(local.updatedAt || 0)) return local;
+      if (JSON.stringify(incoming) === JSON.stringify(local)) return local;
+      changed = true;
+      return incoming;
+    });
+    rows.forEach(incoming => {
+      if (!incoming?.id || pendingSaveIdsRef.current.has(incoming.id) || next.some(row => row.id === incoming.id)) return;
+      next.push(incoming); changed = true;
+    });
+    if (changed) commitOpnameList(next);
+  };
+
+  useEffect(() => {
+    if (!supabaseClient || !currentUser?.id) return undefined;
+    let disposed = false;
+    const resync = async () => {
+      const rows = await loadMasterTable("stock_opname", { uptIds: stockScopeUptIds });
+      if (!disposed && Array.isArray(rows)) mergeIncomingRows(rows);
+    };
+    const config = { event: "*", schema: "public", table: "stock_opname" };
+    if (Array.isArray(stockScopeUptIds) && stockScopeUptIds.length === 1) {
+      config.filter = `upt_id=eq.${stockScopeUptIds[0]}`;
+    }
+    const channel = supabaseClient.channel(`stock-opname-${currentUser.id}`)
+      .on("postgres_changes", config, payload => {
+        if (payload.eventType === "DELETE") {
+          const id = payload.old?.id;
+          if (!id || pendingSaveIdsRef.current.has(id)) return;
+          commitOpnameList(opnameListRef.current.filter(row => row.id !== id));
+          return;
+        }
+        const incoming = payload.new ? {
+          ...payload.new.data,
+          id: payload.new.id,
+          ...(payload.new.upt_id !== undefined ? { uptId: payload.new.upt_id } : {}),
+          ...(payload.new.updated_at ? { updatedAt: new Date(payload.new.updated_at).getTime() } : {}),
+        } : null;
+        if (incoming) mergeIncomingRows([incoming]);
+      })
+      .subscribe(status => {
+        if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") resync();
+      });
+    const onVisibility = () => { if (document.visibilityState === "visible") resync(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    resync();
+    return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      supabaseClient.removeChannel(channel);
+    };
+  }, [supabaseClient, currentUser?.id, Array.isArray(stockScopeUptIds) ? stockScopeUptIds.join(",") : "*"]);
   // Fase 1d: sesi bisa diedit dari >1 perangkat/tab sekaligus (per blok/lokasi berbeda) — dulu
   // saveOpname menimpa SELURUH sesi (last-write-wins), blok yang barusan disimpan perangkat lain
   // bisa hilang. Kalau caller kasih touchedLokasiIds (blok yang BENAR disentuh perangkat ini),
   // ambil versi sesi terbaru dari server dulu, lalu tulis balik cuma blok itu — sisanya dari
   // server. Gagal ambil (offline) → simpan LOKAL saja, jangan menimpa server dgn data parsial.
   async function saveOpname(opn, touchedLokasiIds, { silent = false, forceMerge = false, failClosed = false } = {}) {
+    if (opn?.id) pendingSaveIdsRef.current.add(opn.id);
     let toSave;
     try { toSave = await normalizeOpnamePhotos(opn, uploadStockFoto); }
     catch (error) {
+      if (opn?.id) pendingSaveIdsRef.current.delete(opn.id);
       showToast(error?.message || "Gagal menyimpan foto opname.", "error");
       return false;
     }
@@ -62,6 +127,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     const nl = exists ? currentList.map(o=>o.id===toSave.id?toSave:o) : [...currentList, toSave];
     commitOpnameList(nl);
     if (syncPending) {
+      pendingSaveIdsRef.current.delete(toSave.id);
       if (failClosed) commitOpnameList(previousList);
       if (failClosed) showToast("Submit Stock Opname gagal mengambil versi server. Status tetap Draft; coba lagi.", "error");
       else showToast("⚠️ Disimpan lokal — sinkronisasi ke server tertunda (offline/gagal ambil versi terbaru). Coba \"Simpan Draft\" lagi setelah online.", "error");
@@ -69,13 +135,29 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     }
     // Satu sesi saja yang berubah. Upsert baris ini tanpa reconciliation-delete agar
     // perangkat dengan cache lama tidak menghapus sesi baru milik perangkat lain.
-    const saved = await stateRef.current.saveToCloud({opnameList: nl}, {opnameChangedRows: [toSave]});
+    let saved;
+    let canonical = null;
+    try {
+      saved = await stateRef.current.saveToCloud({opnameList: nl}, {opnameChangedRows: [toSave]});
+      if (saved !== false && supabaseClient) {
+        try {
+          const { data: row, error } = await supabaseClient.from("stock_opname").select("*").eq("id", toSave.id).maybeSingle();
+          if (!error && row) canonical = mapStockScopeRow(row);
+        } catch {}
+      }
+    } finally {
+      pendingSaveIdsRef.current.delete(toSave.id);
+    }
     if (saved === false) {
       commitOpnameList(previousList);
       showToast(failClosed
         ? "Submit Stock Opname gagal disimpan ke server. Status tetap Draft; coba lagi."
         : "Gagal menyimpan Stock Opname ke server. Perubahan dibatalkan; coba lagi.", "error");
       return false;
+    }
+    if (canonical) {
+      toSave = canonical;
+      commitOpnameList(opnameListRef.current.map(row => row.id === canonical.id ? canonical : row));
     }
     if (!silent) showToast("✅ Data opname disimpan!");
     return toSave;
