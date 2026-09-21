@@ -9,7 +9,6 @@ import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js
 import { upsertTug10Transaction, deleteTug10Transaction } from "../lib/tug10Sync.js";
 import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
-import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 import { readTugRoute } from "../lib/tugRoute.js";
 import { isLegacySourceAllocation } from "../lib/sap.js";
 import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
@@ -400,14 +399,6 @@ export function useTugTransactions({
 
   async function commitNewTxn(docType, formData, { replaceDraftId = null, targetStage = null } = {}) {
     if (savingTxnRef.current) return;       // cegah double-submit saat upload foto berjalan
-    // Fase A — freeze opname sekarang BLOKIR KERAS (bukan lagi peringatan window.confirm):
-    // gudang sedang di-opname, transaksi masuk/keluar ke situ ditolak total sampai selesai.
-    const frozenSession = findActiveFreezeSession(collectTxnGudangIds(docType, formData, lokasiList), opnameList);
-    if (frozenSession && targetStage !== "DRAFT") {
-      const namaGudang = frozenSession.freeze.gudangIds.map(gid=>(gudangList||[]).find(g=>g.id===gid)?.nama).filter(Boolean).join(", ") || "gudang ini";
-      showToast(`🧊 DITOLAK — ${namaGudang} sedang Stock Opname. Transaksi masuk/keluar tidak bisa diproses sampai opname selesai.`, "error");
-      return;
-    }
     savingTxnRef.current = true;
     setSavingTxn(true);
     setSavingInfo({ label: "Menyiapkan data...", done: 0, total: 0 });

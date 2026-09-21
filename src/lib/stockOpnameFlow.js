@@ -47,8 +47,7 @@ export function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds = []) {
     return { ...serverItem, ...item, hitungPerLokasi: mergedHitung, qtsFisik, selisih: qtsFisik - (serverItem.qtySistem ?? item.qtySistem ?? 0) };
   });
   const onlyOnServer = serverItems.filter(item => !claimedServerItems.has(item));
-  // Freeze is server-authoritative; non-TL quantity saves must not replay stale local freeze data.
-  return { ...serverOpn, ...localOpn, freeze: serverOpn.freeze, items: [...items, ...onlyOnServer] };
+  return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };
 }
 
 const normalize = value => String(value || "").toLowerCase().replace(/[-\u2013\u2014]/g, " ").replace(/\s+/g, " ").trim();

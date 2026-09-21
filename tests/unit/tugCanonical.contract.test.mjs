@@ -190,7 +190,7 @@ test("derived TUG-8/9 drafts reserve no official number and replace themselves c
   // targetStage (baru) mengizinkan commitNewTxn menyimpan draft lokal tanpa syarat
   // foto sudah aman di Storage — hanya untuk targetStage==="DRAFT", bukan submit resmi.
   assert.match(tugTransactions, /async function commitNewTxn\(docType, formData, \{ replaceDraftId = null, targetStage = null \} = \{\}\)/);
-  assert.match(tugTransactions, /if \(frozenSession && targetStage !== "DRAFT"\)/);
+  assert.doesNotMatch(tugTransactions, /frozenSession|opnameFreeze|findActiveFreezeSession|collectTxnGudangIds/);
   assert.match(tugTransactions, /canonicalActionKeysRef\.current \|\|= newCanonicalActionKeys\(\)/);
   assert.match(tugTransactions, /Foto TUG-8\/TUG-9 belum aman di Storage/);
   assert.match(tugTransactions, /targetStage !== "DRAFT"/);

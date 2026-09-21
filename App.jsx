@@ -1197,7 +1197,7 @@ export default function PLNWarehouse() {
         CLOUD.set("pln_heavy_equipment_v1", cheRemote);
       } else {
         setHeavyEquipmentList(heLocal);
-        if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable, tracking_mode: e.trackingMode || "UNIT", quantity_total: Number(e.quantityTotal) || 1 }));
+        if (heLocal.length > 0 && hasRole(currentUser, "TL")) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable, tracking_mode: e.trackingMode || "UNIT", quantity_total: Number(e.quantityTotal) || 1 }));
       }
       if (chelRemote === null) {
         // Fetch GAGAL — tampilkan lokal untuk UX, JANGAN push ke server.
@@ -1331,7 +1331,6 @@ export default function PLNWarehouse() {
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
     saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, deleteOpname,
-    setOpnameFreeze,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
@@ -4519,7 +4518,6 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 approveOpname_Manager={approveOpname_Manager}
                 rejectOpname={rejectOpname}
                 deleteOpname={deleteOpname}
-                setOpnameFreeze={setOpnameFreeze}
                 openScanner={openScanner}
                 showToast={showToast}
                 uptList={uptList}

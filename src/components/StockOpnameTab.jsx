@@ -17,7 +17,7 @@ import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnamePro
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
-  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname, setOpnameFreeze,
+  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
   setStocks, saveToCloud, visibleGudangList, stockVisibleGudangList, stockGudangFilter, setStockGudangFilter,
   uploadStockFoto, showWork=true, showHistory=true, onOpenWork }) {
@@ -71,10 +71,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // duplikasi form (lihat renderPanel -> tambahModal).
   const [lapanganMode, setLapanganMode] = useState(false);
 
-  // Fase 3: gudang yang dicentang untuk di-freeze pada sesi yang sedang dibuka — direset
-  // tiap ganti sesi (bukan tiap edit item, activeOpname.id stabil per sesi).
-  const [freezeSel, setFreezeSel] = useState(new Set());
-  const [freezeBusy, setFreezeBusy] = useState(false);
   // Fase F: metadata paket resmi disimpan pada JSON sesi selesai agar lintas perangkat.
   const [baPrintOpn, setBaPrintOpn] = useState(null);
   const [baForm, setBaForm] = useState(null);
@@ -101,21 +97,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     if (!activeOpname) return;
     setSapCategoryFilter("");
     setFilterGudangId(""); setFilterLokasiId(""); setFilterJenis("");
-    setFreezeSel(new Set(activeOpname.freeze?.gudangIds || (activeOpname.gudangId ? [activeOpname.gudangId] : [])));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
-  async function toggleFreeze(aktif) {
-    if (!activeOpname || freezeBusy) return;
-    setFreezeBusy(true);
-    const gudangIds = [...freezeSel];
-    try {
-      const updated = await setOpnameFreeze(activeOpname, { aktif, gudangIds });
-      if (updated) setActiveOpname(prev => prev && prev.id === activeOpname.id ? updated : prev);
-    } finally {
-      setFreezeBusy(false);
-    }
-  }
-
   // Recovery lokal hanya berlaku untuk versi server yang menjadi asal draft tersebut.
   // Cache lama/legacy tidak boleh menimpa hitungan yang lebih baru dari perangkat lain.
   const draftKey = id => `warnoto_opname_draft_${id}`;
@@ -861,8 +844,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const isReadOnly = activeOpname.status!=="DRAFT";
     const items = activeOpname.items||[];
     const countedItem = item => itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 });
-    // Sesi v2 selalu scoped ke 1 gudang (freeze) — dropdown Gudang jadi no-op, sembunyikan.
-    // Deteksi via blok item, sama pola dengan freeze scope (baris ~800).
+    // Sesi v2 selalu scoped ke 1 gudang — dropdown Gudang jadi no-op, sembunyikan.
     const sesiGudangIds = new Set();
     for (const it of items) {
       for (const b of getItemBlocks(it, lokasiList, gudangList)) {
@@ -927,48 +909,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             })}
           </div>
         )}
-
-        {/* Freeze Gudang — Fase A: BLOKIR KERAS transaksi TUG (bukan lagi peringatan).
-            Hanya gudang sesi ini (bukan semua gudang+GI) — derive dari blok item sesi. */}
-        {hasRole(currentUser, "TL") && (activeOpname.freeze?.aktif || (activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK")) && (() => {
-          const sesiGudangIds = new Set();
-          for (const it of items) {
-            for (const b of getItemBlocks(it, lokasiList, gudangList)) {
-              if (b.gudangId) sesiGudangIds.add(b.gudangId);
-            }
-          }
-          if (!sesiGudangIds.size && activeOpname.gudangId) sesiGudangIds.add(activeOpname.gudangId);
-          const sesiGudangList = (gudangList||[]).filter(g=>sesiGudangIds.has(g.id));
-          return (
-          <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
-            <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
-              🧊 Freeze Gudang (Blokir Transaksi TUG saat Opname)
-            </div>
-            <div style={{fontSize:12,color:C.muted,marginBottom:8}}>
-              Gudang yang dicentang akan DIBLOKIR — transaksi TUG masuk/keluar dari/ke gudang itu ditolak selama sesi opname ini berjalan (otomatis aktif saat mulai hitung, lepas saat opname selesai/ditolak).
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:10}}>
-              {sesiGudangList.map(g=>{
-                const checked = freezeSel.has(g.id);
-                return (
-                  <label key={g.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:`1px solid ${checked?"#1d4ed8":C.border}`,background:checked?"#dbeafe":"white",fontSize:12,cursor:"pointer"}}>
-                    <input type="checkbox" checked={checked} disabled={freezeBusy} onChange={()=>setFreezeSel(s=>{const n=new Set(s); checked?n.delete(g.id):n.add(g.id); return n;})}/>
-                    {g.kode||g.nama}
-                  </label>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-              {activeOpname.freeze?.aktif ? (
-                <button style={sty.btn("danger","sm")} disabled={freezeBusy} onClick={()=>toggleFreeze(false)}>{freezeBusy?"Menyimpan...":"❄️ Nonaktifkan Freeze"}</button>
-              ) : (
-                <button style={sty.btn("primary","sm")} disabled={!freezeSel.size || freezeBusy} onClick={()=>toggleFreeze(true)}>{freezeBusy?"Menyimpan...":"🧊 Aktifkan Freeze"}</button>
-              )}
-              {activeOpname.freeze?.aktif && <span style={{fontSize:12,color:"#1d4ed8",fontWeight:700}}>🧊 Aktif sejak {fmtDate(activeOpname.freeze.at)}</span>}
-            </div>
-          </div>
-          );
-        })()}
 
         {/* Fase C: Dashboard progres per blok — klik chip untuk filter tabel ke blok itu.
             Default terlipat (opt-in) — filter Gudang/Blok utama ada di toolbar tabel. */}
@@ -1796,9 +1736,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     <div style={{fontSize:11,color:C.muted,marginTop:3}}>{fmtDate(opn.dibuatAt)} • dibuat oleh {creator.name||"-"}</div>
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                    {opn.freeze?.aktif && (
-                      <span style={{padding:"3px 10px",borderRadius:14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:"#dbeafe",color:"#1d4ed8"}}>🧊 FREEZE</span>
-                    )}
                     <span style={{padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,whiteSpace:"nowrap",background:(statusColor[opn.status]||"#6b7280")+"22",color:statusColor[opn.status]||"#6b7280"}}>
                       {statusLabel[opn.status]||opn.status}
                     </span>

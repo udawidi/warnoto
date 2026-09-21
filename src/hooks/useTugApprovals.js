@@ -8,7 +8,6 @@ import { resolveSapLabel, sourceLotKey } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
 import { roleTier } from "../lib/roles.js";
-import { collectTxnGudangIds, findActiveFreezeSession } from "../lib/opnameFreeze.js";
 import { loadMasterTable } from "../lib/masterSync.js";
 import { CLOUD } from "../lib/cloud.js";
 import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
@@ -193,11 +192,6 @@ export function useTugApprovals({
       showToast("TUG-3 ditolak: katalog barang existing tidak ditemukan di Master Katalog. Perbaiki ajuan sebelum approve.", "error");
       return;
     }
-    // Fase A — gudang tujuan lagi di-opname: tunda approve (blokir keras, sama seperti
-    // commitNewTxn) supaya stok tak berubah di tengah hitung fisik.
-    const frozen = findActiveFreezeSession(collectTxnGudangIds("TUG3", txn, lokasiList), opnameList);
-    if (frozen) { showToast("🧊 DITOLAK — gudang tujuan sedang Stock Opname. Approve TUG-3 ditunda sampai opname selesai.","error"); return; }
-
     // MTU-2026 receipts use the reviewed server RPC. It locks the MTU record,
     // applies each stock row, records provenance and marks the dedicated TUG-3
     // approved in one transaction. Do not fall through to the legacy client
