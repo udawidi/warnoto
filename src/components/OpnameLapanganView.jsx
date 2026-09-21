@@ -2,7 +2,7 @@
 // item -> ketik qty -> simpan & lanjut. Overlay di atas StockOpnameTab (dipanggil dari tombol
 // "Mulai/Lanjut Hitung"), TIDAK menggantikan tabel desktop yang sudah ada.
 import { useState } from "react";
-import { Barcode, FloppyDisk, MapPin } from "@phosphor-icons/react";
+import { Barcode, FloppyDisk, MapPin, MagnifyingGlass } from "@phosphor-icons/react";
 import { BarcodeScanner } from "./BarcodeScanner.jsx";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { extractKatalogIdFromScan, extractLokasiIdFromScan, normalizeKatalog, blokKeyOf, getItemBlocks } from "../lib/sap.js";
@@ -43,8 +43,12 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   const [notFound, setNotFound] = useState(null); // {code, matchIdx}
   const [recountQty, setRecountQty] = useState("");
   const [saving, setSaving] = useState(false);
+  const [materialQuery, setMaterialQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const blokAktif = blockList.find(b => b.key === lokasiAktif);
+  const normalizedQuery = materialQuery.trim().toLowerCase();
+  const filteredEntries = blokAktif?.entries.filter(({ item }) => !normalizedQuery || [item.noKatalog, item.namaBarang].some(value => String(value || "").toLowerCase().includes(normalizedQuery))) || [];
 
   function openHitung(idx, fromCamera) {
     const item = items[idx];
@@ -79,7 +83,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
     const lokasiId = extractLokasiIdFromScan(code);
     const key = blokKeyOf(lokasiId);
     if (!blockMap.has(key)) { showToast(`Blok pada QR ini tidak ada di sesi opname ini.`, "error"); setScanning(false); return; }
-    setLokasiAktif(key); setScanning(false); setScreen("items");
+    setLokasiAktif(key); setMaterialQuery(""); setScanning(false); setScreen("items");
   }
 
   // Scanner alat (HID) — hanya aktif di layar item (bukan layar "hitung"). Di layar hitung,
@@ -88,7 +92,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   // diketik di desktop (bug 2026-09). Alur normal: scan item di layar items -> hitung -> simpan
   // -> balik ke items (scanner aktif lagi) -> scan berikutnya. Scan-jump saat qty fokus dilepas.
   useHardwareScanner((code) => handleItemScan(code, false), {
-    enabled: screen === "items" && !scanning,
+    enabled: screen === "items" && !scanning && !searchFocused,
     blockInput: true,
     onScanStart: () => { setReceiving(true); setTimeout(() => setReceiving(false), 400); const el = document.activeElement; if (el && typeof el.blur === "function") el.blur(); },
   });
@@ -169,7 +173,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
             {blockList.map(b => {
               const f = b.entries.filter(e => e.item.hitungPerLokasi?.[b.key]?.at != null).length;
               return (
-                <div key={b.key} tabIndex={0} onClick={() => { setLokasiAktif(b.key); setScreen("items"); }}
+                <div key={b.key} tabIndex={0} onClick={() => { setLokasiAktif(b.key); setMaterialQuery(""); setScreen("items"); }}
                   style={{ ...sty.card, marginBottom: 10, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
                     <div style={{ fontSize: 15, fontWeight: 700 }}>{b.gudangKode ? `${b.gudangKode} — ` : ""}{b.lokasiKode}</div>
@@ -191,10 +195,14 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
               <div style={{ fontSize: 17, fontWeight: 800 }}>{blokAktif.gudangKode ? `${blokAktif.gudangKode} — ` : ""}{blokAktif.lokasiKode}</div>
               <div style={{ fontSize: 12, color: C.muted }}>{filled}/{total} terhitung{selisihCount > 0 ? ` • ${selisihCount} selisih` : ""}{receiving ? " • 📡 menerima scan..." : ""}</div>
             </div>
-            <button className="opname-field-mode__change-block" style={{ ...sty.btn("ghost", "sm"), display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => setScreen("blok")}><MapPin size={17} weight="bold" aria-hidden="true" />Pilih Blok</button>
+            <button className="opname-field-mode__change-block" style={{ ...sty.btn("ghost", "sm"), display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => { setMaterialQuery(""); setScreen("blok"); }}><MapPin size={17} weight="bold" aria-hidden="true" />Pilih Blok</button>
           </div>
           <div className="opname-field-mode__body" style={body}>
-            {blokAktif.entries.map(({ item, realIdx }) => {
+            <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <MagnifyingGlass size={18} weight="bold" aria-hidden="true" />
+              <input type="search" value={materialQuery} onChange={e => setMaterialQuery(e.target.value)} onFocus={() => setSearchFocused(true)} onBlur={() => setSearchFocused(false)} placeholder="Cari no katalog atau nama material" aria-label="Cari no katalog atau nama material" style={{ ...sty.input, flex: 1, minHeight: 44, fontSize: 16 }} />
+            </label>
+            {filteredEntries.map(({ item, realIdx }) => {
               const entryAktif = item.hitungPerLokasi?.[lokasiAktif];
               const done = entryAktif?.at != null;
               const terhitung = done ? entryAktif.qty : null;
@@ -220,6 +228,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                 </div>
               );
             })}
+            {filteredEntries.length === 0 && <div style={{ padding: 16, color: C.muted, textAlign: "center" }}>Material tidak ditemukan di blok ini.</div>}
           </div>
           <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", gap: 10 }}>
             <button disabled={saving} className="opname-field-mode__draft" style={{ ...sty.btn("ghost"), flex: 1, opacity: saving ? 0.65 : 1 }} onClick={onSimpanDraft}><FloppyDisk size={17} weight="bold" aria-hidden="true" />{saving ? "Menyimpan..." : "Draft"}</button>

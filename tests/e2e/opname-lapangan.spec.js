@@ -231,3 +231,46 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await expect(overlay.getByText("5", { exact: true })).toBeVisible();
   });
 });
+
+  test("pencarian material mode lapangan mengikuti blok aktif dan reset saat pindah blok", async ({ isolatedPage: page }) => {
+  await openDraftSession(page);
+  await page.getByRole("button", { name: "Mulai Hitung" }).click();
+  const overlay = overlayOf(page);
+  await overlay.getByText("GTK — A-01").click();
+  const search = overlay.getByPlaceholder("Cari no katalog atau nama material");
+  await search.click();
+  await search.pressSequentially("Isolator", { delay: 150 });
+  await expect(search).toHaveValue("Isolator");
+  await expect(overlay.getByText("Isolator Keramik 150 kV", { exact: true })).toBeVisible();
+  await expect(overlay.getByText("Lightning Arrester 150 kV", { exact: true })).toBeHidden();
+  await search.fill("301234567");
+  await expect(overlay.getByText("Isolator Keramik 150 kV", { exact: true })).toBeVisible();
+  await search.fill("Lightning");
+  await expect(overlay.getByText("Material tidak ditemukan di blok ini.")).toBeVisible();
+  await search.fill("");
+  await expect(overlay.getByText("Isolator Keramik 150 kV", { exact: true })).toBeVisible();
+  await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
+  await overlay.getByText("B-02").click();
+  const searchAfterBlockChange = overlay.getByPlaceholder("Cari no katalog atau nama material");
+  await expect(searchAfterBlockChange).toHaveValue("");
+  await expect(overlay.getByText("Lightning Arrester 150 kV", { exact: true })).toBeVisible();
+  for (const [width, height] of [[360, 800], [390, 844], [412, 915], [768, 1024], [1366, 768], [1440, 900]]) {
+    await page.setViewportSize({ width, height });
+    const metrics = await page.evaluate(() => {
+      const overlay = document.querySelector('div[style*="z-index: 900"]');
+      const search = overlay?.querySelector('input[type="search"]');
+      return {
+        documentScrollWidth: document.documentElement.scrollWidth,
+        documentClientWidth: document.documentElement.clientWidth,
+        overlayScrollWidth: overlay?.scrollWidth || 0,
+        overlayClientWidth: overlay?.clientWidth || 0,
+        searchHeight: search?.getBoundingClientRect().height || 0,
+        searchFontSize: search ? getComputedStyle(search).fontSize : "",
+      };
+    });
+    expect(metrics.documentScrollWidth).toBeLessThanOrEqual(metrics.documentClientWidth + 1);
+    expect(metrics.overlayScrollWidth).toBeLessThanOrEqual(metrics.overlayClientWidth + 1);
+    expect(metrics.searchHeight).toBeGreaterThanOrEqual(44);
+    expect(metrics.searchFontSize).toBe("16px");
+  }
+});
