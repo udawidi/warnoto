@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Claude (Vendor A) | **Update:** 2026-09-20 → serah-terima ke Codex
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-21
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -67,6 +67,10 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Stock Opname live-sync dan freeze TL-only aktif di production (`0e01137`, 2026-09-21).** `stock_opname` masuk publication realtime, perubahan freeze hanya melalui RPC TL dan guard database, auto-freeze/auto-unfreeze lama dihapus, serta input desktop memakai autosave dengan proteksi dirty/in-flight edit. Hotfix 2026-09-21 membuat `freeze` server-authoritative saat merge simpan agar perubahan qty ADMIN tidak ditolak sebagai perubahan freeze. Data opname Fajar tetap 68/258 = 26%; data gagal simpan tidak menimpa server. Unit test Stock Opname 19/19 dan build lulus.
+
+- **Label material Barcode Blok Gudang sedang disiapkan lokal (2026-09-21).** Kontrak `public_block_stock` diperluas dengan `sapLabel` dan `jenisBarang`; klasifikasi per baris stok menang atas katalog, dan agregasi dipisah per katalog/status/jenis agar material berbeda tidak tercampur. UI scan publik menampilkan badge Status dan Jenis dengan fallback payload lama. Tidak ada tabel/kolom/dependensi atau mutasi data. Spec Kit `018-barcode-block-material-labels`; migration production belum diterapkan dan push belum dilakukan, menunggu konfirmasi eksplisit pengguna.
 
 - **Alat Berat & Alat Bantu per-UPT aktif di production (`05a941d`, 2026-09-20).** UI mendukung delapan plat sebagai aset individual, peminjaman batch ke vendor/GI/unit lain/UPT, approval ASMAN untuk lintas-UPT, pengembalian sebagian, dan bukti private. Migration diterapkan atomik setelah backup `/mnt/backup2/manual/warnoto_pre_alat_bantu_05a941d.dump`. Backfill memetakan 51/51 aset dan 2/2 riwayat; bucket private dan tiga RPC aktif. Uji RLS: TL Bali melihat 0 loan, TL Gresik 1 loan sebagai peminjam, TL Surabaya 1 loan sebagai pemilik. Unit test 347/347, E2E 11/11, build, diff-check, bundle production, dan schema self-host lulus.
 
@@ -737,7 +741,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** Tidak ada blocker implementasi. Verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
+**Blocker:** Apply migration dan deploy Label Material Barcode Blok menunggu konfirmasi eksplisit pengguna. Verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
@@ -761,5 +765,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-20 Claude: **Redesign+rapikan tabel Stock Opname>Pelaksanaan (kartu putih+aksen border-kiri, Keterangan textarea non-resize, tablet ≤1024px kartu, buang emoji→ikon phosphor, tag lokasi/history stack, filter buang Gudang/Jenis sisakan Blok); skema versi carry-100 (`scripts/bump.mjs`, v2.0.97). Commits `08d294a`+`561256c`.**
+- 2026-09-21 Codex: **Stock Opname realtime/autosave dan freeze TL-only sudah production; hotfix freeze server-authoritative memperbaiki simpan qty Fajar tanpa melemahkan guard TL. Label Status/Jenis Barcode Blok tetap lokal dan menunggu konfirmasi apply migration/deploy.**
 - 2026-09-20 Claude: **Serah-terima ke Codex — verifikasi isolasi self-host (`stock_opname` RLS `can_access_upt` applied `9163a89`; `stocks` RLS derive UPT dari lokasi→gudang). Fitur baru "Pindah Blok ke GI" dirancang+diinvestigasi (celah tunggal: modal dapat list non-GI), spec di plan file + Langkah berikutnya. BELUM diimplementasi — Codex lanjutkan. Dirty: HANDOFF.md saja.**

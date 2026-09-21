@@ -78,6 +78,12 @@ test("merge lintas perangkat hanya mengganti blok dan lot yang disentuh", () => 
   assert.equal(merged.items[2].stockId, "STK-SERVER");
 });
 
+test("merge save mempertahankan freeze dari server", () => {
+  const server = { id: "OPN-1", freeze: { aktif: true, by: "tl-server" }, items: [] };
+  const local = { id: "OPN-1", freeze: { aktif: false, by: "admin-cache" }, items: [] };
+  assert.deepEqual(mergeOpnameForSave(local, server).freeze, server.freeze);
+});
+
 test("merge legacy mencocokkan lot tunggal dan menolak identitas ambigu", () => {
   const localLegacy = { id: "OPN-1", items: [{ katalogId: "KAT-1", qtySistem: 2, hitungPerLokasi: { A: { qty: 2, at: 400 } } }] };
   const oneServerLot = { id: "OPN-1", items: [{ stockId: "STK-1", katalogId: "KAT-1", qtySistem: 2, hitungPerLokasi: {} }] };
