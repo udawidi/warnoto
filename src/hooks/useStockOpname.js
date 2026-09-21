@@ -25,7 +25,6 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   const [stockCountList, setStockCountList] = useState(() => readCachedList("pln_stockcount_v1") ?? []); // riwayat sesi Stock Count (banding SAP vs Aplikasi)
   const [opnameExpanded, setOpnameExpanded] = useState(false); // sidebar accordion state for Stock Opname & Stock Count (digabung 1 menu)
   const [opnameSubTab, setOpnameSubTab] = useState("opname"); // "opname" | "stockCount"
-
   // Fase 1d: sesi bisa diedit dari >1 perangkat/tab sekaligus (per blok/lokasi berbeda) — dulu
   // saveOpname menimpa SELURUH sesi (last-write-wins), blok yang barusan disimpan perangkat lain
   // bisa hilang. Kalau caller kasih touchedLokasiIds (blok yang BENAR disentuh perangkat ini),
@@ -239,8 +238,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       const stampedKatalogId = materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
       return stampedKatalogId ? { ...item, katalogId: stampedKatalogId } : item;
     });
-    const freezeOnFinish = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
-    const updated = {...opn, items: approvedItems, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", freeze: freezeOnFinish, notulen: notulenList.length ? notulenList : (opn.notulen||[])};
+    const updated = {...opn, items: approvedItems, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", notulen: notulenList.length ? notulenList : (opn.notulen||[])};
     const changedKatalogRows = katalogList.filter(previous => {
       const next = newKatalogList.find(row => row.id === previous.id);
       return next && JSON.stringify(previous) !== JSON.stringify(next);
@@ -280,22 +278,27 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   // tetap boleh jalan, cuma dikonfirmasi dulu. Disimpan di jsonb (field opname), TANPA
   // migration/skema baru. Sesi lama (freeze:null) aman lewat optional chaining di semua pembaca.
   async function setOpnameFreeze(opn, { aktif, gudangIds }) {
-    if (!hasRole(currentUser, "ADMIN", "TL", "ASMAN")) { showToast("Role kamu tidak bisa mengubah status freeze.","error"); return; }
-    const now = Date.now();
-    const freeze = aktif
-      ? { aktif: true, gudangIds: gudangIds||[], at: now, by: currentUser.id, unfrozenAt: null }
-      : { ...(opn.freeze||{}), aktif: false, unfrozenAt: now };
-    const updated = { ...opn, freeze };
-    const nl = opnameList.map(o=>o.id===opn.id?updated:o);
+    if (!hasRole(currentUser, "TL")) { showToast("Hanya TL yang bisa mengubah status freeze.", "error"); return false; }
+    if (!supabaseClient) { showToast("Server Stock Opname tidak tersedia.", "error"); return false; }
+    const { data, error } = await supabaseClient.rpc("set_stock_opname_freeze", {
+      p_opname_id: opn?.id,
+      p_active: !!aktif,
+      p_gudang_ids: aktif ? [...new Set((gudangIds || []).filter(Boolean))] : [],
+    });
+    if (error || !data?.ok) {
+      showToast(error?.message || "Freeze gagal disimpan ke server.", "error");
+      return false;
+    }
+    const updated = { ...opn, ...(data.data || {}), id: opn.id, updatedAt: Number(data.updated_at) || Date.now() };
+    const nl = opnameListRef.current.map(o => o.id === opn.id ? updated : o);
     commitOpnameList(nl);
-    await stateRef.current.saveToCloud({ opnameList: nl });
-    showToast(aktif ? "🧊 Gudang di-freeze untuk sesi opname ini." : "Freeze gudang dinonaktifkan.");
+    showToast(aktif ? "Freeze gudang aktif." : "Freeze gudang dinonaktifkan.");
+    return updated;
   }
   async function rejectOpname(opn, reason) {
     // Fase A — sesi ditolak = lepas freeze juga (kalau masih aktif), sama seperti selesai
     // di approveOpname_Asman: gudang tidak boleh nyangkut freeze dari sesi yang sudah mati.
-    const freezeOnReject = opn.freeze?.aktif ? { ...opn.freeze, aktif:false, unfrozenAt: Date.now() } : opn.freeze;
-    const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason, freeze: freezeOnReject};
+    const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
     const nl = opnameList.map(o=>o.id===opn.id?updated:o);
     commitOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
     await logApprovalHistory({type:"OPNAME", decision:"REJECTED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:(opn.items||[]).filter(i=>i.selisih!==0).map(i=>({label:i.nama, qty:i.selisih})), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});

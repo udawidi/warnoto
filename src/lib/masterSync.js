@@ -126,6 +126,12 @@ export async function loadMasterTable(table, { uptIds } = {}) {
   return data.map(row => {
     if (table === "stock_opname" || table === "stock_count") return mapStockScopeRow(row);
     const item = { ...row.data, id: row.id };
+    // Sumber scope UIT harus sama dengan RLS. can_access_upt (DB) membaca KOLOM
+    // upt.uit_id, jadi getScopeUptIds (frontend, via item.uitId) wajib ikut kolom
+    // itu — bukan hanya data->>'uitId' (JSONB). Kalau keduanya menyimpang (UPT
+    // baru menulis kolom tapi lupa data.uitId, atau sebaliknya), user UIT bisa
+    // buta opname senyap karena scope client jadi [] padahal RLS mengizinkan.
+    if (table === "upt") item.uitId = row.uit_id || item.uitId || item.uit_id || null;
     if (table === "heavy_equipment") {
       item.uptId = row.upt_id || item.uptId || item.upt_id || null;
       item.isCrossUptBorrowable = row.is_cross_upt_borrowable ?? item.isCrossUptBorrowable ?? item.is_cross_upt_borrowable ?? false;

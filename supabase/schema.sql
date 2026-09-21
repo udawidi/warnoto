@@ -1692,6 +1692,7 @@ create table if not exists stock_opname (
   id text primary key,              -- id sesi opname, dibuat App.jsx ("OPN-...")
   data jsonb not null default '{}'::jsonb,
   created_at bigint,
+  updated_at timestamptz not null default clock_timestamp(),
   status text,                      -- DRAFT/PENDING_ASMAN/PENDING_MANAGER/SELESAI/DITOLAK
   upt_id text not null references upt(id) on delete restrict
 );

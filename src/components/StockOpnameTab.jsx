@@ -69,6 +69,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   // Fase 3: gudang yang dicentang untuk di-freeze pada sesi yang sedang dibuka — direset
   // tiap ganti sesi (bukan tiap edit item, activeOpname.id stabil per sesi).
   const [freezeSel, setFreezeSel] = useState(new Set());
+  const [freezeBusy, setFreezeBusy] = useState(false);
   // Fase F: metadata paket resmi disimpan pada JSON sesi selesai agar lintas perangkat.
   const [baPrintOpn, setBaPrintOpn] = useState(null);
   const [baForm, setBaForm] = useState(null);
@@ -80,11 +81,15 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
   async function toggleFreeze(aktif) {
+    if (!activeOpname || freezeBusy) return;
+    setFreezeBusy(true);
     const gudangIds = [...freezeSel];
-    await setOpnameFreeze(activeOpname, { aktif, gudangIds });
-    setActiveOpname(prev => prev && prev.id===activeOpname.id
-      ? { ...prev, freeze: aktif ? { aktif:true, gudangIds, at:Date.now(), by:currentUser.id, unfrozenAt:null } : { ...(prev.freeze||{}), aktif:false, unfrozenAt:Date.now() } }
-      : prev);
+    try {
+      const updated = await setOpnameFreeze(activeOpname, { aktif, gudangIds });
+      if (updated) setActiveOpname(prev => prev && prev.id === activeOpname.id ? updated : prev);
+    } finally {
+      setFreezeBusy(false);
+    }
   }
 
   // Recovery lokal hanya berlaku untuk versi server yang menjadi asal draft tersebut.
@@ -556,16 +561,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     return "_TANPA_LOKASI";
   }
 
-  // Fase A — auto-freeze begitu hitung fisik pertama masuk (bukan lagi manual-only). Idempoten:
-  // sekali freeze.aktif true, tidak ditulis ulang. gudangId sesi (SAP split per gudang) dipakai
-  // langsung; kalau kosong (mis. Non-SAP), union gudangId dari lokasiBreakdown item ini.
-  function ensureAutoFreeze(opn, item) {
-    if (opn.freeze?.aktif) return opn.freeze;
-    const gudangIds = opn.gudangId ? [opn.gudangId] : [...new Set((item.lokasiBreakdown||[]).map(b=>b.gudangId).filter(Boolean))];
-    if (!gudangIds.length) return opn.freeze;
-    return { aktif:true, gudangIds, at:Date.now(), by:currentUser?.id, unfrozenAt:null };
-  }
-
   function updateItem(realIdx, field, value) {
     setActiveOpname(prev=>{
       const items = [...prev.items];
@@ -583,7 +578,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         items[realIdx] = applyQtyToItem(items[realIdx], key, value, currentUser?.id);
         if (!touchedRef.current[prev.id]) touchedRef.current[prev.id] = new Set();
         touchedRef.current[prev.id].add(key);
-        return {...prev, items, freeze: value === "" ? prev.freeze : ensureAutoFreeze(prev, items[realIdx])};
+        return {...prev, items};
       } else if (field==="lokasiId") {
         // Non-SAP: kalau qty sudah sempat diisi sebelum lokasi dipilih/diganti, pindahkan entri
         // hitungPerLokasi ke kunci lokasi yang baru supaya tidak nyangkut di "_TANPA_LOKASI".
@@ -661,7 +656,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     items[realIdx] = { ...applyQtyToItem(items[realIdx], lokasiKey, qty, currentUser?.id, { markRecount: true }), ...(extra||{}) };
     if (!touchedRef.current[activeOpname.id]) touchedRef.current[activeOpname.id] = new Set();
     touchedRef.current[activeOpname.id].add(lokasiKey);
-    const next = { ...activeOpname, items, freeze: ensureAutoFreeze(activeOpname, items[realIdx]) };
+    const next = { ...activeOpname, items };
     return queueLapanganSave(next, [...touchedRef.current[activeOpname.id]]);
   }
 
@@ -804,7 +799,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
         {/* Freeze Gudang — Fase A: BLOKIR KERAS transaksi TUG (bukan lagi peringatan).
             Hanya gudang sesi ini (bukan semua gudang+GI) — derive dari blok item sesi. */}
-        {hasRole(currentUser, "ADMIN","TL","ASMAN") && activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK" && (() => {
+        {hasRole(currentUser, "TL") && (activeOpname.freeze?.aktif || (activeOpname.status!=="SELESAI" && activeOpname.status!=="DITOLAK")) && (() => {
           const sesiGudangIds = new Set();
           for (const it of items) {
             for (const b of getItemBlocks(it, lokasiList, gudangList)) {
@@ -826,7 +821,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 const checked = freezeSel.has(g.id);
                 return (
                   <label key={g.id} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 8px",borderRadius:8,border:`1px solid ${checked?"#1d4ed8":C.border}`,background:checked?"#dbeafe":"white",fontSize:12,cursor:"pointer"}}>
-                    <input type="checkbox" checked={checked} onChange={()=>setFreezeSel(s=>{const n=new Set(s); checked?n.delete(g.id):n.add(g.id); return n;})}/>
+                    <input type="checkbox" checked={checked} disabled={freezeBusy} onChange={()=>setFreezeSel(s=>{const n=new Set(s); checked?n.delete(g.id):n.add(g.id); return n;})}/>
                     {g.kode||g.nama}
                   </label>
                 );
@@ -834,9 +829,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
               {activeOpname.freeze?.aktif ? (
-                <button style={sty.btn("danger","sm")} onClick={()=>toggleFreeze(false)}>❄️ Nonaktifkan Freeze</button>
+                <button style={sty.btn("danger","sm")} disabled={freezeBusy} onClick={()=>toggleFreeze(false)}>{freezeBusy?"Menyimpan...":"❄️ Nonaktifkan Freeze"}</button>
               ) : (
-                <button style={sty.btn("primary","sm")} disabled={!freezeSel.size} onClick={()=>toggleFreeze(true)}>🧊 Aktifkan Freeze</button>
+                <button style={sty.btn("primary","sm")} disabled={!freezeSel.size || freezeBusy} onClick={()=>toggleFreeze(true)}>{freezeBusy?"Menyimpan...":"🧊 Aktifkan Freeze"}</button>
               )}
               {activeOpname.freeze?.aktif && <span style={{fontSize:12,color:"#1d4ed8",fontWeight:700}}>🧊 Aktif sejak {fmtDate(activeOpname.freeze.at)}</span>}
             </div>
