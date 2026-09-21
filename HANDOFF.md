@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-20
+**Vendor aktif terakhir:** Claude (Vendor A) | **Update:** 2026-09-20 → serah-terima ke Codex
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -289,6 +289,18 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
   401-guard via kong localhost) + tombol "Reset 2FA" di Kelola Akun (gated `hasRole ADMIN`). **SISA:** verifikasi
   browser alur enroll→challenge→reset (review-first). **Edge minor non-blocking:** kalau `getAAL()` gagal
   transient (null) user aal2 jatuh ke enroll — risiko rendah (baca JWT lokal).
+- **RESET PASSWORD ADMIN MANDIRI (2026-09-21).** Reset password user lain dipisah dari form Edit Akun supaya gagal
+  validasi profil/kuota tak lagi membatalkan reset. Edge Function `admin-reset-password` (service_role, guard
+  ADMIN/SUPERADMIN + scope `can_access_upt`/UPT-sendiri, aksi tunggal `updateUserById`, TIDAK sentuh `profiles`)
+  DEPLOYED self-host (`.../volumes/functions/admin-reset-password/index.ts`, verified 401-guard live). Frontend:
+  `openResetPassword`/`submitResetPassword` (`useAccountAdmin.js`), `ResetPasswordModal` (`AkunModals.jsx`), tombol
+  "🔑 Reset Password" di Kelola Akun (gated `hasRole ADMIN`). **SISA:** commit+push frontend + verifikasi browser.
+  Field "Reset Password (opsional)" lama di form Edit dibiarkan (backward compatible). **Catatan investigasi UIT
+  Pembri tak lihat opname:** SEMUA lapis scope UIT terbukti benar & konsisten (profil `uit_id`, kolom+JSONB
+  `upt.uit_id`, RLS live `can_access_upt` mencakup ASMAN_LOG_UIT, opname rows ber-upt_id) — bukan aturan hilang;
+  penyebab kemungkinan Pembri belum bisa login (recovery: reset password/2FA di atas). Risiko laten: `masterSync.js:101`
+  short-circuit `[]` fail-closed + scope frontend baca `data.uitId` (JSONB) vs RLS baca kolom → bom waktu bila UPT baru
+  kolom terisi tapi JSONB lupa; belum diperbaiki (nunggu keputusan user).
 - **API INTEGRASI (SAP S/4HANA + app pihak ketiga) — FASE 1 SELESAI + LIVE + PUSHED (2026-08-17, `63e9803`).**
   Plan di `C:\Users\PLN\.claude\plans\task-notification-task-id-boyybm8kh-tas-crispy-tarjan.md`.
   **Edge Function gateway `integration-api`** LIVE di self-host (`https://warnoto.com/functions/v1/integration-api/<endpoint>`,
@@ -610,6 +622,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- **[BARU, diserahkan Claude 2026-09-20 — Pindah Blok bisa ke Gardu Induk (GI)]** Spec lengkap di `C:\Users\PLN\.claude\plans\saya-cek-manual-sendiri-ticklish-flute.md`. Ringkas: material di Data Stok & Stock Count bisa dipindah ke lokasi GI (dalam 1 UPT), bukan hanya gudang+blok. **Temuan kunci (sudah diinvestigasi 2 Explore): fitur hampir gratis** — GI sudah diproyeksikan jadi shadow `gudang(GI-<id>)`+`lokasi(GILOK-<id>)` per-UPT (via ULTG→UPT, trigger `mtu_khs_sync_gi_shadow` di migrasi `20260918_gi_tug_warehouse.sql`); Data Stok display + peta GI (`GiMapPreview` Leaflet) SUDAH GI-aware. **Satu-satunya celah:** modal `PindahBlokModal.jsx:39` memakai prop `visibleGudangList` (non-GI, `App.jsx:4005` buang `__gi`). **Implementasi (wiring minimal, TANPA skema/migration baru):** (1) `App.jsx:4479` kirim `stockVisibleGudangList={visibleTugGudangList}` (GI-inclusive, sudah dipakai DataStokTab `:4563`) ke `StockOpnameTab`; (2) `StockOpnameTab.jsx` terima prop itu, teruskan ke `<PindahBlokModal>` (~`:1513`) sebagai `visibleGudangList={stockVisibleGudangList||visibleGudangList}`; (3) `DataStokTab.jsx` (~`:450`) ganti prop modal jadi `visibleGudangList={stockVisibleGudangList||visibleGudangList}`; (4) `PindahBlokModal.jsx:39` label opsi tangani GI: `{g.__gi ? `⚡ ${g.nama||g.kode}` : (g.kode||g.nama)}`. Filter UPT existing (`g.uptId===st.uptId`) DIBIARKAN (itu penegak isolasi 1-UPT). Blok GI otomatis muncul (`GILOK-*`) begitu gudang GI dipilih. JANGAN special-case approval — pindah ke GI = lintas-gudang → tetap lewat approval existing. **Isolasi self-host TERVERIFIKASI (Claude, live):** RLS `stocks` = `can_access_upt(COALESCE(derive lokasi→gudang.upt_id, stocks.upt_id))` → pindah ke GILOK menurunkan UPT dari GI shadow gudang; write lolos `with check`, stok tetap terisolasi di UPT-nya. Delegasikan ke `tukang-senior` (panggil `Skill(ponytail)` dulu). Verifikasi: build hijau + dev 3001 (Data Stok→Pindah Blok muncul GI ⚡ se-UPT, pilih→blok GILOK, simpan, stok tetap tampil + ikon peta buka titik GI; GI beda UPT tak muncul).
 - TL UPT Surabaya mencatat plat sebagai delapan aset individual `PB-SBY-01` sampai `PB-SBY-08`, memilih gudang/lokasi aktual, dan membiarkan akses lintas-UPT nonaktif kecuali memang boleh dipinjam UPT lain. Jangan membuat lokasi atau nomor seri tebakan.
 - Smoke UI GI setelah deploy pada akun TL: cari GI, buka editor, cek titik peta dan toggle dashboard. Uji simpan edit lokasi nyata hanya pada GI yang disetujui pengguna; jangan mengubah data produksi sebagai uji coba.
 - Verifikasi end-to-end approval TUG-3 tujuan GI sampai Data Stok menampilkan lokasi GI sesuai UPT; cek konsol setelah memilih GI lalu kembali ke gudang biasa.
@@ -748,5 +761,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-20 Codex: **Alat Berat & Alat Bantu per-UPT aktif di production; migration self-host, bucket private, RPC atomik, RLS owner/requester, dan bundle Vercel terverifikasi.**
-- 2026-09-20 Claude: **Redesign tabel Stock Opname > Pelaksanaan (kartu putih + aksen border-kiri, Keterangan jadi textarea, kartu diperluas ke tablet ≤1024px); skema versi carry-at-100 via `scripts/bump.mjs` + pad tampilan sidebar; versi 2.0.97; pushed 08d294a, verifikasi visual tablet oleh user.**
+- 2026-09-20 Claude: **Redesign+rapikan tabel Stock Opname>Pelaksanaan (kartu putih+aksen border-kiri, Keterangan textarea non-resize, tablet ≤1024px kartu, buang emoji→ikon phosphor, tag lokasi/history stack, filter buang Gudang/Jenis sisakan Blok); skema versi carry-100 (`scripts/bump.mjs`, v2.0.97). Commits `08d294a`+`561256c`.**
+- 2026-09-20 Claude: **Serah-terima ke Codex — verifikasi isolasi self-host (`stock_opname` RLS `can_access_upt` applied `9163a89`; `stocks` RLS derive UPT dari lokasi→gudang). Fitur baru "Pindah Blok ke GI" dirancang+diinvestigasi (celah tunggal: modal dapat list non-GI), spec di plan file + Langkah berikutnya. BELUM diimplementasi — Codex lanjutkan. Dirty: HANDOFF.md saja.**

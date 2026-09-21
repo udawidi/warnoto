@@ -133,6 +133,32 @@ export function AkunModal({ akunModal, setAkunModal, akunForm, setAkunForm, akun
   );
 }
 
+export function ResetPasswordModal({ resetPasswordModal, setResetPasswordModal, resetPasswordForm, setResetPasswordForm, resetPasswordBusy, submitResetPassword, sty }) {
+  const u = resetPasswordModal;
+  return (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+          <div style={{...sty.card,width:400,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+            <div style={sty.modalHeader}><span style={{fontWeight:800,fontSize:15}}>🔑 Reset Password — {u?.name}</span><button onClick={()=>setResetPasswordModal(null)} style={{background:"transparent",border:"none",color:"white",fontSize:24,lineHeight:1,cursor:"pointer",padding:0,opacity:0.85}}>×</button></div>
+            <div style={{marginBottom:12}}>
+              <label style={sty.label}>Password Baru</label>
+              <div style={{display:"flex",gap:6}}>
+                <input style={sty.input} value={resetPasswordForm.newPassword||""} onChange={e=>setResetPasswordForm(f=>({...f,newPassword:e.target.value}))} placeholder="minimal 6 karakter"/>
+                <button style={sty.btn("ghost","sm")} onClick={()=>setResetPasswordForm(f=>({...f,newPassword:Math.random().toString(36).slice(-5)+Math.random().toString(36).slice(-5)}))}>🎲 Acak</button>
+              </div>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={sty.label}>Konfirmasi Password Baru</label>
+              <input style={sty.input} value={resetPasswordForm.confirmPassword||""} onChange={e=>setResetPasswordForm(f=>({...f,confirmPassword:e.target.value}))}/>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setResetPasswordModal(null)} disabled={resetPasswordBusy}>Batal</button>
+              <button style={{...sty.btn("primary"),flex:2,opacity:resetPasswordBusy?0.6:1}} onClick={submitResetPassword} disabled={resetPasswordBusy}>{resetPasswordBusy?"Menyimpan...":"💾 Reset Password"}</button>
+            </div>
+          </div>
+        </div>
+  );
+}
+
 export function GantiPasswordModal({ setGantiPasswordModal, gantiPasswordForm, setGantiPasswordForm, gantiPasswordBusy, submitGantiPassword, sty }) {
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>

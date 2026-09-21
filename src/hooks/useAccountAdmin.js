@@ -15,6 +15,9 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
   const [gantiPasswordModal, setGantiPasswordModal] = useState(false);
   const [gantiPasswordForm, setGantiPasswordForm] = useState({oldPassword:"", newPassword:"", confirmPassword:""});
   const [gantiPasswordBusy, setGantiPasswordBusy] = useState(false);
+  const [resetPasswordModal, setResetPasswordModal] = useState(null); // null | user target
+  const [resetPasswordForm, setResetPasswordForm] = useState({newPassword:"", confirmPassword:""});
+  const [resetPasswordBusy, setResetPasswordBusy] = useState(false);
 
   // Kelola Akun (ADMIN only) — daftarkan user baru lewat Edge Function
   // admin-create-user (service_role di server, supaya sesi Admin yang lagi
@@ -134,10 +137,33 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
     showToast("✅ Verifikasi 2 langkah direset — user akan diminta enroll ulang.");
   }
 
+  // Reset password akun lain (mandiri dari edit profil) — dipisah dari
+  // submitAkunEdit supaya gagal validasi profil (kuota role, UPT, dsb) TIDAK
+  // ikut membatalkan reset password. Pola sama resetMfa: Edge Function
+  // service_role, tanpa password lama karena ini aksi admin.
+  function openResetPassword(u) {
+    setResetPasswordForm({newPassword:"", confirmPassword:""});
+    setResetPasswordModal(u);
+  }
+  async function submitResetPassword() {
+    const u = resetPasswordModal;
+    const f = resetPasswordForm;
+    if (!f.newPassword || f.newPassword.length < 6) { showToast("Password baru minimal 6 karakter.","error"); return; }
+    if (f.newPassword !== f.confirmPassword) { showToast("Konfirmasi password baru tidak cocok.","error"); return; }
+    setResetPasswordBusy(true);
+    const { data, error } = await supabase.functions.invoke("admin-reset-password", { body: { userId: u.id, newPassword: f.newPassword } });
+    setResetPasswordBusy(false);
+    if (error || !data?.ok) { showToast(data?.error || error?.message || "Gagal reset password.","error"); return; }
+    setResetPasswordModal(null);
+    logAudit(currentUser, "UPDATE", "akun", u.username, { resetPassword:true });
+    showToast(`✅ Password ${u.username} berhasil direset menjadi: ${f.newPassword}`);
+  }
+
   return {
     akunModal, setAkunModal, akunForm, setAkunForm, akunBusy, setAkunBusy, akunResult, setAkunResult,
     gantiPasswordModal, setGantiPasswordModal, gantiPasswordForm, setGantiPasswordForm, gantiPasswordBusy, setGantiPasswordBusy,
+    resetPasswordModal, setResetPasswordModal, resetPasswordForm, setResetPasswordForm, resetPasswordBusy,
     openAddAkun, openEditAkun, isUitScopedRole, isNationalRole, submitAkunEdit, submitAkunBaru,
-    openGantiPassword, submitGantiPassword, resetMfa,
+    openGantiPassword, submitGantiPassword, resetMfa, openResetPassword, submitResetPassword,
   };
 }
