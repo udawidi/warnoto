@@ -36,7 +36,7 @@ test("quantity-pool migration exposes immutable typed quantities and atomic RPCs
   assert.match(migration, /status in \('PENDING_OWNER_ASMAN','DIPINJAM','APPROVED','OVERDUE'\)/i);
   assert.match(schema, /checkout_heavy_equipment_batch_v2/i);
   assert.match(schema, /complete_heavy_equipment_quantity_loan/i);
-  assert.ok(schema.includes(migration.trim()), "canonical schema must mirror the quantity-pool migration exactly");
+  assert.ok(schema.replace(/\r\n/g, "\n").includes(migration.replace(/\r\n/g, "\n").trim()), "canonical schema must mirror the quantity-pool migration exactly");
 });
 
 test("quantity normalizers preserve UNIT compatibility and expose pool balance", () => {

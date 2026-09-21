@@ -48,3 +48,27 @@ T003 before T004. T004-T005 before client integration. T006-T008 before batch UI
 - US2: multi-asset checkout is atomic with correct direct or approval status.
 - US3: subset return releases only selected assets with private evidence.
 - US4: owner/requester visibility and 360/768/desktop interaction pass.
+
+## Phase 8: User Story 5 - Peminjaman HAR UIT
+
+- [X] T018 [P] [US5] Add HAR_UIT schema, RLS, RPC, and storage contract assertions in `tests/unit/heavyEquipmentSupportTools.test.mjs`
+- [X] T019 [US5] Add nullable requester UIT, final policies, and HAR branches for both checkout RPCs in `supabase/migrations/20260921_har_uit_heavy_equipment_loans.sql`
+- [X] T020 [US5] Mirror the final HAR_UIT database contract in `supabase/schema.sql`
+- [X] T021 [P] [US5] Add rollback-safe HAR_UIT verification scenarios in `supabase/verify_har_uit_heavy_equipment.sql`
+- [X] T022 [US5] Make HAR_UIT empty server results authoritative and normalize requester UIT fields in `App.jsx` and `src/lib/heavyEquipment.js`
+- [X] T023 [US5] Support HAR_UIT evidence upload and checkout without changing TL behavior in `src/hooks/useHeavyEquipment.js`
+- [X] T024 [US5] Add the scoped HAR_UIT request form and read-only controls in `src/components/HeavyEquipmentTabV2.jsx`
+- [X] T025 [P] [US5] Cover HAR_UIT photos, scope, request, and forbidden actions in `tests/e2e/heavy-equipment.spec.js`
+
+## Phase 9: Validation and Release Preparation
+
+- [X] T026 Run targeted unit tests, full tests, E2E, build, SQL verification review, and diff audit
+- [X] T027 Prepare the production migration command, rollback note, and frontend deployment gate without applying or pushing changes
+
+## HAR UIT Dependencies
+
+T018 before T019. T019-T021 before client integration. T022-T024 before T025. T025 before T026. Production migration apply requires a separate explicit user confirmation and must precede frontend deployment.
+
+## HAR UIT Independent Test Criteria
+
+- US5: HAR_UIT with `uit_id` and no `upt_id` sees canonical registry photos and all in-UIT history, submits a same-UIT cross-enabled equipment request with mandatory evidence, receives owner Asman pending status, and cannot access cross-UIT data or perform owner actions.

@@ -1,10 +1,10 @@
-# Implementation Plan: Alat Bantu Kerja Terisolasi per UPT
+# Implementation Plan: Alat Bantu Kerja dan Peminjaman HAR UIT
 
 **Branch**: `main` | **Date**: 2026-09-20 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 
-Perluas domain Alat Berat dengan tipe Alat Bantu, scope typed `upt_id`, checkout/approval/return batch atomik, bukti foto private self-host, dan UI responsive redesign-preserve.
+Pertahankan alur TL/Asman yang sudah berjalan dan tambahkan requester organisasi HAR_UIT. Scope HAR diturunkan dari typed `uit_id`; registry dan histori dibaca hanya untuk UPT dalam UIT yang sama, sedangkan checkout hanya menerima alat tersedia yang mengaktifkan lintas-UPT. Bukti foto tetap private dan approval tetap milik Asman UPT pemilik.
 
 ## Technical Context
 
@@ -12,11 +12,11 @@ Perluas domain Alat Berat dengan tipe Alat Bantu, scope typed `upt_id`, checkout
 
 **Dependencies**: Existing React, Supabase JS, Phosphor, Tailwind/CSS project; tidak ada dependency baru
 
-**Storage**: `heavy_equipment`, `heavy_equipment_loans`, bucket private `heavy-equipment-evidence`
+**Storage**: `heavy_equipment`, `heavy_equipment_loans.requester_uit_id`, bucket private `heavy-equipment-evidence`
 
 **Testing**: Node test, Playwright, SQL contract/rehearsal, Vite build
 
-**Constraints**: Server-first, `upt_id` authoritative, RLS deny-by-default, backward-compatible loan legacy, production self-host only
+**Constraints**: Server-first, typed `upt_id`/`uit_id` authoritative, RLS deny-by-default, RPC signature tetap kompatibel, backward-compatible loan legacy, production self-host only, frontend tidak dideploy sebelum migration aktif
 
 ## Constitution Check
 
@@ -32,6 +32,8 @@ src/lib/docBuilders.js
 App.jsx
 src/styles/operations.css
 supabase/migrations/20260920_heavy_equipment_upt_id_loans.sql
+supabase/migrations/20260921_har_uit_heavy_equipment_loans.sql
+supabase/verify_har_uit_heavy_equipment.sql
 tests/unit/heavyEquipmentSupportTools.test.mjs
 tests/e2e/heavy-equipment.spec.js
 ```
@@ -42,4 +44,4 @@ Redesign-preserve untuk product UI operasional PLN. Enterprise trust-first. `DES
 
 ## Constitution Check Post-Design
 
-Lulus. Solusi menambah hanya kolom, RPC, dan bucket private yang diperlukan untuk keamanan dan durability.
+Lulus. Solusi menambah satu foreign key nullable, index, policy final, serta cabang HAR_UIT pada dua RPC checkout existing. Tidak ada dependency atau perubahan signature RPC. Migration production tetap membutuhkan persetujuan eksplisit.

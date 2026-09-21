@@ -22,7 +22,7 @@ function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
 }
 
-const SURAT_IZIN_MIME_EXT = { "application/pdf":"pdf", "image/jpeg":"jpg", "image/png":"png", "image/webp":"webp" };
+const SURAT_IZIN_MIME_EXT = { "application/pdf":"pdf", "image/jpeg":"jpg", "image/jpg":"jpg", "image/png":"png", "image/webp":"webp" };
 function extFromDataUrl(dataUrl) {
   const mime = String(dataUrl).match(/^data:([^;]+);/)?.[1] || "";
   return SURAT_IZIN_MIME_EXT[mime] || null;
@@ -142,7 +142,9 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
   }
 
   async function createHeavyEquipmentLoan(form) {
-    if (currentUser?.role !== "TL") { showToast("Hanya TL UPT pemilik yang bisa mencatat peminjaman alat.","error"); return false; }
+    const isHarUit = currentUser?.role === "HAR_UIT";
+    if (!isHarUit && currentUser?.role !== "TL") { showToast("Hanya TL UPT pemilik atau HAR UIT yang bisa mencatat peminjaman alat.","error"); return false; }
+    if (isHarUit && !currentUser?.uitId) { showToast("Akun HAR UIT belum memiliki UIT. Hubungi administrator.", "error"); return false; }
     const equipmentIds = [...new Set(form?.equipmentIds || (form?.equipmentId ? [form.equipmentId] : []))];
     if (!equipmentIds.length || !form.namaPekerjaan?.trim() || !form.tanggalAmbil || !form.tanggalKembali || !form.keperluan?.trim()) {
       showToast("Lengkapi alat, nama pekerjaan, tanggal, dan keperluan.","error"); return false;
@@ -152,7 +154,11 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     if (assets.some(eq => !eq)) { showToast("Ada alat yang tidak ditemukan.", "error"); return false; }
     const ownerIds = [...new Set(assets.map(eq => getHeavyEquipmentUptId(eq, uptList) || (normalizeHeavyEquipmentUptName(eq.upt) === normalizeHeavyEquipmentUptName(currentUser?.upt) ? currentUser?.uptId : null)).filter(Boolean))];
     if (ownerIds.length !== 1) { showToast("Semua alat dalam satu transaksi harus milik UPT yang sama.", "error"); return false; }
-    if (ownerIds[0] !== currentUser?.uptId) { showToast("Peminjaman hanya dapat dicatat oleh TL UPT pemilik alat.", "error"); return false; }
+    if (!isHarUit && ownerIds[0] !== currentUser?.uptId) { showToast("Peminjaman hanya dapat dicatat oleh TL UPT pemilik alat.", "error"); return false; }
+    if (isHarUit) {
+      const owner = uptList.find(u => u.id === ownerIds[0]);
+      if (!owner || owner.uitId !== currentUser.uitId) { showToast("UPT pemilik berada di luar UIT akun.", "error"); return false; }
+    }
     const hasQuantityPool = assets.some(eq => normalizeHeavyEquipmentRecord(eq).trackingMode === "QUANTITY");
     const quantities = Object.fromEntries(assets.map(eq => {
       const raw = form.quantities?.[eq.id] ?? form.quantityByEquipmentId?.[eq.id] ?? form.quantity ?? 1;
@@ -173,20 +179,29 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     } else if (assets.some(eq => eq.availabilityStatus === "DIPINJAM" || heavyEquipmentLoans.some(l => l.equipmentId === eq.id && isActiveHeavyEquipmentLoan(l)))) {
       showToast("Ada alat yang tidak tersedia untuk dipinjam.", "error"); return false;
     }
-    const borrowerType = form.borrowerType || "UPT";
+    const borrowerType = isHarUit ? "HAR_UIT" : (form.borrowerType || "UPT");
     const requesterUptId = borrowerType === "UPT" ? form.requesterUptId : null;
+    if (borrowerType === "HAR_UIT" && assets.some(eq => !eq.isCrossUptBorrowable)) { showToast("Ada alat yang belum diizinkan untuk peminjaman lintas-UPT.", "error"); return false; }
     if (borrowerType === "UPT" && (!requesterUptId || requesterUptId === ownerIds[0])) { showToast("Pilih UPT peminjam yang berbeda dari pemilik alat.", "error"); return false; }
     if (borrowerType === "UPT" && assets.some(eq => !eq.isCrossUptBorrowable)) { showToast("Ada alat yang belum diizinkan untuk peminjaman lintas-UPT.", "error"); return false; }
-    if (borrowerType !== "UPT" && (!form.borrowerName?.trim() || !form.borrowerPic?.trim() || !form.borrowerContact?.trim())) { showToast("Nama organisasi, PIC, dan kontak wajib diisi.", "error"); return false; }
+    if (borrowerType !== "UPT" && borrowerType !== "HAR_UIT" && (!form.borrowerName?.trim() || !form.borrowerPic?.trim() || !form.borrowerContact?.trim())) { showToast("Nama organisasi, PIC, dan kontak wajib diisi.", "error"); return false; }
+    if (borrowerType === "HAR_UIT" && (!form.borrowerPic?.trim() || !form.borrowerContact?.trim())) { showToast("PIC dan kontak HAR UIT wajib diisi.", "error"); return false; }
     if (!supabaseClient?.rpc) { showToast("Server peminjaman alat belum tersedia.", "error"); return false; }
     const batchId = `HE-BATCH-${uid().slice(-12)}`;
-    const evidence = form.pickupEvidence || form.fotoKeluar;
-    if (!evidence) { showToast("Foto serah-terima wajib diunggah.", "error"); return false; }
-    let evidencePath = `${ownerIds[0]}/${batchId}/pickup.jpg`;
+    const evidence = isHarUit
+      ? (form.loanLetter || form.suratPeminjaman || form.pickupEvidence || form.fotoKeluar)
+      : (form.pickupEvidence || form.fotoKeluar);
+    if (!isHarUit && !evidence) { showToast("Foto serah-terima wajib diunggah.", "error"); return false; }
+    let evidencePath = null;
     try {
-      const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
-      await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath), 30_000, "unggah bukti serah-terima");
-      const borrower = { borrowerType, borrowerName: form.borrowerName || form.requesterUpt || "", borrowerRefId: requesterUptId, borrowerPic: form.borrowerPic || "", borrowerContact: form.borrowerContact || "" };
+      if (evidence) {
+        const extension = isHarUit ? extFromDataUrl(evidence) : "jpg";
+        if (isHarUit && !extension) { showToast("Format surat tidak didukung. Gunakan PDF, JPG, PNG, atau WebP.", "error"); return false; }
+        evidencePath = `${ownerIds[0]}/${batchId}/${isHarUit ? "loan-letter" : "pickup"}.${extension}`;
+        const uploadData = isHarUit && extension === "pdf" ? evidence : await compressImage(evidence, { maxBytes: 1_000_000 });
+        await _withTimeout(uploadPhotoToStorage(uploadData, "heavy-equipment-evidence", evidencePath, { upsert:false }), 30_000, isHarUit ? "unggah surat peminjaman" : "unggah bukti serah-terima");
+      }
+      const borrower = { borrowerType, borrowerName: isHarUit ? (form.borrowerName || `HAR UIT ${currentUser.uitId}`) : (form.borrowerName || form.requesterUpt || ""), borrowerRefId: requesterUptId, borrowerUitId: isHarUit ? currentUser.uitId : null, borrowerPic: form.borrowerPic || "", borrowerContact: form.borrowerContact || "" };
       const job = { batchId, namaPekerjaan: form.namaPekerjaan.trim(), tanggalAmbil: form.tanggalAmbil, tanggalKembali: form.tanggalKembali, keperluan: form.keperluan.trim(), catatan: form.catatan || "", requestedBy: currentUser.id };
       const rpcName = hasQuantityPool ? "checkout_heavy_equipment_batch_v2" : "checkout_heavy_equipment_batch";
       const rpcArgs = hasQuantityPool
@@ -198,10 +213,10 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
       const returnedEquipment = Array.isArray(data.equipment) ? data.equipment : [];
       setHeavyEquipmentLoans(prev => [...returnedLoans, ...prev.filter(l => !returnedLoans.some(row => row.id === l.id))]);
       if (returnedEquipment.length) setHeavyEquipmentList(prev => prev.map(eq => returnedEquipment.find(row => row.id === eq.id) || eq));
-      showToast(borrowerType === "UPT" ? "Peminjaman tercatat. Menunggu approval Asman pemilik." : "Peminjaman alat tercatat.");
+      showToast(borrowerType === "UPT" || borrowerType === "HAR_UIT" ? "Peminjaman tercatat. Menunggu approval Asman pemilik." : "Peminjaman alat tercatat.");
       return true;
     } catch (e) {
-      await supabaseClient.storage?.from("heavy-equipment-evidence").remove([evidencePath]).catch(() => {});
+      if (evidencePath) await supabaseClient.storage?.from("heavy-equipment-evidence").remove([evidencePath]).catch(() => {});
       showToast(`Gagal menyimpan peminjaman: ${e?.message || "server tidak dapat dihubungi."}`, "error");
       return false;
     }
@@ -251,7 +266,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     const evidencePath = `${ownerId}/${loan.loanBatchId || loan.data?.loanBatchId || loanId}/return-${loanId}-${uid().slice(-10)}.jpg`;
     try {
       const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
-      await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath), 30_000, "unggah bukti pengembalian");
+      await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath, { upsert:false }), 30_000, "unggah bukti pengembalian");
       const equipment = heavyEquipmentList.find(eq => eq.id === loan.equipmentId);
       const isQuantityLoan = normalizeHeavyEquipmentRecord(equipment || {}).trackingMode === "QUANTITY" || Number(loan.quantityBorrowed || loan.quantity_borrowed) > 1;
       const remaining = getHeavyEquipmentLoanRemainingQuantity(loan);

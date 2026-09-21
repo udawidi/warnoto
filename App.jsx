@@ -437,7 +437,8 @@ export default function PLNWarehouse() {
   // Cache-first: layar blocking "Memuat data dari cloud..." HANYA tampil kalau benar-benar
   // tidak ada cache first-screen-critical (device/browser baru). Kalau cache stocks/katalog
   // ada, app langsung render dari cache & loadCloud refresh di latar belakang.
-  const [loading, setLoading] = useState(() => readCachedList("pln_stocks_v4") == null && readCachedList("pln_katalog_v4") == null);
+  // HAR_UIT tetap menunggu bootstrap scoped agar cache akun sebelumnya tidak sempat tampil.
+  const [loading, setLoading] = useState(() => currentUser?.role === "HAR_UIT" || (readCachedList("pln_stocks_v4") == null && readCachedList("pln_katalog_v4") == null));
   const [dataRefreshing, setDataRefreshing] = useState(true); // true selama loadCloud() menyinkronkan data di latar belakang
   const [cloudSaving, setCloudSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
@@ -708,6 +709,51 @@ export default function PLNWarehouse() {
     async function loadCloud() {
       stocksBootstrapUserIdRef.current = null;
       setDataRefreshing(true);
+      if (currentUser?.role === "HAR_UIT") {
+        // Jangan render cache domain tersembunyi selama bootstrap HAR_UIT.
+        setLoading(true);
+        setTxns([]); setRencanaKedatanganList([]); setOpnameList([]); setStockCountList([]);
+        setApprovalHistoryList([]); setAttbList([]);
+        setMaturityAssessments([]); setMaturityAudits([]); setMaturityAuditHistory([]); setMaturity5SAssessments([]);
+        setMaterialCadangData({ imports:[], analyses:[], applyHistory:[] });
+        setMaterialCadangHealthData({ imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
+        setMaterialCadangAiInsights({ runs:[], materialInsights:[] });
+        setGudangCapacityList([]); setGudangCapacityImports([]);
+        // HAR_UIT hanya memakai Dashboard, Data Stok, dan Alat Berat. Jangan
+        // menjalankan loader domain tersembunyi karena selain boros, cache domain
+        // itu dapat membuat layar awal menunggu request yang tidak relevan.
+        const [cuit, cupt, cgdg, csgdg, clok, ckat, cs, che, chel] = await Promise.all([
+          loadMasterTable("uit"), loadMasterTable("upt"), loadMasterTable("gudang"),
+          loadMasterTable("sub_gudang"), loadMasterTable("lokasi"), loadMasterTable("katalog"),
+          loadMasterTable("stocks"), loadMasterTable("heavy_equipment"),
+          loadMasterTable("heavy_equipment_loans"),
+        ]);
+        if (cuit !== null) setUitList(cuit);
+        if (cupt !== null) setUptList(cupt);
+        if (cgdg !== null) setGudangList(cgdg);
+        if (csgdg !== null) setSubGudangList(csgdg);
+        if (clok !== null) setLokasiList(clok);
+        if (ckat !== null) setKatalogList(ckat);
+        if (cs !== null) setStocks(cs);
+        // Empty server responses are authoritative for HAR_UIT. Cache is only
+        // retained when the request failed (null), never written back then.
+        if (che !== null) {
+          const heFresh = che.map(normalizeHeavyEquipmentRecord);
+          setHeavyEquipmentList(heFresh);
+          CLOUD.set("pln_heavy_equipment_v1", heFresh);
+        }
+        if (chel !== null) {
+          setHeavyEquipmentLoans(chel);
+          CLOUD.set("pln_heavy_equipment_loans_v1", chel);
+        }
+        if (cs !== null) CLOUD.set("pln_stocks_v4", leanStocks(cs));
+        if (ckat !== null) CLOUD.set("pln_katalog_v4", ckat);
+        if (clok !== null) CLOUD.set("pln_lokasi_v4", clok);
+        setLoading(false);
+        stocksBootstrapUserIdRef.current = currentUser.id;
+        setDataRefreshing(false);
+        return;
+      }
       if (currentUser?.role === "OPERATOR") {
         // OPERATOR cuma pakai layar live-location alat berat (EquipmentLiveShare/OperatorProfile):
         // butuh uptList (scope + filter unit) dan heavyEquipmentList (dropdown unit). Bootstrap
@@ -1144,6 +1190,11 @@ export default function PLNWarehouse() {
         const heFresh = cheRemote.map(normalizeHeavyEquipmentRecord);
         setHeavyEquipmentList(heFresh);
         CLOUD.set("pln_heavy_equipment_v1", heFresh); // refresh cache dgn data terbaru dari server
+      } else if (currentUser?.role === "HAR_UIT") {
+        // HAR_UIT memakai hasil server sebagai sumber otoritatif, termasuk kosong.
+        // Cache/default hanya boleh tampil saat fetch gagal agar data scope lain tidak bocor.
+        setHeavyEquipmentList(cheRemote);
+        CLOUD.set("pln_heavy_equipment_v1", cheRemote);
       } else {
         setHeavyEquipmentList(heLocal);
         if (heLocal.length > 0) syncMasterTable("heavy_equipment", heLocal, e => ({ upt: e.upt || null, upt_id: e.uptId || null, is_cross_upt_borrowable: !!e.isCrossUptBorrowable, tracking_mode: e.trackingMode || "UNIT", quantity_total: Number(e.quantityTotal) || 1 }));
@@ -1155,6 +1206,10 @@ export default function PLNWarehouse() {
       } else if (chelRemote.length > 0) {
         setHeavyEquipmentLoans(chelRemote);
         CLOUD.set("pln_heavy_equipment_loans_v1", chelRemote); // refresh cache dgn data terbaru dari server
+      } else if (currentUser?.role === "HAR_UIT") {
+        // Empty loan response untuk HAR_UIT valid: jangan isi dari cache perangkat.
+        setHeavyEquipmentLoans(chelRemote);
+        CLOUD.set("pln_heavy_equipment_loans_v1", chelRemote);
       } else {
         // Server adalah sumber tunggal loan. Cache lama tidak boleh di-seed lewat
         // direct table write karena lifecycle baru wajib melewati RPC atomik.
@@ -1245,7 +1300,7 @@ export default function PLNWarehouse() {
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
   // sengaja tidak memakai cache/saveToCloud agar tidak ikut full sync state lama.
   useEffect(() => {
-    if (authLoading || !currentUser) return;
+    if (authLoading || !currentUser || currentUser?.role === "HAR_UIT") return;
     let active = true;
     loadMaterialInspections().then(items => {
       if (active && items !== null) setMaterialInspections(items);

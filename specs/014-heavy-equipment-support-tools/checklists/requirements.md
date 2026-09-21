@@ -1,4 +1,4 @@
-# Specification Quality Checklist: Alat Bantu Kerja Terisolasi per UPT
+# Specification Quality Checklist: Alat Bantu Kerja dan Peminjaman HAR UIT
 
 **Purpose**: Validate specification completeness before implementation.
 

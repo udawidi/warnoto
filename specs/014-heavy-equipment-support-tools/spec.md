@@ -1,4 +1,4 @@
-# Feature Specification: Alat Bantu Kerja Terisolasi per UPT
+# Feature Specification: Alat Bantu Kerja dan Peminjaman HAR UIT
 
 **Feature Branch**: `main`
 
@@ -6,7 +6,7 @@
 
 **Status**: Approved for implementation
 
-**Input**: Semua UPT harus dapat mencatat alat bantu kerja, meminjamkannya kepada UPT/ULTG/GI/vendor/unit lain, menyimpan bukti foto di self-host, dan menjaga seluruh data terisolasi berdasarkan `upt_id`.
+**Input**: Semua UPT harus dapat mencatat alat bantu kerja, meminjamkannya kepada UPT/ULTG/GI/vendor/unit lain, menyimpan bukti foto di self-host, dan menjaga seluruh data terisolasi. Akun HAR_UIT harus dapat melihat serta meminjam alat lintas-UPT yang masih berada dalam UIT-nya.
 
 ## User Scenarios & Testing
 
@@ -46,6 +46,20 @@ Pengguna berwenang melihat batch, peminjam, PIC, kontak, bukti, status, overdue,
 
 **Independent Test**: Owner dan requester dapat melihat loan terkait; UPT ketiga tidak dapat membaca loan atau bukti fotonya.
 
+### User Story 5 - HAR UIT Meminjam Alat dari UPT dalam UIT-nya (Priority: P1)
+
+HAR_UIT memilih UPT pemilik di dalam UIT-nya, memilih alat yang tersedia dan diizinkan untuk lintas-UPT, mengunggah bukti serah-terima, lalu mengajukan peminjaman atas nama organisasi HAR UIT.
+
+**Independent Test**: HAR_UIT tanpa `upt_id` tetapi memiliki `uit_id` dapat melihat foto registry, membuat permintaan ke UPT dalam UIT yang sama, dan melihat seluruh histori peminjaman dalam UIT setelah reload.
+
+**Acceptance Scenarios**:
+
+1. **Given** HAR_UIT memiliki `uit_id`, **When** membuka menu Alat Berat, **Then** alat dan foto registry milik UPT dalam UIT yang sama terlihat.
+2. **Given** alat tersedia dan lintas-UPT diaktifkan, **When** HAR_UIT mengisi pekerjaan, PIC, kontak, tanggal, dan foto serah-terima, **Then** permintaan tersimpan atas nama HAR UIT dan menunggu persetujuan Asman UPT pemilik.
+3. **Given** UPT atau alat berada di UIT lain, **When** HAR_UIT mencoba membaca atau mengajukan peminjaman, **Then** akses ditolak tanpa perubahan data.
+4. **Given** profil HAR_UIT tidak memiliki `uit_id`, **When** membuka form, **Then** form terkunci dengan pesan konfigurasi akun.
+5. **Given** HAR_UIT melihat transaksi dalam UIT, **When** membuka histori, **Then** semua transaksi yang owner atau requester-nya berada dalam UIT tersebut terlihat, tanpa tombol tambah alat, edit, approve, atau return.
+
 ## Edge Cases
 
 - Nama UPT legacy tidak cocok tepat satu master UPT.
@@ -54,6 +68,9 @@ Pengguna berwenang melihat batch, peminjam, PIC, kontak, bukti, status, overdue,
 - Pengembalian sebagian dilakukan beberapa kali.
 - Self-host tidak dapat dijangkau.
 - Cache browser dikosongkan atau pengguna berganti perangkat.
+- HAR_UIT tidak memiliki `upt_id`, tidak memiliki `uit_id`, atau mencoba memalsukan identitas UIT pada payload.
+- Alat berada di UPT dalam UIT yang sama tetapi flag lintas-UPT nonaktif.
+- Unggah bukti berhasil tetapi checkout HAR_UIT gagal dan objek belum direferensikan transaksi.
 
 ## Requirements
 
@@ -71,6 +88,14 @@ Pengguna berwenang melihat batch, peminjam, PIC, kontak, bukti, status, overdue,
 - **FR-010**: Client MUST memperbarui state hanya setelah server berhasil.
 - **FR-011**: Kegagalan server MUST mempertahankan form dan tidak menampilkan sukses palsu.
 - **FR-012**: Tampilan MUST usable pada 360 px, 768 px, desktop, keyboard, light mode, dan dark mode.
+- **FR-013**: HAR_UIT MUST memakai `uit_id` profil sebagai sumber otorisasi dan tidak bergantung pada `upt_id`.
+- **FR-014**: HAR_UIT MUST hanya dapat membaca registry, foto registry, dan histori loan untuk UPT yang berada dalam UIT yang sama.
+- **FR-015**: HAR_UIT MUST hanya dapat memilih alat yang tersedia dan memiliki izin lintas-UPT aktif.
+- **FR-016**: Permintaan HAR_UIT MUST tercatat atas nama organisasi HAR UIT, tanpa pilihan UPT requester, serta menyimpan identitas UIT requester secara terstruktur.
+- **FR-017**: Permintaan HAR_UIT MUST membutuhkan bukti foto serah-terima dan persetujuan Asman UPT pemilik.
+- **FR-018**: Server MUST menurunkan identitas aktor, UIT requester, UPT pemilik, dan status dari data terotorisasi; nilai client tidak boleh memperluas akses.
+- **FR-019**: HAR_UIT MUST tidak dapat menambah atau mengubah registry, menyetujui permintaan, atau menyelesaikan pengembalian.
+- **FR-020**: Hasil server kosong untuk HAR_UIT MUST dianggap sebagai hasil otoritatif dan tidak boleh diganti cache lintas-scope.
 
 ### Key Entities
 
@@ -78,6 +103,7 @@ Pengguna berwenang melihat batch, peminjam, PIC, kontak, bukti, status, overdue,
 - **Batch Peminjaman**: metadata bersama satu serah-terima.
 - **Loan Aset**: satu baris per aset dalam batch.
 - **Bukti Peminjaman**: foto private keluar atau kembali pada folder UPT pemilik.
+- **Requester UIT**: identitas UIT terstruktur untuk permintaan yang dibuat organisasi HAR UIT.
 
 ## Success Criteria
 
@@ -86,9 +112,14 @@ Pengguna berwenang melihat batch, peminjam, PIC, kontak, bukti, status, overdue,
 - **SC-003**: Checkout atau return batch selalu berubah seluruhnya atau tidak sama sekali.
 - **SC-004**: Data tetap tersedia setelah reload, cache dibersihkan, dan login dari perangkat lain.
 - **SC-005**: Seluruh aksi utama dapat diselesaikan tanpa horizontal overflow pada 360 px.
+- **SC-006**: HAR_UIT yang terkonfigurasi dapat melihat foto alat, memilih alat lintas-UPT, dan mengirim permintaan lengkap dalam kurang dari tiga menit.
+- **SC-007**: Seluruh percobaan HAR_UIT membaca atau meminjam dari UIT lain ditolak.
+- **SC-008**: Setelah reload atau pindah perangkat, permintaan dan histori HAR_UIT dalam UIT yang sama tetap terlihat tanpa data cache dari scope lain.
 
 ## Assumptions
 
 - Label awal plat Surabaya adalah `PB-SBY-01` sampai `PB-SBY-08`; lokasi aktual dipilih TL saat input.
 - Notifikasi Telegram/WA di luar scope; overdue tetap tampil di aplikasi.
 - Data legacy tetap kompatibel melalui snapshot nama UPT.
+- Permintaan HAR_UIT tidak mengubah alur TL, Asman, atau pengembalian yang sudah berjalan.
+- Foto registry tetap memakai lokasi penyimpanan publik yang sudah ada; bukti serah-terima tetap private.

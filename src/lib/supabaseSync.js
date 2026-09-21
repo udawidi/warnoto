@@ -205,9 +205,9 @@ export function _withTimeout(promise, ms, label) {
 
 // Upload satu foto base64 ke Storage → kembalikan URL publik (atau penanda "priv:"
 // untuk bucket privat). Dipakai foto transaksi TUG maupun foto Data Stok.
-export async function uploadPhotoToStorage(dataUrl, bucket, path) {
+export async function uploadPhotoToStorage(dataUrl, bucket, path, { upsert = true } = {}) {
   const blob = dataUrlToBlob(dataUrl);
-  const { error } = await supabase.storage.from(bucket).upload(path, blob, { upsert: true, contentType: blob.type });
+  const { error } = await supabase.storage.from(bucket).upload(path, blob, { upsert, contentType: blob.type });
   if (error) throw error;
   return ["tug-docs-private", "heavy-equipment-evidence"].includes(bucket)
     ? `priv:${path}`                                                     // render via signed URL

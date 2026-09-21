@@ -138,6 +138,57 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
     expect(sync).toContain('supabase.from(table).upsert(upsertRows, { onConflict: "id" })');
   });
 
+  test("kontrak HAR_UIT memakai scope UIT dan server canonical", () => {
+    const app = fs.readFileSync(path.resolve(__dirname, "../..", "App.jsx"), "utf8");
+    const hook = fs.readFileSync(path.resolve(__dirname, "../..", "src/hooks/useHeavyEquipment.js"), "utf8");
+    const tab = fs.readFileSync(path.resolve(__dirname, "../..", "src/components/HeavyEquipmentTabV2.jsx"), "utf8");
+    const migration = fs.readFileSync(path.resolve(__dirname, "../..", "supabase/migrations/20260921_har_uit_heavy_equipment_loans.sql"), "utf8");
+    expect(app).toContain('currentUser?.role === "HAR_UIT"');
+    expect(app).toContain("setHeavyEquipmentLoans(chelRemote)");
+    expect(hook).toContain('borrowerType, borrowerName');
+    expect(hook).toContain('borrowerUitId: isHarUit ? currentUser.uitId : null');
+    expect(tab).toContain('Ajukan Peminjaman HAR UIT');
+    expect(tab).toContain('UPT pemilik alat');
+    expect(tab).toContain('getHeavyEquipmentLoanRequesterUitId');
+    expect(tab).toContain('isCrossUptBorrowable');
+    expect(migration).toContain("requester_uit_id");
+    expect(migration).toContain("PENDING_OWNER_ASMAN");
+    expect(migration).toContain("not exists (select 1 from public.heavy_equipment_loans l");
+  });
+
+  test.describe("HAR_UIT UI", () => {
+    test.use({
+      actorProfile: { id:"e2e-har", name:"HAR UIT E2E", username:"har-e2e", role:"HAR_UIT", jabatan:"HAR UIT", avatar:"HU", uitId:"UIT-JBM", uptId:null, gudangIds:null },
+      cloudOverrides: {
+        pln_upt_v1: [
+          { id:"UPT-SBY", nama:"UPT Surabaya", kode:"UPT-SBYA", uitId:"UIT-JBM" },
+          { id:"UPT-MLG", nama:"UPT Malang", kode:"UPT-MLG", uitId:"UIT-JBM" },
+        ],
+        pln_heavy_equipment_v1: [
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[0], id:"HE-E2E-HAR-01", upt:"Surabaya", uptId:"UPT-SBY", isCrossUptBorrowable:true, foto:"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XwG6WQAAAABJRU5ErkJggg==" },
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[0], id:"HE-E2E-HAR-02", upt:"Malang", uptId:"UPT-MLG", isCrossUptBorrowable:false, foto:null },
+        ],
+        pln_heavy_equipment_loans_v1: [],
+      },
+    });
+
+    test("form HAR_UIT scoped and owner actions hidden", async ({ isolatedPage:page }) => {
+      await openFleetForE2E(page);
+      await expect(page.getByRole("img", { name:"Truck Crane 8 Ton" })).toBeVisible();
+      await page.getByRole("tab", { name:/Peminjaman & Histori/ }).click();
+      await expect(page.getByText("Ajukan Peminjaman HAR UIT", { exact:true })).toBeVisible();
+      const ownerSelect = page.locator(".operations-form-panel select").first();
+      await expect(ownerSelect).toBeVisible();
+      await ownerSelect.selectOption("UPT-SBY");
+      await expect(page.getByRole("group", { name:"Pilih alat yang dipinjam" }).getByText("Truck Crane 8 Ton")).toBeVisible();
+      await expect(page.getByText("HAR UIT UIT-JBM", { exact:true })).toBeVisible();
+      await expect(page.getByRole("button", { name:"+ Tambah Alat", exact:true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name:"Edit data alat", exact:true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name:"Setujui Peminjaman", exact:true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name:"Tandai Alat Kembali", exact:true })).toHaveCount(0);
+    });
+  });
+
   test.describe("pengembalian oleh owner", () => {
     test.use({
       actorProfile: { ...TL },

@@ -112,11 +112,20 @@ function normalizePositiveHeavyEquipmentQuantity(value, fallback = 1) {
 export function normalizeHeavyEquipmentLoan(loan = {}) {
   return {
     ...loan,
+    ownerUptId: loan.ownerUptId || loan.owner_upt_id || null,
+    requesterUptId: loan.requesterUptId || loan.requester_upt_id || null,
+    requesterUitId: loan.requesterUitId || loan.requester_uit_id || loan.data?.requesterUitId || loan.data?.requester_uit_id || null,
+    pickupEvidencePath: loan.pickupEvidencePath || loan.p_pickup_evidence_path || loan.data?.pickupEvidencePath || loan.data?.p_pickup_evidence_path || null,
+    returnEvidencePath: loan.returnEvidencePath || loan.data?.returnEvidencePath || null,
     quantityBorrowed: normalizePositiveHeavyEquipmentQuantity(loan.quantityBorrowed ?? loan.quantity_borrowed, 1),
     quantityReturnedGood: Math.max(0, Number(loan.quantityReturnedGood ?? loan.quantity_returned_good) || 0),
     quantityReturnedDamaged: Math.max(0, Number(loan.quantityReturnedDamaged ?? loan.quantity_returned_damaged) || 0),
     quantityReturnedLost: Math.max(0, Number(loan.quantityReturnedLost ?? loan.quantity_returned_lost) || 0),
   };
+}
+
+export function getHeavyEquipmentLoanRequesterUitId(loan) {
+  return loan?.requesterUitId || loan?.requester_uit_id || loan?.data?.requesterUitId || loan?.data?.requester_uit_id || null;
 }
 
 export function getHeavyEquipmentLoanRemainingQuantity(loan) {

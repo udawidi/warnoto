@@ -141,6 +141,7 @@ export async function loadMasterTable(table, { uptIds } = {}) {
     if (table === "heavy_equipment_loans") {
       item.ownerUptId = row.owner_upt_id || item.ownerUptId || item.owner_upt_id || null;
       item.requesterUptId = row.requester_upt_id || item.requesterUptId || item.requester_upt_id || null;
+      item.requesterUitId = row.requester_uit_id || item.requesterUitId || item.requester_uit_id || null;
       item.quantityBorrowed = row.quantity_borrowed ?? item.quantityBorrowed ?? item.quantity_borrowed ?? 1;
       item.quantityReturnedGood = row.quantity_returned_good ?? item.quantityReturnedGood ?? item.quantity_returned_good ?? 0;
       item.quantityReturnedDamaged = row.quantity_returned_damaged ?? item.quantityReturnedDamaged ?? item.quantity_returned_damaged ?? 0;
