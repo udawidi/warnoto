@@ -1743,12 +1743,12 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
   const lokasiStr = resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList);
   const kartuGantungStock = (stocks||[]).find(s=>s.katalogId===katalog.id);
   const kategoriMaterial = kartuGantungStock ? stockSapLabel(kartuGantungStock) : "-";
-  const opnameHistory = [...((stocks||[]).find(s=>s.katalogId===katalog.id)?.opnameHistory || [])].sort((a,b)=>b.tanggal-a.tanggal);
+  const opnameHistory = [...new Map((stocks||[]).filter(s=>s.katalogId===katalog.id).flatMap(s=>Array.isArray(s.opnameHistory)?s.opnameHistory:[]).map(h=>[h.opnameId || `${h.tanggal}-${h.semester}`, h])).values()].sort((a,b)=>b.tanggal-a.tanggal);
   const opnameHistoryHTML = opnameHistory.length ? `
   <div style="margin-bottom:10px">
     <div style="font-weight:800;font-size:11px;margin-bottom:4px;color:#002b66">🗓️ RIWAYAT STOCK OPNAME</div>
     <div style="font-size:10px;color:#334155">
-      ${opnameHistory.map(h => `<div>${fmtDateOnly(h.tanggal)} · Sem ${esc(h.semester || "-")}</div>`).join("")}
+      ${opnameHistory.map(h => `<div>Telah dilakukan Stock Opname pada tanggal ${fmtDateOnly(h.tanggal)} · Sem ${esc(h.semester || "-")}</div>`).join("")}
     </div>
   </div>` : "";
 

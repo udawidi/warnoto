@@ -9,6 +9,11 @@ const STOCK_OPNAME = SURFACES.find(s => s.slug === "stock-opname");
 const DRAFT_BUTTON_NAME_CLEAN = /Lanjutkan opname 2026-2/;
 
 async function openDraftSession(page) {
+  await page.route("https://warnoto.com/storage/**", route => route.fulfill({
+    status: 200,
+    contentType: "image/png",
+    body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+  }));
   await openApp(page);
   await openRoute(page, STOCK_OPNAME);
   await page.getByRole("button", { name: DRAFT_BUTTON_NAME_CLEAN }).click();
@@ -131,6 +136,8 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("Isolator Keramik 150 kV").click();
 
     const qtyInput = overlay.locator("input[type=number]");
+    await expect(overlay.getByText("Ganti Foto Keseluruhan")).toBeVisible();
+    await expect(overlay.locator('input[type="file"][capture="environment"]')).toHaveCount(2);
     await expect(qtyInput).toBeVisible();
     await expect(qtyInput).toHaveValue("");
 

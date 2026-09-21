@@ -4,7 +4,7 @@ import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
 import { normalizeKatalog, totalQtyForKatalog, itemCounted, allBloksSelesai, stockSapLabel } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
-import { normalizeOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
+import { normalizeOpnamePhotos, missingRequiredOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
 import { mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { mapStockScopeRow } from "../lib/stockScope.js";
@@ -93,7 +93,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   // bisa hilang. Kalau caller kasih touchedLokasiIds (blok yang BENAR disentuh perangkat ini),
   // ambil versi sesi terbaru dari server dulu, lalu tulis balik cuma blok itu — sisanya dari
   // server. Gagal ambil (offline) → simpan LOKAL saja, jangan menimpa server dgn data parsial.
-  async function saveOpname(opn, touchedLokasiIds, { silent = false, forceMerge = false, failClosed = false } = {}) {
+  async function saveOpname(opn, touchedLokasiIds, { silent = false, forceMerge = false, failClosed = false, touchedPhotoItemKeys = [] } = {}) {
     if (opn?.id) pendingSaveIdsRef.current.add(opn.id);
     let toSave;
     try { toSave = await normalizeOpnamePhotos(opn, uploadStockFoto); }
@@ -115,7 +115,8 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
           // serverOpn undefined = sesi memang belum pernah tersimpan di server (draft baru pertama
           // kali) — bukan kegagalan, lanjut simpan opn apa adanya seperti biasa.
           // Merge the normalized payload so uploaded photo URLs are not replaced by local data URLs.
-          if (serverOpn) toSave = mergeOpnameForSave(toSave, serverOpn, touchedLokasiIds);
+          // mergeOpnameForSave(toSave, serverOpn, touchedLokasiIds) remains the canonical merge boundary.
+          if (serverOpn) toSave = mergeOpnameForSave(toSave, serverOpn, touchedLokasiIds, { touchedPhotoItemKeys });
         }
       } catch {
         syncPending = true;
@@ -169,7 +170,12 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       showToast("Belum bisa submit: semua material harus selesai dihitung.", "error");
       return false;
     }
-    const updated = {...opn, status:"PENDING_ASMAN", submittedAt:Date.now()};
+    let normalized;
+    try { normalized = await normalizeOpnamePhotos(opn, uploadStockFoto); }
+    catch (error) { showToast(error?.message || "Submit diblokir: foto belum berhasil diunggah.", "error"); return false; }
+    const missing = missingRequiredOpnamePhotos(normalized);
+    if (missing.length) { showToast(`Submit diblokir: ${missing.length} item dengan qty fisik > 0 wajib memiliki Foto Keseluruhan.`, "error"); return false; }
+    const updated = {...normalized, status:"PENDING_ASMAN", submittedAt:Date.now()};
     const saved = await saveOpname(updated, touchedLokasiIds, { silent: true, forceMerge: true, failClosed: true });
     if (saved === false) return false;
     showToast("📋 Opname disubmit! Menunggu approval Asman.");
@@ -188,6 +194,8 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       return false;
     }
     opn = preparedOpn;
+    const missing = missingRequiredOpnamePhotos(opn);
+    if (missing.length) { showToast(`Approval diblokir: ${missing.length} item dengan qty fisik > 0 belum memiliki Foto Keseluruhan.`, "error"); return false; }
     let newStocks = [...stocks];
     // Material baru dari SAP (item.katalogId null — belum ada di Master Katalog saat upload)
     // sekarang IKUT approval sesi ini (Asman->Manager), TIDAK ada approval TL terpisah (keputusan
@@ -201,6 +209,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     const materialBaruDibuat = [];
     const materialBaruKonflik = [];
     const materialBaruKatalogByCode = new Map();
+    const newStockIdByCode = new Map();
     const nowOpn = Date.now();
     const sessionUptId = opn.uptId || opn.upt_id;
     (opn.items||[]).filter(item => !item.katalogId && Number(item.qtsFisik)>0).forEach(item => {
@@ -219,8 +228,10 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
         createdAt: nowOpn,
       }];
       materialBaruKatalogByCode.set(noKatalog, newKatalogId);
+      const newStockId = "STK-OPN-" + noKatalog + "-" + nowOpn;
+      newStockIdByCode.set(noKatalog, newStockId);
       newStocks = [...newStocks, {
-        id: "STK-OPN-" + noKatalog + "-" + nowOpn,
+        id: newStockId,
         katalogId: newKatalogId, lokasiId: null,
         uptId: sessionUptId,
         qty: Number(item.qtsFisik), price: 0, minQty: 0, unit: item.satuan || "-",
@@ -291,15 +302,20 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     const nowHist = Date.now();
     const histEntry = { opnameId: opn.id, tanggal: nowHist, tahun: new Date(nowHist).getFullYear(), semester: opn.semester || "" };
     const countedKatalogIds = new Set();
+    const fotoByStockId = {};
     const fotoByKatalog = {};
     for (const item of (opn.items||[])) {
-      if (!itemCounted(item) || !item.katalogId) continue;
-      countedKatalogIds.add(item.katalogId);
+      if (!itemCounted(item)) continue;
+      const resolvedKatalogId = item.katalogId || materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
+      if (resolvedKatalogId) countedKatalogIds.add(resolvedKatalogId);
+      if (Number(item.qtsFisik) <= 0) continue;
+      const photoTarget = item.stockId || newStockIdByCode.get(String(item.noKatalog || "").trim());
       for (const field of ["fotoKeseluruhan","fotoNameplate"]) {
         const val = item[field];
         if (typeof val === "string" && val.startsWith("data:")) throw new Error("Foto legacy belum dinormalisasi.");
         if (typeof val === "string" && val && !val.startsWith("data:")) {
-          fotoByKatalog[item.katalogId] = { ...(fotoByKatalog[item.katalogId] || {}), [field]: val };
+          if (photoTarget) fotoByStockId[photoTarget] = { ...(fotoByStockId[photoTarget] || {}), [field]: val };
+          else if (resolvedKatalogId) fotoByKatalog[resolvedKatalogId] = { ...(fotoByKatalog[resolvedKatalogId] || {}), [field]: val };
         }
       }
     }
@@ -307,7 +323,8 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       if (!countedKatalogIds.has(s.katalogId)) return s;
       const hist = Array.isArray(s.opnameHistory) ? s.opnameHistory : [];
       const already = hist.some(h => h.opnameId === opn.id);
-      const foto = fotoByKatalog[s.katalogId] || {};
+      const sameCatalogRows = newStocks.filter(row => row.katalogId === s.katalogId);
+      const foto = fotoByStockId[s.id] || (sameCatalogRows.length === 1 ? fotoByKatalog[s.katalogId] : {}) || {};
       return { ...s,
         opnameHistory: already ? hist : [...hist, histEntry],
         ...(foto.fotoKeseluruhan ? { fotoKeseluruhan: foto.fotoKeseluruhan } : {}),
@@ -317,8 +334,10 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     });
 
     const approvedItems = (opn.items || []).map(item => {
-      const stampedKatalogId = materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
-      return stampedKatalogId ? { ...item, katalogId: stampedKatalogId } : item;
+      const code = String(item.noKatalog || "").trim();
+      const stampedKatalogId = materialBaruKatalogByCode.get(code);
+      const stampedStockId = newStockIdByCode.get(code);
+      return stampedKatalogId ? { ...item, katalogId: stampedKatalogId, ...(stampedStockId ? { stockId: stampedStockId } : {}) } : item;
     });
     const updated = {...opn, items: approvedItems, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", notulen: notulenList.length ? notulenList : (opn.notulen||[])};
     const changedKatalogRows = katalogList.filter(previous => {

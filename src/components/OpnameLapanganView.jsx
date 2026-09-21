@@ -8,7 +8,7 @@ import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { extractKatalogIdFromScan, extractLokasiIdFromScan, normalizeKatalog, blokKeyOf, getItemBlocks } from "../lib/sap.js";
 
 export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount, lokasiList, gudangList,
-  currentUser, sty, C, showToast, onClose, onOpenTambahMaterial, onSimpanDraft }) {
+  currentUser, sty, C, showToast, onClose, onOpenTambahMaterial, onSimpanDraft, onUploadPhoto }) {
   const items = activeOpname?.items || [];
 
   // Peta blok -> daftar {item, realIdx} yang dimiliki blok itu.
@@ -43,6 +43,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   const [notFound, setNotFound] = useState(null); // {code, matchIdx}
   const [recountQty, setRecountQty] = useState("");
   const [saving, setSaving] = useState(false);
+  const [photoUploading, setPhotoUploading] = useState(false);
   const [materialQuery, setMaterialQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
 
@@ -100,6 +101,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   async function handleSimpanQty(lanjutScan) {
     if (saving) return;
     if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
+    if (Number(qtyInput) > 0 && !items[itemAktifIdx]?.fotoKeseluruhan) { showToast("Foto Keseluruhan wajib diunggah untuk qty fisik lebih dari 0.", "error"); return; }
     setSaving(true);
     try {
       const saved = await setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput);
@@ -109,6 +111,29 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
       setScreen("items");
       if (lanjutScan && viaCamera) { setScanFor("item"); setScanning(true); }
     } finally { setSaving(false); }
+  }
+
+  async function handlePhoto(file, field) {
+    if (!file || !onUploadPhoto || itemAktifIdx === null) return;
+    setPhotoUploading(true);
+    try { await onUploadPhoto(itemAktifIdx, field, file); }
+    finally { setPhotoUploading(false); }
+  }
+
+  function renderPhotoCapture(item) {
+    if (!item) return null;
+    const required = Number(qtyInput) > 0;
+    return <div style={{ marginTop: 14, padding: 12, border: `1px solid ${required && !item.fotoKeseluruhan ? C.red : C.border}`, borderRadius: 10, background: "#fafafa" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Foto Stock Opname {required && <span style={{ color: C.red }}>* wajib</span>}</div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {[["fotoKeseluruhan", "Foto Keseluruhan", true], ["fotoNameplate", "Foto Nameplate", false]].map(([field, label, isRequired]) => <label key={field} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: 8, border: `1px solid ${isRequired && required && !item[field] ? C.red : C.border}`, borderRadius: 8, cursor: photoUploading ? "wait" : "pointer", fontSize: 12, fontWeight: 700 }}>
+          {item[field] ? <img src={item[field]} alt={label} style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6 }} /> : "📷"}
+          <span>{item[field] ? "Ganti " : "Ambil "}{label}</span>
+          <input type="file" accept="image/*" capture="environment" disabled={photoUploading} style={{ display: "none" }} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; handlePhoto(file, field); }} />
+        </label>)}
+      </div>
+      {required && !item.fotoKeseluruhan && <div style={{ marginTop: 6, color: C.red, fontSize: 11 }}>Upload minimal 1 Foto Keseluruhan sebelum menyimpan qty.</div>}
+    </div>;
   }
 
   async function handleTandaiNihil(realIdx) {
@@ -253,13 +278,15 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
                 <div style={{ fontSize: 13, color: C.muted }}>Qty Sistem: {item.qtySistem}</div>
                 {screen === "hitung-usul" && <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>📍 Dicatat di blok ini (beda dari lokasi aslinya) — ditandai untuk pindah lokasi.</div>}
               </div>
-              <label style={sty.label}>Qty Hasil Hitung Fisik</label>
+        {renderPhotoCapture(item)}
+        <label style={sty.label}>Qty Hasil Hitung Fisik</label>
               <input autoFocus type="number" inputMode="decimal" min="0" style={{ ...sty.input, fontSize: 32, fontWeight: 800, textAlign: "center", padding: "18px 12px" }}
                 value={qtyInput} onChange={e => setQtyInput(e.target.value)} />
             </div>
             <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
               <button disabled={saving} style={{ ...sty.btn("primary"), minHeight: 48, opacity: saving ? 0.65 : 1 }} onClick={async () => {
                 if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
+                if (Number(qtyInput) > 0 && !item.fotoKeseluruhan) { showToast("Foto Keseluruhan wajib diunggah untuk qty fisik lebih dari 0.", "error"); return; }
                 if (screen === "hitung-usul") { if (saving) return; setSaving(true); try { const saved = await setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput, { usulPindahLokasi: true }); if (!saved) return; showToast(`✔ Tersimpan ke server · ${item.namaBarang}: ${qtyInput}`); setItemAktifIdx(null); setQtyInput(""); setScreen("items"); } finally { setSaving(false); } }
                 else handleSimpanQty(true);
               }}>

@@ -60,12 +60,14 @@ const OPNAME_SESSION = {
     {
       katalogId:"KAT-E2E-01", namaBarang:"Isolator Keramik 150 kV", noKatalog:"301234567", satuan:"BUAH", sapCategory:"Persediaan",
       qtySistem:10, qtySAP:10, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
+      fotoKeseluruhan:"https://warnoto.com/storage/v1/object/public/stock-photos/upt-sby/KAT-E2E-01/utama-e2e.jpg",
       lokasiBreakdown:[{ lokasiId:"LOK-E2E-A", lokasiKode:"A-01", gudangId:"GDG-E2E-01", gudangKode:"GTK", qty:10 }],
       hitungPerLokasi:{},
     },
     {
       katalogId:"KAT-E2E-02", namaBarang:"Lightning Arrester 150 kV", noKatalog:"309876543", satuan:"SET", sapCategory:"Cadang",
       qtySistem:4, qtySAP:4, qtsFisik:null, selisih:0, statusItem:"SESUAI", keterangan:"",
+      fotoKeseluruhan:"https://warnoto.com/storage/v1/object/public/stock-photos/upt-sby/KAT-E2E-02/utama-e2e.jpg",
       lokasiBreakdown:[{ lokasiId:"LOK-E2E-B", lokasiKode:"B-02", gudangId:"GDG-E2E-01", gudangKode:"GTK", qty:4 }],
       hitungPerLokasi:{},
     },

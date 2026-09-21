@@ -314,7 +314,9 @@ export default function PLNWarehouse() {
   // effect runs. Production writes must never be short-circuited by stale state.
   useEffect(() => { try { sessionStorage.removeItem("warnoto_demo"); } catch {} }, []);
   const [currentUser, setCurrentUser] = useState(readCachedProfile);
-  const [authLoading, setAuthLoading] = useState(() => !readCachedProfile()); // true hanya kalau belum ada cache profil
+  // Cached profile boleh dipakai untuk tampilan awal, tetapi tidak boleh melewati
+  // bootstrap INITIAL_SESSION; data scoped baru boleh dimuat setelah sesi Supabase terpasang.
+  const [authLoading, setAuthLoading] = useState(true);
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
   const [loginErr, setLoginErr] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
@@ -709,6 +711,11 @@ export default function PLNWarehouse() {
     async function loadCloud() {
       stocksBootstrapUserIdRef.current = null;
       setDataRefreshing(true);
+      // Satu request cloud yang menggantung tidak boleh menahan seluruh bootstrap.
+      // Timeout hanya mengubah hasil request yang macet menjadi null; request normal
+      // dan alur fallback/cache tetap sama.
+      const bootstrapLoad = (promise, label = "bootstrap cloud") =>
+        _withTimeout(Promise.resolve(promise), 15000, label).catch(() => null);
       if (currentUser?.role === "HAR_UIT") {
         // Jangan render cache domain tersembunyi selama bootstrap HAR_UIT.
         setLoading(true);
@@ -727,7 +734,7 @@ export default function PLNWarehouse() {
           loadMasterTable("sub_gudang"), loadMasterTable("lokasi"), loadMasterTable("katalog"),
           loadMasterTable("stocks"), loadMasterTable("heavy_equipment"),
           loadMasterTable("heavy_equipment_loans"),
-        ]);
+        ].map((p, i) => bootstrapLoad(p, `bootstrap HAR_UIT ${i}`)));
         if (cuit !== null) setUitList(cuit);
         if (cupt !== null) setUptList(cupt);
         if (cgdg !== null) setGudangList(cgdg);
@@ -760,7 +767,7 @@ export default function PLNWarehouse() {
         // penuh (stocks/katalog/txns/maturity dkk, bisa ribuan baris) di-skip sepenuhnya —
         // stocksBootstrapUserIdRef TIDAK di-set di sini sehingga effect realtime stocks (yang
         // menunggu ref itu) juga otomatis tidak pernah menyala untuk role ini.
-        const [cupt, che] = await Promise.all([loadMasterTable("upt"), loadMasterTable("heavy_equipment")]);
+        const [cupt, che] = await Promise.all([loadMasterTable("upt"), loadMasterTable("heavy_equipment")].map((p, i) => bootstrapLoad(p, `bootstrap operator ${i}`)));
         if (cupt !== null) setUptList(cupt);
         if (che !== null) setHeavyEquipmentList(che.map(normalizeHeavyEquipmentRecord));
         setLoading(false);
@@ -785,7 +792,7 @@ export default function PLNWarehouse() {
         CLOUD.get("pln_maturity_audits_v1"), CLOUD.get("pln_maturity_audit_history_v1"), CLOUD.get("pln_maturity_5s_assessments_v1"), CLOUD.get("pln_heavy_equipment_v1"), CLOUD.get("pln_heavy_equipment_loans_v1"), CLOUD.get("pln_attb_v1"),
         CLOUD.get("pln_material_cadang_v1"), CLOUD.get("pln_material_cadang_health_v1"), CLOUD.get("pln_material_cadang_ai_insights_v1"),
         CLOUD.get("pln_gudang_capacity_v1"), CLOUD.get("pln_gudang_capacity_imports_v1"), CLOUD.get("pln_migrated_tug15_v1"), CLOUD.get("pln_migrasi_pending_review_v1"),
-      ]);
+      ].map((p, i) => bootstrapLoad(p, `bootstrap cache ${i}`)));
 
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
@@ -793,7 +800,7 @@ export default function PLNWarehouse() {
       // Resolve the UPT catalog first so Stock Opname/Count can add a typed
       // client-side filter. If this lookup fails, the loader deliberately omits
       // the filter and PostgreSQL RLS remains the boundary.
-      const uptLoadPromise = loadMasterTable("upt");
+      const uptLoadPromise = bootstrapLoad(loadMasterTable("upt"), "bootstrap upt");
       const stockScopeLoad = table => uptLoadPromise.then(remoteUpts => {
         const uptIds = Array.isArray(remoteUpts) ? getScopeUptIds(currentUser, remoteUpts) : undefined;
         return loadMasterTable(table, { uptIds });
@@ -817,19 +824,27 @@ export default function PLNWarehouse() {
         stockScopeLoad("stock_count"),
         loadMasterTable("attb_list"),
         loadMasterTable("supplier"),
-      ];
+      ].map((p, i) => bootstrapLoad(p, `bootstrap master ${i}`));
       // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
-      const maturityLoads = [loadMaturityAssessments(), loadMaturityAudits(), loadMaturityAuditHistory(), loadMaturity5SAssessments()];
+      const maturityLoads = [loadMaturityAssessments(), loadMaturityAudits(), loadMaturityAuditHistory(), loadMaturity5SAssessments()]
+        .map((p, i) => bootstrapLoad(p, `bootstrap maturity ${i}`));
       // FIX perf reload: dulu dua fetch ini menunggu masterLoads SELESAI dulu baru mulai
       // (ekor serial) — di balik Cloudflare tunnel self-host tiap round-trip mahal. Keduanya
       // tak butuh hasil masterLoads, jadi mulai SEKARANG supaya jalan konkuren; hasilnya
       // baru dikonsumsi nanti di bawah (lihat `await canonicalLoadPromise`/`tug3LoadPromise`).
-      const canonicalLoadPromise = loadCanonicalTugTransactions();
+      const canonicalLoadPromise = bootstrapLoad(loadCanonicalTugTransactions(), "bootstrap TUG canonical")
+        .then(value => value || { unavailable:true, rows:[] });
       canonicalLoadPromise.catch(() => {}); // cegah warning unhandled-rejection; error asli tetap ditangani di try/catch bawah
-      const tug3LoadPromise = loadTug3Transactions();
+      const tug3LoadPromise = bootstrapLoad(loadTug3Transactions(), "bootstrap TUG3")
+        .then(value => value || { unavailable:true, rows:[] });
       tug3LoadPromise.catch(() => {});
-      const tug10LoadPromise = loadTug10Transactions();
+      const tug10LoadPromise = bootstrapLoad(loadTug10Transactions(), "bootstrap TUG10")
+        .then(value => value || { unavailable:true, rows:[] });
       tug10LoadPromise.catch(() => {});
+      const materialCadangStateLoadPromise = bootstrapLoad(
+        supabase?.from("material_cadang_state").select("upt_id,uit_id,data,health,ai"),
+        "bootstrap material cadang",
+      );
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
       // tidak-menulis yang ada di bawah.
@@ -1142,38 +1157,39 @@ export default function PLNWarehouse() {
         const migrationSignature = maturityMigrationCandidates
           .flatMap(item => item.cached.map(record => `${item.label}:${record?.id || ""}`))
           .sort().join("|");
-        if (maturityMigrationDismissedSigRef.current === migrationSignature) return;
-        const migrationSummary = maturityMigrationCandidates.map(item => `${item.cached.length} ${item.label}`).join(" dan ");
-        askConfirmDelete({
-          title: "Migrasikan data Maturity ke server?",
-          message: <>Server belum memiliki data tersebut, tetapi ditemukan <b>{migrationSummary}</b> di perangkat ini.</>,
-          warning: "Migrasi hanya menyimpan metadata Maturity; file/foto tidak ikut diunggah. Periksa hasil setelah proses selesai.",
-          confirmLabel: "Migrasikan ke Server",
-          onConfirm: async () => {
-            const results = await Promise.all(maturityMigrationCandidates.map(async candidate => {
-              // Satu request batch per tabel mencegah migrasi parsial di tabel itu.
-              const migrated = await candidate.upsertAll(candidate.cached);
-              if (!migrated) return { ...candidate, verified:null };
-              const verified = await candidate.reload();
-              const expectedIds = new Set(candidate.cached.map(item => item.id));
-              const valid = verified !== null
-                && verified.length === candidate.cached.length
-                && verified.every(item => expectedIds.has(item.id));
-              return { ...candidate, verified:valid ? verified : null };
-            }));
-            const failed = results.filter(result => result.verified === null);
-            results.filter(result => result.verified !== null).forEach(result => result.setState(result.verified));
-            if (failed.length > 0) {
-              showToast(`Migrasi ${failed.map(item => item.label).join(" dan ")} gagal atau belum dapat diverifikasi. Data perangkat tidak dihapus.`, "error");
-              return;
-            }
-            showToast("Data Maturity berhasil dimigrasikan dan diverifikasi di server.");
-          },
-          onCancel: () => {
-            maturityMigrationDismissedSigRef.current = migrationSignature;
-            try { localStorage.setItem("warnoto_maturity_migration_dismissed_sig", migrationSignature); } catch {}
-          },
-        });
+        if (maturityMigrationDismissedSigRef.current !== migrationSignature) {
+          const migrationSummary = maturityMigrationCandidates.map(item => `${item.cached.length} ${item.label}`).join(" dan ");
+          askConfirmDelete({
+            title: "Migrasikan data Maturity ke server?",
+            message: <>Server belum memiliki data tersebut, tetapi ditemukan <b>{migrationSummary}</b> di perangkat ini.</>,
+            warning: "Migrasi hanya menyimpan metadata Maturity; file/foto tidak ikut diunggah. Periksa hasil setelah proses selesai.",
+            confirmLabel: "Migrasikan ke Server",
+            onConfirm: async () => {
+              const results = await Promise.all(maturityMigrationCandidates.map(async candidate => {
+                // Satu request batch per tabel mencegah migrasi parsial di tabel itu.
+                const migrated = await candidate.upsertAll(candidate.cached);
+                if (!migrated) return { ...candidate, verified:null };
+                const verified = await candidate.reload();
+                const expectedIds = new Set(candidate.cached.map(item => item.id));
+                const valid = verified !== null
+                  && verified.length === candidate.cached.length
+                  && verified.every(item => expectedIds.has(item.id));
+                return { ...candidate, verified:valid ? verified : null };
+              }));
+              const failed = results.filter(result => result.verified === null);
+              results.filter(result => result.verified !== null).forEach(result => result.setState(result.verified));
+              if (failed.length > 0) {
+                showToast(`Migrasi ${failed.map(item => item.label).join(" dan ")} gagal atau belum dapat diverifikasi. Data perangkat tidak dihapus.`, "error");
+                return;
+              }
+              showToast("Data Maturity berhasil dimigrasikan dan diverifikasi di server.");
+            },
+            onCancel: () => {
+              maturityMigrationDismissedSigRef.current = migrationSignature;
+              try { localStorage.setItem("warnoto_maturity_migration_dismissed_sig", migrationSignature); } catch {}
+            },
+          });
+        }
       }
       // Alat Berat/Peminjaman UPT — Supabase (heavy_equipment/_loans) sekarang sumber
       // utama kalau sudah ada isinya; kalau masih kosong (instalasi lama yang baru
@@ -1238,7 +1254,7 @@ export default function PLNWarehouse() {
       };
       let mcServerRows = null;
       if (supabase) {
-        const { data: mcData_, error: mcErr_ } = await supabase.from("material_cadang_state").select("upt_id,uit_id,data,health,ai");
+        const { data: mcData_, error: mcErr_ } = (await materialCadangStateLoadPromise) || { error: true };
         if (!mcErr_) mcServerRows = mcData_ || [];
       }
       if (mcServerRows && mcServerRows.length) {
@@ -1294,7 +1310,15 @@ export default function PLNWarehouse() {
       stocksBootstrapUserIdRef.current = currentUser.id;
       setDataRefreshing(false);
     }
-    loadCloud();
+    // Jangan biarkan satu loader domain yang throw membuat indikator sinkronisasi
+    // menggantung selamanya. Cache yang sudah ada tetap dipakai; refresh berikutnya
+    // dapat dicoba tanpa mengubah alur bisnis.
+    loadCloud().catch(error => {
+      console.error("Bootstrap cloud gagal:", error);
+      setLoading(false);
+      setDataRefreshing(false);
+      showToastRef.current && showToastRef.current("⚠️ Sinkronisasi cloud gagal. Data lokal tetap ditampilkan.", "error");
+    });
   }, [authLoading, currentUser?.id]);
 
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
@@ -2124,10 +2148,9 @@ export default function PLNWarehouse() {
   // tab baru, dst), dan dengarkan event login/logout — satu listener ini
   // menangani SEMUA transisi auth (initial load, login manual, logout),
   // supaya currentUser & users selalu konsisten dari satu sumber.
-  // Pola cache-first: currentUser sudah terisi dari localStorage sebelum effect
-  // ini jalan (lihat readCachedProfile di atas) supaya "Memuat sesi..." tidak
-  // menunggu network; profil di-refresh di latar belakang lewat callback ini,
-  // dan kalau sesi ternyata tidak valid/tidak ada, user otomatis logout + cache dibuang.
+  // Cache profile tetap dipasang untuk menghindari layar kosong, tetapi authLoading
+  // menahan loader/data effects sampai callback auth selesai dan sesi tervalidasi.
+  // Sesi tidak valid/tidak ada tetap menghapus current user dan cache.
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); return; }
     // Callback TIDAK async — supabase-js memperingatkan callback async di

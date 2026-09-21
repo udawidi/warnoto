@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-21
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-22
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -36,6 +36,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **QR Blok Lokasi Gudang (2026-09-21, production aktif):** `lokasi.public_token` adalah bearer token UUID unik yang dicetak di fragment URL `?loc=<id>#t=<token>`. RPC baca-saja `public_block_stock(text,uuid)` hanya dapat dieksekusi `anon`/`authenticated`, memakai `search_path=pg_catalog`, dan mengembalikan identitas UPT/gudang/subgudang/blok serta material dengan qty positif. Payload material juga membawa label Status SAP dan Jenis Barang; agregasi dipisah per katalog/status/jenis. Mode Lapangan hanya memakai `loc` untuk memilih blok yang memang ada di sesi opname aktif. Kartu cetak = A6 portrait dengan logo PLN, garis pembatas, dan QR 48 mm; domain canonical `https://pln.warnoto.com`.
 - **Freeze transaksi Stock Opname dihapus penuh (2026-09-21, production aktif):** UI, guard TUG, RPC, trigger, dan fungsi database freeze tidak lagi dipakai. Realtime `stock_opname`, trigger `updated_at`, autosave, dan data legacy `data.freeze` tetap dipertahankan; metadata legacy bersifat inert dan tidak dimigrasikan massal.
 - **Pindah Blok ke GI (2026-09-21, production aktif):** modal Data Stok dan Stock Opname memakai daftar gudang GI-inclusive. Pilihan GI tetap dibatasi UPT yang sama dan tetap mengikuti approval lintas-gudang existing; tidak ada skema baru.
+- **Foto Stock Opname wajib (2026-09-22):** setiap item dengan qty fisik positif wajib memiliki minimal satu Foto Keseluruhan yang sudah tersimpan di bucket self-host `stock-photos` dengan prefix UPT sesi. Validasi berjalan saat submit dan approval Asman; approval atomik memperbarui foto Data Stok dari hasil opname. Kartu Gantung mencatat tanggal opname terakhir. Migration `20260921_stock_opname_required_photo.sql` menambahkan guard database dan masih proposal sampai diterapkan dengan konfirmasi pengguna.
 - **MTU KHS (2026-09-13, production aktif):** workspace memakai database canonical, RLS, approval, import 2024/2026, drawing, dan hierarki `UIT > UPT > ULTG > GI > Bay`. Material fisik 2024 direkonsiliasi TL tanpa backfill/mutasi stok; sisa fisik dapat ditautkan ke stok dengan UPT+katalog sama. Material 2026 diterima parsial melalui draft TUG-3 lalu TUG-4/final Asman; final menambah stok atomik dan idempoten. Pengeluaran hanya referensi TUG-8/9 `FINAL_APPROVED`, tidak memutasi stok dari MTU. `SUPERVISI` dikecualikan. Migration `20260913_mtu_khs_tug_lifecycle.sql` sudah diterapkan.
 - **TUG canonical hanya TUG-8/TUG-9** (tabel/RPC self-host, review-first Admin→TL→Asman, nomor server dari counter UPT). **TUG-15/Laporan di luar scope canonical.** TUG legacy hanya baseline, tanpa replay stok.
 - **Output resmi Stock Opname (2026-09-16):** paket cetak adalah satu HTML A4 portrait berisi BA + TUG15 SAP + TUG15 Non-SAP hanya bila child selesai. `uptId` dan `documentMeta` versi 1 disimpan di JSON opname existing; tidak ada migrasi/dependensi. UPT legacy diambil dari sesi/gudang/pembuat, konflik wajib dipilih eksplisit. Manager harus tepat satu profil role `MANAGER` pada UPT; nol/ganda memblokir cetak. Pemeriksa default = pembuat + satu TL + satu Asman, dengan picker profil dan fallback manual. Laporan akuntansi poin 1 dan parser PID Excel tetap di luar scope sampai contoh Excel tersedia.
@@ -69,6 +70,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Foto wajib Stock Opname dan pemulihan bootstrap localhost selesai di kode (2026-09-22).** Mode Lapangan mewajibkan Foto Keseluruhan untuk qty positif, submit mengunggah foto ke self-host, approval Asman memperbarui foto Data Stok, dan Kartu Gantung menampilkan tanggal opname terakhir. Akar status `Menyinkronkan data...` yang tidak selesai adalah early-return saat prompt migrasi Maturity pernah ditolak; bootstrap kini tetap menyelesaikan state refresh dan request macet dibatasi 15 detik dengan fallback cache. Smoke tab baru akun Fajar menampilkan `Cloud Storage Aktif`; error `browser is not defined` terbukti berasal dari ekstensi Chrome. Unit test 377/377, build, dan diff-check lulus. Migration foto wajib belum diterapkan ke production.
 
 - **Stock Opname live-sync production sudah pulih (`a1ec78b`, 2026-09-21).** Akar kegagalan simpan ADMIN/Fajar adalah guard freeze database yang menolak metadata freeze lokal basi. Feature freeze dihapus dari UI, aplikasi, dan database sesuai keputusan pengguna; Realtime dan `updated_at` tetap aktif. Smoke production memakai akun Fajar berhasil membuka draft 2026-S2 dan `Simpan Draft` mengembalikan status `Tersimpan`. Seed fallback `heavy_equipment` kini hanya dijalankan TL sehingga ADMIN tidak lagi memicu RLS 403.
 
@@ -628,6 +631,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Terapkan migration `20260921_stock_opname_required_photo.sql` ke self-host hanya setelah konfirmasi eksplisit pengguna, lalu smoke production: Admin isi qty+foto di Mode Lapangan, submit, Asman approve, Data Stok menerima foto terbaru, dan Kartu Gantung menampilkan tanggal opname.
+- Setelah Vercel selesai deploy dari `main`, reload bersih akun Fajar dan pastikan sidebar berubah ke `Cloud Storage Aktif` tanpa warning cloud.
 - TL UPT Surabaya mencatat plat sebagai delapan aset individual `PB-SBY-01` sampai `PB-SBY-08`, memilih gudang/lokasi aktual, dan membiarkan akses lintas-UPT nonaktif kecuali memang boleh dipinjam UPT lain. Jangan membuat lokasi atau nomor seri tebakan.
 - Smoke UI GI setelah deploy pada akun TL: cari GI, buka editor, cek titik peta dan toggle dashboard. Uji simpan edit lokasi nyata hanya pada GI yang disetujui pengguna; jangan mengubah data produksi sebagai uji coba.
 - Verifikasi end-to-end approval TUG-3 tujuan GI sampai Data Stok menampilkan lokasi GI sesuai UPT; cek konsol setelah memilih GI lalu kembali ke gudang biasa.
@@ -742,11 +747,13 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** Tidak ada blocker untuk penghapusan freeze Stock Opname, Label Material Barcode Blok, atau Pindah Blok ke GI. Verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
+**Blocker:** Migration guard foto wajib Stock Opname belum diterapkan ke production karena perubahan skema memerlukan konfirmasi eksplisit pengguna. Verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
+- `npm test`
+- `node --test tests/unit/authBootstrap.contract.test.mjs tests/unit/stockOpnameRequiredPhoto.test.mjs`
 - `node --test tests/unit/stockOpnameFlow.test.mjs tests/unit/stockOpnameDocumentPackage.test.mjs`
 - `npx playwright test tests/e2e/stock-opname-sap-first.spec.js`
 - `node --test tests/unit/tugCanonical.contract.test.mjs tests/unit/telegramWebhook.contract.test.mjs`
@@ -766,5 +773,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
+- 2026-09-22 Codex: **Foto wajib Stock Opname selesai di kode; bootstrap localhost tidak lagi berhenti di `Menyinkronkan data...`; akun Fajar, 377 unit test, build, dan diff-check lulus. Migration foto wajib menunggu konfirmasi apply production.**
 - 2026-09-21 Codex: **Freeze Stock Opname dihapus penuh; simpan draft Fajar pulih dan lolos smoke production. Label Status/Jenis Barcode Blok serta Pindah Blok ke GI sudah production; migration/verifier/build/test lulus.**
-- 2026-09-20 Claude: **Serah-terima ke Codex — verifikasi isolasi self-host (`stock_opname` RLS `can_access_upt` applied `9163a89`; `stocks` RLS derive UPT dari lokasi→gudang). Fitur baru "Pindah Blok ke GI" dirancang+diinvestigasi (celah tunggal: modal dapat list non-GI), spec di plan file + Langkah berikutnya. BELUM diimplementasi — Codex lanjutkan. Dirty: HANDOFF.md saja.**

@@ -17,7 +17,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const sampleFoto = sampleStock ? resolveStockPhotoUrl(sampleStock.fotoKeseluruhan) : null;
   const kategoriStock = stocks.find(s=>s.katalogId===katalog.id);
   const kategoriMaterial = kategoriStock ? stockSapLabel(kategoriStock) : "-";
-  const opnameHistory = [...(stocks.find(s=>s.katalogId===katalog.id)?.opnameHistory || [])].sort((a,b)=>b.tanggal-a.tanggal);
+  const opnameHistory = [...new Map((stocks||[]).filter(s=>s.katalogId===katalog.id).flatMap(s=>Array.isArray(s.opnameHistory)?s.opnameHistory:[]).map(h=>[h.opnameId || `${h.tanggal}-${h.semester}`, h])).values()].sort((a,b)=>b.tanggal-a.tanggal);
 
   const scanUrl = scanUrlFor(katalog.id);
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
@@ -209,6 +209,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                 <div style={{marginBottom:10}}>
                   <div style={{fontWeight:800,fontSize:11,marginBottom:4,color:"#0f172a"}}>🗓️ RIWAYAT STOCK OPNAME</div>
                   <div style={{fontSize:10,color:"#334155"}}>
+                    {opnameHistory[0] && <div style={{fontWeight:700,marginBottom:4}}>Telah dilakukan Stock Opname pada tanggal {fmtDateOnly(opnameHistory[0].tanggal)}</div>}
                     {opnameHistory.map((h,idx)=>(
                       <div key={idx}>{fmtDateOnly(h.tanggal)} · Sem {h.semester||"-"}</div>
                     ))}

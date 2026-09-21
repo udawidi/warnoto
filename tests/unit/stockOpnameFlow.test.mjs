@@ -87,6 +87,20 @@ test("merge lintas perangkat hanya mengganti blok dan lot yang disentuh", () => 
   assert.equal(merged.items[2].stockId, "STK-SERVER");
 });
 
+test("merge lintas perangkat hanya mengganti foto item yang disentuh", () => {
+  const server = { id: "OPN-1", items: [
+    { stockId: "STK-1", katalogId: "KAT-1", fotoKeseluruhan: "server-1", hitungPerLokasi: {} },
+    { stockId: "STK-2", katalogId: "KAT-2", fotoKeseluruhan: "server-2", hitungPerLokasi: {} },
+  ] };
+  const local = { id: "OPN-1", items: [
+    { stockId: "STK-1", katalogId: "KAT-1", fotoKeseluruhan: "local-1", hitungPerLokasi: {} },
+    { stockId: "STK-2", katalogId: "KAT-2", fotoKeseluruhan: "stale-2", hitungPerLokasi: {} },
+  ] };
+  const merged = mergeOpnameForSave(local, server, [], { touchedPhotoItemKeys: ["STK-1"] });
+  assert.equal(merged.items[0].fotoKeseluruhan, "local-1");
+  assert.equal(merged.items[1].fotoKeseluruhan, "server-2");
+});
+
 test("merge legacy mencocokkan lot tunggal dan menolak identitas ambigu", () => {
   const localLegacy = { id: "OPN-1", items: [{ katalogId: "KAT-1", qtySistem: 2, hitungPerLokasi: { A: { qty: 2, at: 400 } } }] };
   const oneServerLot = { id: "OPN-1", items: [{ stockId: "STK-1", katalogId: "KAT-1", qtySistem: 2, hitungPerLokasi: {} }] };

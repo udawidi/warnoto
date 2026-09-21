@@ -8,8 +8,9 @@ export function canRestoreOpnameDraft(opname, draft) {
   return Boolean(draft?.items && serverVersion > 0 && baseVersion === serverVersion);
 }
 
-export function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds = []) {
+export function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds = [], { touchedPhotoItemKeys = [] } = {}) {
   const touched = new Set(touchedLokasiIds);
+  const touchedPhotos = new Set(touchedPhotoItemKeys);
   const serverItems = serverOpn.items || [];
   const catalogKey = item => item?.katalogId || item?.noKatalog;
   const serverByStockId = new Map();
@@ -34,7 +35,7 @@ export function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds = []) {
     if (fallback) claimedServerItems.add(fallback);
     return fallback;
   };
-  const items = (localOpn.items || []).map(item => {
+  const items = (localOpn.items || []).map((item, index) => {
     const serverItem = claimServerItem(item);
     if (!serverItem) return item;
     const mergedHitung = { ...(serverItem.hitungPerLokasi || {}) };
@@ -44,7 +45,15 @@ export function mergeOpnameForSave(localOpn, serverOpn, touchedLokasiIds = []) {
       else delete mergedHitung[lokasiKey];
     });
     const qtsFisik = sumHitungPerLokasi(mergedHitung);
-    return { ...serverItem, ...item, hitungPerLokasi: mergedHitung, qtsFisik, selisih: qtsFisik - (serverItem.qtySistem ?? item.qtySistem ?? 0) };
+    const itemKey = item.stockId || item.katalogId || item.noKatalog || String(index);
+    const merged = { ...serverItem, ...item, hitungPerLokasi: mergedHitung, qtsFisik, selisih: qtsFisik - (serverItem.qtySistem ?? item.qtySistem ?? 0) };
+    if (!touchedPhotos.has(itemKey)) {
+      ["fotoKeseluruhan", "fotoNameplate"].forEach(field => {
+        if (serverItem[field] !== undefined) merged[field] = serverItem[field];
+        else delete merged[field];
+      });
+    }
+    return merged;
   });
   const onlyOnServer = serverItems.filter(item => !claimedServerItems.has(item));
   return { ...serverOpn, ...localOpn, items: [...items, ...onlyOnServer] };

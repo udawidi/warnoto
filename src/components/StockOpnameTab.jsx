@@ -14,6 +14,7 @@ import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft, mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
+import { missingRequiredOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
@@ -680,7 +681,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       if (!katalogId) throw new Error("Foto tidak memiliki identitas material.");
       const url = await uploadStockFoto(katalogId, field, dataUrl, sessionUptId);
       const next = { ...activeOpname, items: activeOpname.items.map((entry, index) => index === realIdx ? { ...entry, [field]: url } : entry) };
-      const saved = await saveOpname(next, [...(touchedRef.current[activeOpname.id] || [])], { silent:true, forceMerge:true });
+      const photoKey = item?.stockId || item?.katalogId || item?.noKatalog || String(realIdx);
+      const saved = await saveOpname(next, [...(touchedRef.current[activeOpname.id] || [])], { silent:true, forceMerge:true, touchedPhotoItemKeys:[photoKey] });
       if (saved === false) { setActiveOpname(next); return; }
       setActiveOpname(saved || next);
       showToast("✅ Foto tersimpan.");
@@ -803,8 +805,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       return false;
     }
     const isNonSapSession = activeOpname?.jenisAlur === "NON_SAP";
+    const missingPhotoIndexes = new Set(missingRequiredOpnamePhotos(activeOpname).map(({index}) => index));
     (activeOpname.items||[]).forEach((item,i)=>{
       if(!itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 })) errors.push(`Baris ${i+1}: qty fisik belum dihitung`);
+      if(missingPhotoIndexes.has(i)) errors.push(`Baris ${i+1} (${item.namaBarang}): Foto Keseluruhan wajib diunggah`);
       if(item.selisih!==0 && !item.keterangan?.trim()) errors.push(`Baris ${i+1} (${item.namaBarang}): keterangan wajib diisi jika ada selisih`);
       // Opname Non-SAP: lokasi WAJIB diisi untuk semua item (baseline maupun temuan baru) —
       // ini yang membuktikan opname fisik benar-benar dilakukan, bukan cuma isi qty dari kursi.
@@ -822,7 +826,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     // nyangkut DRAFT selamanya tanpa penjelasan — persis kasus yang dilaporkan user 2026-07-07
     // ("tidak masuk ke approval asman").
     if (errors.length>0) {
-      showToast(`❌ Belum bisa disubmit — ${errors.length} item belum lengkap (qty fisik/keterangan). Scroll ke atas untuk detail.`, "error");
+      showToast(`❌ Belum bisa disubmit — ${errors.length} data belum lengkap (qty fisik/foto/keterangan). Scroll ke atas untuk detail.`, "error");
       setPage(0);
       if (typeof window!=="undefined") window.scrollTo({top:0, behavior:"smooth"});
     }
@@ -1279,7 +1283,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         </td>
                         <td data-label="Foto" className="is-key" style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                            {[["fotoKeseluruhan",Image,"Foto Keseluruhan"],["fotoNameplate",Tag,"Foto Nameplate"]].map(([field,Icon,label])=>(
+                            {[["fotoKeseluruhan",Image,"Foto Keseluruhan (wajib jika qty > 0)"],["fotoNameplate",Tag,"Foto Nameplate (opsional)"]].map(([field,Icon,label])=>(
                               <label key={field} title={label}
                                 style={{width:28,height:28,borderRadius: 10,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReadOnly?"default":"pointer",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
                                 {item[field]
@@ -1397,7 +1401,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           <OpnameLapanganView
             activeOpname={activeOpname} setQtyForBlok={setQtyForBlok} confirmRecount={confirmRecount}
             lokasiList={lokasiList} gudangList={gudangList} currentUser={currentUser} sty={sty} C={C} showToast={showToast}
-            onClose={()=>setLapanganMode(false)} onOpenTambahMaterial={()=>openTambahModal()}
+            onClose={()=>setLapanganMode(false)} onOpenTambahMaterial={()=>openTambahModal()} onUploadPhoto={handleOpnamePhoto}
             onSimpanDraft={async ()=>{ const ok = await saveOpname(activeOpname, [...(touchedRef.current[activeOpname.id]||[])]); if (ok) { try { localStorage.removeItem(draftKey(activeOpname.id)); } catch {} } }}
           />
         )}
