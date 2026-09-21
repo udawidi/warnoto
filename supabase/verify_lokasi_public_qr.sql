@@ -44,3 +44,17 @@ select id,
        jsonb_array_length(coalesce(valid_payload->'materials', '[]'::jsonb)) as returned_material_groups,
        invalid_payload is null as invalid_token_returns_null
 from checked;
+
+-- New payload labels must be present on every returned material group.
+with candidate as (
+  select l.id, l.public_token from public.lokasi l join public.stocks s on s.lokasi_id = l.id
+  where l.public_token is not null and coalesce(s.data->>'qty','') ~ '^-?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))$' and (s.data->>'qty')::numeric > 0
+  group by l.id, l.public_token order by l.id limit 1
+), payload as (
+  select public.public_block_stock(id, public_token) body from candidate
+), label_check as (
+  select bool_and(nullif(item->>'sapLabel','') is not null and nullif(item->>'jenisBarang','') is not null) as labels_present
+  from payload, jsonb_array_elements(coalesce(body->'materials','[]'::jsonb)) item
+)
+select exists (select 1 from candidate) as candidate_found,
+       coalesce((select labels_present from label_check), false) as labels_present;

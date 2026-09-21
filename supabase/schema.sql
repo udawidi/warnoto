@@ -465,18 +465,40 @@ as $$
           'katalog', coalesce(k.data->>'katalog', k.data->>'kode', k.id),
           'nama', coalesce(k.data->>'name', k.data->>'nama', '-'),
           'satuan', coalesce(k.data->>'satuan', k.data->>'unit', ''),
-          'qty', q.qty
+          'qty', q.qty,
+          'sapLabel', q.sap_label,
+          'jenisBarang', q.jenis_barang
         ) order by coalesce(k.data->>'name', k.data->>'nama', k.id))
         from (
-          select s.katalog_id,
-            sum(case
-              when coalesce(s.data->>'qty', '') ~ '^-?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))$'
-                then (s.data->>'qty')::numeric
-              else 0
-            end) as qty
-          from public.stocks s
-          where s.lokasi_id = l.id
-          group by s.katalog_id
+          select classified.katalog_id, classified.sap_label, classified.jenis_barang, sum(classified.qty) as qty
+          from (
+            select s.katalog_id,
+              case
+                when coalesce(nullif(s.data->>'sapStatus',''), nullif(k0.data->>'sapStatus','')) = 'Non-SAP' then 'Non-SAP'
+                when coalesce(nullif(s.data->>'jenisBarang',''), nullif(k0.data->>'jenisBarang','')) = 'Pre Memory' then 'SAP — Pre Memory'
+                when coalesce(nullif(s.data->>'sapStatus',''), nullif(k0.data->>'sapStatus','')) in ('SAP — Persediaan','SAP — Cadang') then coalesce(nullif(s.data->>'sapStatus',''), nullif(k0.data->>'sapStatus',''))
+                when coalesce(nullif(s.data->>'sapStatus',''), nullif(k0.data->>'sapStatus','')) = 'SAP' then
+                  case
+                    when coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id) ~ '^[0-9]+$' and length(regexp_replace(coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id), '^0+', '')) = 10 then 'SAP — Cadang'
+                    when coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id) ~ '^[0-9]+$' and length(regexp_replace(coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id), '^0+', '')) between 7 and 8 then 'SAP — Persediaan'
+                    else 'SAP — Persediaan'
+                  end
+                when coalesce(nullif(s.data->>'sapStatus',''), nullif(k0.data->>'sapStatus','')) is null and s.id like 'STK-PREMEM-%' then 'Non-SAP'
+                when coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id) ~ '^[0-9]+$' and length(regexp_replace(coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id), '^0+', '')) = 10 then 'SAP — Cadang'
+                when coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id) ~ '^[0-9]+$' and length(regexp_replace(coalesce(nullif(k0.data->>'katalog',''), nullif(k0.data->>'kode',''), k0.id), '^0+', '')) between 7 and 8 then 'SAP — Persediaan'
+                else 'Non-SAP'
+              end as sap_label,
+              coalesce(nullif(s.data->>'jenisBarang',''), nullif(k0.data->>'jenisBarang',''), '-') as jenis_barang,
+              case
+                when coalesce(s.data->>'qty', '') ~ '^-?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))$'
+                  then (s.data->>'qty')::numeric
+                else 0
+              end as qty
+            from public.stocks s
+            join public.katalog k0 on k0.id = s.katalog_id
+            where s.lokasi_id = l.id
+          ) classified
+          group by classified.katalog_id, classified.sap_label, classified.jenis_barang
         ) q
         join public.katalog k on k.id = q.katalog_id
         where q.qty > 0

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { MapPin, Package, Warning, ArrowClockwise } from "@phosphor-icons/react";
 import { SUPABASE_KEY, SUPABASE_URL, fetchSupabase } from "../supabaseClient.js";
+import { sapBadgeStyleForLabel } from "../lib/sap.js";
 
 export function getPublicBlockScanParams(search = "", hash = "") {
   const query = new URLSearchParams(search);
@@ -100,7 +101,7 @@ export function ScanBlockPublicView({ lokasiId: lokasiIdProp, token: tokenProp }
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {block.materials.map((material, index) => (
                 <div key={`${material.katalog || "material"}-${index}`} style={{ border: "1px solid #e2e8f0", borderRadius: 12, padding: "10px 11px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
-                  <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.35, color: "#0f172a", overflowWrap: "anywhere" }}>{material.nama || "Material"}</div><div style={{ marginTop: 3, fontSize: 11, color: "#64748b" }}>{material.katalog || "-"}</div></div>
+                  <div style={{ minWidth: 0 }}><div style={{ fontSize: 13, fontWeight: 800, lineHeight: 1.35, color: "#0f172a", overflowWrap: "anywhere" }}>{material.nama || "Material"}</div><div style={{ marginTop: 3, fontSize: 11, color: "#64748b" }}>{material.katalog || "-"}</div><div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>{(() => { const label = material.sapLabel || "Belum tersedia"; const bs = sapBadgeStyleForLabel(label); return <><span style={{ background: bs.bg, color: bs.fg, borderRadius: 999, padding: "2px 7px", fontSize: 10, fontWeight: 800 }}>Status: {label}</span><span style={{ background: "#f1f5f9", color: "#475569", borderRadius: 999, padding: "2px 7px", fontSize: 10, fontWeight: 700 }}>Jenis: {material.jenisBarang || "-"}</span></>; })()}</div></div>
                   <div style={{ flexShrink: 0, textAlign: "right" }}><div style={{ fontSize: 17, fontWeight: 800, color: "#047857", fontVariantNumeric: "tabular-nums" }}>{formatQty(material.qty)}</div><div style={{ fontSize: 11, color: "#64748b" }}>{material.satuan || "unit"}</div></div>
                 </div>
               ))}
