@@ -22,6 +22,15 @@ import {
 import { lokasiScanUrlFor } from "../../src/lib/utils.js";
 
 const stockOpnameTabSource = fs.readFileSync(new URL("../../src/components/StockOpnameTab.jsx", import.meta.url), "utf8");
+
+test("Stock Opname scan, search, and mobile catalog metadata respect the active table", () => {
+  assert.match(stockOpnameTabSource, /const filteredPosition = getFilteredIndexed\(\)\.findIndex/);
+  assert.match(stockOpnameTabSource, /tidak ada pada filter\/blok aktif/);
+  assert.match(stockOpnameTabSource, /placeholder=\"Cari no katalog atau nama material\"/);
+  assert.match(stockOpnameTabSource, /onChange=\{e=>\{setMaterialSearch\(e\.target\.value\);setPage\(0\);\}\}/);
+  assert.match(stockOpnameTabSource, /it\.noKatalog, it\.namaBarang/);
+  assert.match(stockOpnameTabSource, /isMobile && .*No\. Katalog:/);
+});
 const lapanganViewSource = fs.readFileSync(new URL("../../src/components/OpnameLapanganView.jsx", import.meta.url), "utf8");
 const stockOpnameHookSource = fs.readFileSync(new URL("../../src/hooks/useStockOpname.js", import.meta.url), "utf8");
 const appSource = fs.readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");

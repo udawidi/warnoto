@@ -169,6 +169,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const [filterGudangId, setFilterGudangId] = useState("");
   const [filterLokasiId, setFilterLokasiId] = useState("");
   const [filterJenis, setFilterJenis] = useState("");
+  const [materialSearch, setMaterialSearch] = useState("");
   const [sapCategoryFilter, setSapCategoryFilter] = useState("");
 
   // "Tambah Material Ditemukan" (Opname Non-SAP) — form untuk barang fisik yang belum
@@ -279,7 +280,12 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     let idx = scannedKatalogId ? items.findIndex(it => it.katalogId === scannedKatalogId) : -1;
     if (idx < 0) idx = items.findIndex(it => it.noKatalog && normalizeKatalog(it.noKatalog) === normalizeKatalog(code));
     if (idx < 0) { showToast(`Kode ${code} tidak ditemukan di daftar item opname ini`, "error"); return; }
-    setPage(Math.floor(idx / pageSize));
+    const filteredPosition = getFilteredIndexed().findIndex(({ idx: filteredIdx }) => filteredIdx === idx);
+    if (filteredPosition < 0) {
+      showToast(`Material ${items[idx].namaBarang} tidak ada pada filter/blok aktif.`, "error");
+      return;
+    }
+    setPage(Math.floor(filteredPosition / pageSize));
     setHighlightIdx(idx);
     showToast(`📷 Ditemukan: ${items[idx].namaBarang} — ketik qty hasil hitung fisik.`);
     setTimeout(() => {
@@ -597,6 +603,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         const bin = itemSapLabel(it).startsWith("SAP") ? "SAP" : "Non-SAP";
         if (bin !== filterJenis) return false;
       }
+      const query = materialSearch.trim().toLowerCase();
+      if (query && ![it.noKatalog, it.namaBarang].some(value => String(value || "").toLowerCase().includes(query))) return false;
       const bd = it.lokasiBreakdown||[];
       if (filterLokasiId) return bd.some(b=>b.lokasiId===filterLokasiId);
       if (filterGudangId==="__NONE__") return !bd.length;
@@ -1179,6 +1187,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     </select>
                   )}
                 </div>
+                <input type="search" value={materialSearch} onChange={e=>{setMaterialSearch(e.target.value);setPage(0);}} placeholder="Cari no katalog atau nama material" aria-label="Cari no katalog atau nama material" style={{...sty.input,fontSize:16,minWidth:220,flex:"1 1 220px"}} />
                 <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}>
                   Tampilkan:
                   {[10,20,50].map(n=>(
@@ -1228,6 +1237,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         {!isMobile && <td data-label="No" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:C.muted,fontSize:12}}>{realIdx+1}</td>}
                         <td data-label="Nama Barang" className="mobile-card-table__title opname-item-name" style={{padding:"6px 8px",fontWeight:600,maxWidth:isMobile?180:260,overflowWrap:"anywhere",whiteSpace:"normal",lineHeight:1.35,minWidth:0}}>
                           <div style={{fontWeight:700,overflowWrap:"anywhere",whiteSpace:"normal"}}>{item.namaBarang}</div>
+                          {isMobile && <div style={{fontSize:12,fontWeight:400,color:C.muted,fontFamily:"monospace",marginTop:2}}>No. Katalog: {item.noKatalog}</div>}
                           <div style={{fontSize:12,color:C.muted,marginTop:3,whiteSpace:"normal",overflowWrap:"anywhere"}}>{itemSapLabel(item)}</div>
                           {item.statusItem==="TIDAK_ADA_DI_SISTEM" && (
                             <div tabIndex={0} className="info-note" style={{fontSize:12,fontWeight:700,color:"#92400e",background:"#fef3c7",border:"1px solid #fcd34d",borderRadius:10,padding:"6px 10px",marginTop:4,whiteSpace:"normal"}}>Material baru — akan dibuatkan Master Katalog + Data Stok saat sesi ini disetujui Manager (kalau qty fisik diisi &gt;0)</div>

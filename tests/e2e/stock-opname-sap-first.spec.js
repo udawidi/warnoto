@@ -81,4 +81,23 @@ test.describe("Stock Opname SAP-first responsive", () => {
     await expect(page.getByRole("heading", { name: /Opname SAP/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Opname Non-SAP/ })).toHaveCount(0);
   });
+
+  test("scan menghormati filter blok dan search material tampil di mobile", async ({ isolatedPage: page }) => {
+    await openApp(page);
+    await openRoute(page, STOCK_OPNAME);
+    await page.getByRole("button", { name: /Lanjutkan opname/ }).click();
+
+    const blockFilter = page.locator("select").first();
+    await blockFilter.selectOption({ label: "A-01" });
+    for (const digit of "309876543") await page.keyboard.press(digit);
+    await page.keyboard.press("Enter");
+    await expect(page.getByText(/tidak ada pada filter\/blok aktif/i)).toBeVisible();
+
+    await blockFilter.selectOption({ label: "Semua Blok" });
+    const search = page.getByPlaceholder("Cari no katalog atau nama material");
+    await search.fill("Lightning");
+    await expect(page.getByText("Lightning Arrester 150 kV", { exact: true })).toBeVisible();
+    await expect(page.getByText("Isolator Keramik 150 kV", { exact: true })).toBeHidden();
+    await expect(page.getByText("No. Katalog: 309876543")).toBeVisible();
+  });
 });
