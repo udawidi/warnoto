@@ -403,7 +403,7 @@ export function useTugTransactions({
     // Fase A — freeze opname sekarang BLOKIR KERAS (bukan lagi peringatan window.confirm):
     // gudang sedang di-opname, transaksi masuk/keluar ke situ ditolak total sampai selesai.
     const frozenSession = findActiveFreezeSession(collectTxnGudangIds(docType, formData, lokasiList), opnameList);
-    if (frozenSession) {
+    if (frozenSession && targetStage !== "DRAFT") {
       const namaGudang = frozenSession.freeze.gudangIds.map(gid=>(gudangList||[]).find(g=>g.id===gid)?.nama).filter(Boolean).join(", ") || "gudang ini";
       showToast(`🧊 DITOLAK — ${namaGudang} sedang Stock Opname. Transaksi masuk/keluar tidak bisa diproses sampai opname selesai.`, "error");
       return;
