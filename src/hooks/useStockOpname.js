@@ -114,7 +114,8 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
           const serverOpn = serverList.find(o=>o.id===opn.id);
           // serverOpn undefined = sesi memang belum pernah tersimpan di server (draft baru pertama
           // kali) — bukan kegagalan, lanjut simpan opn apa adanya seperti biasa.
-          if (serverOpn) toSave = mergeOpnameForSave(opn, serverOpn, touchedLokasiIds);
+          // Merge the normalized payload so uploaded photo URLs are not replaced by local data URLs.
+          if (serverOpn) toSave = mergeOpnameForSave(toSave, serverOpn, touchedLokasiIds);
         }
       } catch {
         syncPending = true;

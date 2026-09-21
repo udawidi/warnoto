@@ -20,6 +20,7 @@ test("Stock Opname normalizes data URLs with the session UPT", () => {
   assert.match(hook, /saveToCloud\(\{opnameList: nl\}\)/);
   assert.match(tab, /handleOpnamePhoto/);
   assert.match(tab, /uploadStockFoto\(katalogId, field, dataUrl, sessionUptId\)/);
+  assert.match(hook, /mergeOpnameForSave\(toSave, serverOpn, touchedLokasiIds\)/);
 });
 
 test("photo normalizer uses session UPT and replaces data URL", async () => {
