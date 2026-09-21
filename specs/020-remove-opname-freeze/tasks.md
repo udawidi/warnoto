@@ -27,6 +27,6 @@
 
 ## Phase 5 — Production pending
 
-- [ ] T014 Terapkan migration `supabase/migrations/20260921c_remove_stock_opname_freeze.sql` ke Supabase production setelah koneksi tersedia.
-- [ ] T015 Jalankan verifier `supabase/verify_stock_opname_freeze_removal.sql` di production.
-- [ ] T016 Jalankan smoke test save/edit akun ADMIN/Fajar dan TUG di production setelah deploy.
+- [x] T014 Terapkan migration `supabase/migrations/20260921c_remove_stock_opname_freeze.sql` ke Supabase production setelah koneksi tersedia.
+- [x] T015 Jalankan verifier `supabase/verify_stock_opname_freeze_removal.sql` di production.
+- [x] T016 Jalankan smoke test save/edit akun ADMIN/Fajar dan TUG di production setelah deploy.
