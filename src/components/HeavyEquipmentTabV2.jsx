@@ -196,7 +196,9 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     || harUptIds.has(getHeavyEquipmentLoanRequesterUptId(loan, uptList))
   );
   const scopedLoans = normalizedLoans.filter(l =>
-    (!effectiveUptFilter || l.ownerUpt===effectiveUptFilter || l.requesterUpt===effectiveUptFilter)
+    (!effectiveUptFilter || l.ownerUpt===effectiveUptFilter || l.requesterUpt===effectiveUptFilter
+      || getHeavyEquipmentLoanOwnerUptId(l, uptList) === currentUser?.uptId
+      || getHeavyEquipmentLoanRequesterUptId(l, uptList) === currentUser?.uptId)
     && (!uitScopeNames || uitScopeNames.has(l.ownerUpt) || uitScopeNames.has(l.requesterUpt))
     && (!isHarUit || inHarUitScope(l)));
   const uptOptions = Array.from(new Set([

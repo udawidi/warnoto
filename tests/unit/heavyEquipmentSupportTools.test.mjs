@@ -10,6 +10,7 @@ import {
   isHeavyEquipmentVisibleToUpt,
   normalizeHeavyEquipmentRecord,
   normalizeHeavyEquipmentLoan,
+  canApproveHeavyEquipmentLoan,
 } from "../../src/lib/heavyEquipment.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -45,6 +46,17 @@ test("registry and visibility helpers prefer typed upt_id", () => {
   assert.equal(isHeavyEquipmentVisibleToUpt(item, "UPT-GSK", false), false);
   assert.equal(isHeavyEquipmentVisibleToUpt({ ...item, isCrossUptBorrowable: true }, "UPT-GSK", false), true);
   assert.equal(getHeavyEquipmentLoanOwnerUptId({ ownerUptId: "UPT-SBY", ownerUpt: "Gresik" }, uptList), "UPT-SBY");
+});
+
+test("ASMAN approval stays owner-only and typed owner scope survives display-name drift", () => {
+  const uptList = [{ id: "UPT-SBY", nama: "UPT Surabaya" }, { id: "UPT-GSK", nama: "UPT Gresik" }];
+  const loan = { id: "L-1", equipmentId: "HE-1", status: "PENDING_OWNER_ASMAN", ownerUptId: "UPT-SBY", ownerUpt: "UPT Gresik" };
+  assert.equal(canApproveHeavyEquipmentLoan({ role: "ASMAN", uptId: "UPT-SBY" }, loan, uptList), true);
+  assert.equal(canApproveHeavyEquipmentLoan({ role: "ASMAN", uptId: "UPT-GSK" }, loan, uptList), false);
+  assert.equal(canApproveHeavyEquipmentLoan({ role: "TL", uptId: "UPT-SBY" }, loan, uptList), false);
+  const component = fs.readFileSync(path.join(root, "src/components/HeavyEquipmentTabV2.jsx"), "utf8");
+  assert.match(component, /getHeavyEquipmentLoanOwnerUptId\(l, uptList\) === currentUser\?\.uptId/);
+  assert.match(component, /getHeavyEquipmentLoanRequesterUptId\(l, uptList\) === currentUser\?\.uptId/);
 });
 
 test("external borrower label never falls back to an unrelated UPT", () => {
