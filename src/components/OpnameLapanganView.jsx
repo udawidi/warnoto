@@ -220,7 +220,7 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
               <div style={{ fontSize: 17, fontWeight: 800 }}>{blokAktif.gudangKode ? `${blokAktif.gudangKode} — ` : ""}{blokAktif.lokasiKode}</div>
               <div style={{ fontSize: 12, color: C.muted }}>{filled}/{total} terhitung{selisihCount > 0 ? ` • ${selisihCount} selisih` : ""}{receiving ? " • 📡 menerima scan..." : ""}</div>
             </div>
-            <button className="opname-field-mode__change-block" style={{ ...sty.btn("ghost", "sm"), display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => { setMaterialQuery(""); setScreen("blok"); }}><MapPin size={17} weight="bold" aria-hidden="true" />Pilih Blok</button>
+            <button className="opname-field-mode__change-block" style={{ ...sty.btn("ghost", "sm"), minHeight: 44, display: "inline-flex", alignItems: "center", gap: 6 }} onClick={() => { setMaterialQuery(""); setScreen("blok"); }}><MapPin size={17} weight="bold" aria-hidden="true" />Pilih Blok</button>
           </div>
           <div className="opname-field-mode__body" style={body}>
             <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>

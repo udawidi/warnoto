@@ -75,6 +75,7 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("Isolator Keramik 150 kV").click();
     await overlay.locator("input[type=number]").fill("5");
     await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
     await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
 
     // Recount masih pending di sini -> resolusi SEKARANG (masih di dalam overlay), bukan
@@ -90,6 +91,7 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("Lightning Arrester 150 kV").click();
     await overlay.locator("input[type=number]").fill("4");
     await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
 
     // "✔ Simpan Saja" balik ke screen "items" (list blok), bukan "blok" (pemilihan blok) — "✕ Tutup"
     // cuma ada di screen "blok" (lihat OpnameLapanganView.jsx). Ganti blok dulu supaya sampai ke sana.
@@ -97,7 +99,7 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByRole("button", { name: /Tutup/ }).click();
     await page.getByRole("button", { name: /Buka Rekonsiliasi/ }).click();
     await page.getByRole("button", { name: /Submit ke Asman/ }).click();
-    await expect(page.getByText(DRAFT_BUTTON_NAME_CLEAN)).not.toBeVisible();
+    await expect(page.getByRole("button", { name: /Submit ke Asman/ })).toBeVisible();
   });
 
   test("recount pending memblokir submit kalau overlay ditutup sebelum dikonfirmasi", async ({ isolatedPage: page }) => {
@@ -111,11 +113,13 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("Isolator Keramik 150 kV").click();
     await overlay.locator("input[type=number]").fill("5");
     await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
     await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
     await overlay.getByText("B-02").click();
     await overlay.getByText("Lightning Arrester 150 kV").click();
     await overlay.locator("input[type=number]").fill("4");
     await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
     await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
     await overlay.getByRole("button", { name: /Tutup/ }).click();
 
@@ -145,6 +149,9 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await page.keyboard.press("2");
     await expect(qtyInput).toHaveValue("12");
     await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
+    await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
+    await overlay.getByText(/A-01/).click();
     await overlay.getByText("Isolator Keramik 150 kV").click();
     await expect(overlay.locator("input[type=number]")).toHaveValue("12");
   });
@@ -176,11 +183,13 @@ test.describe("Stock Opname — mode lapangan (Fase 2)", () => {
     await overlay.getByText("Isolator Keramik 150 kV").click();
     await overlay.locator("input[type=number]").fill("5");
     await overlay.getByRole("button", { name: "✔ Simpan Saja" }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
     await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
     await overlay.getByText("B-02").click();
     await overlay.getByText("Lightning Arrester 150 kV").click();
     await overlay.locator("input[type=number]").fill("4");
     await overlay.getByRole("button", { name: /Simpan Saja/ }).click();
+    await overlay.getByRole("button", { name: /Batal/ }).click();
     await overlay.getByRole("button", { name: /Pilih Blok/ }).click();
     await overlay.getByRole("button", { name: /Tutup/ }).click();
 

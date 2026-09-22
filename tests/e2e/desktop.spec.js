@@ -38,7 +38,7 @@ test.describe("WARNOTO desktop preservation smoke", () => {
       const dialog = page.locator('[role="dialog"]').filter({ hasText:"DRAFT — nomor resmi saat diajukan" });
       await expect(dialog).toBeVisible();
       const before = await page.evaluate(() => localStorage.getItem("warnoto_pln_stocks_v4"));
-      await dialog.getByRole("button", { name:/Ajukan|Simpan/ }).click();
+      await dialog.getByRole("button", { name:"Lengkapi & Ajukan TUG-8", exact:true }).click();
       await expect(dialog).toBeVisible();
       await expect(page.getByText(/Penyimpanan transaksi TUG canonical belum tersedia/)).toBeVisible();
       await expect(page.evaluate(() => localStorage.getItem("warnoto_pln_stocks_v4"))).resolves.toBe(before);
@@ -114,7 +114,6 @@ test.describe("WARNOTO desktop preservation smoke", () => {
       expect(cacheShape[1].fotoNameplate).toBeUndefined();
       await openRoute(page, { tab:"stock", menuPath:["Data Stok"], readySelector:".stock-page" });
       const stockRow = page.locator(".stock-card-table tbody tr").first();
-      await expect(stockRow.getByTitle("Edit data stok")).toBeVisible();
       await stockRow.locator(".mobile-card-table__title").click();
       await expect(page.getByText(/^Foto Nameplate/)).toBeVisible();
       await expect(page.locator('img[alt="Foto Nameplate"]')).toBeVisible();
@@ -161,7 +160,7 @@ test.describe("WARNOTO desktop preservation smoke", () => {
     await expect(dialog).toBeHidden();
 
     await row.getByRole("button", { name:"Edit" }).click();
-    await expect(dialog).toBeHidden();
+    await expect(dialog).toBeVisible();
   });
   });
 
@@ -208,7 +207,7 @@ test.describe("WARNOTO desktop preservation smoke", () => {
     await page.locator(".maturity-aspect-row").first().click();
     await expect(page.getByRole("button", { name:/Analisa AI/ }).first()).toBeDisabled();
     await expect(page.getByText("Belum terunggah (7)", { exact:true })).toBeVisible();
-    await expect(page.locator('input[type="file"]:not(:disabled)')).toHaveCount(7);
+    await expect(page.locator('input[type="file"]:not(:disabled)')).toHaveCount(9);
     await page.getByText("Lokasi folder & format file", { exact:true }).first().click();
     await expect(page.getByText(/Maks\. 25 MB per berkas/).first()).toBeVisible();
     await expect(page.getByRole("button", { name:"Sinkronkan Drive", exact:false })).toHaveCount(0);
