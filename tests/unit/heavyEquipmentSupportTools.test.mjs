@@ -120,3 +120,11 @@ test("HAR_UIT loan letter is optional while return evidence stays required", () 
   assert.equal((schema.match(/v_before := v_sql;/g) || []).length, 4);
   assert.equal((schema.match(/if v_sql = v_before then raise exception/g) || []).length, 4);
 });
+
+test("HAR_UIT borrower fields are editable and contact prefills from profile", () => {
+  const component = fs.readFileSync(path.join(root, "src/components/HeavyEquipmentTabV2.jsx"), "utf8");
+  assert.match(component, /currentUser\?\.officialPhone \|\| harProfile\?\.officialPhone/);
+  assert.match(component, /value=\{loanForm\.borrowerName\} onChange/);
+  assert.match(component, /value=\{loanForm\.borrowerPic\} onChange/);
+  assert.match(component, /value=\{loanForm\.borrowerContact\} onChange/);
+});

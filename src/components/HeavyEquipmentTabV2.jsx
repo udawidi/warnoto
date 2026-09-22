@@ -156,7 +156,9 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [kondisiFilter, setKondisiFilter] = useState("ALL");
   const [loanCategoryFilter, setLoanCategoryFilter] = useState("ALL");
-  const [loanForm, setLoanForm] = useState({equipmentIds:[], equipmentId:"", ownerUptId:"", quantityByEquipmentId:{}, borrowerType:isHarUit?"HAR_UIT":"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:isHarUit?`HAR UIT ${harUitName}`:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+  const harProfile = users?.find(user => user.id === currentUser?.id);
+  const harDefaults = { borrowerName: isHarUit ? (currentUser?.name || `HAR UIT ${harUitName}`) : "", borrowerPic: isHarUit ? (currentUser?.name || "") : "", borrowerContact: isHarUit ? (currentUser?.officialPhone || harProfile?.officialPhone || "") : "" };
+  const [loanForm, setLoanForm] = useState({equipmentIds:[], equipmentId:"", ownerUptId:"", quantityByEquipmentId:{}, borrowerType:isHarUit?"HAR_UIT":"UPT", requesterUpt:myUpt||"", requesterUptId:"", ...harDefaults, pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [reviewingLoan, setReviewingLoan] = useState(null);
@@ -354,7 +356,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
 
   async function submitLoan() {
     const ok = await createLoan({ ...loanForm, equipmentId:loanForm.equipmentIds?.[0] || loanForm.equipmentId });
-    if (ok) setLoanForm({equipmentIds:[], equipmentId:"", ownerUptId:"", quantityByEquipmentId:{}, borrowerType:isHarUit?"HAR_UIT":"UPT", requesterUpt:myUpt||"", requesterUptId:"", borrowerName:isHarUit?"HAR UIT " + harUitName:"", borrowerPic:"", borrowerContact:"", pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
+    if (ok) setLoanForm({equipmentIds:[], equipmentId:"", ownerUptId:"", quantityByEquipmentId:{}, borrowerType:isHarUit?"HAR_UIT":"UPT", requesterUpt:myUpt||"", requesterUptId:"", ...harDefaults, pickupEvidence:"", namaPekerjaan:"", tanggalAmbil:"", tanggalKembali:"", keperluan:"", catatan:""});
   }
 
   async function openEvidence(path) {
@@ -543,8 +545,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
               </select>
             </div>}
             {isHarUit ? <div style={{marginBottom:8}}>
-              <label style={sty.label}>Peminjam</label>
-              <div style={{...sty.input,background:"#f3f4f6",color:C.muted}}>HAR UIT {harUitName}</div>
+              <label style={sty.label}>Nama peminjam<input style={sty.input} value={loanForm.borrowerName} onChange={e=>setLoanForm(f=>({...f,borrowerName:e.target.value}))}/></label>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginTop:8}}><label style={sty.label}>PIC<input style={sty.input} value={loanForm.borrowerPic} onChange={e=>setLoanForm(f=>({...f,borrowerPic:e.target.value}))}/></label><label style={sty.label}>Kontak<input style={sty.input} value={loanForm.borrowerContact} onChange={e=>setLoanForm(f=>({...f,borrowerContact:e.target.value}))}/></label></div>
             </div> : loanForm.borrowerType === "UPT" ? <div style={{marginBottom:8}}>
               <label style={sty.label}>UPT Peminjam</label>
               {canChooseRequesterUpt ? <select style={sty.select} value={loanForm.requesterUpt} onChange={e=>{const u=uptList.find(x=>x.nama?.replace(/^UPT\s+/i,"")===e.target.value);setLoanForm(f=>({...f,requesterUpt:e.target.value,requesterUptId:u?.id||""}));}}><option value="">-- Pilih UPT --</option>{requesterOptions.map(u=><option key={u} value={u}>{u}</option>)}</select> : <div style={{...sty.input,background:"#f3f4f6",color:C.muted,display:"flex",alignItems:"center"}}>UPT {myUpt||"Surabaya"}</div>}
