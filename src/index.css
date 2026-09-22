@@ -2462,3 +2462,29 @@
   .capacity-button:hover:not(:disabled) { transform: none; }
   .capacity-spin, .capacity-photo--loading { animation: none; }
 }
+/* Stock Opname review: mobile-only layout guardrails. */
+[data-theme="dark"] .opname-review-dialog__kpi { background: #0f172a !important; color: #e2e8f0; }
+[data-theme="dark"] .opname-review-dialog__kpi .opname-review-dialog__small-label { color: #94a3b8 !important; }
+[data-theme="dark"] .opname-review-dialog__close { border-color: #475569 !important; background: #334155 !important; color: #f8fafc !important; }
+
+@media (max-width: 600px) {
+  .opname-review-dialog { padding: 8px !important; align-items: stretch !important; }
+  .opname-review-dialog__panel { width: 100% !important; max-height: 90dvh !important; min-height: 0; overflow-y: auto !important; padding: 14px !important; }
+  .opname-review-dialog__meta, .opname-review-dialog__kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .opname-review-dialog__list { max-height: none !important; overflow: visible !important; padding-right: 0 !important; }
+  .opname-review-dialog__item, .opname-review-dialog__item > div { min-width: 0; overflow-wrap: anywhere; }
+  .opname-review-dialog__item-header > div:first-child { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+  .opname-review-dialog__quantities { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .opname-review-dialog__panel input:not([type="checkbox"]), .opname-review-dialog__panel select, .opname-review-dialog__panel textarea { min-width: 0 !important; width: 100% !important; font-size: 16px !important; }
+  .opname-review-dialog__toolbar { align-items: stretch !important; }
+  .opname-review-dialog__panel button { min-height: 44px; }
+  .opname-review-dialog__panel input[type="checkbox"] { width: 22px !important; height: 22px; flex: 0 0 22px; }
+  .opname-review-dialog__small-label { font-size: 12px !important; }
+  .opname-review-dialog__footer { flex-direction: column-reverse; align-items: stretch; }
+  .opname-review-dialog__footer button { width: 100%; }
+  .approval-actions.approval-actions--compact button, .approval-actions button { min-height: 44px; }
+  .opname-pending-actions { flex-direction: column !important; align-items: stretch !important; }
+  .opname-pending-actions > button, .opname-pending-actions .approval-actions { width: 100%; }
+  .opname-pending-actions .approval-actions { display: flex; flex-wrap: wrap; }
+  .opname-pending-actions .approval-actions button { flex: 1 1 140px; min-height: 44px; }
+}

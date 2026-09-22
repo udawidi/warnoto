@@ -30,6 +30,10 @@ test("Stock Opname scan, search, and mobile catalog metadata respect the active 
   assert.match(stockOpnameTabSource, /onChange=\{e=>\{setMaterialSearch\(e\.target\.value\);setPage\(0\);\}\}/);
   assert.match(stockOpnameTabSource, /it\.noKatalog, it\.namaBarang/);
   assert.match(stockOpnameTabSource, /isMobile && .*No\. Katalog:/);
+  assert.match(stockOpnameTabSource, /filterSelisihOnly/);
+  assert.match(stockOpnameTabSource, /Number\(it\.selisih\) === 0/);
+  assert.match(stockOpnameTabSource, /Review Detail \(Selisih\)/);
+  assert.match(stockOpnameTabSource, /reviewSelisihRef\.current=true;setActiveOpname\(opn\);setFilterSelisihOnly\(true\)/);
 });
 const lapanganViewSource = fs.readFileSync(new URL("../../src/components/OpnameLapanganView.jsx", import.meta.url), "utf8");
 const stockOpnameHookSource = fs.readFileSync(new URL("../../src/hooks/useStockOpname.js", import.meta.url), "utf8");

@@ -11,6 +11,7 @@ import {
 } from "../lib/heavyEquipment.js";
 import { ApprovalTab } from "./ApprovalTab.jsx";
 import { formatKontrakSumber } from "../lib/sap.js";
+import { StockOpnameApprovalReview } from "./StockOpnameApprovalReview.jsx";
 
 export function ApprovalHubTab({
   currentUser, sty, C, isMobile,
@@ -57,6 +58,7 @@ export function ApprovalHubTab({
   const opnameCount = hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0;
   const stockCountCount = hasRole(currentUser, "ASMAN", "TL") ? stockCountPendingCount : 0;
   const [selectedStockCount, setSelectedStockCount] = useState(() => new Set()); // key `${sessionId}_${itemId}`
+  const [reviewApproval, setReviewApproval] = useState(null);
   const [historyTugFilter, setHistoryTugFilter] = useState("ALL");
   useEffect(() => { setApprovalHistoryPage(1); }, [historyTugFilter]);
   const total = tugCount+capCount+lokasiCount+stokCount+alatBeratCount+opnameCount+stockCountCount;
@@ -284,7 +286,7 @@ export function ApprovalHubTab({
                     <div style={{fontSize:12,color:C.muted}}>{opn.items?.length||0} item • Selisih: {selisihCount} item • Diajukan oleh {pengaju?.name||"?"} • {fmtDate(opn.submittedAt)}</div>
                   </div>
                   <div className="approval-actions approval-actions--compact" style={{flexShrink:0}}>
-                    <button className="approval-btn--approve" onClick={()=>approveOpname_Asman(opn,"")}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setuju</button>
+                    <button className="approval-btn--approve" onClick={()=>setReviewApproval(opn)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Periksa &amp; Setujui</button>
                     <button className="approval-btn--reject" onClick={()=>{
                       const reason = window.prompt("Alasan penolakan Stock Opname ini?");
                       if (reason) rejectOpname(opn, reason);
@@ -460,6 +462,8 @@ export function ApprovalHubTab({
           </div>
         );
       })()}
+      <StockOpnameApprovalReview opn={reviewApproval} C={C} sty={sty} users={users} lokasiList={lokasiList}
+        onApprove={approveOpname_Asman} onClose={()=>setReviewApproval(null)} />
     </div>
   );
 }

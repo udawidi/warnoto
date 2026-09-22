@@ -15,6 +15,7 @@ import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft, mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
+import { StockOpnameApprovalReview } from "./StockOpnameApprovalReview.jsx";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname,
@@ -30,7 +31,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const [filterStatus, setFilterStatus] = useState("semua");
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState("");
-  const [catatanApproval, setCatatanApproval] = useState("");
+  const [reviewApproval, setReviewApproval] = useState(null);
+  const [filterSelisihOnly, setFilterSelisihOnly] = useState(false);
+  const reviewSelisihRef = useRef(false);
   const [csvLoading, setCsvLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
   const [highlightIdx, setHighlightIdx] = useState(null); // baris hasil scan QR — cuma bantu temukan & fokus, bukan pengganti hitung fisik
@@ -97,6 +100,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     if (!activeOpname) return;
     setSapCategoryFilter("");
     setFilterGudangId(""); setFilterLokasiId(""); setFilterJenis("");
+    setFilterSelisihOnly(reviewSelisihRef.current);
+    reviewSelisihRef.current = false;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
   // Recovery lokal hanya berlaku untuk versi server yang menjadi asal draft tersebut.
@@ -579,6 +584,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   function getFilteredIndexed() {
     const items = activeOpname?.items || [];
     return items.map((it,idx)=>({it,idx})).filter(({it})=>{
+      if (filterSelisihOnly && (!itemCounted(it, { requireTimestamp: activeOpname?.flowVersion===2 }) || Number(it.selisih) === 0)) return false;
       if (activeOpname?.flowVersion === 2 && activeOpname?.jenisAlur === "SAP" && sapCategoryFilter) {
         if (getSapOpnameCategory(it.sapCategory || it.sapLabel) !== sapCategoryFilter) return false;
       }
@@ -1127,6 +1133,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                       <option value="Non-SAP">Non-SAP</option>
                     </select>
                   )}
+                  <select aria-label="Filter selisih" style={{...sty.select,fontSize:12,paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",width:"auto"}} value={filterSelisihOnly?"selisih":"semua"}
+                    onChange={e=>{setFilterSelisihOnly(e.target.value==="selisih");setPage(0);}}>
+                    <option value="semua">Semua</option>
+                    <option value="selisih">Selisih saja</option>
+                  </select>
                 </div>
                 <input type="search" value={materialSearch} onChange={e=>{setMaterialSearch(e.target.value);setPage(0);}} placeholder="Cari no katalog atau nama material" aria-label="Cari no katalog atau nama material" style={{...sty.input,fontSize:16,minWidth:220,flex:"1 1 220px"}} />
                 <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:C.muted}}>
@@ -1682,9 +1693,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
             {opn.items?.length||0} item • Selisih: {opn.items?.filter(i=>i.selisih!==0).length||0} item
           </div>
-          <div style={{marginBottom:8}}>
-            <input style={sty.input} placeholder="Catatan approval (opsional)..." value={catatanApproval} onChange={e=>setCatatanApproval(e.target.value)}/>
-          </div>
           {rejectingId===opn.id
             ? <div style={{display:"flex",gap:8}}>
                 <input style={{...sty.input,flex:1}} placeholder="Alasan penolakan (wajib)..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
@@ -1693,16 +1701,18 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
                 </div>
               </div>
-            : <div style={{display:"flex",gap:8}}>
-                <button style={sty.btn("ghost","sm")} onClick={()=>{setActiveOpname(opn);setPage(0);}}>🔍 Review Detail</button>
+            : <div className="opname-pending-actions" style={{display:"flex",gap:8}}>
+                <button style={sty.btn("ghost","sm")} onClick={()=>{reviewSelisihRef.current=true;setActiveOpname(opn);setFilterSelisihOnly(true);setPage(0);}}>🔍 Review Detail (Selisih)</button>
                 <div className="approval-actions">
-                  <button className="approval-btn--approve" onClick={async ()=>{const approved=await approveOpname_Asman(opn,catatanApproval);if(approved!==false)setCatatanApproval("");}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (final)</button>
+                  <button className="approval-btn--approve" onClick={()=>setReviewApproval(opn)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Periksa &amp; Setujui</button>
                   <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
                 </div>
               </div>}
         </div>
       ))}
 
+      <StockOpnameApprovalReview opn={reviewApproval} C={C} sty={sty} users={users} lokasiList={lokasiList}
+        onApprove={approveOpname_Asman} onClose={()=>setReviewApproval(null)} />
       {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
       </div>
       <div className="inventory-assurance-history" style={{display:showHistory?"block":"none"}}>
