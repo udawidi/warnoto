@@ -21,7 +21,7 @@ export const PERM_MENUS = [
   { key: "menu.maturity", label: "Penilaian Maturity" },
   { key: "menu.rencana", label: "MTU KHS" },
   { key: "menu.forecastStok", label: "Forecast Stok" },
-  { key: "menu.inspeksiMaterial", label: "Inspeksi Material Cadang" },
+  { key: "menu.inspeksiMaterial", label: "Inspeksi Material" },
   { key: "menu.ai", label: "Pak War (AI)" },
   { key: "menu.integrasiApi", label: "Integrasi API" },
   { key: "menu.lacakAlat", label: "Lacak Alat" },
@@ -35,7 +35,7 @@ export const PERM_AKSI = [
   { key: "aksi.import", label: "Import Data (Excel)" },
   { key: "aksi.kelolaAkun", label: "Kelola Akun" },
   { key: "aksi.migrasiData", label: "Migrasi Data SAP/Non-SAP" },
-  { key: "aksi.buatInspeksiMaterial", label: "Buat Inspeksi Material Cadang" },
+  { key: "aksi.buatInspeksiMaterial", label: "Buat Inspeksi Material" },
   { key: "aksi.kelolaApiIntegrasi", label: "Kelola API Integrasi" },
 ];
 

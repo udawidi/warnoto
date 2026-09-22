@@ -4447,7 +4447,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     rencana: {eyebrow:"Material Transmisi Utama",title:"MTU KHS"},
     kapasitasGudang: {eyebrow:"Warehouse Utilization",title:"Monitoring Kapasitas Gudang"},
     forecastStok: {eyebrow:"Inventory Forecast",title:"Forecast Stok"},
-    inspeksiMaterial: {eyebrow:"Material Assurance",title:"Inspeksi Material Cadang"},
+    inspeksiMaterial: {eyebrow:"Material Assurance",title:"Inspeksi Material"},
     ai: {eyebrow:"Decision Support",title:"Pak War — Asisten Gudang"},
     integrasiApi: {eyebrow:"Third-Party Access",title:"Integrasi API"},
     lacakAlat: {eyebrow:"Fleet Operations",title:"Sesi Kerja"},

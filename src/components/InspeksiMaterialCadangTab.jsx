@@ -205,13 +205,9 @@ export function InspeksiMaterialCadangTab({
   const today = todayJakarta();
   const [tanggalBa, setTanggalBa] = useState(() => todayJakarta());
 
-  // Stok Cadang canonical: hanya yang katalognya jenisBarang==="Cadang".
-  const cadangStockOptions = useMemo(() => {
-    const cadangKatalogIds = new Set(
-      katalogList.filter(k => k?.jenisBarang === "Cadang").map(k => k.id),
-    );
+  // Semua material canonical: tetap dibatasi oleh scope UPT/gudang di scopedStocks.
+  const materialStockOptions = useMemo(() => {
     return scopedStocks
-      .filter(s => cadangKatalogIds.has(s.katalogId))
       .map(stock => {
         const katalog = katalogList.find(k => k.id === stock.katalogId);
         const lokasi = scopedLokasiList.find(l => l.id === stock.lokasiId);
@@ -238,15 +234,20 @@ export function InspeksiMaterialCadangTab({
     if (!activeGudangId) return [];
     if (!pickerQuery.trim()) return [];
     const alreadySelected = new Set(items.map(it => it.stockId));
-    return cadangStockOptions
+    return materialStockOptions
       .filter(opt => !alreadySelected.has(opt.stock.id))
       .filter(opt => opt.lokasi ? opt.lokasi.gudangId === activeGudangId : opt.stock.uptId === scopedGudangList.find(g => g.id === activeGudangId)?.uptId)
       .filter(opt => {
-        const label = `${opt.katalog?.katalog || ""} ${opt.katalog?.name || ""} ${opt.stock.name || ""}`;
-        return matchesMaterialSearch([label, opt.stock.barcode, opt.stock.kodeBarcode], pickerQuery);
+        return matchesMaterialSearch([
+          opt.katalog?.katalog, opt.katalog?.noKatalog, opt.katalog?.name,
+          opt.katalog?.keterangan, opt.katalog?.description, opt.katalog?.deskripsi,
+          opt.stock.name, opt.stock.keteranganBarang, opt.stock.description,
+          opt.stock.deskripsi, opt.stock.keterangan,
+          opt.stock.barcode, opt.stock.kodeBarcode,
+        ], pickerQuery);
       })
       .slice(0, 50);
-  }, [cadangStockOptions, items, activeGudangId, pickerQuery]);
+  }, [materialStockOptions, items, activeGudangId, pickerQuery]);
 
   const completeCount = items.filter(itemComplete).length;
   const formInvalid = !items.length || items.some(it => !itemComplete(it)) || !pelaksanaLogistik.trim() || !pelaksaraPemeliharaan.length;
@@ -282,7 +283,7 @@ export function InspeksiMaterialCadangTab({
   }, [expandedBatchId, scopedBatches]);
 
   function addItem(stockId) {
-    const opt = cadangStockOptions.find(o => o.stock.id === stockId);
+    const opt = materialStockOptions.find(o => o.stock.id === stockId);
     if (!opt) return;
     if (items.length && opt.lokasi?.gudangId && opt.lokasi.gudangId !== lockedGudangId) {
       showToast("Satu BA hanya untuk satu gudang.", "error");
@@ -487,8 +488,8 @@ export function InspeksiMaterialCadangTab({
       <div className="no-print">
         <OperationsHero
           eyebrow="Material Assurance"
-          title="Inspeksi Material Cadang"
-          description="Satu Berita Acara memuat 1–10 material Cadang dari satu gudang. Identitas material terkunci, dan riwayat bersifat append-only."
+          title="Inspeksi Material"
+          description="Satu Berita Acara memuat 1–10 material dari satu gudang. Identitas material terkunci, dan riwayat bersifat append-only."
           scope={scopeLabel}
           metrics={[
             { label: "BA Tersimpan", value: scopedBatches.length },
@@ -654,7 +655,7 @@ export function InspeksiMaterialCadangTab({
 
           {/* Langkah 2 — Pilih material */}
           <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, display: "grid", gap: 12 }}>
-            <StepHeader title="Pilih Material Cadang" C={C} trailing={
+            <StepHeader title="Pilih Material" C={C} trailing={
               <span style={{ fontSize: 12, fontWeight: 800, color: C.muted }}>
                 Material {items.length}/{MATERIAL_INSPECTION_MAX_ITEMS_PER_BATCH}
               </span>
@@ -696,7 +697,7 @@ export function InspeksiMaterialCadangTab({
                   fontSize: 13, fontWeight: 800, textAlign: "left",
                 }}>
                   <MagnifyingGlass size={16} color={C.muted} />
-                  <span style={{ flex: 1 }}>Cari Material Cadang</span>
+                  <span style={{ flex: 1 }}>Cari Material</span>
                   <CaretDown size={18} color={C.muted} style={{ transform: searchOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }} />
                 </button>
                 {searchOpen && (
@@ -706,7 +707,7 @@ export function InspeksiMaterialCadangTab({
                       <input
                         ref={pickerSearchRef}
                         style={{ ...sty.input, minHeight: 44, border: "none", background: "transparent", paddingLeft: 0, flex: 1 }}
-                        placeholder={lockedGudang ? `Cari material Cadang di ${lockedGudang.nama}…` : "Cari material Cadang…"}
+                        placeholder={lockedGudang ? `Cari material di ${lockedGudang.nama}…` : "Cari material…"}
                         value={pickerQuery}
                         onChange={e => setPickerQuery(e.target.value)}
                       />
@@ -720,7 +721,7 @@ export function InspeksiMaterialCadangTab({
                     </div>
                     {pickerQuery.trim() && (
                       <p style={{ margin: 0, fontSize: 12, color: C.muted }}>
-                        {pickerResults.length} material Cadang di Gudang {lockedGudang?.nama || scopedGudangList.find(g => g.id === activeGudangId)?.nama || "—"}
+                        {pickerResults.length} material di Gudang {lockedGudang?.nama || scopedGudangList.find(g => g.id === activeGudangId)?.nama || "—"}
                       </p>
                     )}
                     {!pickerQuery.trim() ? (
@@ -730,7 +731,7 @@ export function InspeksiMaterialCadangTab({
                     ) : pickerResults.length === 0 ? (
                       <div style={{ padding: 24, textAlign: "center", color: C.muted, fontSize: 13 }}>
                         <Package size={32} weight="thin" style={{ opacity: 0.5 }} />
-                        <p style={{ margin: "8px 0 0" }}>Tidak ada material Cadang di gudang ini.</p>
+                        <p style={{ margin: "8px 0 0" }}>Tidak ada material di gudang ini.</p>
                       </div>
                     ) : (
                       <div style={{ display: "grid", gap: 6, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
@@ -775,7 +776,7 @@ export function InspeksiMaterialCadangTab({
                 <div>
                   <h3 style={{ margin: "0 0 4px", fontSize: 15 }}>Belum ada material</h3>
                   <p style={{ margin: 0, fontSize: 13, color: C.muted }}>
-                    {activeGudangId ? "Cari dan pilih material Cadang di atas untuk mulai inspeksi." : "Pilih gudang dulu untuk mencari material."}
+                    {activeGudangId ? "Cari dan pilih material di atas untuk mulai inspeksi." : "Pilih gudang dulu untuk mencari material."}
                   </p>
                 </div>
               </div>

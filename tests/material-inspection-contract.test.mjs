@@ -126,8 +126,17 @@ test("batch client validates item count, duplicate stock, exactly two photos, an
   assert.match(appSource, /loadMaterialInspectionBatches\(\)/);
 });
 
-test("inspection picker supports partial catalog/name/barcode search, scan handoff, and unlocated UPT stock", () => {
-  assert.match(componentSource, /matchesMaterialSearch\(\[label, opt\.stock\.barcode, opt\.stock\.kodeBarcode\], pickerQuery\)/);
+test("inspection picker includes all scoped material and searches catalog, description, name, and barcode", () => {
+  assert.match(componentSource, /const materialStockOptions = useMemo/);
+  assert.match(componentSource, /return scopedStocks\s*\.map\(stock/);
+  assert.doesNotMatch(componentSource, /jenisBarang === "Cadang"/);
+  assert.match(componentSource, /opt\.katalog\?\.katalog/);
+  assert.match(componentSource, /opt\.katalog\?\.noKatalog/);
+  assert.match(componentSource, /opt\.katalog\?\.name/);
+  assert.match(componentSource, /opt\.katalog\?\.(?:keterangan|description|deskripsi)/);
+  assert.match(componentSource, /opt\.stock\.(?:name|description|deskripsi|keteranganBarang|keterangan)/);
+  assert.match(componentSource, /opt\.stock\.barcode/);
+  assert.match(componentSource, /opt\.stock\.kodeBarcode/);
   assert.match(componentSource, /extractKatalogIdFromScan\(code\)/);
   assert.match(componentSource, /normalizeKatalog\(code\)/);
   assert.match(componentSource, /openScanner\(\{ onDetect: code =>/);
