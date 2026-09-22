@@ -16,9 +16,10 @@ import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft, mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 import { StockOpnameApprovalReview } from "./StockOpnameApprovalReview.jsx";
+import { comparisonForItem, itemNeedsStockOpnameNote, stockOpnameDiscrepancyNoteErrors } from "../lib/stockOpnameReconciliation.js";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
-  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname,
+  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, deleteOpname,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
   setStocks, saveToCloud, visibleGudangList, stockVisibleGudangList, stockGudangFilter, setStockGudangFilter,
   uploadStockFoto, showWork=true, showHistory=true, onOpenWork }) {
@@ -36,6 +37,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
   const reviewSelisihRef = useRef(false);
   const [csvLoading, setCsvLoading] = useState(false);
   const [validationErrors, setValidationErrors] = useState([]);
+  const [tugReferenceDrafts, setTugReferenceDrafts] = useState({});
   const [highlightIdx, setHighlightIdx] = useState(null); // baris hasil scan QR — cuma bantu temukan & fokus, bukan pengganti hitung fisik
   const qtyInputRefs = useRef({});
   const [pageSize, setPageSize] = useState(10);
@@ -142,6 +144,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeOpname?.id]);
+  useEffect(() => setTugReferenceDrafts({}), [activeOpname?.id]);
   useEffect(() => {
     if (!activeOpname?.id || (!lapanganMode && !desktopDirtyRef.current.has(activeOpname.id) && desktopSaveState !== "error")) return;
     try {
@@ -812,10 +815,13 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const isNonSapSession = activeOpname?.jenisAlur === "NON_SAP";
     (activeOpname.items||[]).forEach((item,i)=>{
       if(!itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 })) errors.push(`Baris ${i+1}: qty fisik belum dihitung`);
-      if(item.selisih!==0 && !item.keterangan?.trim()) errors.push(`Baris ${i+1} (${item.namaBarang}): keterangan wajib diisi jika ada selisih`);
       // Opname Non-SAP: lokasi WAJIB diisi untuk semua item (baseline maupun temuan baru) —
       // ini yang membuktikan opname fisik benar-benar dilakukan, bukan cuma isi qty dari kursi.
       if(isNonSapSession && !item.lokasiId) errors.push(`Baris ${i+1} (${item.namaBarang}): lokasi (Gudang/Blok) wajib diisi`);
+    });
+    stockOpnameDiscrepancyNoteErrors(activeOpname.items || [], { isSap: !isNonSapSession }).forEach(({ index }) => {
+      const item = activeOpname.items[index];
+      errors.push(`Baris ${index + 1} (${item?.namaBarang || "Material"}): keterangan wajib diisi jika ada selisih SAP/fisik/WARNOTO`);
     });
     // Fase 2e: item selisih wajib hitung ulang (blind) sebelum submit — cegah "asal ketik ulang"
     // tanpa verifikasi fisik kedua kali. Satu pesan ringkas (bukan per baris) supaya tidak
@@ -829,7 +835,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     // nyangkut DRAFT selamanya tanpa penjelasan — persis kasus yang dilaporkan user 2026-07-07
     // ("tidak masuk ke approval asman").
     if (errors.length>0) {
-      showToast(`❌ Belum bisa disubmit — ${errors.length} data belum lengkap (qty fisik/foto/keterangan). Scroll ke atas untuk detail.`, "error");
+      showToast(`❌ Belum bisa disubmit — ${errors.length} data belum lengkap (qty fisik/lokasi/keterangan). Scroll ke atas untuk detail.`, "error");
       setPage(0);
       if (typeof window!=="undefined") window.scrollTo({top:0, behavior:"smooth"});
     }
@@ -849,6 +855,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     if (!activeOpname) return null;
     const isSAP = activeOpname.jenisAlur==="SAP";
     const isReadOnly = activeOpname.status!=="DRAFT";
+    // Qty fisik adalah hasil hitung manual Admin/TL/Superadmin. Asman dan Manager
+    // tetap dapat membuka draft untuk review, tetapi tidak boleh mengubahnya.
+    const canEditDraft = !isReadOnly && hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN");
     const items = activeOpname.items||[];
     const countedItem = item => itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 });
     // Sesi v2 selalu scoped ke 1 gudang — dropdown Gudang jadi no-op, sembunyikan.
@@ -877,7 +886,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <p style={{color:C.muted,fontSize:13}}>{activeOpname.kategori}</p>
           </div>
           <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
-            {isSAP && !isReadOnly && (
+            {isSAP && canEditDraft && (
               <label style={{fontSize:12,fontWeight:600,color:C.accent,cursor:csvLoading?"default":"pointer"}}>
                 {csvLoading?"Memproses...":"Ganti File PID"}
                 <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleReplaceCSV} disabled={csvLoading} style={{display:"none"}}/>
@@ -919,7 +928,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
         {/* Fase C: Dashboard progres per blok — klik chip untuk filter tabel ke blok itu.
             Default terlipat (opt-in) — filter Gudang/Blok utama ada di toolbar tabel. */}
-        {!isReadOnly && (() => {
+        {canEditDraft && (() => {
           const seen = new Set();
           const bloks = [];
           for (const it of items) {
@@ -969,7 +978,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         {/* Tambah Material Ditemukan + Upload Usulan Pencocokan — cuma Opname Non-SAP.
             Pola card biru + label sama persis dengan "Step 1: Upload File SAP" di bawah,
             supaya konsisten dengan menu Opname lain (keluhan user 2026-07-08). */}
-        {!isSAP && !isReadOnly && (
+        {!isSAP && canEditDraft && (
           <>
             <div style={{...sty.card,marginBottom:14,background:"#eff6ff",border:`1px solid #bfdbfe`}}>
               <div style={{fontSize:12,fontWeight:800,color:"#1d4ed8",marginBottom:8}}>
@@ -1034,7 +1043,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         {/* Ringkasan file PID sudah terbaca — upload awal sekarang lewat dropzone di daftar
             (Fase 0), sesi SAP baru selalu sudah bawa item saat panel ini dibuka. Ganti file
             pakai link "Ganti File PID" di header panel. */}
-        {isSAP && !isReadOnly && activeOpname.sapUploadedAt && (
+        {isSAP && canEditDraft && activeOpname.sapUploadedAt && (
           <div tabIndex={0} className="info-note" style={{fontSize:12,color:C.green,marginBottom:14}}>
             ✅ {activeOpname.totalRowsSAP} baris SAP dibaca • {items.length} item total • {fmtDate(activeOpname.sapUploadedAt)}
           </div>
@@ -1060,7 +1069,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 {" • "}<span style={{fontWeight:700,color:C.red}}>{selisihCount}</span> selisih
                 {" • "}<span style={{fontWeight:700,color:"#b45309"}}>{items.filter(i=>countedItem(i) && ["TIDAK_ADA_DI_SAP","TIDAK_ADA_DI_SISTEM"].includes(i.statusItem)).length}</span> belum terdaftar
               </div>
-              {activeOpname.flowVersion === 2 && isSAP && prog.total > 0 && prog.filled === prog.total && !isReadOnly && (
+              {activeOpname.flowVersion === 2 && isSAP && prog.total > 0 && prog.filled === prog.total && canEditDraft && (
                 <div className="opname-next-stage">
                   <div><strong>SAP selesai untuk {activeOpname.gudangKode || "gudang ini"}.</strong><span> Non-SAP (opsional) dapat dibuka pada gudang yang sama setelah SAP selesai.</span></div>
                   <button type="button" className="opname-next-stage__button" onClick={()=>openOrCreateNonSapChild(activeOpname)}><ArrowRight size={16} weight="bold" aria-hidden="true" />Input Non-SAP (opsional)</button>
@@ -1080,7 +1089,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {/* Tabel item */}
             <div className="mobile-card-table opname-card-table" style={{overflowX:"auto",marginBottom:12}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:8,flexWrap:"wrap"}}>
-                {!isReadOnly ? (
+                {canEditDraft ? (
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <button style={sty.btn("ghost","sm")} onClick={handleScanQty}><Barcode size={16} aria-hidden="true" /> Scan QR untuk cari baris</button>
                     <span style={{fontSize:12,color:C.muted}}>Scan cuma membantu temukan & lompat ke barisnya — qty hasil hitung fisik tetap wajib diketik manual.</span>
@@ -1173,6 +1182,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   {pageEntries.map(({it:item, idx:realIdx})=>{
                     const isHighlighted = highlightIdx===realIdx;
                     const counted = countedItem(item);
+                    const needsNote = itemNeedsStockOpnameNote(activeOpname.items || [], realIdx, { isSap: isSAP });
                     const rowBg = isHighlighted ? "#dbeafe" : "white";
                     const statusBadge = item.statusItem==="SESUAI"
                       ? {bg:"#dcfce7",fg:"#166534",label:"Sesuai"}
@@ -1201,7 +1211,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           {item.lokasiBreakdown && item.lokasiBreakdown.length>0 && (
                             <div style={{display:"flex",flexDirection:"column",gap:4,marginTop:5,alignItems:"flex-start"}}>
                               {item.lokasiBreakdown.slice(0,3).map((b,bi)=>{
-                                const st = !isReadOnly && b.stockId ? stocks.find(s=>s.id===b.stockId) : null;
+                                const st = canEditDraft && b.stockId ? stocks.find(s=>s.id===b.stockId) : null;
                                 const box = {display:"inline-flex",flexDirection:"column",gap:1,padding:"3px 9px",borderRadius:8,border:`1px solid ${st?`${C.accent}55`:C.border}`,background:st?`${C.accent}0f`:"#f8fafc",textAlign:"left",maxWidth:"100%"};
                                 const content = <>
                                   <span style={{fontSize:12,color:st?C.accent:C.text}}><strong style={{fontWeight:700}}>{b.lokasiKode||"Tanpa Lokasi"}</strong> · {b.qty}</span>
@@ -1222,7 +1232,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         {!isMobile && <td data-label="Qty Sistem" className="is-key" style={{padding:"6px 8px",textAlign:"center",fontWeight:600}}>{fmtNum(item.qtySistem)}</td>}
                         {isSAP && <td data-label="Qty SAP" className="is-key" style={{padding:"6px 8px",textAlign:"center",color:item.qtySAP!=null?C.text:"#9ca3af",whiteSpace:"nowrap"}}>{item.qtySAP!=null?fmtNum(item.qtySAP):"—"}</td>}
                         <td data-label="Qty Fisik" className="is-key" style={{padding:"4px 6px",textAlign:"center"}}>
-                          {!isReadOnly
+                          {canEditDraft
                             ? <input type="number" inputMode="decimal" min="0" placeholder="hitung…"
                                 value={counted ? item.qtsFisik : ""}
                                 ref={el=>{qtyInputRefs.current[realIdx]=el;}}
@@ -1249,7 +1259,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         </td>
                         {!isSAP && (
                           <td data-label="Lokasi" className="is-key" style={{padding:"4px 6px"}}>
-                            {!isReadOnly ? (
+                            {canEditDraft ? (
                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
                                 <select value={itemGudangId} onChange={e=>{ updateItem(realIdx,"lokasiId",""); updateItem(realIdx,"_gudangTmp",e.target.value); scheduleDesktopSave(0); }}
                                   style={{width:110,padding:"3px 4px",border:`1px solid ${C.border}`,borderRadius: 10,fontSize:12}}>
@@ -1269,14 +1279,20 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           </td>
                         )}
                         <td data-label="Keterangan" className="is-key" style={{padding:"4px 6px"}}>
-                          {!isReadOnly
+                          {canEditDraft
                             ? <textarea rows={2} value={item.keterangan||""}
                                 onChange={e=>{ updateItem(realIdx,"keterangan",e.target.value); scheduleDesktopSave(); }}
                                 onBlur={saveDesktopQty}
-                                placeholder={item.selisih!==0?"Wajib diisi...":"Opsional"}
-                                style={{width:"100%",minHeight:32,padding:"6px 8px",border:`1px solid ${item.selisih!==0&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:13,resize:"none",fontFamily:"inherit"}}/>
+                                placeholder={needsNote?"Wajib diisi...":"Opsional"}
+                                style={{width:"100%",minHeight:32,padding:"6px 8px",border:`1px solid ${needsNote&&!item.keterangan?C.red:C.border}`,borderRadius: 10,fontSize:13,resize:"none",fontFamily:"inherit"}}/>
                             : <span style={{fontSize:12,color:C.muted}}>{item.keterangan||"-"}</span>}
-                          {(!isSAP || item.statusItem==="MATERIAL_BARU_NONSAP") && activeOpname.stage==="REKONSILIASI" && !isReadOnly && (
+                          {isReadOnly && activeOpname.status === "SELESAI" && hasRole(currentUser, "ADMIN", "TL") && needsNote && (
+                            <div style={{display:"flex",gap:5,marginTop:6}}>
+                              <input aria-label={`Referensi TUG ${item.noKatalog || item.namaBarang}`} value={Object.prototype.hasOwnProperty.call(tugReferenceDrafts, item.stockId || item.id || item.katalogId || item.noKatalog) ? tugReferenceDrafts[item.stockId || item.id || item.katalogId || item.noKatalog] : (item.tugReference || "")} onChange={event => { const key = item.stockId || item.id || item.katalogId || item.noKatalog; setTugReferenceDrafts(prev => ({...prev, [key]: event.target.value})); }} placeholder="Referensi TUG (opsional)" style={{...sty.input,flex:1,minWidth:0,padding:"5px 7px",fontSize:11}} />
+                              <button type="button" style={sty.btn("ghost","sm")} onClick={async () => { const key = item.stockId || item.id || item.katalogId || item.noKatalog; const ok = await updateOpnameTugReference(activeOpname, key, tugReferenceDrafts[key] ?? item.tugReference ?? ""); if (ok) setActiveOpname(prev => prev ? {...prev, items: prev.items.map(entry => String(entry.stockId || entry.id || entry.katalogId || entry.noKatalog) === String(key) ? {...entry, tugReference: tugReferenceDrafts[key] ?? item.tugReference ?? ""} : entry)} : prev); }}>Simpan</button>
+                            </div>
+                          )}
+                          {(!isSAP || item.statusItem==="MATERIAL_BARU_NONSAP") && activeOpname.stage==="REKONSILIASI" && canEditDraft && (
                             <div style={{marginTop:4}}>
                               <label style={{fontSize:11,color:C.muted,display:"block",marginBottom:2}}>Pindah ke SAP:</label>
                               <select value={item.pindahJenis||""} onChange={e=>{ updateItem(realIdx,"pindahJenis",e.target.value); scheduleDesktopSave(0); }}
@@ -1293,11 +1309,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                             {[["fotoKeseluruhan",Image,"Foto Keseluruhan (opsional)"],["fotoNameplate",Tag,"Foto Nameplate (opsional)"]].map(([field,Icon,label])=>(
                               <label key={field} title={label}
-                                style={{width:28,height:28,borderRadius: 10,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReadOnly?"default":"pointer",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
+                                style={{width:28,height:28,borderRadius: 10,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:canEditDraft?"pointer":"default",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
                                 {item[field]
                                   ? <img src={item[field]} alt={label} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                                   : <Icon size={16} color="#64748b"/>}
-                                {!isReadOnly && (
+                                {canEditDraft && (
                                   <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
                                     onChange={e=>{
                                       const f=e.target.files[0]; if(!f) return;
@@ -1340,7 +1356,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {/* Bar aksi bertahap (Fase 0, 0b): Batal · Simpan Draft selalu ada; tombol ketiga
                 berubah sesuai progress — Submit HANYA muncul kalau semua qty sudah terisi.
                 Sengaja HANYA di sini (bawah tabel), bukan di header juga (keluhan 2026-07-07). */}
-            {!isReadOnly && (
+            {canEditDraft && (
               <div className="approval-actions opname-action-bar" style={{marginBottom:16}}>
                 {desktopSaveState !== "idle" && <span role="status" style={{fontSize:12,color:desktopSaveState === "error" ? C.red : C.muted,alignSelf:"center"}}>
                   {desktopSaveState === "saving" ? "Menyimpan..." : desktopSaveState === "error" ? "Gagal — draft lokal dipertahankan" : "Tersimpan"}

@@ -6,6 +6,7 @@ import { normalizeKatalog, totalQtyForKatalog, itemCounted, allBloksSelesai, sto
 import { loadMasterTable } from "../lib/masterSync.js";
 import { normalizeOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
+import { buildStockOpnameComparisons, stockOpnameDiscrepancyNoteErrors } from "../lib/stockOpnameReconciliation.js";
 import { mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { mapStockScopeRow } from "../lib/stockScope.js";
 
@@ -19,6 +20,7 @@ function readCachedList(key) {
 // stateRef.current / param langsung (hoisted function) — sama pola dgn hook lain, lihat
 // useHeavyEquipment.js untuk penjelasan lengkap TDZ.
 export function useStockOpname({ currentUser, stockScopeUptIds, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient }) {
+  const canEditPhysicalQty = hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN");
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
   const opnameListRef = useRef(opnameList);
   const commitOpnameList = next => { opnameListRef.current = next; setOpnameList(next); };
@@ -94,6 +96,10 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   // ambil versi sesi terbaru dari server dulu, lalu tulis balik cuma blok itu — sisanya dari
   // server. Gagal ambil (offline) → simpan LOKAL saja, jangan menimpa server dgn data parsial.
   async function saveOpname(opn, touchedLokasiIds, { silent = false, forceMerge = false, failClosed = false, touchedPhotoItemKeys = [] } = {}) {
+    if (opn?.status === "DRAFT" && !canEditPhysicalQty) {
+      showToast("Hanya Admin, TL, atau Superadmin yang bisa mengubah Qty Fisik.", "error");
+      return false;
+    }
     if (opn?.id) pendingSaveIdsRef.current.add(opn.id);
     let toSave;
     try { toSave = await normalizeOpnamePhotos(opn, uploadStockFoto); }
@@ -166,6 +172,10 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   }
 
   async function submitOpname(opn, touchedLokasiIds) {
+    if (!canEditPhysicalQty) {
+      showToast("Hanya Admin, TL, atau Superadmin yang bisa mengisi dan submit Qty Fisik.", "error");
+      return false;
+    }
     if (opn?.flowVersion === 2 && !allBloksSelesai(opn)) {
       showToast("Belum bisa submit: semua material harus selesai dihitung.", "error");
       return false;
@@ -192,6 +202,13 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       return false;
     }
     opn = preparedOpn;
+    const isSapSession = opn.jenisAlur === "SAP";
+    const approvalComparisons = buildStockOpnameComparisons(opn.items || [], { isSap: isSapSession });
+    const noteErrors = stockOpnameDiscrepancyNoteErrors(opn.items || [], { isSap: isSapSession });
+    if (noteErrors.length) {
+      showToast(`Approval diblokir: ${noteErrors.length} material selisih belum memiliki keterangan.`, "error");
+      return false;
+    }
     let newStocks = [...stocks];
     // Material baru dari SAP (item.katalogId null — belum ada di Master Katalog saat upload)
     // sekarang IKUT approval sesi ini (Asman->Manager), TIDAK ada approval TL terpisah (keputusan
@@ -205,7 +222,6 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     const materialBaruDibuat = [];
     const materialBaruKonflik = [];
     const materialBaruKatalogByCode = new Map();
-    const newStockIdByCode = new Map();
     const nowOpn = Date.now();
     const sessionUptId = opn.uptId || opn.upt_id;
     (opn.items||[]).filter(item => !item.katalogId && Number(item.qtsFisik)>0).forEach(item => {
@@ -224,53 +240,22 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
         createdAt: nowOpn,
       }];
       materialBaruKatalogByCode.set(noKatalog, newKatalogId);
-      const newStockId = "STK-OPN-" + noKatalog + "-" + nowOpn;
-      newStockIdByCode.set(noKatalog, newStockId);
-      newStocks = [...newStocks, {
-        id: newStockId,
-        katalogId: newKatalogId, lokasiId: null,
-        uptId: sessionUptId,
-        qty: Number(item.qtsFisik), price: 0, minQty: 0, unit: item.satuan || "-",
-        jenisBarang: jenisBarangBaru, name: namaBarang, katalog: noKatalog,
-        category: namaBarang.split(";")[0].trim() || "Material",
-        sapBaselineQty: Number(item.qtsFisik), sapBaselineAt: nowOpn, createdAt: nowOpn, updatedAt: nowOpn,
-      }];
       materialBaruDibuat.push(`${namaBarang} (${noKatalog})`);
     });
-
-    (opn.items||[]).filter(item=>item.selisih!==0 && item.katalogId).forEach(item => {
-      const stockRows = newStocks.filter(s=>s.katalogId===item.katalogId);
-      if (!stockRows.length) return;
-      // Fase 1c: sesi baru bawa hitungPerLokasi → tulis qty PER lokasi sesuai angka nyata yang
-      // dihitung (bukan porsi proporsional). Lokasi yang tidak dihitung dibiarkan (tidak diubah).
-      if (item.hitungPerLokasi && Object.keys(item.hitungPerLokasi).length) {
-        Object.entries(item.hitungPerLokasi).forEach(([lokKey, entry]) => {
-          // Input desktop tunggal utk item multi-blok kolaps ke "_TANPA_LOKASI" (lihat itemLokasiKey
-          // di StockOpnameTab.jsx) walau semua baris stoknya sebenarnya beralamat — tak ada baris
-          // "_TANPA_LOKASI" yang cocok. Jangan buang qty-nya: tulis ke baris pertama sbg fallback
-          // (ponytail: kasar tapi aman, per-blok asli menyusul di Fase 2 field mode).
-          const row = stockRows.find(s => (s.lokasiId || "_TANPA_LOKASI") === lokKey) || stockRows[0];
-          if (row) newStocks = newStocks.map(s=>s.id===row.id?{...s,qty:Number(entry.qty)||0}:s);
-        });
-        return;
-      }
-      // Fallback (sesi lama tanpa hitungPerLokasi) — distribusi proporsional seperti sebelumnya.
-      const totalSistem = stockRows.reduce((a,s)=>a+(s.qty||0),0);
-      if (totalSistem===0) {
-        newStocks = newStocks.map(s=>s.id===stockRows[0].id?{...s,qty:item.qtsFisik}:s);
-        return;
-      }
-      let remaining = item.qtsFisik;
-      stockRows.forEach((sr,idx)=>{
-        if (idx===stockRows.length-1) {
-          newStocks = newStocks.map(s=>s.id===sr.id?{...s,qty:Math.max(0,remaining)}:s);
-        } else {
-          const portion = Math.round((sr.qty/totalSistem)*item.qtsFisik);
-          newStocks = newStocks.map(s=>s.id===sr.id?{...s,qty:Math.max(0,portion)}:s);
-          remaining -= portion;
-        }
+    if (isSapSession) {
+      const baselineByCatalog = new Map(approvalComparisons
+        .filter(comparison => comparison.sapQty !== null)
+        .map(comparison => {
+          const item = opn.items[comparison.representativeIndex];
+          return [item?.katalogId || materialBaruKatalogByCode.get(String(item?.noKatalog || "").trim()), comparison.sapQty];
+        })
+        .filter(([catalogId]) => catalogId));
+      newStocks = newStocks.map(stock => {
+        const baselineQty = baselineByCatalog.get(stock.katalogId);
+        if (baselineQty === undefined || String(stock.uptId || stock.upt_id || sessionUptId) !== String(sessionUptId)) return stock;
+        return { ...stock, sapBaselineQty: baselineQty, sapBaselineAt: nowOpn, updatedAt: nowOpn };
       });
-    });
+    }
     // Material Non-Stock yang ditemukan saat opname fisik (Opsi A) — katalog & stok-nya
     // SUDAH dibuat sejak "Simpan" di lapangan (lihat addNonStockFoundItem), bukan di sini.
     // Approve Manager di sini cuma melepas flag pendingOpnameId (mengonfirmasi), tidak bikin
@@ -305,7 +290,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       const resolvedKatalogId = item.katalogId || materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
       if (resolvedKatalogId) countedKatalogIds.add(resolvedKatalogId);
       if (Number(item.qtsFisik) <= 0) continue;
-      const photoTarget = item.stockId || newStockIdByCode.get(String(item.noKatalog || "").trim());
+      const photoTarget = item.stockId;
       for (const field of ["fotoKeseluruhan","fotoNameplate"]) {
         const val = item[field];
         if (typeof val === "string" && val.startsWith("data:")) throw new Error("Foto legacy belum dinormalisasi.");
@@ -332,8 +317,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     const approvedItems = (opn.items || []).map(item => {
       const code = String(item.noKatalog || "").trim();
       const stampedKatalogId = materialBaruKatalogByCode.get(code);
-      const stampedStockId = newStockIdByCode.get(code);
-      return stampedKatalogId ? { ...item, katalogId: stampedKatalogId, ...(stampedStockId ? { stockId: stampedStockId } : {}) } : item;
+      return stampedKatalogId ? { ...item, katalogId: stampedKatalogId } : item;
     });
     const updated = {...opn, items: approvedItems, status:"SELESAI", approvedByAsman:currentUser.id, approvedAtAsman:Date.now(), catatanAsman:catatan||"", notulen: notulenList.length ? notulenList : (opn.notulen||[])};
     const changedKatalogRows = katalogList.filter(previous => {
@@ -361,8 +345,8 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     // Ditemukan 2026-07-07: approve/reject Opname tidak pernah lapor ke logApprovalHistory
     // (beda dari semua jenis approval lain — Lokasi, Stock Move/Edit/Delete, Alat Berat,
     // Stock Count), jadi keputusannya tidak pernah muncul di "Riwayat Approval" terpusat.
-    await logApprovalHistory({type:"OPNAME", decision:"APPROVED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:(opn.items||[]).filter(i=>i.selisih!==0).map(i=>({label:i.nama, qty:i.selisih})), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
-    let msg = "✅ Stock Opname SELESAI! Data Stok disesuaikan.";
+    await logApprovalHistory({type:"OPNAME", decision:"APPROVED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:approvalComparisons.filter(comparison=>comparison.discrepant).map(comparison=>{ const item=opn.items[comparison.representativeIndex]; return {label:item.namaBarang||item.nama, qty:comparison.physicalQty-comparison.systemQty}; }), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
+    let msg = "✅ Stock Opname SELESAI! Qty WARNOTO tetap, baseline SAP diperbarui.";
     if (materialBaruDibuat.length) msg += ` ${materialBaruDibuat.length} material baru ditambahkan ke Master Katalog.`;
     if (materialBaruKonflik.length) msg += ` ⚠️ ${materialBaruKonflik.length} material baru TIDAK ditambahkan (bentrok No. Katalog): ${materialBaruKonflik.slice(0,2).join("; ")}${materialBaruKonflik.length>2?"...":""}.`;
     if (konfirmasiNonStock) msg += ` ${konfirmasiNonStock} material Non-Stock hasil opname dikonfirmasi aktif.`;
@@ -371,17 +355,68 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     return true;
   }
   async function rejectOpname(opn, reason) {
-    const updated = {...opn, status:"DITOLAK", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
-    const nl = opnameList.map(o=>o.id===opn.id?updated:o);
-    commitOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
+    if (!hasRole(currentUser, "ASMAN", "SUPERADMIN")) {
+      showToast("Hanya Asman yang bisa menolak Stock Opname.", "error");
+      return false;
+    }
+    const cleanReason = String(reason || "").trim();
+    if (!cleanReason) {
+      showToast("Alasan penolakan wajib diisi.", "error");
+      return false;
+    }
+    const { data, error } = await supabaseClient.rpc("reject_stock_opname_asman", {
+      p_opname_id: opn.id,
+      p_reason: cleanReason,
+    });
+    if (error || data?.ok !== true) {
+      showToast(error?.message || "Penolakan Stock Opname gagal disimpan.", "error");
+      return false;
+    }
+    const updated = {...opn, ...(data.opname || {}), status:"DITOLAK", rejectReason:cleanReason};
+    const nl = opnameListRef.current.map(o=>o.id===opn.id?updated:o);
+    commitOpnameList(nl);
     await logApprovalHistory({type:"OPNAME", decision:"REJECTED", title:`Stock Opname ${opn.semester} (${opn.jenisAlur})`, items:(opn.items||[]).filter(i=>i.selisih!==0).map(i=>({label:i.nama, qty:i.selisih})), requestedBy:opn.dibuatOleh, requestedAt:opn.dibuatAt});
     showToast("❌ Opname ditolak.", "error");
+    return true;
+  }
+  async function updateOpnameTugReference(opn, itemKey, tugReference) {
+    if (!hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN")) {
+      showToast("Hanya TL/Admin yang bisa mengisi referensi TUG.", "error");
+      return false;
+    }
+    if (!supabaseClient || !opn?.id || !itemKey) return false;
+    const { data, error } = await supabaseClient.rpc("update_stock_opname_tug_reference", {
+      p_opname_id: opn.id,
+      p_item_key: itemKey,
+      p_tug_reference: String(tugReference || "").trim() || null,
+    });
+    if (error || data?.ok !== true) {
+      showToast(error?.message || "Referensi TUG gagal disimpan.", "error");
+      return false;
+    }
+    const next = data.opname ? { ...opn, ...data.opname, items: data.opname.items || opn.items } : { ...opn, items: (opn.items || []).map(item => {
+      const key = item.stockId || item.id || item.katalogId || item.noKatalog;
+      return String(key) === String(itemKey) ? { ...item, tugReference: String(tugReference || "").trim() } : item;
+    }) };
+    commitOpnameList(opnameListRef.current.map(row => row.id === opn.id ? next : row));
+    showToast("Referensi TUG disimpan.");
+    return true;
   }
   async function deleteOpname(id) {
     if (!window.confirm("Hapus sesi opname ini?")) return;
-    const nl = opnameListRef.current.filter(o=>o.id!==id);
-    commitOpnameList(nl); await stateRef.current.saveToCloud({opnameList: nl});
+    const target = opnameListRef.current.find(o=>o.id===id);
+    if (!target || target.status !== "DRAFT" || !canEditPhysicalQty) {
+      showToast("Hanya draft yang dapat dihapus oleh Admin/TL.", "error");
+      return false;
+    }
+    const { error } = await supabaseClient.from("stock_opname").delete().eq("id", id);
+    if (error) {
+      showToast(error.message || "Draft Stock Opname gagal dihapus.", "error");
+      return false;
+    }
+    commitOpnameList(opnameListRef.current.filter(o=>o.id!==id));
     showToast("Opname dihapus.");
+    return true;
   }
 
   // Kode fallback untuk material Non-Stock yang TIDAK ketemu padanan MARA-nya —
@@ -407,6 +442,10 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   // belakangan kalau kandidat MARA ditemukan susulan), jadi label fisik tetap
   // valid walau kode katalognya diperbarui.
   async function addNonStockFoundItem({ opnameId, nama, katalogCode, satuan, qty, lokasiId, foto, belumDicocokkanMara }) {
+    if (!canEditPhysicalQty) {
+      showToast("Hanya Admin, TL, atau Superadmin yang bisa menambah hasil hitung fisik.", "error");
+      return false;
+    }
     const code = katalogCode || generateNonStockFallbackCode();
     const newKatalogId = "KAT-" + code;
     if (katalogList.some(k => k.id === newKatalogId)) {
@@ -580,7 +619,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     stockCountList, setStockCountList,
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
-    saveOpname, submitOpname, approveOpname_Asman, rejectOpname, deleteOpname,
+    saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, deleteOpname,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,

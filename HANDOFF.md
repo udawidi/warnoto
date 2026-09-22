@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-22
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-23
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -36,7 +36,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **QR Blok Lokasi Gudang (2026-09-21, production aktif):** `lokasi.public_token` adalah bearer token UUID unik yang dicetak di fragment URL `?loc=<id>#t=<token>`. RPC baca-saja `public_block_stock(text,uuid)` hanya dapat dieksekusi `anon`/`authenticated`, memakai `search_path=pg_catalog`, dan mengembalikan identitas UPT/gudang/subgudang/blok serta material dengan qty positif. Payload material juga membawa label Status SAP dan Jenis Barang; agregasi dipisah per katalog/status/jenis. Mode Lapangan hanya memakai `loc` untuk memilih blok yang memang ada di sesi opname aktif. Kartu cetak = A6 portrait dengan logo PLN, garis pembatas, dan QR 48 mm; domain canonical `https://pln.warnoto.com`.
 - **Freeze transaksi Stock Opname dihapus penuh (2026-09-21, production aktif):** UI, guard TUG, RPC, trigger, dan fungsi database freeze tidak lagi dipakai. Realtime `stock_opname`, trigger `updated_at`, autosave, dan data legacy `data.freeze` tetap dipertahankan; metadata legacy bersifat inert dan tidak dimigrasikan massal.
 - **Pindah Blok ke GI (2026-09-21, production aktif):** modal Data Stok dan Stock Opname memakai daftar gudang GI-inclusive. Pilihan GI tetap dibatasi UPT yang sama dan tetap mengikuti approval lintas-gudang existing; tidak ada skema baru.
-- **Foto Stock Opname wajib (2026-09-22, production aktif):** setiap item dengan qty fisik positif wajib memiliki minimal satu Foto Keseluruhan yang sudah tersimpan di bucket self-host `stock-photos` dengan prefix UPT sesi. Migration guard `20260921_stock_opname_required_photo.sql` dan RPC atomik `20260919_stock_opname_asman_approval_rpc.sql` sudah diterapkan setelah backup. RPC approval Asman memperbarui foto Data Stok serta riwayat tanggal Kartu Gantung; verifier dan smoke transaksi rollback lulus.
+- **Approval Stock Opname fail-closed (2026-09-23, production aktif):** Qty Fisik tetap dihitung dan diinput manual oleh ADMIN/TL/SUPERADMIN; foto bersifat opsional. Review Asman membandingkan SAP, fisik, dan WARNOTO per material serta mewajibkan keterangan pada setiap selisih. Approval tidak mengubah qty aktif WARNOTO; hanya memperbarui baseline SAP dari snapshot opname yang terkunci. Mutation langsung dokumen final ditutup melalui RPC dan RLS. Backfill opname SAP UPT-SBY tanggal 22 September 2026 mempertahankan dokumen, catatan, foto, histori, dan qty aktif.
 - **MTU KHS (2026-09-13, production aktif):** workspace memakai database canonical, RLS, approval, import 2024/2026, drawing, dan hierarki `UIT > UPT > ULTG > GI > Bay`. Material fisik 2024 direkonsiliasi TL tanpa backfill/mutasi stok; sisa fisik dapat ditautkan ke stok dengan UPT+katalog sama. Material 2026 diterima parsial melalui draft TUG-3 lalu TUG-4/final Asman; final menambah stok atomik dan idempoten. Pengeluaran hanya referensi TUG-8/9 `FINAL_APPROVED`, tidak memutasi stok dari MTU. `SUPERVISI` dikecualikan. Migration `20260913_mtu_khs_tug_lifecycle.sql` sudah diterapkan.
 - **TUG canonical hanya TUG-8/TUG-9** (tabel/RPC self-host, review-first Admin→TL→Asman, nomor server dari counter UPT). **TUG-15/Laporan di luar scope canonical.** TUG legacy hanya baseline, tanpa replay stok.
 - **Output resmi Stock Opname (2026-09-16):** paket cetak adalah satu HTML A4 portrait berisi BA + TUG15 SAP + TUG15 Non-SAP hanya bila child selesai. `uptId` dan `documentMeta` versi 1 disimpan di JSON opname existing; tidak ada migrasi/dependensi. UPT legacy diambil dari sesi/gudang/pembuat, konflik wajib dipilih eksplisit. Manager harus tepat satu profil role `MANAGER` pada UPT; nol/ganda memblokir cetak. Pemeriksa default = pembuat + satu TL + satu Asman, dengan picker profil dan fallback manual. Laporan akuntansi poin 1 dan parser PID Excel tetap di luar scope sampai contoh Excel tersedia.
@@ -71,7 +71,9 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Foto wajib Stock Opname dan pemulihan bootstrap localhost selesai (2026-09-22).** Mode Lapangan mewajibkan Foto Keseluruhan untuk qty positif, submit mengunggah foto ke self-host, approval Asman memperbarui foto Data Stok, dan Kartu Gantung menampilkan tanggal opname terakhir. Guard foto dan RPC approval Asman sudah aktif di production. Backup RPC: `/home/admin_warnoto/manual-backups/warnoto-pre-stock-opname-asman-rpc-20260922.dump`; archive valid, migration atomik, verifier, dan smoke rollback lulus. Data bisnis tidak dimutasi oleh smoke test. Unit test fokus 25/25 dan build lulus. Smoke approval penuh memakai akun nyata masih perlu dilakukan.
+- **Aturan rekonsiliasi Stock Opname aktif di production (2026-09-23).** Migration `20260922_stock_opname_approval_fail_closed.sql` diterapkan atomik dan 11 pemeriksaan verifier lulus. Backfill satu opname SAP UPT-SBY (`OPN-1789716010889-vbtw6`) memperbarui baseline 198 katalog pada 208 baris stok tanpa mengubah qty aktif atau dokumen opname; hash dokumen sebelum/sesudah tetap `b5021da755ef28165fc7b8df13b2237a`. Katalog `1002070769` terverifikasi WARNOTO 5 dan baseline SAP 8. Backup valid: `/home/admin_warnoto/vps-backup/dumps/pre-opname-backfill-20260923-codex.dump`; preview sebelum/sesudah tersimpan di folder yang sama. Verifikasi lokal: 402/402 unit test, build, dan diff-check lulus. Perubahan kode belum commit/push; smoke approval akun Asman nyata masih perlu dilakukan setelah deploy frontend.
+
+- **Foto Stock Opname opsional dan pemulihan bootstrap localhost selesai (2026-09-22; aturan foto direvisi 2026-09-23).** Foto yang diisi tetap diunggah ke self-host dan dapat memperbarui foto Data Stok serta tanggal opname Kartu Gantung, tetapi foto kosong tidak memblokir submit. Backup RPC lama tetap tersedia di `/home/admin_warnoto/manual-backups/warnoto-pre-stock-opname-asman-rpc-20260922.dump`.
 
 - **Stock Opname live-sync production sudah pulih (`a1ec78b`, 2026-09-21).** Akar kegagalan simpan ADMIN/Fajar adalah guard freeze database yang menolak metadata freeze lokal basi. Feature freeze dihapus dari UI, aplikasi, dan database sesuai keputusan pengguna; Realtime dan `updated_at` tetap aktif. Smoke production memakai akun Fajar berhasil membuka draft 2026-S2 dan `Simpan Draft` mengembalikan status `Tersimpan`. Seed fallback `heavy_equipment` kini hanya dijalankan TL sehingga ADMIN tidak lagi memicu RLS 403.
 
@@ -747,7 +749,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** Tidak ada blocker teknis Stock Opname. Smoke approval penuh memakai akun nyata serta verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
+**Blocker:** Tidak ada blocker teknis Stock Opname. Smoke approval penuh memakai akun Asman nyata setelah deploy frontend serta verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
@@ -775,4 +777,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-09-22 Codex: **Guard foto dan RPC approval Asman Stock Opname sudah aktif di production; verifier, smoke rollback, test fokus, dan build lulus. Smoke approval akun nyata masih perlu dilakukan.**
-- 2026-09-21 Codex: **Freeze Stock Opname dihapus penuh; simpan draft Fajar pulih dan lolos smoke production. Label Status/Jenis Barcode Blok serta Pindah Blok ke GI sudah production; migration/verifier/build/test lulus.**
+- 2026-09-23 Codex: **Approval fail-closed dan baseline SAP Stock Opname aktif di production; backup, migration, verifier, backfill, serta pemeriksaan hash/qty lulus. Frontend belum commit/push.**

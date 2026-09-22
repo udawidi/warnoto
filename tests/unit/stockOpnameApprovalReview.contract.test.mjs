@@ -11,7 +11,7 @@ test("Stock Opname approval uses shared review gate", () => {
     assert.match(source, /StockOpnameApprovalReview/);
     assert.doesNotMatch(source, /approveOpname_Asman\(opn,/);
   }
-  assert.match(modal, /Saya sudah memeriksa seluruh selisih dan keterangannya/);
+  assert.match(modal, /Saya sudah meninjau perbandingan SAP, fisik, WARNOTO, dan keterangan/);
   assert.match(modal, /disabled=\{!canApprove\}/);
   assert.match(modal, /missingNotes/);
   assert.match(modal, /keterangan/);
@@ -21,7 +21,7 @@ test("Stock Opname approval uses shared review gate", () => {
   assert.match(modal, /fotoKeseluruhan/);
   assert.match(modal, /fotoNameplate/);
   assert.doesNotMatch(modal, /item\.foto\s*\?/);
-  assert.match(modal, /Approval gagal\. Data review dan catatan tetap tersimpan/);
+  assert.match(modal, /Approval gagal disimpan\. Status opname tetap menunggu Asman/);
 });
 
 test("ASMAN detail review opens discrepancy-only filter", () => {
@@ -36,10 +36,11 @@ test("ASMAN detail review opens discrepancy-only filter", () => {
 test("approval review renders readable detail cards", () => {
   assert.match(modal, /Cari nama, katalog, keterangan/);
   assert.match(modal, /Semua selisih/);
-  assert.match(modal, /Qty Sistem/);
+  assert.match(modal, /Qty WARNOTO/);
   assert.match(modal, /Qty SAP/);
   assert.match(modal, /Qty Fisik/);
   assert.match(modal, /Keterangan selisih/);
+  assert.match(modal, /Saran tindakan/);
   assert.match(modal, /Qty ulang/);
   assert.match(modal, /Tidak ada foto \(opsional\)/);
   assert.doesNotMatch(modal, /<table/);

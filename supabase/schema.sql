@@ -1727,11 +1727,20 @@ drop policy if exists "Authenticated read stock_opname" on stock_opname;
 drop policy if exists "Authenticated write stock_opname" on stock_opname;
 drop policy if exists "Scoped read stock_opname" on stock_opname;
 drop policy if exists "Scoped write stock_opname" on stock_opname;
+drop policy if exists "Stock opname draft insert by warehouse roles" on stock_opname;
+drop policy if exists "Stock opname draft update by warehouse roles" on stock_opname;
+drop policy if exists "Stock opname draft delete by warehouse roles" on stock_opname;
 revoke all on table stock_opname from public, anon, authenticated;
 grant select, insert, update, delete on table stock_opname to authenticated;
 grant all on table stock_opname to service_role;
 create policy "Scoped read stock_opname" on stock_opname for select to authenticated using (public.can_access_upt(upt_id));
-create policy "Scoped write stock_opname" on stock_opname for all to authenticated using (public.can_access_upt(upt_id)) with check (public.can_access_upt(upt_id));
+create policy "Stock opname draft insert by warehouse roles" on stock_opname for insert to authenticated
+  with check (public.can_access_upt(upt_id) and status in ('DRAFT','PENDING_ASMAN') and exists (select 1 from profiles actor where actor.id=auth.uid() and actor.role in ('ADMIN','TL','SUPERADMIN')));
+create policy "Stock opname draft update by warehouse roles" on stock_opname for update to authenticated
+  using (public.can_access_upt(upt_id) and status='DRAFT' and exists (select 1 from profiles actor where actor.id=auth.uid() and actor.role in ('ADMIN','TL','SUPERADMIN')))
+  with check (public.can_access_upt(upt_id) and status in ('DRAFT','PENDING_ASMAN') and exists (select 1 from profiles actor where actor.id=auth.uid() and actor.role in ('ADMIN','TL','SUPERADMIN')));
+create policy "Stock opname draft delete by warehouse roles" on stock_opname for delete to authenticated
+  using (public.can_access_upt(upt_id) and status='DRAFT' and exists (select 1 from profiles actor where actor.id=auth.uid() and actor.role in ('ADMIN','TL','SUPERADMIN')));
 
 create table if not exists stock_count (
   id text primary key,              -- id sesi stock count, dibuat App.jsx ("SC-...")
