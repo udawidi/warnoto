@@ -101,7 +101,6 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
   async function handleSimpanQty(lanjutScan) {
     if (saving) return;
     if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
-    if (Number(qtyInput) > 0 && !items[itemAktifIdx]?.fotoKeseluruhan) { showToast("Foto Keseluruhan wajib diunggah untuk qty fisik lebih dari 0.", "error"); return; }
     setSaving(true);
     try {
       const saved = await setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput);
@@ -122,17 +121,15 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
 
   function renderPhotoCapture(item) {
     if (!item) return null;
-    const required = Number(qtyInput) > 0;
-    return <div style={{ marginTop: 14, padding: 12, border: `1px solid ${required && !item.fotoKeseluruhan ? C.red : C.border}`, borderRadius: 10, background: "#fafafa" }}>
-      <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Foto Stock Opname {required && <span style={{ color: C.red }}>* wajib</span>}</div>
+    return <div style={{ marginTop: 14, padding: 12, border: `1px solid ${C.border}`, borderRadius: 10, background: "#fafafa" }}>
+      <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 8 }}>Foto Stock Opname <span style={{ color: C.muted }}>(opsional)</span></div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        {[["fotoKeseluruhan", "Foto Keseluruhan", true], ["fotoNameplate", "Foto Nameplate", false]].map(([field, label, isRequired]) => <label key={field} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: 8, border: `1px solid ${isRequired && required && !item[field] ? C.red : C.border}`, borderRadius: 8, cursor: photoUploading ? "wait" : "pointer", fontSize: 12, fontWeight: 700 }}>
+        {[["fotoKeseluruhan", "Foto Keseluruhan"], ["fotoNameplate", "Foto Nameplate"]].map(([field, label]) => <label key={field} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: 8, border: `1px solid ${C.border}`, borderRadius: 8, cursor: photoUploading ? "wait" : "pointer", fontSize: 12, fontWeight: 700 }}>
           {item[field] ? <img src={item[field]} alt={label} style={{ width: 44, height: 44, objectFit: "cover", borderRadius: 6 }} /> : "📷"}
           <span>{item[field] ? "Ganti " : "Ambil "}{label}</span>
           <input type="file" accept="image/*" capture="environment" disabled={photoUploading} style={{ display: "none" }} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; handlePhoto(file, field); }} />
         </label>)}
       </div>
-      {required && !item.fotoKeseluruhan && <div style={{ marginTop: 6, color: C.red, fontSize: 11 }}>Upload minimal 1 Foto Keseluruhan sebelum menyimpan qty.</div>}
     </div>;
   }
 
@@ -286,7 +283,6 @@ export function OpnameLapanganView({ activeOpname, setQtyForBlok, confirmRecount
             <div className="opname-field-mode__actions" style={{ position: "sticky", bottom: 0, padding: 14, background: C.bg, borderTop: `1px solid ${C.border}`, display: "flex", flexDirection: "column", gap: 8 }}>
               <button disabled={saving} style={{ ...sty.btn("primary"), minHeight: 48, opacity: saving ? 0.65 : 1 }} onClick={async () => {
                 if (qtyInput === "" || isNaN(Number(qtyInput))) { showToast("Isi qty dulu.", "error"); return; }
-                if (Number(qtyInput) > 0 && !item.fotoKeseluruhan) { showToast("Foto Keseluruhan wajib diunggah untuk qty fisik lebih dari 0.", "error"); return; }
                 if (screen === "hitung-usul") { if (saving) return; setSaving(true); try { const saved = await setQtyForBlok(itemAktifIdx, lokasiAktif, qtyInput, { usulPindahLokasi: true }); if (!saved) return; showToast(`✔ Tersimpan ke server · ${item.namaBarang}: ${qtyInput}`); setItemAktifIdx(null); setQtyInput(""); setScreen("items"); } finally { setSaving(false); } }
                 else handleSimpanQty(true);
               }}>

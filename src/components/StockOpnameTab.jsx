@@ -14,7 +14,6 @@ import { PindahBlokModal } from "./PindahBlokModal.jsx";
 import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe } from "../lib/xlsxImport.js";
 import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnameProgress, childOpnameMatches, parseStockOpnamePidRefs, resolveStockOpnameDocumentIdentity, buildStockOpnameDocumentMeta, normalizeStockOpnamePerson, canRestoreOpnameDraft, mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
-import { missingRequiredOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
@@ -805,10 +804,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       return false;
     }
     const isNonSapSession = activeOpname?.jenisAlur === "NON_SAP";
-    const missingPhotoIndexes = new Set(missingRequiredOpnamePhotos(activeOpname).map(({index}) => index));
     (activeOpname.items||[]).forEach((item,i)=>{
       if(!itemCounted(item, { requireTimestamp: activeOpname.flowVersion===2 })) errors.push(`Baris ${i+1}: qty fisik belum dihitung`);
-      if(missingPhotoIndexes.has(i)) errors.push(`Baris ${i+1} (${item.namaBarang}): Foto Keseluruhan wajib diunggah`);
       if(item.selisih!==0 && !item.keterangan?.trim()) errors.push(`Baris ${i+1} (${item.namaBarang}): keterangan wajib diisi jika ada selisih`);
       // Opname Non-SAP: lokasi WAJIB diisi untuk semua item (baseline maupun temuan baru) —
       // ini yang membuktikan opname fisik benar-benar dilakukan, bukan cuma isi qty dari kursi.
@@ -1059,8 +1056,8 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
               </div>
               {activeOpname.flowVersion === 2 && isSAP && prog.total > 0 && prog.filled === prog.total && !isReadOnly && (
                 <div className="opname-next-stage">
-                  <div><strong>SAP selesai untuk {activeOpname.gudangKode || "gudang ini"}.</strong><span> Lanjutkan ke daftar Non-SAP pada gudang yang sama.</span></div>
-                  <button type="button" className="opname-next-stage__button" onClick={()=>openOrCreateNonSapChild(activeOpname)}><ArrowRight size={16} weight="bold" aria-hidden="true" />Lanjut Non-SAP {activeOpname.gudangKode || "gudang"}</button>
+                  <div><strong>SAP selesai untuk {activeOpname.gudangKode || "gudang ini"}.</strong><span> Non-SAP (opsional) dapat dibuka pada gudang yang sama setelah SAP selesai.</span></div>
+                  <button type="button" className="opname-next-stage__button" onClick={()=>openOrCreateNonSapChild(activeOpname)}><ArrowRight size={16} weight="bold" aria-hidden="true" />Input Non-SAP (opsional)</button>
                 </div>
               )}
             </div>
@@ -1283,7 +1280,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                         </td>
                         <td data-label="Foto" className="is-key" style={{padding:"4px 6px"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                            {[["fotoKeseluruhan",Image,"Foto Keseluruhan (wajib jika qty > 0)"],["fotoNameplate",Tag,"Foto Nameplate (opsional)"]].map(([field,Icon,label])=>(
+                            {[["fotoKeseluruhan",Image,"Foto Keseluruhan (opsional)"],["fotoNameplate",Tag,"Foto Nameplate (opsional)"]].map(([field,Icon,label])=>(
                               <label key={field} title={label}
                                 style={{width:28,height:28,borderRadius: 10,border:`1px solid ${C.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:isReadOnly?"default":"pointer",overflow:"hidden",background:item[field]?"transparent":"#f9fafb",flexShrink:0}}>
                                 {item[field]
@@ -1527,7 +1524,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       <OperationsHero
         eyebrow="Stock Opname"
         title="Stock Opname"
-        description="Hitung SAP per gudang, lalu lanjutkan Non-SAP"
+        description="Hitung SAP per gudang; Non-SAP dapat dibuka setelah SAP selesai"
         scope={`${opnameList.length} sesi`}
         metrics={[
           {label:"Menunggu approval",value:pendingForMe.length,alert:pendingForMe.length>0},
@@ -1582,7 +1579,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <input ref={dropInputRef} type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" style={{display:"none"}} disabled={csvLoading}
               onChange={e=>{ handleDropzoneFiles(e.target.files); e.target.value=""; }}/>
           </div>
-          <div className="opname-flow-note">Sesi baru dimulai dari SAP. Non-SAP dibuka per gudang setelah seluruh item SAP terhitung.</div>
+          <div className="opname-flow-note">Sesi baru dimulai dari SAP. Non-SAP dapat dibuka per gudang setelah seluruh item SAP terhitung, tetapi tidak wajib untuk submit SAP.</div>
         </div>
       )}
 

@@ -4,7 +4,7 @@ import { uid } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
 import { normalizeKatalog, totalQtyForKatalog, itemCounted, allBloksSelesai, stockSapLabel } from "../lib/sap.js";
 import { loadMasterTable } from "../lib/masterSync.js";
-import { normalizeOpnamePhotos, missingRequiredOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
+import { normalizeOpnamePhotos } from "../lib/stockOpnamePhotoSecurity.js";
 import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
 import { mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { mapStockScopeRow } from "../lib/stockScope.js";
@@ -173,8 +173,6 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     let normalized;
     try { normalized = await normalizeOpnamePhotos(opn, uploadStockFoto); }
     catch (error) { showToast(error?.message || "Submit diblokir: foto belum berhasil diunggah.", "error"); return false; }
-    const missing = missingRequiredOpnamePhotos(normalized);
-    if (missing.length) { showToast(`Submit diblokir: ${missing.length} item dengan qty fisik > 0 wajib memiliki Foto Keseluruhan.`, "error"); return false; }
     const updated = {...normalized, status:"PENDING_ASMAN", submittedAt:Date.now()};
     const saved = await saveOpname(updated, touchedLokasiIds, { silent: true, forceMerge: true, failClosed: true });
     if (saved === false) return false;
@@ -194,8 +192,6 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       return false;
     }
     opn = preparedOpn;
-    const missing = missingRequiredOpnamePhotos(opn);
-    if (missing.length) { showToast(`Approval diblokir: ${missing.length} item dengan qty fisik > 0 belum memiliki Foto Keseluruhan.`, "error"); return false; }
     let newStocks = [...stocks];
     // Material baru dari SAP (item.katalogId null — belum ada di Master Katalog saat upload)
     // sekarang IKUT approval sesi ini (Asman->Manager), TIDAK ada approval TL terpisah (keputusan

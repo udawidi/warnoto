@@ -18,14 +18,3 @@ export async function normalizeOpnamePhotos(opn, uploadStockFoto) {
   }
   return changed ? { ...opn, items } : opn;
 }
-
-// Foto bukti opname wajib berasal dari bucket self-host, bukan data URL atau host luar.
-export function isValidOpnamePhotoUrl(value) {
-  return typeof value === "string"
-    && /^https:\/\/warnoto\.com\/storage\/v1\/object\/(?:public|sign|authenticated)\/stock-photos\//i.test(value);
-}
-
-export function missingRequiredOpnamePhotos(opn) {
-  return (opn?.items || []).map((item, index) => ({ item, index }))
-    .filter(({ item }) => Number(item?.qtsFisik) > 0 && !isValidOpnamePhotoUrl(item?.fotoKeseluruhan));
-}

@@ -60,13 +60,13 @@ test.describe("Stock Opname SAP-first responsive", () => {
     }
   });
 
-  test("aksi Lanjut Non-SAP tetap di sesi SAP saat penyimpanan server gagal", async ({ isolatedPage: page }) => {
+  test("Input Non-SAP opsional tetap di sesi SAP saat penyimpanan server gagal", async ({ isolatedPage: page }) => {
     await openApp(page);
     await openRoute(page, STOCK_OPNAME);
     await page.getByRole("button", { name: /Lanjutkan opname/ }).click();
     const qtyInputs = page.locator('input[type="number"]');
     await expect(qtyInputs).toHaveCount(2);
-    const next = page.getByRole("button", { name: /Lanjut Non-SAP/ });
+    const next = page.getByRole("button", { name: /Input Non-SAP \(opsional\)/ });
     await expect(next).toHaveCount(0);
     await qtyInputs.nth(0).fill("10");
     await expect(next).toHaveCount(0);
