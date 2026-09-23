@@ -1377,7 +1377,7 @@ export default function PLNWarehouse() {
     stockCountList, setStockCountList,
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
-    saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, updateOpnameTugReference, deleteOpname,
+    saveOpname, submitOpname, approveOpname_Asman, approveOpname_Manager, rejectOpname, updateOpnameTugReference, saveOpnameDocumentMeta, deleteOpname,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
@@ -4604,6 +4604,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 approveOpname_Manager={approveOpname_Manager}
                 rejectOpname={rejectOpname}
                 updateOpnameTugReference={updateOpnameTugReference}
+                saveOpnameDocumentMeta={saveOpnameDocumentMeta}
                 deleteOpname={deleteOpname}
                 openScanner={openScanner}
                 showToast={showToast}

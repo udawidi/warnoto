@@ -402,6 +402,24 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     showToast("Referensi TUG disimpan.");
     return true;
   }
+  async function saveOpnameDocumentMeta(opn, meta) {
+    if (!hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN")) {
+      showToast("Hanya TL/Admin yang bisa menyimpan metadata dokumen.", "error");
+      return false;
+    }
+    if (!supabaseClient || !opn?.id) return false;
+    const { data, error } = await supabaseClient.rpc("update_stock_opname_document_meta", {
+      p_opname_id: opn.id,
+      p_document_meta: meta,
+    });
+    if (error || data?.ok !== true) {
+      showToast(error?.message || "Metadata dokumen gagal disimpan.", "error");
+      return false;
+    }
+    const next = data.opname ? { ...opn, ...data.opname } : { ...opn, documentMeta: meta };
+    commitOpnameList(opnameListRef.current.map(row => row.id === opn.id ? next : row));
+    return next;
+  }
   async function deleteOpname(id) {
     if (!window.confirm("Hapus sesi opname ini?")) return;
     const target = opnameListRef.current.find(o=>o.id===id);
@@ -619,7 +637,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     stockCountList, setStockCountList,
     opnameExpanded, setOpnameExpanded,
     opnameSubTab, setOpnameSubTab,
-    saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, deleteOpname,
+    saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, saveOpnameDocumentMeta, deleteOpname,
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,

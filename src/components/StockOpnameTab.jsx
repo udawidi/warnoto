@@ -19,7 +19,7 @@ import { StockOpnameApprovalReview } from "./StockOpnameApprovalReview.jsx";
 import { comparisonForItem, itemNeedsStockOpnameNote, stockOpnameDiscrepancyNoteErrors } from "../lib/stockOpnameReconciliation.js";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
-  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, deleteOpname,
+  saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, saveOpnameDocumentMeta, deleteOpname,
   openScanner, showToast, gudangList, lokasiList, addNonStockFoundItem, isMobile, uptList, rolePerms,
   setStocks, saveToCloud, visibleGudangList, stockVisibleGudangList, stockGudangFilter, setStockGudangFilter,
   uploadStockFoto, showWork=true, showHistory=true, onOpenWork }) {
@@ -1868,7 +1868,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     });
     const updated = {...baPrintOpn, uptId: baForm.identity.uptId, documentMeta: meta};
     try {
-      const saved = await saveOpname(updated);
+      const saved = await saveOpnameDocumentMeta(baPrintOpn, meta);
       if (saved === false) throw new Error("Penyimpanan metadata gagal.");
       popup.document.write(buildStockOpnamePackageHTML(updated, baForm.identity.child, meta, {katalogList, uptList}));
       popup.document.close();
