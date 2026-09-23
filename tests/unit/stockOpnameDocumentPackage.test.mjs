@@ -34,3 +34,22 @@ test("paket menolak child selesai yang tidak berelasi ke parent SAP", () => {
   const html = buildStockOpnamePackageHTML(opn, child, meta, { uptList: [{ id:"UPT-1", nama:"UPT Satu" }] });
   assert.doesNotMatch(html, /Tidak Boleh Muncul/);
 });
+
+test("susunan tim pemeriksa konsisten di BA dan TUG-15", () => {
+  const ordered = {
+    ...meta,
+    examiners: [
+      { name: "Pemeriksa Satu", position: "ADMIN", userId: "u1", uptId: "UPT-1" },
+      { name: "Pemeriksa Dua", position: "TL", userId: "u2", uptId: "UPT-1" },
+      { name: "Pemeriksa Tiga", position: "ASMAN", userId: "u3", uptId: "UPT-1" },
+    ],
+  };
+  const html = buildStockOpnamePackageHTML(opn, null, ordered, { uptList: [{ id: "UPT-1", nama: "UPT Satu" }] });
+  const first = html.indexOf("Pemeriksa Satu");
+  const second = html.indexOf("Pemeriksa Dua");
+  const third = html.indexOf("Pemeriksa Tiga");
+  assert.ok(first >= 0 && first < second && second < third);
+  assert.match(html, /<td[^>]*>ADMIN<\/td>/);
+  assert.match(html, /<td[^>]*>TL<\/td>/);
+  assert.match(html, /<td[^>]*>ASMAN<\/td>/);
+});

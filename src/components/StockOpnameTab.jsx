@@ -1672,8 +1672,10 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
             <label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Tim Pemeriksa</label>
             {baForm.examiners.map((t,i)=>(
-              <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
-                <select style={{...sty.input,flex:"0 0 42%"}} value={t.userId || ""} onChange={e=>{
+              <div key={i} style={{display:"grid",gridTemplateColumns:"24px minmax(0,1fr)",gap:8,marginBottom:10,alignItems:"start"}}>
+                <strong style={{fontSize:12,paddingTop:9,textAlign:"center",color:C.muted}}>{i + 1}</strong>
+                <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:8}}>
+                <select aria-label={`Pilih pemeriksa ${i + 1}`} style={{...sty.input,gridColumn:"1 / -1"}} value={t.userId || ""} onChange={e=>{
                   const selected = baForm.examinerCandidates.find(user=>String(user.id)===String(e.target.value));
                   setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?(selected ? normalizeStockOpnamePerson(selected, f.identity?.uptId) : {...x,userId:null}):x)}));
                 }}>
@@ -1684,6 +1686,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                   onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,name:e.target.value,userId:null}:x)}))}/>
                 <input style={{...sty.input,flex:1}} placeholder="Jabatan" value={t.position}
                   onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,position:e.target.value,userId:null}:x)}))}/>
+                </div>
               </div>
             ))}
 
