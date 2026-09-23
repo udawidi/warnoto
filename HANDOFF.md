@@ -71,7 +71,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Persistensi draft seluruh TUG aktif di production (2026-09-23).** Draft TUG-3/5/7/8/9/10 kini database-first, nomor resmi baru diterbitkan saat Ajukan, konflik lintas perangkat ditolak dengan version check, dan derivasi TUG-5→TUG-7, TUG-5 ULTG→TUG-9, serta TUG-7→TUG-8 berjalan atomik tanpa orphan. Scope UPT/UIT/ULTG diturunkan server-side dari master. Migration `20260923_tug_workflow_persistence.sql` sudah diterapkan setelah backup valid; verifier production 13/13, 413 unit test, build, dan diff-check lulus. Frontend menunggu push/deploy dan smoke akun nyata.
+- **Persistensi draft seluruh TUG aktif di production (2026-09-23, `cead2c3`).** Draft TUG-3/5/7/8/9/10 kini database-first, nomor resmi baru diterbitkan saat Ajukan, konflik lintas perangkat ditolak dengan version check, dan derivasi TUG-5→TUG-7, TUG-5 ULTG→TUG-9, serta TUG-7→TUG-8 berjalan atomik tanpa orphan. Scope UPT/UIT/ULTG diturunkan server-side dari master. Migration `20260923_tug_workflow_persistence.sql` sudah diterapkan setelah backup valid; verifier production 13/13, 413 unit test, build, dan diff-check lulus. Frontend versi `2.0.124` sudah terverifikasi live; smoke akun nyata tetap perlu dilakukan.
 
 - **Aturan rekonsiliasi Stock Opname aktif di production (2026-09-23).** Migration `20260922_stock_opname_approval_fail_closed.sql` diterapkan atomik dan 11 pemeriksaan verifier lulus. Backfill satu opname SAP UPT-SBY (`OPN-1789716010889-vbtw6`) memperbarui baseline 198 katalog pada 208 baris stok tanpa mengubah qty aktif atau dokumen opname; hash dokumen sebelum/sesudah tetap `b5021da755ef28165fc7b8df13b2237a`. Katalog `1002070769` terverifikasi WARNOTO 5 dan baseline SAP 8. Backup valid: `/home/admin_warnoto/vps-backup/dumps/pre-opname-backfill-20260923-codex.dump`; preview sebelum/sesudah tersimpan di folder yang sama. Verifikasi lokal: 402/402 unit test, build, dan diff-check lulus. Perubahan kode belum commit/push; smoke approval akun Asman nyata masih perlu dilakukan setelah deploy frontend.
 
@@ -780,4 +780,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-09-23 Codex: **Approval fail-closed dan baseline SAP Stock Opname aktif di production; backup, migration, verifier, backfill, serta pemeriksaan hash/qty lulus. Frontend belum commit/push.**
-- 2026-09-23 Codex: **Persistensi draft seluruh TUG dan derivasi parent-child atomik diterapkan ke production; backup, verifier 13/13, 413 unit test, serta build lulus. Frontend menunggu deploy dan smoke akun nyata.**
+- 2026-09-23 Codex: **Persistensi draft seluruh TUG dan derivasi parent-child atomik diterapkan ke production; backup, verifier 13/13, 413 unit test, build, push `cead2c3`, dan deploy `2.0.124` lulus. Smoke akun nyata masih perlu dilakukan.**

@@ -21,6 +21,7 @@ Jalankan verifier SQL read-only dan pastikan semua nilai bernilai `1`.
 - `npm run build`: berhasil.
 - Migration diterapkan ke production self-host setelah backup valid dibuat di `/home/admin_warnoto/vps-backup/dumps/pre-tug-workflow-20260923-codex.dump`.
 - Verifier SQL runtime dijalankan dalam transaksi read-only yang di-rollback; 13 dari 13 pemeriksaan bernilai `1`.
+- Commit `cead2c3` sudah dipush ke `main`; frontend production versi `2.0.124` terverifikasi aktif di `pln.warnoto.com`.
 
 ## Skenario lintas perangkat
 
