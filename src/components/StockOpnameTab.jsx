@@ -1646,7 +1646,43 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       )}
 
-      {/* Fase F: metadata resmi disimpan di JSON sesi sebelum popup diisi. */}
+      {/* Panel analisa — muncul di halaman yang sama, di bawah dropzone (bukan pindah layar) */}
+      {renderPanel()}
+
+      {/* Pending approval cards */}
+      {pendingForMe.map(opn=>(
+        <div key={opn.id} style={{...sty.card,borderLeft:`4px solid #f59e0b`,marginBottom:12}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:4}}>⏳ Menunggu Approval Kamu ({ROLES[currentUser.role]})</div>
+          <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>Opname {opn.semester} — {opn.jenisAlur}</div>
+          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
+            {opn.items?.length||0} item • Selisih: {opn.items?.filter(i=>i.selisih!==0).length||0} item
+          </div>
+          {rejectingId===opn.id
+            ? <div style={{display:"flex",gap:8}}>
+                <input style={{...sty.input,flex:1}} placeholder="Alasan penolakan (wajib)..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
+                <div className="approval-actions">
+                  <button className="approval-btn--danger" onClick={()=>{rejectOpname(opn,rejectReason);setRejectingId(null);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
+                  <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
+                </div>
+              </div>
+            : <div className="opname-pending-actions" style={{display:"flex",gap:8}}>
+                <button style={sty.btn("ghost","sm")} onClick={()=>{reviewSelisihRef.current=true;setActiveOpname(opn);setFilterSelisihOnly(true);setPage(0);}}>🔍 Review Detail (Selisih)</button>
+                <div className="approval-actions">
+                  <button className="approval-btn--approve" onClick={()=>setReviewApproval(opn)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Periksa &amp; Setujui</button>
+                  <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
+                </div>
+              </div>}
+        </div>
+      ))}
+
+      <StockOpnameApprovalReview opn={reviewApproval} C={C} sty={sty} users={users} lokasiList={lokasiList}
+        onApprove={approveOpname_Asman} onClose={()=>setReviewApproval(null)} />
+      {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
+      </div>
+
+      {/* Fase F: metadata resmi disimpan di JSON sesi sebelum popup diisi. Sengaja di LUAR
+          div showWork/showHistory — dipicu tombol dari dua tempat (panel kerja & Riwayat),
+          kalau nempel di salah satu div bakal ikut display:none saat tab satunya aktif. */}
       {baPrintOpn && baForm && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:12}}>
             <div style={{...sty.card,width:460,maxWidth:"100%",maxHeight:"92vh",overflowY:"auto"}}>
@@ -1708,39 +1744,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       )}
 
-      {/* Panel analisa — muncul di halaman yang sama, di bawah dropzone (bukan pindah layar) */}
-      {renderPanel()}
-
-      {/* Pending approval cards */}
-      {pendingForMe.map(opn=>(
-        <div key={opn.id} style={{...sty.card,borderLeft:`4px solid #f59e0b`,marginBottom:12}}>
-          <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:4}}>⏳ Menunggu Approval Kamu ({ROLES[currentUser.role]})</div>
-          <div style={{fontWeight:800,fontSize:13,marginBottom:2}}>Opname {opn.semester} — {opn.jenisAlur}</div>
-          <div style={{fontSize:12,color:C.muted,marginBottom:10}}>
-            {opn.items?.length||0} item • Selisih: {opn.items?.filter(i=>i.selisih!==0).length||0} item
-          </div>
-          {rejectingId===opn.id
-            ? <div style={{display:"flex",gap:8}}>
-                <input style={{...sty.input,flex:1}} placeholder="Alasan penolakan (wajib)..." value={rejectReason} onChange={e=>setRejectReason(e.target.value)}/>
-                <div className="approval-actions">
-                  <button className="approval-btn--danger" onClick={()=>{rejectOpname(opn,rejectReason);setRejectingId(null);setRejectReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button>
-                  <button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button>
-                </div>
-              </div>
-            : <div className="opname-pending-actions" style={{display:"flex",gap:8}}>
-                <button style={sty.btn("ghost","sm")} onClick={()=>{reviewSelisihRef.current=true;setActiveOpname(opn);setFilterSelisihOnly(true);setPage(0);}}>🔍 Review Detail (Selisih)</button>
-                <div className="approval-actions">
-                  <button className="approval-btn--approve" onClick={()=>setReviewApproval(opn)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Periksa &amp; Setujui</button>
-                  <button className="approval-btn--reject" onClick={()=>setRejectingId(opn.id)}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button>
-                </div>
-              </div>}
-        </div>
-      ))}
-
-      <StockOpnameApprovalReview opn={reviewApproval} C={C} sty={sty} users={users} lokasiList={lokasiList}
-        onApprove={approveOpname_Asman} onClose={()=>setReviewApproval(null)} />
-      {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
-      </div>
       <div className="inventory-assurance-history" style={{display:showHistory?"block":"none"}}>
       <div style={{borderTop:`1px solid ${C.border}`,marginTop:24,paddingTop:16,marginBottom:10}}>
         <div className="inventory-assurance-history__title">Riwayat Opname</div>
