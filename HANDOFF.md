@@ -71,6 +71,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Persistensi draft seluruh TUG aktif di production (2026-09-23).** Draft TUG-3/5/7/8/9/10 kini database-first, nomor resmi baru diterbitkan saat Ajukan, konflik lintas perangkat ditolak dengan version check, dan derivasi TUG-5→TUG-7, TUG-5 ULTG→TUG-9, serta TUG-7→TUG-8 berjalan atomik tanpa orphan. Scope UPT/UIT/ULTG diturunkan server-side dari master. Migration `20260923_tug_workflow_persistence.sql` sudah diterapkan setelah backup valid; verifier production 13/13, 413 unit test, build, dan diff-check lulus. Frontend menunggu push/deploy dan smoke akun nyata.
+
 - **Aturan rekonsiliasi Stock Opname aktif di production (2026-09-23).** Migration `20260922_stock_opname_approval_fail_closed.sql` diterapkan atomik dan 11 pemeriksaan verifier lulus. Backfill satu opname SAP UPT-SBY (`OPN-1789716010889-vbtw6`) memperbarui baseline 198 katalog pada 208 baris stok tanpa mengubah qty aktif atau dokumen opname; hash dokumen sebelum/sesudah tetap `b5021da755ef28165fc7b8df13b2237a`. Katalog `1002070769` terverifikasi WARNOTO 5 dan baseline SAP 8. Backup valid: `/home/admin_warnoto/vps-backup/dumps/pre-opname-backfill-20260923-codex.dump`; preview sebelum/sesudah tersimpan di folder yang sama. Verifikasi lokal: 402/402 unit test, build, dan diff-check lulus. Perubahan kode belum commit/push; smoke approval akun Asman nyata masih perlu dilakukan setelah deploy frontend.
 
 - **Foto Stock Opname opsional dan pemulihan bootstrap localhost selesai (2026-09-22; aturan foto direvisi 2026-09-23).** Foto yang diisi tetap diunggah ke self-host dan dapat memperbarui foto Data Stok serta tanggal opname Kartu Gantung, tetapi foto kosong tidak memblokir submit. Backup RPC lama tetap tersedia di `/home/admin_warnoto/manual-backups/warnoto-pre-stock-opname-asman-rpc-20260922.dump`.
@@ -633,6 +635,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy, smoke draft lintas perangkat untuk TUG-3/5/7/8/9/10; pastikan nomor baru muncul hanya saat Ajukan, konflik versi tampil jelas, dan tiga derivasi parent-child tidak menggandakan draft.
 - Smoke production memakai akun nyata: Admin isi qty+foto, submit, Asman approve, Data Stok menerima foto terbaru, dan Kartu Gantung menyimpan tanggal opname.
 - Setelah Vercel selesai deploy dari `main`, reload bersih akun Fajar dan pastikan sidebar berubah ke `Cloud Storage Aktif` tanpa warning cloud.
 - TL UPT Surabaya mencatat plat sebagai delapan aset individual `PB-SBY-01` sampai `PB-SBY-08`, memilih gudang/lokasi aktual, dan membiarkan akses lintas-UPT nonaktif kecuali memang boleh dipinjam UPT lain. Jangan membuat lokasi atau nomor seri tebakan.
@@ -749,7 +752,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** Tidak ada blocker teknis Stock Opname. Smoke approval penuh memakai akun Asman nyata setelah deploy frontend serta verifikasi browser production untuk alokasi stok lama, saldo per sumber, dan lifecycle MTU tetap perlu dilakukan.
+**Blocker:** Tidak ada blocker teknis. Smoke akun nyata setelah deploy masih diperlukan untuk persistensi draft TUG, approval Stock Opname, alokasi stok lama, saldo per sumber, dan lifecycle MTU.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
@@ -776,5 +779,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-22 Codex: **Guard foto dan RPC approval Asman Stock Opname sudah aktif di production; verifier, smoke rollback, test fokus, dan build lulus. Smoke approval akun nyata masih perlu dilakukan.**
 - 2026-09-23 Codex: **Approval fail-closed dan baseline SAP Stock Opname aktif di production; backup, migration, verifier, backfill, serta pemeriksaan hash/qty lulus. Frontend belum commit/push.**
+- 2026-09-23 Codex: **Persistensi draft seluruh TUG dan derivasi parent-child atomik diterapkan ke production; backup, verifier 13/13, 413 unit test, serta build lulus. Frontend menunggu deploy dan smoke akun nyata.**

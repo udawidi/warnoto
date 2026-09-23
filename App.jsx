@@ -119,6 +119,7 @@ import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
 import { loadTug10Transactions, upsertTug10Transaction } from "./src/lib/tug10Sync.js";
+import { loadTugWorkflowTransactions, mergeWorkflowServerWins, migrateLegacyWorkflowDrafts, isWorkflowDoc } from "./src/lib/tugWorkflowSync.js";
 import { readTugRoute, writeTugRoute, TUG_ROUTE_DEFAULTS, TUG_ROUTE_OPTIONS } from "./src/lib/tugRoute.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
@@ -841,6 +842,9 @@ export default function PLNWarehouse() {
       const tug10LoadPromise = bootstrapLoad(loadTug10Transactions(), "bootstrap TUG10")
         .then(value => value || { unavailable:true, rows:[] });
       tug10LoadPromise.catch(() => {});
+      const tugWorkflowLoadPromise = bootstrapLoad(loadTugWorkflowTransactions(), "bootstrap TUG workflow")
+        .then(value => value || { unavailable:true, rows:[] });
+      tugWorkflowLoadPromise.catch(() => {});
       const materialCadangStateLoadPromise = bootstrapLoad(
         supabase?.from("material_cadang_state").select("upt_id,uit_id,data,health,ai"),
         "bootstrap material cadang",
@@ -976,10 +980,24 @@ export default function PLNWarehouse() {
         // TUG-10 (barang kembali/retur) — sumber kebenaran tabel `tug10_transactions`
         // sejak migrasi persistensi ini. Pola sama persis lapisan tug3 di atas.
         const tug10Load = await tug10LoadPromise;
-        setTxns(tug10Load.unavailable ? withTug3 : [
+        const withTug10 = tug10Load.unavailable ? withTug3 : [
           ...withTug3.filter(t => !t.canonical10 && !tug10Load.rows.some(r => r.id === t.id)),
           ...tug10Load.rows,
-        ]);
+        ];
+        const workflowLoad = await tugWorkflowLoadPromise;
+        if (workflowLoad.unavailable) {
+          setTxns(withTug10);
+        } else {
+          // Server wins for an existing id. Cache-only legacy drafts are uploaded
+          // additively; a failed upload remains visible locally but is never
+          // presented as durable.
+          const imported = await migrateLegacyWorkflowDrafts(withTug10, workflowLoad.rows);
+          const workflowRows = mergeWorkflowServerWins(imported.rows, withTug10);
+          setTxns([
+            ...withTug10.filter(t => !isWorkflowDoc(t)),
+            ...workflowRows,
+          ]);
+        }
       } catch (err) {
         console.warn("Canonical TUG load gagal; mempertahankan cache legacy tanpa menulis balik.", err);
         setTxns(legacyTxns);
@@ -2279,6 +2297,13 @@ export default function PLNWarehouse() {
       if (!alive || res.unavailable) return;
       setTxns(prev => [...prev.filter(t => !t.canonical10), ...res.rows]);
     }).catch(err => console.warn("Refresh TUG-10 gagal saat buka tab Approval.", err));
+    loadTugWorkflowTransactions().then(res => {
+      if (!alive || res.unavailable) return;
+      setTxns(prev => [
+        ...prev.filter(t => !isWorkflowDoc(t)),
+        ...mergeWorkflowServerWins(res.rows, prev),
+      ]);
+    }).catch(err => console.warn("Refresh TUG workflow gagal saat buka tab Approval.", err));
     return () => { alive = false; };
   }, [tab, currentUser]);
 

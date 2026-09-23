@@ -7,6 +7,7 @@ import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
 import { createAndSubmitCanonicalTug, amendCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
 import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js";
 import { upsertTug10Transaction, deleteTug10Transaction } from "../lib/tug10Sync.js";
+import { saveTugWorkflowTransaction, deleteTugWorkflowTransaction, issueTugWorkflowDocumentNumber, transitionTugWorkflowTransaction, isWorkflowDoc } from "../lib/tugWorkflowSync.js";
 import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 import { readTugRoute } from "../lib/tugRoute.js";
@@ -294,6 +295,9 @@ export function useTugTransactions({
     const isTLAmendEdit = !!editingDraftTxnId && hasRole(currentUser, "TL", "SUPERADMIN");
     if (!can(currentUser, "aksi.buatTransaksi", rolePerms) && !canCreateULTG && !isOwnerEdit && !isTLAmendEdit) { showToast("Role kamu tidak dapat mengajukan transaksi!","error"); return; }
     const docType = txnForm.docType;
+    // Footer Save Draft is also used while repairing a pending TUG-3. Keep the
+    // server approval stage; only a new row may enter DRAFT.
+    if (docType === "TUG3" && targetStage === "DRAFT" && editingTxnRef.current?.stage === "PENDING_TL") targetStage = "PENDING_TL";
 
     if (docType !== "TUG3" && docType !== "TUG10") {
       if (!txnForm.namaPekerjaan.trim()) { showToast("Nama Pekerjaan wajib diisi!","error"); return; }
@@ -302,6 +306,19 @@ export function useTugTransactions({
 
     if (docType === "TUG9" || docType === "TUG8") {
       if (targetStage === "DRAFT") {
+        // Existing canonical PENDING_TL/PENDING_ASMAN rows are edited in-place.
+        // Saving from the footer must not demote their server stage to DRAFT;
+        // the next Ajukan action continues the same approval stage.
+        if (editingDraftTxnId && editingTxnRef.current?.canonical) {
+          const res = await amendCanonicalTug({ txn: editingTxnRef.current, formData: { ...txnForm }, currentUser });
+          if (res.unavailable || !res.data) { showToast("Perubahan TUG-8/TUG-9 gagal disimpan ke database.", "error"); return; }
+          const preserved = { ...editingTxnRef.current, ...txnForm, stage: editingTxnRef.current.stage, status: editingTxnRef.current.status, canonical: true, canonicalVersion: res.data.version };
+          const preservedTxns = txns.map(t => t.id === editingDraftTxnId ? preserved : t);
+          setTxns(preservedTxns); setTxnModal(false); setEditingDraftTxnId(null); editingTxnRef.current = null;
+          await saveToCloud({ txns: preservedTxns });
+          showToast("Perubahan disimpan. Tahap persetujuan tetap sama; lanjutkan dengan Ajukan saat siap.");
+          return;
+        }
         // Draft: simpan apa adanya (boleh belum lengkap) ke blob lokal, TIDAK ke server
         // canonical — pola sama draft TUG-3/10.
         await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
@@ -381,6 +398,10 @@ export function useTugTransactions({
     }
 
     if (docType === "TUG5" && txnForm.sourceType === "ULTG") {
+      if (targetStage === "DRAFT") {
+        await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
+        return;
+      }
       if (!txnForm.ultgId) { showToast("Unit ULTG kamu tidak terdeteksi. Hubungi Admin.","error"); return; }
       const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
@@ -389,6 +410,10 @@ export function useTugTransactions({
     }
 
     if (docType === "TUG5") {
+      if (targetStage === "DRAFT") {
+        await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
+        return;
+      }
       if (!txnForm.uitId) { showToast("Pilih UIT tujuan (Kepada)!","error"); return; }
       const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
@@ -446,10 +471,48 @@ export function useTugTransactions({
         canonical: false,
         createdBy: replacedDraft98?.createdBy ?? currentUser.id, createdAt: replacedDraft98?.createdAt ?? Date.now(),
       };
+      const workflowSave98 = await saveTugWorkflowTransaction(nt98, { expectedVersion: replacedDraft98?.workflowVersion ?? null });
+      if (!workflowSave98.ok) {
+        if (workflowSave98.conflict) showToast("Draft sudah diubah dari perangkat lain. Muat ulang sebelum menyimpan.", "error");
+        else showToast("Draft TUG-8/TUG-9 gagal disimpan ke database. Perubahan tidak dianggap permanen.", "error");
+        return;
+      }
+      nt98.workflow = true;
+      nt98.workflowVersion = workflowSave98.result?.version ?? 1;
       const newTxns98 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt98 : t) : [...txns, nt98];
       setTxns(newTxns98); setTxnModal(false); setEditingDraftTxnId(null);
       await saveToCloud({txns: newTxns98});
       showToast(`💾 Draft ${docType.replace("TUG","TUG-")} disimpan. Lengkapi lalu ajukan saat siap.`);
+      return;
+    }
+
+    if (docType === "TUG5" && targetStage === "DRAFT") {
+      const replacedDraft5 = replaceDraftId ? txns.find(t => t.id === replaceDraftId) : null;
+      const nt5Draft = {
+        id: replacedDraft5?.id || txnId,
+        docType,
+        docSeq: null,
+        docNumbers: {},
+        ...formData,
+        uptId: formData.uptId || currentUser?.uptId || currentUserUptId || null,
+        stage: "DRAFT",
+        status: "DRAFT",
+        requiredApprover: null,
+        createdBy: replacedDraft5?.createdBy ?? currentUser.id,
+        createdAt: replacedDraft5?.createdAt ?? Date.now(),
+      };
+      const workflowSave5 = await saveTugWorkflowTransaction(nt5Draft, { expectedVersion: replacedDraft5?.workflowVersion ?? null });
+      if (!workflowSave5.ok) {
+        if (workflowSave5.conflict) showToast("Draft sudah diubah dari perangkat lain. Muat ulang sebelum menyimpan.", "error");
+        else showToast("Draft TUG-5 gagal disimpan ke database. Perubahan tidak dianggap permanen.", "error");
+        return;
+      }
+      nt5Draft.workflow = true;
+      nt5Draft.workflowVersion = workflowSave5.result?.version ?? 1;
+      const newTxns5Draft = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5Draft : t) : [...txns, nt5Draft];
+      setTxns(newTxns5Draft); setTxnModal(false); setEditingDraftTxnId(null);
+      await saveToCloud({ txns: newTxns5Draft });
+      showToast("Draft TUG-5 disimpan di database. Bisa dilanjutkan dari perangkat lain.");
       return;
     }
 
@@ -504,7 +567,29 @@ export function useTugTransactions({
         rejectedBy: null, rejectedAt: null, rejectReason: null,
         createdBy: replacedDraft5u?.createdBy ?? currentUser.id, createdAt: replacedDraft5u?.createdAt ?? Date.now(),
       };
-      const newTxnsU = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5u : t) : [...txns, nt5u];
+      const nt5uPersist = isEditInPlace5u ? nt5u : { ...nt5u, docSeq: null, docNumbers: {} };
+      const workflowSave5u = replacedDraft5u?.workflow &&
+        (replacedDraft5u.stage !== nt5uPersist.stage || replacedDraft5u.status !== nt5uPersist.status)
+        ? await transitionTugWorkflowTransaction(
+          nt5uPersist.id,
+          replacedDraft5u.workflowVersion,
+          nt5uPersist.stage,
+          nt5uPersist.status,
+          nt5uPersist,
+        )
+        : await saveTugWorkflowTransaction(nt5uPersist, { expectedVersion: replacedDraft5u?.workflowVersion ?? null });
+      if (!workflowSave5u.ok) {
+        showToast(workflowSave5u.conflict ? "TUG-5 sudah berubah dari perangkat lain. Muat ulang sebelum menyimpan." : "TUG-5 gagal disimpan ke database. Perubahan tidak dianggap permanen.", "error");
+        return;
+      }
+      let nt5uFinal = { ...nt5uPersist, workflow: true, workflowVersion: workflowSave5u.result?.version ?? 1 };
+      if (!isEditInPlace5u) {
+        const numberResult = await issueTugWorkflowDocumentNumber(nt5uFinal.id, nt5uFinal.workflowVersion, nt5uFinal.uptId);
+        if (!numberResult.ok) { showToast("Nomor TUG-5 gagal diterbitkan server. Draft tersimpan, silakan ajukan ulang.", "error"); return; }
+        nt5uFinal = { ...nt5uFinal, docSeq: numberResult.result?.docSequence ?? null, docNumbers: { tug5: numberResult.result?.docNumber || null }, workflowVersion: numberResult.result?.version ?? nt5uFinal.workflowVersion };
+      }
+      Object.assign(nt5u, nt5uFinal);
+      const newTxnsU = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5uFinal : t) : [...txns, nt5uFinal];
       const newSeqU = isEditInPlace5u ? docSeq : seq + 1;
       setTxns(newTxnsU); setDocSeq(newSeqU); setTxnModal(false); setEditingDraftTxnId(null);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
@@ -542,7 +627,29 @@ export function useTugTransactions({
         rejectedBy: null, rejectedAt: null, rejectReason: null,
         createdBy: replacedDraft5?.createdBy ?? currentUser.id, createdAt: replacedDraft5?.createdAt ?? Date.now(),
       };
-      const newTxns5 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5 : t) : [...txns, nt5];
+      const nt5Persist = isEditInPlace5 ? nt5 : { ...nt5, docSeq: null, docNumbers: {} };
+      const workflowSave5 = replacedDraft5?.workflow &&
+        (replacedDraft5.stage !== nt5Persist.stage || replacedDraft5.status !== nt5Persist.status)
+        ? await transitionTugWorkflowTransaction(
+          nt5Persist.id,
+          replacedDraft5.workflowVersion,
+          nt5Persist.stage,
+          nt5Persist.status,
+          nt5Persist,
+        )
+        : await saveTugWorkflowTransaction(nt5Persist, { expectedVersion: replacedDraft5?.workflowVersion ?? null });
+      if (!workflowSave5.ok) {
+        showToast(workflowSave5.conflict ? "TUG-5 sudah berubah dari perangkat lain. Muat ulang sebelum menyimpan." : "TUG-5 gagal disimpan ke database. Perubahan tidak dianggap permanen.", "error");
+        return;
+      }
+      let nt5Final = { ...nt5Persist, workflow: true, workflowVersion: workflowSave5.result?.version ?? 1 };
+      if (!isEditInPlace5) {
+        const numberResult = await issueTugWorkflowDocumentNumber(nt5Final.id, nt5Final.workflowVersion, nt5Final.uptId);
+        if (!numberResult.ok) { showToast("Nomor TUG-5 gagal diterbitkan server. Draft tersimpan, silakan ajukan ulang.", "error"); return; }
+        nt5Final = { ...nt5Final, docSeq: numberResult.result?.docSequence ?? null, docNumbers: { tug5: numberResult.result?.docNumber || null }, workflowVersion: numberResult.result?.version ?? nt5Final.workflowVersion };
+      }
+      Object.assign(nt5, nt5Final);
+      const newTxns5 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt5Final : t) : [...txns, nt5Final];
       const newSeq5 = isEditInPlace5 ? docSeq : seq + 1;
       setTxns(newTxns5); setDocSeq(newSeq5); setTxnModal(false); setEditingDraftTxnId(null);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
@@ -573,11 +680,12 @@ export function useTugTransactions({
       // nomor (disimpan sebelumnya), pertahankan — jangan generate nomor baru tiap edit.
       const hasExistingDraftDocs = !!replacedDraft3?.docNumbers?.tug3;
       const keepExistingDocs = isEditInPlace || (isDraft3 && hasExistingDraftDocs);
+      const issueDocsNow = !isDraft3 || keepExistingDocs;
       const nt3 = {
         id: replacedDraft3?.id || txnId,
         docType,
-        docSeq: keepExistingDocs ? (replacedDraft3?.docSeq ?? null) : seq,
-        docNumbers: keepExistingDocs ? (replacedDraft3?.docNumbers || {}) : docNumbers,
+        docSeq: issueDocsNow ? (keepExistingDocs ? (replacedDraft3?.docSeq ?? null) : seq) : null,
+        docNumbers: issueDocsNow ? (keepExistingDocs ? (replacedDraft3?.docNumbers || {}) : docNumbers) : {},
         ...formData,
         // Fallback data-loss: draft lama (dibuat sebelum uptId disetel di openNewTxn) atau
         // formData yang lolos tanpa uptId — isi dari user saat ini supaya upsert DB tak gagal.
@@ -593,18 +701,16 @@ export function useTugTransactions({
       const newTxns3 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt3 : t) : [...txns, nt3];
       // Draft/edit-in-place tidak menambah nomor urut dokumen — nomor baru diberi saat
       // benar-benar diajukan, supaya draft yang dibatalkan tidak meninggalkan gap nomor.
-      const newSeq3 = keepExistingDocs ? docSeq : seq + 1;
+      const newSeq3 = issueDocsNow ? (keepExistingDocs ? docSeq : seq + 1) : docSeq;
+      if (!(await upsertTug3Transaction(nt3))) {
+        showToast("Gagal simpan TUG-3 ke database. Perubahan tidak dianggap permanen.", "error");
+        return;
+      }
       setTxns(newTxns3); setDocSeq(newSeq3); setTxnModal(false); setEditingDraftTxnId(null);
       setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
       await saveToCloud({txns: newTxns3, docSeq: newSeq3});
-      // DB (tug3_transactions) jadi sumber kebenaran saat load; blob tetap ditulis di atas
-      // sebagai jaring pengaman (dobel-tulis aman untuk sekarang). Gagal upsert DB tidak
-      // membatalkan transaksi yang sudah tersimpan di blob — cukup diberi tahu.
-      if (!(await upsertTug3Transaction(nt3))) {
-        showToast("⚠️ Gagal simpan ke database (transaksi belum tersimpan permanen) — cek koneksi & coba lagi.", "error");
-      }
       if (isDraft3) {
-        showToast(`💾 Draft ${nt3.docNumbers.tug3} disimpan. Lengkapi lalu ajukan ke TL saat siap.`);
+        showToast("💾 Draft TUG-3 disimpan (nomor belum diterbitkan). Lengkapi lalu ajukan ke TL saat siap.");
       } else if (isEditInPlace) {
         logAudit(currentUser, "UPDATE", "txns", nt3.docNumbers.tug3, { docType, jumlahBarang: (formData.stockItems||[]).length });
         showToast(`✏️ ${nt3.docNumbers.tug3} diperbarui. Masih menunggu approval TL Logistik.`);
@@ -628,6 +734,7 @@ export function useTugTransactions({
     // update in-place — pertahankan nomor dok & progress approval (pola sama TUG-3/5).
     const isEditInPlace10 = docType === "TUG10" && replacedDraft?.status === "PENDING";
     const keepExistingDocs10 = (isDraft10 || isEditInPlace10) && !!replacedDraft?.docNumbers?.[docKey];
+    const issueDocs10 = !isDraft10 || keepExistingDocs10;
     const nextTug10Stage = isDraft10
       ? "DRAFT"
       : isEditInPlace10
@@ -643,8 +750,8 @@ export function useTugTransactions({
       ...draftBase,
       id: replacedDraft?.id || txnId,
       docType,
-      docSeq: keepExistingDocs10 ? (replacedDraft?.docSeq ?? null) : seq,
-      docNumbers: keepExistingDocs10 ? (replacedDraft?.docNumbers || {}) : docNumbers,
+      docSeq: issueDocs10 ? (keepExistingDocs10 ? (replacedDraft?.docSeq ?? null) : seq) : null,
+      docNumbers: issueDocs10 ? (keepExistingDocs10 ? (replacedDraft?.docNumbers || {}) : docNumbers) : {},
       ...formData,
       // Fallback data-loss (pola sama TUG-3 nt3): draft lama/formData tanpa uptId → isi
       // dari user saat ini supaya upsert tug10_transactions tak ditolak (upt_id NOT NULL).
@@ -674,28 +781,26 @@ export function useTugTransactions({
         ? { ...t, adoptedTug9Id:txnId }
         : t.tug8DraftId === replaceDraftId ? { ...t, tug8DraftId:txnId } : t)
       : draftReplaced;
-    const newSeq = (canonicalSubmission && !canonicalSubmission.unavailable) || keepExistingDocs10 ? docSeq : seq + 1;
-    const previousTxns = txns;
-    const previousSeq = docSeq;
+    const newSeq = !issueDocs10 ? docSeq : ((canonicalSubmission && !canonicalSubmission.unavailable) || keepExistingDocs10 ? docSeq : seq + 1);
+    if (docType === "TUG10" && !(await upsertTug10Transaction(nt))) {
+      showToast("Gagal simpan TUG-10 ke database. Perubahan tidak dianggap permanen.", "error");
+      return;
+    }
     setTxns(newTxns); setDocSeq(newSeq); setTxnModal(false); setEditingDraftTxnId(null);
     setSavingInfo({ label: "Menyimpan data transaksi...", done: 0, total: 0 });
     const cacheSaved = await saveToCloud({txns: newTxns, docSeq: newSeq});
-    if (docType === "TUG10" && cacheSaved === false) {
-      setTxns(previousTxns); setDocSeq(previousSeq);
-      showToast("TUG-10 gagal disimpan ke cache. Perubahan dibatalkan; coba lagi.", "error");
-      return;
+    // Canonical promotion is the commit point. Remove the workflow draft only
+    // after canonical create+submit succeeded and the local snapshot is updated.
+    if (canonicalSubmission && !canonicalSubmission.unavailable && replacedDraft && isWorkflowDoc(replacedDraft)) {
+      const removed = await deleteTugWorkflowTransaction(replacedDraft.id, replacedDraft.workflowVersion);
+      if (!removed.ok) showToast("Transaksi resmi berhasil dibuat, tetapi draft workflow belum terhapus. Hubungi admin untuk rekonsiliasi.", "error");
     }
-    if (docType === "TUG10") {
-      if (!(await upsertTug10Transaction(nt))) {
-        setTxns(previousTxns); setDocSeq(previousSeq);
-        try { await saveToCloud({ txns: previousTxns, docSeq: previousSeq }); } catch {}
-        showToast("⚠️ Gagal simpan TUG-10 ke database (transaksi belum tersimpan permanen) — cek koneksi & coba lagi.", "error");
-        return;
-      }
+    if (docType === "TUG10" && cacheSaved === false) {
+      showToast("⚠️ TUG-10 sudah tersimpan di database, tetapi cache perangkat gagal diperbarui.", "info");
     }
     canonicalActionKeysRef.current = null;
     if (isDraft10) {
-      showToast(`💾 Draft ${nt.docNumbers[docKey]} disimpan. Lengkapi lalu ajukan saat siap.`);
+      showToast("💾 Draft TUG-10 disimpan (nomor belum diterbitkan). Lengkapi lalu ajukan saat siap.");
     } else if (isEditInPlace10) {
       logAudit(currentUser, "UPDATE", "txns", nt.docNumbers[docKey], { docType, jumlahBarang: (formData.stockItems||[]).length });
       showToast(`✏️ ${nt.docNumbers[docKey]} diperbarui. Masih menunggu approval.`);

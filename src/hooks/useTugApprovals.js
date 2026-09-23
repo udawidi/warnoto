@@ -12,6 +12,7 @@ import { loadMasterTable } from "../lib/masterSync.js";
 import { CLOUD } from "../lib/cloud.js";
 import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
 import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
+import { saveTugWorkflowTransaction, transitionTugWorkflowTransaction, transitionTugWorkflowWithChild, issueTugWorkflowDocumentNumber, deleteTugWorkflowTransaction, isWorkflowDoc } from "../lib/tugWorkflowSync.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -98,6 +99,19 @@ export function useTugApprovals({
   // Wrapper lokal — semua titik enqueue di hook ini otomatis dapat users/uptList
   // tanpa mengulang di tiap pemanggilan.
   const notify = (args) => enqueueTugNotif({ ...args, users, uptList });
+  const persistWorkflow = async (next, previous = null) => {
+    if (!isWorkflowDoc(next)) return next;
+    const expectedVersion = previous?.workflowVersion ?? next.workflowVersion ?? null;
+    const changedStage = !!previous && (next.stage !== previous.stage || next.status !== previous.status);
+    const result = changedStage
+      ? await transitionTugWorkflowTransaction(next.id, expectedVersion, next.stage, next.status, next)
+      : await saveTugWorkflowTransaction(next, { expectedVersion });
+    if (!result.ok) {
+      showToast(result.conflict ? "Data TUG sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Gagal menyimpan workflow TUG ke database.", "error");
+      return null;
+    }
+    return { ...next, workflow: true, workflowVersion: result.result?.version ?? next.workflowVersion ?? 1 };
+  };
   // ══════════════════════════════════════════════════════════════════
   // TUG-3 / TUG-4 — 2-stage approval chain on a single transaction:
   //   Stage 1: PENDING_TL    -> TL Logistik approves                -> MENUNGGU_TUG4
@@ -410,7 +424,9 @@ export function useTugApprovals({
   async function approveTUG5_Asman(txn) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menyetujui TUG-5 tahap ini.","error"); return; }
     if (txn.stage !== "PENDING_ASMAN") { showToast("TUG-5 ini tidak dalam tahap menunggu Asman.","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"PENDING_MANAGER", requiredApprover:"MANAGER", approvedByAsman:currentUser.id, approvedAtAsman:Date.now()} : t);
+    const changed = {...txn, stage:"PENDING_MANAGER", requiredApprover:"MANAGER", approvedByAsman:currentUser.id, approvedAtAsman:Date.now()};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"PENDING_MANAGER"});
@@ -419,7 +435,9 @@ export function useTugApprovals({
   async function rejectTUG5_Asman(txn, reason) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menolak TUG-5.","error"); return; }
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
+    const changed = {...txn, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug5, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug5} DITOLAK oleh Asman.`, "error");
@@ -430,13 +448,11 @@ export function useTugApprovals({
     if (txn.stage !== "PENDING_MANAGER") { showToast("TUG-5 ini tidak dalam tahap menunggu Manager.","error"); return; }
 
     if (txn.jenisTransfer === "INTRACOMPANY") {
-      // Auto-generate draft TUG-7 di level UIT
-      const seq = docSeq;
-      const docNumbers = generateDocNumbers(seq, Date.now());
+      // Auto-generate draft TUG-7 di level UIT. Parent + child commit atomik.
       const newTug7 = {
         id: `TUG7-` + uid().slice(-6),
         docType: "TUG7",
-        docSeq: seq, docNumbers,
+        docSeq: null, docNumbers: {},
         tug5Id: txn.id,
         tug5DocNo: txn.docNumbers.tug5,
         uitId: txn.uitId,
@@ -453,22 +469,21 @@ export function useTugApprovals({
         createdAt: Date.now(),
         unitPenerima: "UPT Surabaya",
       };
-      const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"APPROVED", status:"APPROVED", approvedByManager:currentUser.id, approvedAtManager:Date.now(), tug7Id:newTug7.id} : t);
-      const allTxns = [...newTxns, newTug7];
-      const newSeq = seq + 1;
-      setTxns(allTxns); setDocSeq(newSeq);
-      await saveToCloud({txns: allTxns, docSeq: newSeq});
-      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:newTug7.docNumbers.tug7});
+      const atomic = await transitionTugWorkflowWithChild({ action: "TUG5_MANAGER_APPROVE", parent: txn, child: newTug7 });
+      if (!atomic.ok) { showToast(atomic.conflict ? "TUG-5 sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Persetujuan TUG-5 gagal disimpan atomik.", "error"); return; }
+      const newTxns = txns.map(t => t.id===txn.id ? atomic.parent : t);
+      const allTxns = [...newTxns, atomic.child];
+      setTxns(allTxns);
+      await saveToCloud({txns: allTxns, docSeq});
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:atomic.child.id});
       showToast(`✅ ${txn.docNumbers.tug5} DISETUJUI! Draft TUG-7 otomatis dibuat untuk UIT. 📋`);
     } else {
       // INTERCOMPANY — generate draft TUG-5 UIT (untuk dikirim ke UIT lain)
-      const seq = docSeq;
-      const docNumbers = generateDocNumbers(seq, Date.now());
       const draftTug5UIT = {
         id: `TUG5UIT-` + uid().slice(-6),
         docType: "TUG5",
         docSubType: "UIT_INTERCOMPANY",
-        docSeq: seq, docNumbers,
+        docSeq: null, docNumbers: {},
         tug5UptId: txn.id, // referensi ke TUG-5 UPT asal
         uitId: txn.uitId,
         jenisTransfer: "INTERCOMPANY",
@@ -481,19 +496,22 @@ export function useTugApprovals({
         namaPekerjaan: txn.keteranganUmum||"Permintaan Intercompany",
         lokasiPekerjaan: "UIT-JBM",
       };
-      const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"APPROVED", status:"APPROVED", approvedByManager:currentUser.id, approvedAtManager:Date.now(), draftTug5UITId:draftTug5UIT.id} : t);
-      const allTxns = [...newTxns, draftTug5UIT];
-      const newSeq = seq + 1;
-      setTxns(allTxns); setDocSeq(newSeq);
-      await saveToCloud({txns: allTxns, docSeq: newSeq});
-      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:draftTug5UIT.docNumbers.tug5});
+      const atomic = await transitionTugWorkflowWithChild({ action: "TUG5_MANAGER_APPROVE", parent: txn, child: draftTug5UIT });
+      if (!atomic.ok) { showToast(atomic.conflict ? "TUG-5 sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Persetujuan TUG-5 gagal disimpan atomik.", "error"); return; }
+      const newTxns = txns.map(t => t.id===txn.id ? atomic.parent : t);
+      const allTxns = [...newTxns, atomic.child];
+      setTxns(allTxns);
+      await saveToCloud({txns: allTxns, docSeq});
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:atomic.child.id});
       showToast(`✅ ${txn.docNumbers.tug5} DISETUJUI! Draft TUG-5 UIT (Intercompany) dibuat — cetak & kirim manual ke UIT tujuan. 📄`);
     }
   }
   async function rejectTUG5_Manager(txn, reason) {
     if (!hasRole(currentUser, "MANAGER")) { showToast("Hanya Manager yang bisa menolak TUG-5.","error"); return; }
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
+    const changed = {...txn, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug5, {stage:"REJECTED", alasan:reason});
     showToast(`❌ ${txn.docNumbers.tug5} DITOLAK oleh Manager.`, "error");
@@ -511,7 +529,9 @@ export function useTugApprovals({
       if (txn.ultgId !== currentUser.ultgId) { showToast("Reservasi ini bukan dari unit ULTG kamu.","error"); return; }
     }
     if (txn.stage !== "PENDING_MGR_ULTG") { showToast("Reservasi ini tidak dalam tahap menunggu Manager ULTG.","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"APPROVED_ULTG", status:"APPROVED", approvedByMgrUltg:currentUser.id, approvedAtMgrUltg:Date.now()} : t);
+    const changed = {...txn, stage:"APPROVED_ULTG", status:"APPROVED", approvedByMgrUltg:currentUser.id, approvedAtMgrUltg:Date.now()};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED_ULTG"});
@@ -520,7 +540,9 @@ export function useTugApprovals({
   async function rejectTUG5_MgrULTG(txn, reason) {
     if (!hasRole(currentUser, "MGR_ULTG")) { showToast("Hanya Manager ULTG yang bisa menolak Reservasi ini.","error"); return; }
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
+    const changed = {...txn, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug5, {stage:"REJECTED", alasan:reason});
     showToast(`❌ Reservasi ${txn.docNumbers.tug5} DITOLAK oleh Manager ULTG.`, "error");
@@ -554,12 +576,14 @@ export function useTugApprovals({
       status: "DRAFT",
       createdBy: currentUser.id, createdAt: Date.now(),
     };
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, adoptedBy:currentUser.id, adoptedAt:Date.now(), adoptedTug9Id:draftTug9.id} : t);
-    const allTxns = [...newTxns, draftTug9];
+    const atomic = await transitionTugWorkflowWithChild({ action: "TUG5_ULTG_ADOPT", parent: txn, child: draftTug9 });
+    if (!atomic.ok) { showToast(atomic.conflict ? "Reservasi sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Adopsi TUG-5 gagal disimpan atomik.", "error"); return; }
+    const newTxns = txns.map(t => t.id===txn.id ? atomic.parent : t);
+    const allTxns = [...newTxns, atomic.child];
     setTxns(allTxns);
     await saveToCloud({txns: allTxns});
     showToast(`📋 Reservasi diadopsi! Draft TUG-9 dibuat — lengkapi & edit materialnya sebelum submit.`);
-    return draftTug9;
+    return atomic.child;
   }
   // Buka draft TUG-8/9 di form biasa. Nomor resmi hanya dibuat oleh RPC canonical
   // setelah seluruh data, stok, dan lampiran lolos validasi.
@@ -596,6 +620,10 @@ export function useTugApprovals({
   // jadi tidak ada baris server untuk dibersihkan) — pola sama deleteDraftTug3/10.
   async function deleteDraftTug9(txn) {
     if (txn.createdBy !== currentUser.id) { showToast("Tidak diizinkan menghapus transaksi ini.","error"); return; }
+    if (isWorkflowDoc(txn)) {
+      const deleted = await deleteTugWorkflowTransaction(txn.id, txn.workflowVersion);
+      if (!deleted.ok) { showToast(deleted.conflict ? "Draft sudah berubah dari perangkat lain. Muat ulang sebelum menghapus." : "Draft gagal dihapus dari database.", "error"); return; }
+    }
     const newTxns = txns.filter(t => t.id !== txn.id);
     setTxns(newTxns);
     await saveToCloud({ txns: newTxns });
@@ -611,10 +639,20 @@ export function useTugApprovals({
   async function submitTUG7_AdminUIT(txn, tug7Data) {
     if (!hasRole(currentUser, "ADMIN_UIT")) { showToast("Hanya Admin UIT yang bisa melengkapi TUG-7.","error"); return; }
     if (!tug7Data.uptPengirimId) { showToast("Pilih UPT Pengirim terlebih dahulu!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, ...tug7Data, stage:"PENDING_MGR_LOGISTIK", requiredApprover:"MGR_LOGISTIK_UIT", approvedByAdminUIT:currentUser.id, approvedAtAdminUIT:Date.now()} : t);
+    const changed = {...txn, ...tug7Data, stage:"PENDING_MGR_LOGISTIK", requiredApprover:"MGR_LOGISTIK_UIT", approvedByAdminUIT:currentUser.id, approvedAtAdminUIT:Date.now()};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const issued = await issueTugWorkflowDocumentNumber(persisted.id, persisted.workflowVersion, tug7Data.uptPengirimId);
+    if (!issued.ok) { showToast("Nomor TUG-7 gagal diterbitkan server. Workflow tetap tersimpan; coba ajukan ulang.", "error"); return; }
+    const persistedFinal = {
+      ...persisted,
+      docSeq: issued.result?.docSequence ?? null,
+      docNumbers: { ...(persisted.docNumbers || {}), tug7: issued.result?.docNumber || null },
+      workflowVersion: issued.result?.version ?? persisted.workflowVersion,
+    };
+    const newTxns = txns.map(t => t.id===txn.id ? persistedFinal : t);
     setTxns(newTxns);
     await saveToCloud({txns: newTxns});
-    showToast(`📋 TUG-7 ${txn.docNumbers.tug7} dilengkapi! Menunggu approval Manager Logistik UIT.`);
+    showToast(`📋 TUG-7 ${persistedFinal.docNumbers.tug7} dilengkapi! Menunggu approval Manager Logistik UIT.`);
   }
   async function approveTUG7_MgrLogistik(txn) {
     if (!hasRole(currentUser, "MGR_LOGISTIK_UIT")) { showToast("Hanya Manager Logistik UIT yang bisa menyetujui TUG-7.","error"); return; }
@@ -647,8 +685,10 @@ export function useTugApprovals({
       fotoKendaraan:null, fotoSimKtp:null, fotoSuratPengembalian:null, fotoMaterial:[],
       createdAt: Date.now(),
     };
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, stage:"APPROVED", status:"APPROVED", approvedByMgrLogistik:currentUser.id, approvedAtMgrLogistik:Date.now(), tug8DraftId:newTug8Draft.id} : t);
-    const allTxns = [...newTxns, newTug8Draft];
+    const atomic = await transitionTugWorkflowWithChild({ action: "TUG7_MGR_LOG_APPROVE", parent: txn, child: newTug8Draft });
+    if (!atomic.ok) { showToast(atomic.conflict ? "TUG-7 sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Persetujuan TUG-7 gagal disimpan atomik.", "error"); return; }
+    const newTxns = txns.map(t => t.id===txn.id ? atomic.parent : t);
+    const allTxns = [...newTxns, atomic.child];
     setTxns(allTxns);
     await saveToCloud({txns: allTxns});
     logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug7, {stage:"APPROVED", generated:"DRAFT_TUG8"});
@@ -657,7 +697,9 @@ export function useTugApprovals({
   async function rejectTUG7_MgrLogistik(txn, reason) {
     if (!hasRole(currentUser, "MGR_LOGISTIK_UIT")) { showToast("Hanya Manager Logistik UIT yang bisa menolak TUG-7.","error"); return; }
     if (!reason.trim()) { showToast("Masukkan alasan penolakan!","error"); return; }
-    const newTxns = txns.map(t => t.id===txn.id ? {...t, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason} : t);
+    const changed = {...txn, status:"REJECTED", stage:"REJECTED", rejectedBy:currentUser.id, rejectedAt:Date.now(), rejectReason:reason};
+    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
+    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
     setTxns(newTxns); await saveToCloud({txns: newTxns});
     logAudit(currentUser, "REJECT", txn.docType, txn.docNumbers.tug7, {stage:"REJECTED", alasan:reason});
     showToast(`❌ TUG-7 DITOLAK oleh Manager Logistik UIT.`, "error");

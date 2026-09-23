@@ -152,6 +152,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
               </>
             )}
             <div style={sty.stickyFooter}>
+              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>saveTxn("DRAFT")}>Simpan Draft</button>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTxnModal(false)}>Batal</button>
               <button style={{...sty.btn("primary"),flex:2}} onClick={saveTxn}>{txnForm.sourceType==="ULTG" ? "📋 Ajukan Reservasi" : "📋 Ajukan TUG-5"}</button>
             </div>
@@ -781,7 +782,7 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
 
             <div style={sty.stickyFooter}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setTxnModal(false);setEditingDraftTxnId(null);}}>Batal</button>
-              <button disabled={savingTxn} style={{...sty.btn("ghost"),flex:1,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn("DRAFT")}>💾 Simpan Draft</button>
+              <button disabled={savingTxn} style={{...sty.btn("ghost"),flex:1,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn(txnForm.stage==="PENDING_TL" ? "PENDING_TL" : "DRAFT")}>💾 {txnForm.stage==="PENDING_TL" ? "Simpan Perbaikan" : "Simpan Draft"}</button>
               <button disabled={savingTxn} style={{...sty.btn("primary"),flex:2,opacity:savingTxn?0.7:1}} onClick={()=>saveTxn("PENDING_TL")}>{savingTxn?"⏳ Menyimpan...":"📤 Ajukan TUG-3 Karantina"}</button>
             </div>
           </div>

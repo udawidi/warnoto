@@ -2484,6 +2484,42 @@ create trigger trg_validate_maturity_5s_photo_storage before insert on public.ma
 for each row execute function public.validate_maturity_5s_photo_storage();
 revoke all on function public.validate_maturity_5s_photo_storage() from public;
 grant execute on function public.validate_maturity_5s_photo_storage() to authenticated, service_role;
+-- Durable non-canonical TUG workflow and pre-canonical TUG-8/9 drafts
+-- (canonical definition lives in migration 20260923_tug_workflow_persistence.sql).
+create table if not exists public.tug_workflow_transactions (
+  id text primary key,
+  doc_type text not null check (doc_type in ('TUG5','TUG7','TUG8','TUG9')),
+  upt_id text,
+  uit_id text,
+  ultg_id text,
+  created_by uuid not null references public.profiles(id) on delete restrict,
+  stage text not null default 'DRAFT',
+  status text not null default 'DRAFT' check (status in ('DRAFT','PENDING','APPROVED','REJECTED','CANCELLED')),
+  doc_number text,
+  doc_sequence bigint,
+  version integer not null default 1 check (version > 0),
+  parent_workflow_id text references public.tug_workflow_transactions(id) on delete restrict,
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint tug_workflow_scope_one check (num_nonnulls(upt_id, uit_id) = 1),
+  constraint tug_workflow_draft_number check (status <> 'DRAFT' or doc_number is null or (data->>'legacyImport') = 'true'),
+  constraint tug_workflow_canonical_draft_only check (doc_type not in ('TUG8','TUG9') or status = 'DRAFT')
+);
+create index if not exists tug_workflow_scope_idx on public.tug_workflow_transactions (upt_id, uit_id, doc_type, status, updated_at desc);
+create index if not exists tug_workflow_creator_idx on public.tug_workflow_transactions (created_by, updated_at desc);
+create unique index if not exists tug_workflow_parent_unique_idx on public.tug_workflow_transactions (parent_workflow_id) where parent_workflow_id is not null;
+alter table public.tug_workflow_transactions enable row level security;
+drop policy if exists "Scoped read tug workflow" on public.tug_workflow_transactions;
+create policy "Scoped read tug workflow" on public.tug_workflow_transactions
+  for select to authenticated using (
+    public.can_access_upt(upt_id)
+    or exists (select 1 from public.profiles actor where actor.id=auth.uid() and actor.uit_id=tug_workflow_transactions.uit_id and actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT','SUPERADMIN','ADMIN_LOG_PUSAT'))
+    or exists (select 1 from public.profiles actor where actor.id=auth.uid() and actor.ultg_id=tug_workflow_transactions.ultg_id and actor.role in ('MGR_ULTG','SUPERADMIN','ADMIN_LOG_PUSAT'))
+  );
+revoke all on public.tug_workflow_transactions from anon, authenticated;
+grant select on public.tug_workflow_transactions to authenticated;
+
 notify pgrst, 'reload schema';
 
 
