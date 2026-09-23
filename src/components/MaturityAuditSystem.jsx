@@ -1905,16 +1905,22 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const handlePrintRecord = async record => {
     const w = window.open("", "_blank");
     if (!w) { setSaveError("Popup cetak diblokir browser."); return; }
-    w.document.write("<p style='font-family:Arial;padding:24px'>Memuat foto dan dokumen...</p>");
-    w.document.close();
+    // Render immediately. Awaiting private photo downloads before the first
+    // document write left the popup blank in browsers that discard a pending
+    // popup document while the async request is in flight.
+    const render = samplePhotos => {
+      if (w.closed) return;
+      const html = buildForm5SHTML({ ...record, samplePhotos }, users, uptList);
+      w.document.open(); w.document.write(html); w.document.close();
+    };
+    render(record.samplePhotos || []);
     const samplePhotosWithBytes = await Promise.all((record.samplePhotos || []).map(async (photo, index) => {
       try {
         const result = await downloadForm5SPhoto(record.id, index);
         return { ...photo, preview: URL.createObjectURL(result.blob), url: "" };
       } catch { return { ...photo, preview: "", url: "" }; }
     }));
-    const html = buildForm5SHTML({ ...record, samplePhotos: samplePhotosWithBytes }, users, uptList);
-    w.document.open(); w.document.write(html); w.document.close();
+    render(samplePhotosWithBytes);
   };
 
   const handlePrint = () => {

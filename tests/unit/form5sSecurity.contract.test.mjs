@@ -80,3 +80,12 @@ test("Form 5S history stays compact and photo source is chosen after one trigger
   assert.match(form, /onPrint\(item\)[\s\S]{0,80}>Cetak \/ PDF/);
   assert.doesNotMatch(form, /\{false &&/);
 });
+
+test("Form 5S history renders the print popup before async photo downloads", () => {
+  const printHandler = form.slice(form.indexOf("const handlePrintRecord = async record =>"), form.indexOf("const handlePrint = () =>"));
+  const initialRender = printHandler.indexOf("render(record.samplePhotos || [])");
+  const photoDownload = printHandler.indexOf("await Promise.all");
+  assert.ok(initialRender >= 0, "print handler must render the popup immediately");
+  assert.ok(photoDownload >= 0, "print handler must download photos asynchronously");
+  assert.ok(initialRender < photoDownload, "initial popup render must precede photo download");
+});
