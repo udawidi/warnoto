@@ -126,7 +126,7 @@ function dedupePeople(people) {
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 3);
+  });
 }
 
 export function resolveStockOpnameDocumentIdentity({ opn = {}, users = [], uptList = [], gudangList = [], currentUser = null, childList = [], selectedUptId = null } = {}) {

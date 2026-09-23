@@ -2010,7 +2010,7 @@ export function buildBeritaAcaraResmiHTML(opn, meta, { uptList } = {}) {
   const uptNama = resolveUptNama(opn.uptId, uptList);
   const gudangNama = opn.gudangKode || "-";
   const { hari, tgl } = fmtTglResmi(meta.tanggal);
-  const tim = (meta.tim || []).slice(0, 3);
+  const tim = (meta.tim || []);
   const managerLabel = `MANAGER ${uptNama.toUpperCase()}`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Berita Acara Stock Opname ${esc(opn.id)}</title>
@@ -2080,7 +2080,7 @@ export function buildTUG15HTML(opn, meta, { katalogList, uptList } = {}) {
   const { tgl } = fmtTglResmi(meta.tanggal);
   const isNonSap = opn.jenisAlur === "NON_SAP";
   const uptNama = resolveUptNama(opn.uptId, uptList);
-  const tim = (meta.tim || []).slice(0, 3);
+  const tim = (meta.tim || []);
   const managerLabel = `MANAGER ${uptNama.toUpperCase()}`;
 
   const groupOrder = ["Cadang", "Persediaan", "Pre Memory"];
@@ -2204,7 +2204,7 @@ export function buildStockOpnamePackageHTML(sapOpn, nonSapOpn, meta, { katalogLi
     ...meta,
     tanggal: meta?.tanggal || new Date().toISOString().slice(0, 10),
     pid: (meta?.pidRefs || []).join(", "),
-    tim: (meta?.examiners || meta?.tim || []).slice(0, 3).map(item => ({
+    tim: (meta?.examiners || meta?.tim || []).map(item => ({
       nama: item.nama || item.name || "",
       jabatan: item.jabatan || item.position || "",
     })),

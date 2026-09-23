@@ -892,9 +892,6 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 <input type="file" accept=".csv,.CSV,.xlsx,.XLSX,.xls" onChange={handleReplaceCSV} disabled={csvLoading} style={{display:"none"}}/>
               </label>
             )}
-            {isReadOnly && activeOpname.status==="SELESAI" && activeOpname.jenisAlur==="SAP" && (
-              <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(activeOpname)}>📄 Cetak BA + TUG-15</button>
-            )}
             {items.length>0 && (
               <button style={sty.btn("ghost","sm")} onClick={()=>downloadLembarHitungHTML(activeOpname, {lokasiList, gudangList,
                 filterGudangId: filterGudangId==="__NONE__"?null:(filterGudangId||null), filterLokasiId: filterLokasiId||null})}>
@@ -1416,6 +1413,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             {activeOpname.approvedByAsman && <div style={{fontSize:12,color:C.green}}>✅ Asman: {users.find(u=>u.id===activeOpname.approvedByAsman)?.name} • {fmtDate(activeOpname.approvedAtAsman)} {activeOpname.catatanAsman&&`— "${activeOpname.catatanAsman}"`}</div>}
             {activeOpname.approvedByManager && <div style={{fontSize:12,color:C.green,marginTop:4}}>✅ Manager: {users.find(u=>u.id===activeOpname.approvedByManager)?.name} • {fmtDate(activeOpname.approvedAtManager)} {activeOpname.catatanManager&&`— "${activeOpname.catatanManager}"`}</div>}
             {activeOpname.rejectReason && <div style={{fontSize:12,color:C.red,marginTop:4}}>❌ Ditolak: {activeOpname.rejectReason}</div>}
+            {activeOpname.status==="SELESAI" && activeOpname.jenisAlur==="SAP" && (
+              <button style={{...sty.btn("primary"),marginTop:12,width:"100%"}} onClick={()=>openBaPrintDialog(activeOpname)}>📄 Cetak BA + TUG-15</button>
+            )}
           </div>
         )}
 
@@ -1671,29 +1671,36 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
             <textarea style={{...sty.input,minHeight:54,marginBottom:10}} placeholder="Pisahkan dengan koma, titik koma, atau baris baru" value={baForm.pidRefsText} onChange={e=>setBaForm(f=>({...f,pidRefsText:e.target.value}))}/>
 
             <label style={{fontSize:12,fontWeight:700,display:"block",marginBottom:6}}>Tim Pemeriksa</label>
-            {baForm.examiners.map((t,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"24px minmax(0,1fr)",gap:8,marginBottom:10,alignItems:"start"}}>
+            {baForm.examiners.map((t,i)=>{
+              const listId = `examiner-candidates-${i}`;
+              return (
+              <div key={i} style={{display:"grid",gridTemplateColumns:"24px minmax(0,1fr) 24px",gap:8,marginBottom:10,alignItems:"start"}}>
                 <strong style={{fontSize:12,paddingTop:9,textAlign:"center",color:C.muted}}>{i + 1}</strong>
                 <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) minmax(0,1fr)",gap:8}}>
-                <select aria-label={`Pilih pemeriksa ${i + 1}`} style={{...sty.input,gridColumn:"1 / -1"}} value={t.userId || ""} onChange={e=>{
-                  const selected = baForm.examinerCandidates.find(user=>String(user.id)===String(e.target.value));
-                  setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?(selected ? normalizeStockOpnamePerson(selected, f.identity?.uptId) : {...x,userId:null}):x)}));
-                }}>
-                  <option value="">Manual</option>
-                  {baForm.examinerCandidates.map(user=><option key={user.id} value={user.id}>{user.name || user.nama || user.id}</option>)}
-                </select>
-                <input style={{...sty.input,flex:1}} placeholder={`Nama ${i+1}`} value={t.name}
-                  onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,name:e.target.value,userId:null}:x)}))}/>
+                <input list={listId} style={{...sty.input,flex:1}} placeholder={`Nama ${i+1}`} value={t.name}
+                  onChange={e=>{
+                    const value = e.target.value;
+                    const matched = baForm.examinerCandidates.find(user=>(user.name || user.nama || "").trim().toLowerCase() === value.trim().toLowerCase());
+                    setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?(matched ? normalizeStockOpnamePerson(matched, f.identity?.uptId) : {...x,name:value,userId:null}):x)}));
+                  }}/>
+                <datalist id={listId}>
+                  {baForm.examinerCandidates.map(user=><option key={user.id} value={user.name || user.nama || user.id}/>)}
+                </datalist>
                 <input style={{...sty.input,flex:1}} placeholder="Jabatan" value={t.position}
-                  onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,position:e.target.value,userId:null}:x)}))}/>
+                  onChange={e=>setBaForm(f=>({...f,examiners:f.examiners.map((x,xi)=>xi===i?{...x,position:e.target.value}:x)}))}/>
                 </div>
+                <button type="button" title="Hapus pemeriksa" aria-label={`Hapus pemeriksa ${i+1}`} style={{border:"none",background:"transparent",color:C.muted,cursor:"pointer",fontSize:14,paddingTop:8}}
+                  onClick={()=>setBaForm(f=>({...f,examiners:f.examiners.filter((_,xi)=>xi!==i)}))}>✕</button>
               </div>
-            ))}
+              );
+            })}
+            <button type="button" style={{...sty.btn("ghost","sm"),marginBottom:16}}
+              onClick={()=>setBaForm(f=>({...f,examiners:[...f.examiners,{userId:null,name:"",position:"",uptId:f.identity?.uptId||null}]}))}>+ Tambah Pemeriksa</button>
 
             <label style={{fontSize:12,fontWeight:600,display:"block",marginBottom:4}}>Manager UPT (read-only)</label>
             <input style={{...sty.input,marginBottom:16,background:C.surfaceMuted||"#f8fafc"}} readOnly value={baForm.manager?.name ? `${baForm.manager.name} — ${baForm.manager.position || "MANAGER"}` : "-"}/>
 
-            <div style={{display:"flex",gap:10}}>
+            <div style={{display:"flex",gap:10,position:"sticky",bottom:-1,background:"#fff",paddingTop:10,paddingBottom:2,marginTop:6,borderTop:`1px solid ${C.border}`}}>
               <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>{setBaPrintOpn(null);setBaForm(null);}}>Batal</button>
               <button style={{...sty.btn("primary"),flex:2,opacity:baForm.errors?.length||baForm.saving?0.55:1}} disabled={baForm.errors?.length>0||baForm.saving} onClick={cetakBaTug15}>{baForm.saving?"Menyimpan...":"🖨️ Cetak"}</button>
             </div>
@@ -1810,7 +1817,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       identity,
       manager: saved?.manager || identity.manager,
       examinerCandidates: candidates,
-      examiners: [...savedExaminers, ...Array(Math.max(0, 3 - savedExaminers.length)).fill(null)].slice(0, 3).map(person => normalizeStockOpnamePerson(person, identity.uptId) || { userId:null, name:"", position:"", uptId:identity.uptId }),
+      examiners: [...savedExaminers, ...Array(Math.max(0, 3 - savedExaminers.length)).fill(null)].map(person => normalizeStockOpnamePerson(person, identity.uptId) || { userId:null, name:"", position:"", uptId:identity.uptId }),
       pidRefsText: Array.isArray(saved?.pidRefs) ? saved.pidRefs.join(", ") : "",
       tanggal: saved?.tanggal || new Date(tglSrc).toISOString().slice(0,10),
       errors: identity.errors || [],
@@ -1824,7 +1831,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
     const identity = resolveStockOpnameDocumentIdentity({ opn:baPrintOpn, users, uptList, gudangList, currentUser, childList:opnameList, selectedUptId:selectedUptId || null });
     const candidates = (users || []).filter(user => String(user?.uptId || user?.upt_id || "") === String(identity.uptId || ""));
     const examiners = [...identity.examiners, ...Array(Math.max(0, 3 - identity.examiners.length)).fill(null)]
-      .slice(0, 3).map(person => normalizeStockOpnamePerson(person, identity.uptId) || { userId:null, name:"", position:"", uptId:identity.uptId });
+      .map(person => normalizeStockOpnamePerson(person, identity.uptId) || { userId:null, name:"", position:"", uptId:identity.uptId });
     setBaForm(form => ({...form, identity, manager:identity.manager, examinerCandidates:candidates, examiners, errors:identity.errors, childWarning:identity.childWarning}));
   }
 
