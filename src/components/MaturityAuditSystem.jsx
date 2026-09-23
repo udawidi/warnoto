@@ -353,6 +353,7 @@ export function MaturityAuditEditor({
   const canScoreUPT = isUPT && (status === "DRAFT" || status === "SELF_ASSESSMENT" || status === "REVISION");
   const canScoreUIT = isUIT && status === "REVIEW_UIT";
   const canScorePusat = isPusat && (status === "REVIEW_PUSAT" || status === "FINAL");
+  const maturityEvidenceLoading = Boolean(maturityAuditForm?._maturityEvidenceLoading);
   // Review paralel per-aspek: UIT boleh Check/Reject selama fase apa pun sebelum
   // audit dikirim ke Pusat — bukan hanya saat status sudah REVIEW_UIT.
   const canReviewUIT = isUIT && ["DRAFT", "SELF_ASSESSMENT", "REVISION", "REVIEW_UIT"].includes(status);
@@ -598,6 +599,7 @@ export function MaturityAuditEditor({
               <div style={{ display: "grid", gridTemplateColumns: (isMobile || isTablet) ? "1fr" : "minmax(0, 1fr) minmax(260px, 300px)", gap: 16, width: "100%", maxWidth: "100%" }}>
                 {/* Left Column */}
                 <div style={{ display: "flex", flexDirection: "column", gap: 12, minWidth: 0 }}>
+                  {maturityEvidenceLoading && <div role="status" style={{ padding: "10px 12px", borderRadius: 10, background: maturityAuditForm?._maturityEvidenceError ? "#fef2f2" : "#eff6ff", border: `1px solid ${maturityAuditForm?._maturityEvidenceError ? "#fecaca" : "#bfdbfe"}`, color: maturityAuditForm?._maturityEvidenceError ? "#b91c1c" : "#1d4ed8", fontSize: 13, fontWeight: 700 }}>{maturityAuditForm?._maturityEvidenceError ? "Evidence aktif gagal dimuat. Buka ulang audit untuk mencoba lagi." : "Memuat evidence canonical..."}</div>}
                   {/* Drive Banner */}
                   <div style={{
                     background: "linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)",
@@ -766,6 +768,7 @@ export function MaturityAuditEditor({
                                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt,.csv"
                                 multiple
                                 hidden
+                                disabled={maturityEvidenceLoading}
                                 onChange={async (e) => {
                                   const files = Array.from(e.target.files || []);
                                   if (files.length === 0) return;
@@ -836,14 +839,14 @@ export function MaturityAuditEditor({
                               {effectiveItemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
                             </div>
                             {canReviewUIT && isUploaded && (
-                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={(id, item, state, note) => setAspectReview(id, item, state, note, maturityWarehouseType)} disabled={maturityAuditSaving} isMobile={isMobile} state={effectiveItemReviewState} />
+                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={(id, item, state, note) => setAspectReview(id, item, state, note, maturityWarehouseType)} disabled={maturityAuditSaving || maturityEvidenceLoading} isMobile={isMobile} state={effectiveItemReviewState} />
                             )}
                           </div>
                         )}
 
                         {canScorePusat && isUploaded && !isAutoFilled && (
                           <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
-                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} value={itemReview?.finalScore ?? null} setAspectItemScore={(id, item, score) => setAspectItemScore(id, item, score, maturityWarehouseType)} disabled={maturityAuditSaving} isMobile={isMobile} />
+                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} value={itemReview?.finalScore ?? null} setAspectItemScore={(id, item, score) => setAspectItemScore(id, item, score, maturityWarehouseType)} disabled={maturityAuditSaving || maturityEvidenceLoading} isMobile={isMobile} />
                           </div>
                         )}
 
@@ -1018,7 +1021,7 @@ export function MaturityAuditEditor({
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
                       <span style={{ color: C.accent }}><Icons.Sparkles /></span>
                       <h4 style={{ fontSize: 13, fontWeight: 800, color: C.text, margin: 0, textTransform: "uppercase", letterSpacing: "0.5px" }}>Analisis AI</h4>
-                      <button type="button" disabled={!!aiAnalysisRunning[activeAspect.id] || aspectFiles.length === 0} onClick={() => runAspectAnalysis(activeAspect.id, { force: hasCurrentAi })} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: aiAnalysisRunning[activeAspect.id] || aspectFiles.length === 0 ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, color: C.text, opacity: aiAnalysisRunning[activeAspect.id] || aspectFiles.length === 0 ? 0.5 : 1 }}>{hasCurrentAi ? "🔄 Analisis ulang" : "✨ Analisa AI"}</button>
+                      <button type="button" disabled={maturityEvidenceLoading || !!aiAnalysisRunning[activeAspect.id] || aspectFiles.length === 0} onClick={() => runAspectAnalysis(activeAspect.id, { force: hasCurrentAi })} style={{ marginLeft: "auto", padding: "3px 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: maturityEvidenceLoading || aiAnalysisRunning[activeAspect.id] || aspectFiles.length === 0 ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, color: C.text, opacity: maturityEvidenceLoading || aiAnalysisRunning[activeAspect.id] || aspectFiles.length === 0 ? 0.5 : 1 }}>{hasCurrentAi ? "🔄 Analisis ulang" : "✨ Analisa AI"}</button>
                     </div>
                     {(() => {
                       const running = aiAnalysisRunning[activeAspect.id];
@@ -1429,14 +1432,14 @@ export function MaturityAuditEditor({
             {/* Action buttons — kelas approval-btn baku app-wide */}
             <div className="approval-actions" style={{ marginTop: 8, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
               {isEdit && audit.id && deleteMaturityAudit && hasRole(currentUser, "ADMIN", "SUPERADMIN", "TL") && (
-                <button className="approval-btn--danger" style={{ marginRight: "auto" }} onClick={() => deleteMaturityAudit(audit.id)}>Hapus Audit Ini</button>
+                <button className="approval-btn--danger" style={{ marginRight: "auto" }} disabled={maturityEvidenceLoading || maturityAuditSaving} onClick={() => deleteMaturityAudit(audit.id)}>Hapus Audit Ini</button>
               )}
               <button className="approval-btn--cancel" onClick={onRequestExit}>Batal</button>
               {canScoreUPT && (
-                <button className="approval-btn--cancel" disabled={maturityAuditSaving || hasActiveUpload} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
+                <button className="approval-btn--cancel" disabled={maturityEvidenceLoading || maturityAuditSaving || hasActiveUpload} onClick={() => saveMaturityAudit(audit, "DRAFT")}>Simpan Draft</button>
               )}
               {canScoreUPT && (
-                <button className="approval-btn--primary" disabled={maturityAuditSaving || hasActiveUpload} onClick={() => {
+                <button className="approval-btn--primary" disabled={maturityEvidenceLoading || maturityAuditSaving || hasActiveUpload} onClick={() => {
                   if (!allItemsChecked) {
                     askConfirmDelete?.({
                       title: "Masih Ada Item Belum Di-Check",
@@ -1470,12 +1473,12 @@ export function MaturityAuditEditor({
               {canReviewUIT && (
                 // Lempar-balik keseluruhan ke UPT — review per-item tetap tersimpan di tabel terpisah.
                 // Submit ke Pusat sekarang dipicu UPT (tombol di atas), bukan UIT.
-                <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
+                <button className="approval-btn--reject" disabled={maturityEvidenceLoading || maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
               )}
               {canScorePusat && (
                 <>
-                  <button className="approval-btn--reject" disabled={maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
-                  <button className="approval-btn--approve" disabled={maturityAuditSaving || !allItemsScored || !allItemsChecked || !evidenceComplete || !form5SSavedThisMonth} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
+                  <button className="approval-btn--reject" disabled={maturityEvidenceLoading || maturityAuditSaving} onClick={() => saveMaturityAudit(audit, "REVISION")}>Ajukan Revisi</button>
+                  <button className="approval-btn--approve" disabled={maturityEvidenceLoading || maturityAuditSaving || !allItemsScored || !allItemsChecked || !evidenceComplete || !form5SSavedThisMonth} onClick={() => saveMaturityAudit(audit, "FINAL")}>Finalisasi & Simpan</button>
                 </>
               )}
               {canScorePusat && (!allItemsScored || !allItemsChecked || !evidenceComplete) && (

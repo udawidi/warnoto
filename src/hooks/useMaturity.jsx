@@ -12,14 +12,14 @@ import {
   loadAspectReviews, upsertAspectReview, updateMaturityAuditHistoryTarget,
 } from "../lib/maturitySync.js";
 import { buildMaturitySheet } from "../lib/maturitySheetExport.js";
-import { exportMaturitySheet } from "../lib/maturityDrive.js";
+import { exportMaturitySheet, loadMaturityDriveEvidence } from "../lib/maturityDrive.js";
 import { MATURITY_AI_ANALYSIS_VERSION, hashAspectSnapshot } from "../lib/maturityAi.js";
 import {
   MATURITY_WAREHOUSE_TYPES, MATURITY_SHARED_ASPECTS,
   createMaturityWarehouseAssessments, normalizeMaturityAudit,
   calculateMaturityDualScore, maturityAspectKey, isMaturityAspectApplicable,
   countCompletedEvidenceParents, countRequiredEvidenceUnits,
-  canonicalMaturityItemId, maturityItemIdsForReview, selectedMaturityRequiredItems,
+  canonicalMaturityItemId, maturityItemIdsForReview, selectedMaturityRequiredItems, reconcileMaturityAuditEvidence,
 } from "../lib/maturityWarehouse.js";
 import { maturityUptOptions as getMaturityUptOptions } from "../lib/maturityUit.js";
 
@@ -99,6 +99,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   const [maturityAuditForm, setMaturityAuditForm] = useState({ aspekScores:{}, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments: createMaturityWarehouseAssessments() });
   const maturityAuditFormRef = useRef(maturityAuditForm);
   maturityAuditFormRef.current = maturityAuditForm;
+  const maturityEvidenceRequestRef = useRef(0);
   const [maturityWarehouseType, setMaturityWarehouseTypeState] = useState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
   const maturityWarehouseTypeRef = useRef(maturityWarehouseType);
   maturityWarehouseTypeRef.current = maturityWarehouseType;
@@ -338,6 +339,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       showToast(`⚠️ UPT ini sudah punya audit bulan ini (dibuat ${fmtDateOnly(existingAudit.createdAt)}). Audit baru cuma bisa dibuat 1x per bulan.`, "error");
       return;
     }
+    maturityEvidenceRequestRef.current += 1;
     const warehouseAssessments = createMaturityWarehouseAssessments();
     Object.keys(warehouseAssessments).forEach(type => AUDIT_ASPECTS.forEach(a => {
       if (type === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN || ["3.4", "3.5", "3.6", "3.7", "4.3", "4.4", "5.2", "5.4"].includes(a.id)) {
@@ -360,13 +362,15 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setMaturitySubTab("pelaksanaan");
   }
   function openMaturityAudit(audit) {
+    const evidenceRequestId = ++maturityEvidenceRequestRef.current;
     const normalized = normalizeMaturityAudit(audit);
-    const assessments = JSON.parse(JSON.stringify(normalized.warehouseAssessments || createMaturityWarehouseAssessments()));
+    let assessments = reconcileMaturityAuditEvidence(normalized.warehouseAssessments || createMaturityWarehouseAssessments());
     const active = assessments.PERSEDIAAN || { aspekScores: {}, evidence: {}, aiAnalysis: {} };
     const evidence = mergeCurrentMonth5SEvidence(active.evidence || {}, normalized.uptId);
     active.evidence = evidence;
+    assessments = { ...assessments, PERSEDIAAN: active };
     setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
-    setMaturityAuditForm({ aspekScores: active.aspekScores || {}, catatanUPT: normalized.catatanUPT || "", catatanUIT: normalized.catatanUIT || "", catatanPusat: normalized.catatanPusat || "", fileUrl: normalized.fileUrl || "", fileNama: normalized.fileNama || "", aiAnalysis: active.aiAnalysis || {}, warehouseAssessments: assessments });
+    setMaturityAuditForm({ aspekScores: active.aspekScores || {}, catatanUPT: normalized.catatanUPT || "", catatanUIT: normalized.catatanUIT || "", catatanPusat: normalized.catatanPusat || "", fileUrl: normalized.fileUrl || "", fileNama: normalized.fileNama || "", aiAnalysis: active.aiAnalysis || {}, warehouseAssessments: assessments, _maturityEvidenceLoading: Boolean(audit?.id && !audit?.isNew) });
     setMaturityAuditEvidence(evidence);
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
     setActiveAspectId(null);
@@ -377,12 +381,26 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       loadAspectReviews(audit.id).then(rows => {
         setMaturityAspectReviews(Object.fromEntries(rows.map(r => [`${r.aspectId}::${r.itemId}`, r])));
       });
+      if (!audit.isNew) {
+        loadMaturityDriveEvidence(audit.id).then(result => {
+          if (evidenceRequestId !== maturityEvidenceRequestRef.current) return;
+          const reconciled = reconcileMaturityAuditEvidence(assessments, result?.evidence || []);
+          const activeEvidence = reconciled[MATURITY_WAREHOUSE_TYPES.PERSEDIAAN]?.evidence || {};
+          setMaturityAuditForm(form => ({ ...form, warehouseAssessments: reconciled, _maturityEvidenceLoading: false }));
+          setMaturityAuditEvidence(activeEvidence);
+        }).catch(() => {
+          if (evidenceRequestId !== maturityEvidenceRequestRef.current) return;
+          showToast("Gagal memuat evidence aktif. Buka ulang audit untuk mencoba lagi.", "error");
+          setMaturityAuditForm(form => ({ ...form, _maturityEvidenceError: true }));
+        });
+      }
     }
   }
   // UIT/Pusat Check/Reject satu ITEM evidence (bukan seluruh aspek) — paralel
   // dgn UPT yang masih mengunggah item lain (tabel terpisah, tidak menyentuh
   // baris maturity_audits). Key state lokal: "aspectId::itemId".
   async function setAspectReview(aspectId, itemId, state, note = "", warehouseType = maturityWarehouseType) {
+    if (maturityAuditFormRef.current?._maturityEvidenceLoading) return;
     const audit = maturityAuditModal;
     if (!audit?.id) return;
     const uptName = audit.upt || selectedMaturityUpt || "UPT Surabaya";
@@ -403,6 +421,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // itu), hanya kalau SEMUA item non-auto aspek sudah dinilai (else biarkan
   // 0 → calcMaturityScore jatuh ke fallback uit/upt/rasio).
   async function setAspectItemScore(aspectId, itemId, score, warehouseType = maturityWarehouseType) {
+    if (maturityAuditFormRef.current?._maturityEvidenceLoading) return;
     const audit = maturityAuditModal;
     if (!audit?.id) return;
     const typedAspectId = maturityAspectKey(warehouseType, aspectId);
@@ -483,6 +502,10 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     return calcMaturityScore(scores, evidence, aiAnalysis).level;
   }
   async function saveMaturityAudit(audit, newStatus) {
+    if (maturityAuditFormRef.current?._maturityEvidenceLoading) {
+      showToast("Evidence aktif masih dimuat. Tunggu selesai atau buka ulang audit setelah gagal.", "error");
+      return;
+    }
     // Yang menentukan siapa boleh bertindak adalah status LAMA (klausa USING policy);
     // audit baru belum punya baris di server, jadi diperlakukan sebagai DRAFT.
     if (!guardMaturityWrite("menyimpan Audit Maturity", audit?.isNew ? "DRAFT" : (audit?.status || "DRAFT"))) return;
@@ -568,6 +591,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // pemanggil (komponen), bukan guardMaturityWrite, supaya kegagalan izin tak
   // memicu toast berulang saat mengetik.
   async function autosaveMaturityDraft(evidenceOverride) {
+    if (maturityAuditFormRef.current?._maturityEvidenceLoading) return false;
     if (!maturityAuditModal?.id) return false;
     if (autosaveInFlight.current) {
       autosaveDirty.current = true;

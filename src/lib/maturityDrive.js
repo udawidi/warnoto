@@ -53,6 +53,7 @@ export async function downloadForm5SPhoto(assessmentId, photoIndex) {
   return request("download-5s-photo", { assessmentId, photoIndex: index }, { responseType: "blob" });
 }
 
+export const loadMaturityDriveEvidence = auditId => request("sync", { auditId, scanDrive: false });
 export const signMaturityDriveEvidence = evidenceId => request("sign", { evidenceId });
 
 // Coba signed URL dulu (GET langsung ke storage, cacheable, satu hop) — jauh
@@ -60,15 +61,13 @@ export const signMaturityDriveEvidence = evidenceId => request("sign", { evidenc
 // kalau evidence belum backfill (storage_path kosong) atau sign gagal.
 // isObjectUrl memberi sinyal ke pemanggil: hanya objectURL yang perlu di-revoke.
 export async function openMaturityDriveEvidence(evidenceId) {
-  try {
-    const signed = await signMaturityDriveEvidence(evidenceId);
-    if (signed.url) {
-      // EF createSignedUrl memakai SUPABASE_URL internal container (http://kong:8000);
-      // ganti origin ke base publik klien supaya browser bisa fetch (same-origin warnoto.com).
-      const path = signed.url.replace(/^https?:\/\/[^/]+/i, "");
-      return { url: `${SUPABASE_URL}${path}`, fileName: signed.fileName, mime: signed.mime || "", isObjectUrl: false };
-    }
-  } catch { /* fallback ke download di bawah */ }
+  const signed = await signMaturityDriveEvidence(evidenceId);
+  if (signed.url) {
+    // EF createSignedUrl memakai SUPABASE_URL internal container (http://kong:8000);
+    // ganti origin ke base publik klien supaya browser bisa fetch (same-origin warnoto.com).
+    const path = signed.url.replace(/^https?:\/\/[^/]+/i, "");
+    return { url: `${SUPABASE_URL}${path}`, fileName: signed.fileName, mime: signed.mime || "", isObjectUrl: false };
+  }
   const { blob, fileName } = await request("download", { evidenceId }, { responseType: "blob" });
   return { url: URL.createObjectURL(blob), fileName, mime: blob.type || "", isObjectUrl: true };
 }

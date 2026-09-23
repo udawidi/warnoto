@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { AUDIT_ASPECTS } from "../../src/data/auditAspects.js";
 import { MATLEV_SOURCE, MATLEV_MANUAL_CRITERIA, MATLEV_EVIDENCE_SPLITS } from "../../src/data/matlevSource.js";
-import { MATURITY_WAREHOUSE_ASPECTS, MATURITY_SHARED_ASPECTS, maturityAspectKey, normalizeMaturityAudit, calculateMaturityDualScore, evaluateMaturityWarehouseGate, isCurrentForm5SSaved, countCompletedEvidenceParents, calculateMaturityWarehouseScore, canonicalMaturityItemId, maturityItemIdsForReview, parseMaturityAuditText, selectedMaturityRequiredItems } from "../../src/lib/maturityWarehouse.js";
+import { MATURITY_WAREHOUSE_ASPECTS, MATURITY_SHARED_ASPECTS, maturityAspectKey, normalizeMaturityAudit, calculateMaturityDualScore, evaluateMaturityWarehouseGate, isCurrentForm5SSaved, countCompletedEvidenceParents, calculateMaturityWarehouseScore, canonicalMaturityItemId, maturityItemIdsForReview, parseMaturityAuditText, selectedMaturityRequiredItems, reconcileMaturityAuditEvidence } from "../../src/lib/maturityWarehouse.js";
 import { analyzeMaturityAspect, hashAspectSnapshot, buildMaturityEvidenceChecklist } from "../../src/lib/maturityAi.js";
 
 test("PROGNOSA applicability is 28 Persediaan and 8 ATTB/MRWI", () => {
@@ -23,6 +23,23 @@ test("all 32 aspects expose the exact PROGNOSA J/K source text", () => {
 test("fresh and normalized assessments do not persist the retired checklist", () => {
   for (const assessment of Object.values(normalizeMaturityAudit({ formatVersion: 2, warehouseAssessments: { PERSEDIAAN: {}, ATTB_MRWI: {} } }).warehouseAssessments)) assert.equal("subEvidenceChecks" in assessment, false);
   for (const assessment of Object.values(normalizeMaturityAudit({ formatVersion: 2, warehouseAssessments: { PERSEDIAAN: { subEvidenceChecks: { "3.4": {} } }, ATTB_MRWI: {} } }).warehouseAssessments)) assert.equal("subEvidenceChecks" in assessment, false);
+});
+
+test("reconcile evidence membuang stale, mempertahankan Form 5S, dan memetakan aspek typed/untyped", () => {
+  const result = reconcileMaturityAuditEvidence({
+    PERSEDIAAN: { evidence: { "1.1": [{ id: "stale" }, { id: "k3_5s_chk", auto: true }] } },
+    ATTB_MRWI: { evidence: { "3.4": [{ id: "stale-attb" }, { id: "k3_5s_foto", auto: true }] } },
+  }, [
+    { id: "canonical-p", aspectId: "1.1", itemId: "p", name: "p.pdf" },
+    { id: "canonical-a", aspectId: "ATTB_MRWI::3.4", itemId: "a", name: "a.jpg" },
+  ]);
+  assert.equal(result.PERSEDIAAN.evidence["1.1"].some(file => file.id === "canonical-p"), true);
+  assert.equal(result.PERSEDIAAN.evidence["4.5"]?.length || 0, 0);
+  assert.equal(result.PERSEDIAAN.evidence["1.1"].some(file => file.id === "k3_5s_chk"), true);
+  assert.equal(result.PERSEDIAAN.evidence["1.1"].some(file => file.id === "stale"), false);
+  assert.equal(result.ATTB_MRWI.evidence["3.4"].some(file => file.id === "stale-attb"), false);
+  assert.equal(result.ATTB_MRWI.evidence["3.4"].find(file => file.id === "canonical-a")?.warehouseType, "ATTB_MRWI");
+  assert.equal(result.ATTB_MRWI.evidence["3.4"].some(file => file.id === "k3_5s_foto"), true);
 });
 
 test("manual criteria are exactly 19 checker-only points across 5 parent patterns", () => {

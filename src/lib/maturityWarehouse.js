@@ -54,6 +54,36 @@ function clone(value) {
   return value && typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value ?? {}));
 }
 
+export function reconcileMaturityAuditEvidence(assessments, canonicalRows = []) {
+  const next = clone(assessments || {});
+  for (const [type, assessment] of Object.entries(next)) {
+    const source = assessment && typeof assessment === "object" ? assessment : {};
+    const evidence = Object.fromEntries(Object.entries(source.evidence || {}).map(([aspectId, files]) => [
+      aspectId,
+      Array.isArray(files) ? files.filter(file => file?.auto === true) : [],
+    ]));
+    next[type] = { ...source, evidence };
+  }
+  for (const row of Array.isArray(canonicalRows) ? canonicalRows : []) {
+    const rawAspectId = String(row?.aspectId || "");
+    if (!rawAspectId) continue;
+    const separator = rawAspectId.indexOf("::");
+    const typed = separator > 0 ? rawAspectId.slice(0, separator) : MATURITY_WAREHOUSE_TYPES.PERSEDIAAN;
+    const aspectId = separator > 0 ? rawAspectId.slice(separator + 2) : rawAspectId;
+    const type = isMaturityWarehouseType(typed) ? typed : MATURITY_WAREHOUSE_TYPES.PERSEDIAAN;
+    const assessment = next[type] && typeof next[type] === "object" ? next[type] : emptyAssessment();
+    const files = assessment.evidence && typeof assessment.evidence === "object" ? assessment.evidence : {};
+    next[type] = {
+      ...assessment,
+      evidence: {
+        ...files,
+        [aspectId]: [...(Array.isArray(files[aspectId]) ? files[aspectId] : []), { ...row, aspectId, warehouseType: type }],
+      },
+    };
+  }
+  return next;
+}
+
 export function parseMaturityAuditText(value) {
   const blocks = [];
   let list = [];

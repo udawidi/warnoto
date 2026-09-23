@@ -153,5 +153,5 @@ test("keluar input maturity menunggu upload dan simpan draft", () => {
   assert.match(hookSource, /const result = await autosaveMaturityDraft\(\);[\s\S]{0,180}return result;/);
   assert.match(hookSource, /if \(!autosaveDirty\.current\) setMaturityDraftSavedAt\(Date\.now\(\)\)/);
   assert.match(editorSource, /setMaturityAuditEvidence\(previous =>/);
-  assert.match(editorSource, /disabled=\{maturityAuditSaving \|\| hasActiveUpload\}[\s\S]{0,120}Simpan Draft/);
+  assert.match(editorSource, /disabled=\{maturityEvidenceLoading \|\| maturityAuditSaving \|\| hasActiveUpload\}[\s\S]{0,120}Simpan Draft/);
 });
