@@ -403,7 +403,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
     return true;
   }
   async function saveOpnameDocumentMeta(opn, meta) {
-    if (!hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN")) {
+    if (!hasRole(currentUser, "ADMIN", "TL", "ASMAN", "SUPERADMIN")) {
       showToast("Hanya TL/Admin yang bisa menyimpan metadata dokumen.", "error");
       return false;
     }
