@@ -17,6 +17,7 @@ import { SAP_OPNAME_CATEGORIES, getSapOpnameCategory, isSapOpnameItem, opnamePro
 import { ArrowRight, Barcode, CheckCircle, FileArrowUp, Image, Tag } from "@phosphor-icons/react";
 import { StockOpnameApprovalReview } from "./StockOpnameApprovalReview.jsx";
 import { comparisonForItem, itemNeedsStockOpnameNote, stockOpnameDiscrepancyNoteErrors } from "../lib/stockOpnameReconciliation.js";
+import { downloadStockOpnameExcel } from "../lib/stockOpnameExcel.js";
 
 export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, users, sty, C,
   saveOpname, submitOpname, approveOpname_Asman, rejectOpname, updateOpnameTugReference, saveOpnameDocumentMeta, deleteOpname,
@@ -1791,6 +1792,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     🔍 {opn.status==="DRAFT"?"Edit":"Lihat Detail"}
                   </button>
                   {opn.status==="SELESAI" && opn.jenisAlur==="SAP" && <button style={sty.btn("ghost","sm")} onClick={()=>openBaPrintDialog(opn)}>📄 Cetak BA + TUG-15</button>}
+                  {opn.status==="SELESAI" && opn.approvedAtAsman && <button style={sty.btn("ghost","sm")} onClick={()=>downloadStockOpnameExcel(opn)}>⬇️ Download Excel</button>}
                   {opn.status==="DRAFT" && hasRole(currentUser, "ADMIN","TL") && <button title="Hapus sesi opname" style={sty.btn("danger","sm")} onClick={()=>deleteOpname(opn.id)}>🗑️</button>}
                 </div>
               </div>
