@@ -565,8 +565,9 @@ export function useTugApprovals({
       perkiraanPembebanan: "", kodePerkiraan: txn.kodePerkiraan||"",
       keteranganBarang: txn.namaPekerjaan || txn.keteranganUmum || `Adopsi dari pengajuan ${ultg?.nama||""} — ${txn.docNumbers.tug5}`,
       stockItems: txn.stockItems.map(si=>{
+        const reservedStock = si.stockId && stocks.find(s=>s.id===si.stockId);
         const matches = stocks.filter(s=>s.katalogId===si.katalogId).sort((a,b)=>(b.qty||0)-(a.qty||0));
-        return { stockId: matches[0]?.id || "", qty: si.permintaan||si.qty||1, _katalogHint: si.katalogId };
+        return { stockId: reservedStock?.id || matches[0]?.id || "", qty: si.permintaan||si.qty||1, _katalogHint: si.katalogId, katalogSnapshot: si.katalogSnapshot || null };
       }),
       noNodin: "", noPersetujuan: "",
       nopol: "", simKtp: "", namaPengemudi: "",

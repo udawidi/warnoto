@@ -194,7 +194,7 @@ export function useTugTransactions({
           lokasiPekerjaan: "",
           keteranganUmum: "",
           perintahKerja: "", kodePerkiraan: "", fungsi: "",
-          stockItems: [{ katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }],
+          stockItems: [{ stockId:"", katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }],
         });
       } else {
         setTxnForm({
@@ -229,7 +229,7 @@ export function useTugTransactions({
         return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null }] };
       }
       if (tf.docType === "TUG5") {
-        return { ...tf, stockItems: [...tf.stockItems, { katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }] };
+        return { ...tf, stockItems: [...tf.stockItems, { ...(tf.sourceType==="ULTG" ? { stockId:"" } : {}), katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }] };
       }
       if (tf.docType === "TUG3") {
         return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, hargaSatuan:0, lokasiTujuanId:"", sapStatus:STATUS_SAP[0] }] };
@@ -247,6 +247,13 @@ export function useTugTransactions({
       if (tf.docType==="TUG5" && tf.sourceType==="ULTG" && key==="katalogId") {
         const totalQty = stateRef.current.enrichedStocks.filter(s=>s.katalogId===val).reduce((a,s)=>a+(s.qty||0),0);
         items[i].sisaPersediaan = totalQty;
+      }
+      if (tf.docType==="TUG5" && tf.sourceType==="ULTG" && key==="stockId") {
+        const stock = stateRef.current.enrichedStocks.find(s=>s.id===val);
+        items[i].katalogId = stock?.katalogId || "";
+        items[i].sisaPersediaan = Number(stock?.qty || 0);
+        items[i].katalogSnapshot = stock ? { id: stock.katalogId, katalog: stock.katalog, name: stock.name, satuan: stock.unit } : null;
+        items[i].lokasiId = stock?.lokasiId || "";
       }
       return {...tf, stockItems: items};
     });
@@ -403,7 +410,8 @@ export function useTugTransactions({
         return;
       }
       if (!txnForm.ultgId) { showToast("Unit ULTG kamu tidak terdeteksi. Hubungi Admin.","error"); return; }
-      const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
+      if (!txnForm.gudangId) { showToast("Pilih Gudang UPT sumber.","error"); return; }
+      const validItems = txnForm.stockItems.filter(si => si.stockId && si.permintaan > 0);
       if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
       await commitNewTxn(docType, { ...txnForm, stockItems: validItems, keteranganUmum: txnForm.namaPekerjaan }, { replaceDraftId: editingDraftTxnId });
       return;

@@ -6,13 +6,22 @@ import { PhotoSlot } from "./PhotoSlot.jsx";
 import { Barcode, Camera } from "@phosphor-icons/react";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { generateReservasiDocNo } from "../lib/utils.js";
-import { statusMaterialBadgeStyle, sourceLotLabel, isLegacySourceAllocation } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, sourceLotLabel, getSourceLot, isLegacySourceAllocation } from "../lib/sap.js";
 import { can } from "../lib/perms.js";
 import { ROLES } from "../lib/roles.js";
 import { sortBlokOptions } from "../lib/masterSync.js";
 import { STATUS_SAP } from "../constants.js";
 
-export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C, uptKode }) {
+export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, enrichedStocks = [], gudangList = [], tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C, uptKode }) {
+  const isUltg = txnForm.sourceType === "ULTG";
+  const gudangStocks = txnForm.gudangId ? enrichedStocks.filter(s => s.gudangId === txnForm.gudangId && Number(s.qty) > 0 && !isLegacySourceAllocation(s)) : [];
+  const sourceSummary = stock => {
+    const lot = getSourceLot(stock);
+    const rows = Array.isArray(lot?.contracts) ? lot.contracts : (Array.isArray(lot?.allocations) ? lot.allocations : []);
+    const withQty = rows.filter(row => Number(row?.qty) > 0);
+    if (!withQty.length) return sourceLotLabel(stock);
+    return withQty.map(row => `${[row.supplier, row.noKontrak || row.contractNo, row.docNo || row.sourceDocumentNo].filter(Boolean).join(" — ") || row.label || "Sumber"}: ${fmtNum(row.qty)} ${stock.unit || ""}`).join(" · ");
+  };
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
           <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -73,6 +82,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
             </>
             )}
 
+            {isUltg && <div style={{marginBottom:14}}><label style={sty.label}>Gudang UPT sumber *</label><select style={sty.select} value={txnForm.gudangId||""} onChange={e=>{const gudangId=e.target.value;setTxnForm(tf=>({...tf,gudangId,stockItems:tf.stockItems.map(x=>({...x,stockId:"",katalogId:"",sisaPersediaan:0}))}));}}><option value="">-- Pilih Gudang --</option>{gudangList.map(g=><option key={g.id} value={g.id}>{g.nama}</option>)}</select></div>}
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>DAFTAR MATERIAL ({txnForm.stockItems.length}/10)</div>
             {(()=>{
               const pageStart = tug5MaterialPage*5;
@@ -100,12 +110,13 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                     <div style={{flex:isMobile?undefined:3}}>
                       <label style={sty.label}>Nama Barang {idx+1}</label>
                       <SearchableSelect
-                        options={katalogList}
-                        value={si.katalogId}
-                        onChange={v=>updateItemRow(idx,"katalogId",v)}
-                        getLabel={k=>`${k.name} [${k.katalog||"-"}]`}
-                        getSearchText={k=>`${k.name} ${k.katalog||""}`}
-                        placeholder="-- Cari & pilih dari Master Katalog --"
+                        options={isUltg ? gudangStocks : katalogList}
+                        value={isUltg ? si.stockId : si.katalogId}
+                        onChange={v=>updateItemRow(idx,isUltg?"stockId":"katalogId",v)}
+                        getLabel={k=>isUltg ? `${k.name} [${k.katalog||"-"}] @ ${k.lokasi||"-"}` : `${k.name} [${k.katalog||"-"}]`}
+                        getSearchText={k=>isUltg ? `${k.name} ${k.katalog||""} ${k.lokasi||""}` : `${k.name} ${k.katalog||""}`}
+                        renderOption={isUltg ? s=><div style={{minWidth:0,lineHeight:1.25}}><div style={{fontWeight:600,overflowWrap:"anywhere"}}>{s.name} <span style={{color:C.muted,fontWeight:400}}>[{s.katalog||"-"}]</span></div><div style={{fontSize:11,color:C.muted}}>📍 {s.lokasi||"-"} • Stok: {fmtNum(s.qty)} {s.unit||""}</div><div style={{fontSize:11,color:C.muted,whiteSpace:"normal",overflowWrap:"anywhere"}}>📄 {sourceSummary(s)}</div></div> : undefined}
+                        placeholder={isUltg ? "-- Cari & pilih stok per lokasi --" : "-- Cari & pilih dari Master Katalog --"}
                         sty={sty} C={C} isMobile={isMobile}
                       />
                     </div>
@@ -114,7 +125,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                   {kat && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Nomor Normalisasi: {kat.katalog||"-"} • Satuan: {kat.satuan}</div>}
                   {txnForm.sourceType==="ULTG" ? (
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
-                      <div><label style={sty.label}>Sisa Persediaan <span style={{color:C.muted,fontWeight:400}}>(stok aktual UPT)</span></label><input style={{...sty.input,background:"#f3f4f6"}} type="number" inputMode="decimal" min="0" value={si.sisaPersediaan||0} disabled/></div>
+                      <div><label style={sty.label}>Sisa Persediaan <span style={{color:C.muted,fontWeight:400}}>(stok lokasi)</span></label><input style={{...sty.input,background:"#f3f4f6"}} type="number" inputMode="decimal" min="0" value={si.sisaPersediaan||0} disabled/></div>
                       <div><label style={sty.label}>Jumlah Permintaan {kat?.satuan && <span style={{color:C.muted,fontWeight:400}}>({kat.satuan})</span>}</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.permintaan||1} onChange={e=>updateItemRow(idx,"permintaan",Number(e.target.value))}/></div>
                     </div>
                   ) : (
