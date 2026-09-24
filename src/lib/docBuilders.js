@@ -121,7 +121,7 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 .sig-name{font-weight:bold;text-transform:uppercase}
 
 .print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:100}
-.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
+.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}.print-bar button:disabled{background:#64748b;cursor:wait}
 
 .page-title-center{text-align:center;font-size:12px;font-weight:bold;margin-bottom:10px;margin-top:6px}
 .photo-box-2col{border:1.5px solid #000;display:grid;grid-template-columns:1fr 1fr;min-height:500px}
@@ -1880,10 +1880,8 @@ export async function buildTUG2HTML(katalog, stocks, txns, lokasiList, subGudang
 }
 
 // ─── FORM 5S LAPORAN HTML BUILDER (Checklist 5S siap TTD Asman UPT) ──────────
-// ponytail: samplePhotos.preview adalah blob object-url sesi ini (byte lokal,
-// tak perlu preload base64). Cetak-ulang dari History (foto Drive privat)
-// butuh EF blob-proxy driveFileId — ditunda, pola sudah ada di maturityDrive.js
-// evidence viewer kalau nanti dibutuhkan.
+// samplePhotos.preview berisi signed Storage URL atau object URL proxy privat.
+// Dokumen menunggu semua gambar selesai dimuat sebelum tombol cetak diaktifkan.
 export function buildForm5SHTML(record, users, uptList) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -1908,7 +1906,7 @@ export function buildForm5SHTML(record, users, uptList) {
   const photoGrid = (record.samplePhotos || []).length > 0
     ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">${(record.samplePhotos || []).map(photo => {
         const src = photo.preview || "";
-        return `<div style="border:1px solid #000;padding:4px;text-align:center">${src ? `<img src="${esc(src)}" style="max-width:100%;max-height:160px;object-fit:contain" alt="${esc(photo.name || "Foto sampling")}" title="${esc(photo.name || "")}"/>` : `<div class="photo-empty">Foto tidak tersedia</div>`}</div>`;
+        return `<div style="border:1px solid #000;padding:4px;text-align:center">${src ? `<img data-form5s-photo="true" src="${esc(src)}" referrerpolicy="no-referrer" style="max-width:100%;max-height:160px;object-fit:contain" alt="${esc(photo.name || "Foto sampling")}" title="${esc(photo.name || "")}"/>` : `<div class="photo-empty">${esc(photo.printError || "Foto tidak tersedia")}</div>`}</div>`;
       }).join("")}</div>`
     : `<div class="photo-empty">&lt;&lt;[Belum ada foto sampling]&gt;&gt;</div>`;
 
@@ -1946,7 +1944,7 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 @media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
 </style></head><body>
 
-<div class="print-bar">📄 Laporan 5S siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+<div class="print-bar">📄 Laporan 5S <button id="form5s-print" disabled onclick="window.print()">Memuat foto eviden...</button></div>
 
 <div class="page">
   <div class="top-accent"></div>
@@ -2003,6 +2001,33 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 
   <div class="bottom-accent"></div>
 </div>
+<script>
+(() => {
+  const button = document.getElementById("form5s-print");
+  const images = [...document.querySelectorAll("img[data-form5s-photo]")];
+  const markFailed = image => {
+    const box = image.parentElement;
+    image.remove();
+    const message = document.createElement("div");
+    message.className = "photo-empty";
+    message.textContent = "Foto tidak tersedia";
+    box.appendChild(message);
+  };
+  const waitForImage = image => new Promise(resolve => {
+    if (image.complete) {
+      if (!image.naturalWidth) markFailed(image);
+      resolve();
+      return;
+    }
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", () => { markFailed(image); resolve(); }, { once: true });
+  });
+  Promise.all(images.map(waitForImage)).then(() => {
+    button.disabled = false;
+    button.textContent = "🖨️ Print / Save as PDF";
+  });
+})();
+</script>
 </body></html>`;
 }
 

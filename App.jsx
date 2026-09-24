@@ -722,6 +722,11 @@ export default function PLNWarehouse() {
       // dan alur fallback/cache tetap sama.
       const bootstrapLoad = (promise, label = "bootstrap cloud") =>
         _withTimeout(Promise.resolve(promise), 15000, label).catch(() => null);
+      // Self-host melalui tunnel mudah overload saat semua master ditembak bersamaan.
+      // Dataset non-kritis mulai setelah first screen punya kesempatan render.
+      const deferredBootstrapLoad = (loader, label) => new Promise(resolve => {
+        setTimeout(() => resolve(bootstrapLoad(loader(), label)), 2500);
+      });
       if (currentUser?.role === "HAR_UIT") {
         // Jangan render cache domain tersembunyi selama bootstrap HAR_UIT.
         setLoading(true);
@@ -812,28 +817,32 @@ export default function PLNWarehouse() {
         return loadMasterTable(table, { uptIds });
       });
       const masterLoads = [
-        loadMasterTable("uit"),
+        deferredBootstrapLoad(() => loadMasterTable("uit"), "bootstrap master uit"),
         uptLoadPromise,
-        loadMasterTable("ultg"),
-        loadMasterTable("gudang"),
-        loadMasterTable("sub_gudang"),
+        deferredBootstrapLoad(() => loadMasterTable("ultg"), "bootstrap master ultg"),
+        deferredBootstrapLoad(() => loadMasterTable("gudang"), "bootstrap master gudang"),
+        deferredBootstrapLoad(() => loadMasterTable("sub_gudang"), "bootstrap master sub_gudang"),
         loadMasterTable("lokasi"),
-        loadMasterTable("satpam"),
-        loadMasterTable("tim_mutu"),
+        deferredBootstrapLoad(() => loadMasterTable("satpam"), "bootstrap master satpam"),
+        deferredBootstrapLoad(() => loadMasterTable("tim_mutu"), "bootstrap master tim_mutu"),
         loadMasterTable("katalog"),
         loadMasterTable("stocks"),
-        loadWarehouseCapacity(),
-        loadWarehouseCapacityImports(),
-        loadMasterTable("heavy_equipment"),
-        loadMasterTable("heavy_equipment_loans"),
-        stockScopeLoad("stock_opname"),
-        stockScopeLoad("stock_count"),
-        loadMasterTable("attb_list"),
-        loadMasterTable("supplier"),
+        deferredBootstrapLoad(() => loadWarehouseCapacity(), "bootstrap master warehouse capacity"),
+        deferredBootstrapLoad(() => loadWarehouseCapacityImports(), "bootstrap master warehouse imports"),
+        deferredBootstrapLoad(() => loadMasterTable("heavy_equipment"), "bootstrap master heavy equipment"),
+        deferredBootstrapLoad(() => loadMasterTable("heavy_equipment_loans"), "bootstrap master heavy equipment loans"),
+        deferredBootstrapLoad(() => stockScopeLoad("stock_opname"), "bootstrap master stock opname"),
+        deferredBootstrapLoad(() => stockScopeLoad("stock_count"), "bootstrap master stock count"),
+        deferredBootstrapLoad(() => loadMasterTable("attb_list"), "bootstrap master attb"),
+        deferredBootstrapLoad(() => loadMasterTable("supplier"), "bootstrap master supplier"),
       ].map((p, i) => bootstrapLoad(p, `bootstrap master ${i}`));
       // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
-      const maturityLoads = [loadMaturityAssessments(), loadMaturityAudits(), loadMaturityAuditHistory(), loadMaturity5SAssessments()]
-        .map((p, i) => bootstrapLoad(p, `bootstrap maturity ${i}`));
+      const maturityLoads = [
+        deferredBootstrapLoad(() => loadMaturityAssessments(), "bootstrap maturity assessments"),
+        deferredBootstrapLoad(() => loadMaturityAudits(), "bootstrap maturity audits"),
+        deferredBootstrapLoad(() => loadMaturityAuditHistory(), "bootstrap maturity audit history"),
+        deferredBootstrapLoad(() => loadMaturity5SAssessments(), "bootstrap maturity 5s"),
+      ].map((p, i) => bootstrapLoad(p, `bootstrap maturity ${i}`));
       // FIX perf reload: dulu dua fetch ini menunggu masterLoads SELESAI dulu baru mulai
       // (ekor serial) — di balik Cloudflare tunnel self-host tiap round-trip mahal. Keduanya
       // tak butuh hasil masterLoads, jadi mulai SEKARANG supaya jalan konkuren; hasilnya
@@ -2189,7 +2198,11 @@ export default function PLNWarehouse() {
         // Retry singkat untuk gangguan jaringan. Jika profil tetap gagal
         // divalidasi, bootstrap ditutup fail-closed dan cache user dibersihkan.
         for (let attempt = 0; attempt < 2; attempt++) {
-          const result = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+          const result = await _withTimeout(
+            supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
+            15000,
+            "profile session"
+          ).catch(error => ({ data: null, error }));
           if (!isCurrent()) return;
           profile = result.data;
           profErr = result.error;
@@ -2207,7 +2220,11 @@ export default function PLNWarehouse() {
             const { error: refreshError } = await supabase.auth.refreshSession();
             if (!isCurrent()) return;
             if (!refreshError) {
-              const retry = await supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle();
+              const retry = await _withTimeout(
+                supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
+                15000,
+                "profile session refresh"
+              ).catch(error => ({ data: null, error }));
               if (!isCurrent()) return;
               profile = retry.data;
               profErr = retry.error;
@@ -3676,7 +3693,11 @@ export default function PLNWarehouse() {
       const currentIds = new Set(rows.map(r=>r.id));
       const { data: existing } = await supabase.from("stocks_snapshot").select("id");
       const toDelete = (existing||[]).filter(r=>!currentIds.has(r.id)).map(r=>r.id);
-      if (toDelete.length) await supabase.from("stocks_snapshot").delete().in("id", toDelete);
+      // Keep the query string below proxy/HTTP URI limits on large stock sets.
+      for (let from = 0; from < toDelete.length; from += 100) {
+        const batch = toDelete.slice(from, from + 100);
+        await supabase.from("stocks_snapshot").delete().in("id", batch);
+      }
     } catch (err) {
       if (!silent) showToast("Gagal sinkron Stocks Snapshot (untuk cron malam bot): " + err.message, "error");
       else console.error("Auto-sync stocks_snapshot gagal:", err.message);

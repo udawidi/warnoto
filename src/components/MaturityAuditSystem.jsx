@@ -3,7 +3,7 @@ import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRigh
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import {
   downloadMaturityDriveEvidence,
-  downloadForm5SPhoto,
+  openForm5SPhotos,
   openMaturityDriveEvidence,
   unlinkMaturityDriveEvidence,
   uploadForm5SPhoto,
@@ -1610,6 +1610,13 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUpt
   const selected = history.find(item => item.id === selectedId) || null;
   const [photoUrls, setPhotoUrls] = useState({});
   const [photoLoading, setPhotoLoading] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(null);
+  useEffect(() => {
+    if (previewIndex === null) return undefined;
+    const onKeyDown = event => { if (event.key === "Escape") setPreviewIndex(null); };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [previewIndex]);
   useEffect(() => {
     let cancelled = false;
     const objectUrls = [];
@@ -1617,17 +1624,14 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUpt
     if (!selected) return undefined;
     const photos = selected.samplePhotos || [];
     setPhotoLoading(photos.length > 0);
-    Promise.all(photos.map(async (photo, index) => {
-      try {
-        const result = await downloadForm5SPhoto(selected.id, index);
-        const url = URL.createObjectURL(result.blob);
-        objectUrls.push(url);
-        return [index, { url, name: result.fileName || photo.name || `Foto ${index + 1}` }];
-      } catch {
-        return [index, { url: "", name: photo.name || `Foto ${index + 1}` }];
-      }
-    })).then(entries => {
+    openForm5SPhotos(selected.id, photos.length).then(results => {
+      const entries = results.map((result, index) => {
+        if (result?.isObjectUrl) objectUrls.push(result.url);
+        return [index, { url: result?.url || "", name: result?.fileName || photos[index]?.name || `Foto ${index + 1}`, mime: result?.mime, error: result?.error }];
+      });
       if (!cancelled) setPhotoUrls(Object.fromEntries(entries));
+    }).catch(() => {
+      if (!cancelled) setPhotoUrls(Object.fromEntries(photos.map((photo, index) => [index, { url: "", name: photo.name || `Foto ${index + 1}` }])));
     }).finally(() => { if (!cancelled) setPhotoLoading(false); });
     return () => { cancelled = true; objectUrls.forEach(url => URL.revokeObjectURL(url)); };
   }, [selected?.id]);
@@ -1701,7 +1705,7 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUpt
                   {(selected.samplePhotos || []).map((photo, index) => {
                     const loaded = photoUrls[index];
                     return <div key={`${selected.id}-${index}`} style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.bg }}>
-                      {loaded?.url ? <a href={loaded.url} target="_blank" rel="noreferrer"><img src={loaded.url} alt={loaded.name} style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", display: "block" }} /></a> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", color: C.muted }}>{photoLoading ? "Memuat..." : "Foto tidak tersedia"}</div>}
+                      {loaded?.url ? <button type="button" aria-label={`Lihat ${loaded.name}`} onClick={() => setPreviewIndex(index)} style={{ display: "block", width: "100%", padding: 0, border: 0, background: "transparent", cursor: "zoom-in" }}><img src={loaded.url} referrerPolicy="no-referrer" alt={loaded.name} style={{ width: "100%", aspectRatio: "4/3", objectFit: "contain", display: "block" }} /></button> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", color: C.muted }}>{photoLoading ? "Memuat..." : "Foto tidak tersedia"}</div>}
                       <div style={{ padding: "5px 7px", fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Foto {index + 1}</div>
                     </div>;
                   })}
@@ -1709,6 +1713,14 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUpt
               )}
             </div>
           </div>}
+        </div>
+      )}
+      {previewIndex !== null && photoUrls[previewIndex]?.url && (
+        <div role="dialog" aria-modal="true" aria-label={`Preview ${photoUrls[previewIndex].name}`} onClick={() => setPreviewIndex(null)} style={{ position: "fixed", inset: 0, zIndex: 1000, display: "grid", placeItems: "center", padding: 18, background: "rgba(15,23,42,.78)" }}>
+          <div onClick={event => event.stopPropagation()} style={{ position: "relative", width: "min(100%, 960px)", maxHeight: "calc(100vh - 36px)", padding: 12, borderRadius: 12, background: C.surface, boxSizing: "border-box" }}>
+            <button type="button" aria-label="Tutup preview foto" onClick={() => setPreviewIndex(null)} style={{ position: "absolute", top: 8, right: 8, zIndex: 1, minWidth: 40, minHeight: 40, border: 0, borderRadius: 8, background: "rgba(15,23,42,.78)", color: "white", fontSize: 22, cursor: "pointer" }}>×</button>
+            <img src={photoUrls[previewIndex].url} referrerPolicy="no-referrer" alt={photoUrls[previewIndex].name} style={{ display: "block", width: "100%", maxHeight: "calc(100vh - 84px)", objectFit: "contain" }} />
+          </div>
         </div>
       )}
     </div>
@@ -1772,6 +1784,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         name: res.name,
         url: res.url,
         size: res.size,
+        mimeType: res.mimeType || taken[i]?.type || "image/jpeg",
         driveFileId: res.driveFileId,
         storagePath: res.storagePath,
         storageSyncedAt: res.storageSyncedAt,
@@ -1908,22 +1921,29 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const handlePrintRecord = async record => {
     const w = window.open("", "_blank");
     if (!w) { setSaveError("Popup cetak diblokir browser."); return; }
-    // Render immediately. Awaiting private photo downloads before the first
-    // document write left the popup blank in browsers that discard a pending
-    // popup document while the async request is in flight.
-    const render = samplePhotos => {
-      if (w.closed) return;
-      const html = buildForm5SHTML({ ...record, samplePhotos }, users, uptList);
-      w.document.open(); w.document.write(html); w.document.close();
-    };
-    render(record.samplePhotos || []);
-    const samplePhotosWithBytes = await Promise.all((record.samplePhotos || []).map(async (photo, index) => {
-      try {
-        const result = await downloadForm5SPhoto(record.id, index);
-        return { ...photo, preview: URL.createObjectURL(result.blob), url: "" };
-      } catch { return { ...photo, preview: "", url: "" }; }
-    }));
-    render(samplePhotosWithBytes);
+    // Keep the popup alive while only signed URLs are resolved. The print
+    // document waits for image decode in its own small inline loader.
+    const popupObjectUrls = [];
+    const releasePopupObjectUrls = () => popupObjectUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
+    w.addEventListener("beforeunload", releasePopupObjectUrls, { once: true });
+    w.document.open();
+    w.document.write("<!doctype html><title>Menyiapkan cetak 5S</title><body style=\"font-family:Arial;padding:24px\">Menyiapkan foto eviden...</body>");
+    w.document.close();
+    let openedPhotos = [];
+    try { openedPhotos = await openForm5SPhotos(record.id, Math.min(3, (record.samplePhotos || []).length)); }
+    catch { openedPhotos = []; }
+    const samplePhotosWithUrls = (record.samplePhotos || []).map((photo, index) => {
+      const opened = openedPhotos[index];
+      if (opened?.isObjectUrl) popupObjectUrls.push(opened.url);
+      return { ...photo, preview: opened?.url || "", url: "", mimeType: opened?.mime || photo.mimeType || "image/jpeg", printError: opened?.error?.message || "" };
+    });
+    if (w.closed) { releasePopupObjectUrls(); return; }
+    const failedPhotos = samplePhotosWithUrls.filter(photo => photo.printError).length;
+    const printRecord = failedPhotos > 0
+      ? { ...record, catatan: `${record.catatan || ""}${record.catatan ? "\\n\\n" : ""}PERINGATAN CETAK: ${failedPhotos} foto eviden tidak tersedia dan ditandai pada lampiran.`, samplePhotos: samplePhotosWithUrls }
+      : { ...record, samplePhotos: samplePhotosWithUrls };
+    const html = buildForm5SHTML(printRecord, users, uptList);
+    w.document.open(); w.document.write(html); w.document.close();
   };
 
   const handlePrint = () => {

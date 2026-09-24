@@ -32,10 +32,25 @@ test("summary and history are canonical upt_id scoped", () => {
 
 test("photo endpoint accepts assessment ID and index only", () => {
   assert.match(drive, /downloadForm5SPhoto\(assessmentId, photoIndex\)/);
+  assert.match(drive, /request\("sign-5s-photo", \{ assessmentId, photoIndex: index \}\)/);
+  assert.match(edge, /action === "sign-5s-photo"/);
+  assert.match(edge, /createSignedUrl\(storagePath, 600\)/);
   assert.match(edge, /action === "download-5s-photo"/);
   assert.match(edge, /findUptById\(text\(assessment\.upt_id/);
   assert.match(edge, /storagePath\.startsWith\(`form-5s\/\$\{upt\.id\}\//);
   assert.doesNotMatch(drive.match(/export async function downloadForm5SPhoto[\s\S]*?\n}/)?.[0] || "", /storagePath|driveFileId/);
+});
+
+test("Form 5S history signs all self-host photos in one scoped batch", () => {
+  assert.match(drive, /openForm5SPhotos\(assessmentId, photoCount\)/);
+  assert.match(drive, /request\("sign-5s-photos", \{ assessmentId \}\)/);
+  assert.match(edge, /action === "sign-5s-photos"/);
+  assert.match(edge, /select\("id,upt_id,sample_photos"\)/);
+  assert.match(edge, /photos\.length > 3/);
+  assert.match(edge, /storagePath\.startsWith\(`form-5s\/\$\{upt\.id\}\//);
+  assert.match(edge, /createSignedUrl\(storagePath, 600\)/);
+  assert.match(form, /openForm5SPhotos\(selected\.id, photos\.length\)/);
+  assert.match(form, /openForm5SPhotos\(record\.id, Math\.min\(3, \(record\.samplePhotos \|\| \[\]\)\.length\)\)/);
 });
 
 test("new Form 5S photos are guarded by storage trigger", () => {
@@ -52,7 +67,7 @@ test("Form 5S PDF prioritizes canonical UPT master and persisted history", () =>
   assert.match(builder, /const uptNama = \(uptList \|\| \[\]\)\.find\(u => u\.id === record\.uptId\)\?\.nama \|\| record\.upt/);
   assert.doesNotMatch(builder, /const src = photo\.preview \|\| photo\.url/);
   assert.match(form, /Simpan checklist terlebih dahulu sebelum mencetak/);
-  assert.match(form, /downloadForm5SPhoto\(record\.id, index\)/);
+  assert.match(form, /openForm5SPhotos\(record\.id, Math\.min\(3, \(record\.samplePhotos \|\| \[\]\)\.length\)\)/);
   assert.doesNotMatch(hook, /url: photo\.url/);
   assert.doesNotMatch(form, /url: photo\.url/);
 });
@@ -81,11 +96,16 @@ test("Form 5S history stays compact and photo source is chosen after one trigger
   assert.doesNotMatch(form, /\{false &&/);
 });
 
-test("Form 5S history renders the print popup before async photo downloads", () => {
+test("Form 5S history keeps the popup alive while photo bytes are prepared", () => {
   const printHandler = form.slice(form.indexOf("const handlePrintRecord = async record =>"), form.indexOf("const handlePrint = () =>"));
-  const initialRender = printHandler.indexOf("render(record.samplePhotos || [])");
-  const photoDownload = printHandler.indexOf("await Promise.all");
-  assert.ok(initialRender >= 0, "print handler must render the popup immediately");
-  assert.ok(photoDownload >= 0, "print handler must download photos asynchronously");
-  assert.ok(initialRender < photoDownload, "initial popup render must precede photo download");
+  const preparationPage = printHandler.indexOf("Menyiapkan foto eviden...");
+  const signedSource = printHandler.indexOf("openForm5SPhotos(record.id, Math.min(3, (record.samplePhotos || []).length))");
+  const popupCleanup = printHandler.indexOf("beforeunload");
+  const finalRender = printHandler.indexOf("buildForm5SHTML(printRecord, users, uptList)");
+  assert.ok(preparationPage >= 0, "print handler must render a preparation page immediately");
+  assert.ok(signedSource >= 0, "print handler must resolve signed photo URLs");
+  assert.ok(popupCleanup >= 0, "legacy proxy object URLs must live until popup unload");
+  assert.ok(finalRender > signedSource, "final print document must wait for photo URLs");
+  assert.match(builder, /data-form5s-photo/);
+  assert.match(builder, /form5s-print/);
 });

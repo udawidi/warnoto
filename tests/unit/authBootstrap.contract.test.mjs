@@ -22,6 +22,11 @@ test("profile validation failure cannot open the scoped data loader from cache",
   assert.match(app, /supabase\.auth\.refreshSession\(\)/);
 });
 
+test("profile bootstrap cannot hang forever on a self-host request", () => {
+  assert.match(app, /_withTimeout\(\s*supabase\.from\("profiles"\)[\s\S]*?15000,\s*"profile session"\s*\)\.catch\(error => \(\{ data: null, error \}\)\)/);
+  assert.match(app, /_withTimeout\(\s*supabase\.from\("profiles"\)[\s\S]*?15000,\s*"profile session refresh"\s*\)\.catch\(error => \(\{ data: null, error \}\)\)/);
+});
+
 test("cloud bootstrap clears refresh state when a loader throws", () => {
   assert.match(app, /loadCloud\(\)\.catch\(error =>/);
   assert.match(app, /setDataRefreshing\(false\);/);

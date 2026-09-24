@@ -53,6 +53,82 @@ export async function downloadForm5SPhoto(assessmentId, photoIndex) {
   return request("download-5s-photo", { assessmentId, photoIndex: index }, { responseType: "blob" });
 }
 
+const imageMime = value => String(value || "").toLowerCase().startsWith("image/") ? String(value) : "image/jpeg";
+// Keep signed URLs for one short session window. History and Print can request
+// the same photo twice; sharing the in-flight request avoids another self-host
+// round trip while keeping the bucket private and the URL short-lived.
+const form5SPhotoCache = new Map();
+const FORM5S_SIGNED_URL_TTL = 8 * 60 * 1000;
+const publicSignedUrl = value => {
+  const path = String(value || "").replace(/^https?:\/\/[^/]+/i, "");
+  if (!path) return "";
+  const base = typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? `${window.location.origin}/supabase`
+    : SUPABASE_URL;
+  return `${base}${path}`;
+};
+
+export async function openForm5SPhoto(assessmentId, photoIndex) {
+  const index = Number(photoIndex);
+  if (!assessmentId || !Number.isInteger(index) || index < 0 || index > 2) throw new Error("Foto Form 5S tidak valid.");
+  const cacheKey = `${assessmentId}:${index}`;
+  const cached = form5SPhotoCache.get(cacheKey);
+  if (cached && (cached.expiresAt > Date.now() || cached.promise)) return cached.promise;
+  const promise = (async () => {
+  try {
+    const signed = await request("sign-5s-photo", { assessmentId, photoIndex: index });
+    if (signed.url) {
+      const result = { url: publicSignedUrl(signed.url), fileName: signed.fileName, mime: imageMime(signed.mime), isObjectUrl: false, isSigned: true };
+      form5SPhotoCache.set(cacheKey, { promise: Promise.resolve(result), expiresAt: Date.now() + FORM5S_SIGNED_URL_TTL });
+      return result;
+    }
+  } catch {
+    // Legacy rows may not have self-host storage yet; use the scoped proxy below.
+  }
+  const { blob, fileName } = await downloadForm5SPhoto(assessmentId, index);
+  return { url: URL.createObjectURL(blob), fileName, mime: imageMime(blob.type), isObjectUrl: true, isSigned: false };
+  })();
+  form5SPhotoCache.set(cacheKey, { promise, expiresAt: 0 });
+  promise.catch(() => { if (form5SPhotoCache.get(cacheKey)?.promise === promise) form5SPhotoCache.delete(cacheKey); });
+  return promise;
+}
+
+export async function openForm5SPhotos(assessmentId, photoCount) {
+  const count = Number(photoCount);
+  if (!assessmentId || !Number.isInteger(count) || count < 0 || count > 3) throw new Error("Foto Form 5S tidak valid.");
+  if (count === 0) return [];
+  const results = Array(count).fill(null);
+  const misses = [];
+  await Promise.all(Array.from({ length: count }, async (_, index) => {
+    const cached = form5SPhotoCache.get(`${assessmentId}:${index}`);
+    if (cached && (cached.expiresAt > Date.now() || cached.promise)) {
+      try { results[index] = await cached.promise; return; } catch { /* fallback below */ }
+    }
+    misses.push(index);
+  }));
+  if (misses.length) {
+    try {
+      const batch = await request("sign-5s-photos", { assessmentId });
+      for (const signed of Array.isArray(batch.photos) ? batch.photos : []) {
+        const index = Number(signed?.index);
+        if (!Number.isInteger(index) || index < 0 || index >= count || !signed.url) continue;
+        const result = { url: publicSignedUrl(signed.url), fileName: signed.fileName, mime: imageMime(signed.mime), isObjectUrl: false, isSigned: true };
+        const promise = Promise.resolve(result);
+        form5SPhotoCache.set(`${assessmentId}:${index}`, { promise, expiresAt: Date.now() + FORM5S_SIGNED_URL_TTL });
+        results[index] = result;
+      }
+    } catch {
+      // Legacy rows or a temporarily unavailable batch endpoint use the scoped helper below.
+    }
+  }
+  const fallbackIndexes = misses.filter(index => !results[index]);
+  await Promise.all(fallbackIndexes.map(async index => {
+    try { results[index] = await openForm5SPhoto(assessmentId, index); }
+    catch (error) { results[index] = { url: "", fileName: "", mime: "", isObjectUrl: false, error }; }
+  }));
+  return results;
+}
+
 export const loadMaturityDriveEvidence = auditId => request("sync", { auditId, scanDrive: false });
 export const signMaturityDriveEvidence = evidenceId => request("sign", { evidenceId });
 

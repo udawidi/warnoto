@@ -535,13 +535,57 @@ Deno.serve(async (req) => {
       const driveFile = await uploadDriveFile(file, form5sFolder.drive_folder_id, form5sFolder.mapping_key);
       const storagePath = storageKey("form-5s", upt.id, `${Number(body.tahun)}-${String(Number(body.bulan) + 1).padStart(2, "0")}`, driveFile.id, file.name);
       try {
-        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: true });
+        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "image/jpeg", upsert: true });
         if (storageError) throw storageError;
       } catch (storageError) {
         await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive 5S gagal setelah backup self-host gagal:", cleanupError));
         throw new Error(`Backup self-host foto 5S wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
       }
-      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
+      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), mimeType: file.type || "image/jpeg", driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
+    }
+    if (action === "sign-5s-photo") {
+      const assessmentId = text(body.assessmentId, 120);
+      const photoIndex = Number(body.photoIndex);
+      if (!assessmentId || !Number.isInteger(photoIndex) || photoIndex < 0 || photoIndex > 2) return json({ ok: false, error: "assessmentId dan photoIndex wajib valid." }, 400);
+      const { data: assessment, error: assessmentError } = await admin.from("maturity_5s_assessments").select("id,upt_id,sample_photos").eq("id", assessmentId).maybeSingle();
+      if (assessmentError) throw new Error(`Data Form 5S tidak dapat dibaca: ${assessmentError.message}`);
+      if (!assessment) return json({ ok: false, error: "Riwayat Form 5S tidak ditemukan." }, 404);
+      const upt = await findUptById(text(assessment.upt_id, 120));
+      await assertUptAccess(ctx, upt, false);
+      const photos = Array.isArray(assessment.sample_photos) ? assessment.sample_photos : [];
+      const photo = photos[photoIndex];
+      if (!photo) return json({ ok: false, error: "Foto Form 5S tidak ditemukan." }, 404);
+      const storagePath = text(photo.storagePath || photo.storage_path, 500);
+      const fileName = safeName(photo.name || photo.fileName, `form-5s-${assessmentId}-${photoIndex + 1}.jpg`);
+      const mimeType = text(photo.mimeType, 120).toLowerCase().startsWith("image/") ? text(photo.mimeType, 120) : "image/jpeg";
+      if (!storagePath) return json({ ok: true, url: null, fileName, mime: mimeType });
+      if (!storagePath.startsWith(`form-5s/${upt.id}/`)) return json({ ok: false, error: "Path foto tidak sesuai UPT canonical." }, 409);
+      const { data, error } = await admin.storage.from("maturity-evidence").createSignedUrl(storagePath, 600);
+      if (error || !data?.signedUrl) return json({ ok: true, url: null, fileName, mime: mimeType });
+      return json({ ok: true, url: data.signedUrl, fileName, mime: mimeType });
+    }
+    if (action === "sign-5s-photos") {
+      const assessmentId = text(body.assessmentId, 120);
+      if (!assessmentId) return json({ ok: false, error: "assessmentId wajib diisi." }, 400);
+      const { data: assessment, error: assessmentError } = await admin.from("maturity_5s_assessments").select("id,upt_id,sample_photos").eq("id", assessmentId).maybeSingle();
+      if (assessmentError) throw new Error(`Data Form 5S tidak dapat dibaca: ${assessmentError.message}`);
+      if (!assessment) return json({ ok: false, error: "Riwayat Form 5S tidak ditemukan." }, 404);
+      const upt = await findUptById(text(assessment.upt_id, 120));
+      await assertUptAccess(ctx, upt, false);
+      const photos = Array.isArray(assessment.sample_photos) ? assessment.sample_photos : [];
+      if (photos.length > 3) return json({ ok: false, error: "Jumlah foto Form 5S tidak valid." }, 409);
+      const signedPhotos: any[] = await Promise.all(photos.map(async (photo: any, index: number) => {
+        const storagePath = text(photo?.storagePath || photo?.storage_path, 500);
+        const fileName = safeName(photo?.name || photo?.fileName, `form-5s-${assessmentId}-${index + 1}.jpg`);
+        const mimeType = text(photo?.mimeType, 120).toLowerCase().startsWith("image/") ? text(photo?.mimeType, 120) : "image/jpeg";
+        if (!storagePath) return { index, url: null, fileName, mime: mimeType };
+        if (!storagePath.startsWith(`form-5s/${upt.id}/`)) return { invalid: true };
+        const { data, error } = await admin.storage.from("maturity-evidence").createSignedUrl(storagePath, 600);
+        if (error || !data?.signedUrl) return { index, url: null, fileName, mime: mimeType };
+        return { index, url: data.signedUrl, fileName, mime: mimeType };
+      }));
+      if (signedPhotos.some(photo => photo.invalid)) return json({ ok: false, error: "Path foto tidak sesuai UPT canonical." }, 409);
+      return json({ ok: true, photos: signedPhotos });
     }
     if (action === "download-5s-photo") {
       const assessmentId = text(body.assessmentId, 120);
@@ -558,7 +602,7 @@ Deno.serve(async (req) => {
       const storagePath = text(photo.storagePath || photo.storage_path, 500);
       const driveFileId = text(photo.driveFileId || photo.drive_file_id, 220);
       const fileName = safeName(photo.name || photo.fileName, `form-5s-${assessmentId}-${photoIndex + 1}.jpg`);
-      const mimeType = text(photo.mimeType, 120) || "application/octet-stream";
+      const mimeType = text(photo.mimeType, 120).toLowerCase().startsWith("image/") ? text(photo.mimeType, 120) : "image/jpeg";
       if (storagePath) {
         if (!storagePath.startsWith(`form-5s/${upt.id}/`)) return json({ ok: false, error: "Path foto tidak sesuai UPT canonical." }, 409);
         const { data: blob } = await admin.storage.from("maturity-evidence").download(storagePath);
