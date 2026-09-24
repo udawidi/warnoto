@@ -51,6 +51,14 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                     <label style={sty.label}>Nama Pekerjaan *</label>
                     <input style={sty.input} value={txnForm.namaPekerjaan||""} onChange={e=>setTxnForm(tf=>({...tf,namaPekerjaan:e.target.value,keteranganUmum:e.target.value}))} placeholder="cth: Penggantian Isolator Komposit Bay Trafo 1"/>
                   </div>
+                  <div>
+                    <label style={sty.label}>Penanggung Jawab</label>
+                    <input style={sty.input} value={txnForm.penanggungJawab||""} onChange={e=>setTxnForm(tf=>({...tf,penanggungJawab:e.target.value}))} placeholder="Nama requestor / PIC"/>
+                  </div>
+                  <div>
+                    <label style={sty.label}>Jabatan Penanggung Jawab</label>
+                    <input style={sty.input} value={txnForm.jabatanPenanggungJawab||""} onChange={e=>setTxnForm(tf=>({...tf,jabatanPenanggungJawab:e.target.value}))} placeholder="PIC / Requester (opsional)"/>
+                  </div>
                 </div>
               </>
             ) : (

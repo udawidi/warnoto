@@ -32,7 +32,6 @@ export function ApprovalHubTab({
   approvalOpnamePage, setApprovalOpnamePage, approveOpname_Asman, rejectOpname,
   stockCountList, approvalStockCountPage, setApprovalStockCountPage, approveStockCountItem, approveStockCountItems, rejectStockCountItem,
   txns, approvalHistoryList, approvalHistoryPage, setApprovalHistoryPage,
-  approvalHistoryMineOnly, setApprovalHistoryMineOnly,
   approvalHistorySearch, setApprovalHistorySearch,
   approvalHistoryDateFrom, setApprovalHistoryDateFrom,
   approvalHistoryDateTo, setApprovalHistoryDateTo,
@@ -45,9 +44,10 @@ export function ApprovalHubTab({
   // getScopeUptIds/inScopeUpt (sumber tunggal 3-tier, lihat src/lib/roles.js).
   const historyScope = getScopeUptIds(currentUser, uptList);
   const userUptById = new Map((users || []).map(u => [u.id, u.uptId]));
-  const scopedApprovalHistory = historyScope === null
+  const scopedApprovalHistory = (historyScope === null
     ? approvalHistoryList
-    : approvalHistoryList.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope));
+    : approvalHistoryList.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope)))
+    .filter(h => h.decidedBy === currentUser.id);
   const tugCount = myPendingApprovals.length;
   const capCount = hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0;
   const lokasiCount = hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0;
@@ -347,11 +347,11 @@ export function ApprovalHubTab({
         const histTUG = txns.filter(t=>t.status==="APPROVED"||t.status==="REJECTED").map(t=>({
           id:`TUG-${t.id}`, type:"TUG", docType:t.docType, decision:t.status,
           title:`${t.docType||"TUG"} • ${t.docNumbers?.[docKeyMap[t.docType]] || t.id}`,
-          decidedBy: t.status==="REJECTED" ? t.rejectedBy : (t.approvedBy || t.approvedByAsman),
-          decidedAt: t.status==="REJECTED" ? t.rejectedAt : (t.approvedAt || t.approvedAtAsman),
+          decidedBy: t.status==="REJECTED" ? t.rejectedBy : (t.approvedByMgrUltg || t.approvedByManager || t.approvedBy || t.approvedByAsman || t.approvedByTL || t.approvedByAdminUIT || t.approvedByMgrLogistik),
+          decidedAt: t.status==="REJECTED" ? t.rejectedAt : (t.approvedAtMgrUltg || t.approvedAtManager || t.approvedAt || t.approvedAtAsman || t.approvedAtTL || t.approvedAtAdminUIT || t.approvedAtMgrLogistik),
           uptId:t.uptId, requestedBy:t.createdBy,
           requester: users.find(u=>u.id===t.createdBy),
-          approver: users.find(u=>u.id===(t.status==="REJECTED" ? t.rejectedBy : (t.approvedBy || t.approvedByAsman))),
+          approver: users.find(u=>u.id===(t.status==="REJECTED" ? t.rejectedBy : (t.approvedByMgrUltg || t.approvedByManager || t.approvedBy || t.approvedByAsman || t.approvedByTL || t.approvedByAdminUIT || t.approvedByMgrLogistik))),
           upt: uptList.find(u=>u.id===t.uptId),
           reason: t.rejectionReason || t.rejectReason || t.catatan || t.keterangan,
           metadata: [
@@ -368,7 +368,8 @@ export function ApprovalHubTab({
             return {label: si.namaBaru || katalog?.name || "Item", katalog: katalog?.katalog || si.katalog || si.katalogId, qty: si.qty, satuan: si.unit || si.satuan || stock?.unit || stock?.satuan || katalog?.satuan, lokasi: lokasi?.nama || lokasi?.kode || stock?.lokasi || stock?.lokasiNama, sumber: formatKontrakSumber(source, stock?.kontrakRefs) || "Sumber belum dicatat"};
           }),
         }));
-        const scopedHistTug = historyScope === null ? histTUG : histTUG.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope));
+        const scopedHistTug = (historyScope === null ? histTUG : histTUG.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope)))
+          .filter(h => h.decidedBy === currentUser.id);
         const combinedAll = [...scopedApprovalHistory, ...scopedHistTug].filter(h=>h.decidedAt).sort((a,b)=>b.decidedAt-a.decidedAt);
         // Filter jenis (chip filter atas) juga berlaku ke riwayat — sebelumnya diabaikan.
         const typeFilterMap = {TUG:["TUG"], ALAT_BERAT:["HEAVY_EQUIPMENT_LOAN"], OPNAME:["OPNAME"], STOCK_COUNT:["STOCK_COUNT"], STOK:["STOCK_MOVE","STOCK_EDIT","STOCK_DELETE"], LOKASI:["LOKASI"], KAPASITAS:["KAPASITAS"]};
@@ -378,9 +379,8 @@ export function ApprovalHubTab({
         const subtypeFiltered = (approvalTypeFilter!=="ALL" && approvalTypeFilter!=="TUG") || historyTugFilter === "ALL"
           ? byType
           : byType.filter(h=>h.type==="TUG" && h.docType===historyTugFilter);
-        const mine = approvalHistoryMineOnly ? subtypeFiltered.filter(h=>h.decidedBy===currentUser.id) : subtypeFiltered;
         const q = approvalHistorySearch.trim().toLowerCase();
-        const searched = q ? mine.filter(h => [h.title,h.note,h.reason,h.refId,h.requestedAt,h.requester?.name,h.upt?.name,...(h.metadata||[]).flat(),...(h.items||[]).flatMap(it=>[it.label,it.katalog,it.lokasi,it.sumber])].filter(Boolean).join(" ").toLowerCase().includes(q)) : mine;
+        const searched = q ? subtypeFiltered.filter(h => [h.title,h.note,h.reason,h.refId,h.requestedAt,h.requester?.name,h.upt?.name,...(h.metadata||[]).flat(),...(h.items||[]).flatMap(it=>[it.label,it.katalog,it.lokasi,it.sumber])].filter(Boolean).join(" ").toLowerCase().includes(q)) : subtypeFiltered;
         const fromMs = approvalHistoryDateFrom ? new Date(approvalHistoryDateFrom+"T00:00:00").getTime() : null;
         const toMs = approvalHistoryDateTo ? new Date(approvalHistoryDateTo+"T23:59:59").getTime() : null;
         const filtered = searched.filter(h => (fromMs===null || h.decidedAt>=fromMs) && (toMs===null || h.decidedAt<=toMs));
@@ -400,10 +400,6 @@ export function ApprovalHubTab({
               {[{docType:"ALL",label:"Semua TUG",count:byType.filter(h=>h.type==="TUG").length}, ...historyTugCounts.map(x=>({docType:x.docType,label:x.docType==="TUG3"?"TUG-3/4":x.docType.replace("TUG","TUG-"),count:x.count}))].map(({docType,label,count})=><button className="approval-tug-filter" type="button" key={docType} aria-pressed={historyTugFilter===docType} onClick={()=>setHistoryTugFilter(docType)} style={{borderColor:historyTugFilter===docType?C.accent:C.border,background:historyTugFilter===docType?C.accent:(C.surface||"white"),color:historyTugFilter===docType?"white":C.muted,fontWeight:historyTugFilter===docType?700:500}}>{label} ({count})</button>)}
             </div>}
             <div style={{display:"flex",flexWrap:"wrap",gap:8,alignItems:"center",marginBottom:12}}>
-              <label style={{display:"flex",alignItems:"center",gap:5,fontSize:12,cursor:"pointer"}}>
-                <input type="checkbox" checked={approvalHistoryMineOnly} onChange={e=>setApprovalHistoryMineOnly(e.target.checked)}/>
-                Approval saya
-              </label>
               <input type="text" placeholder="Cari judul/barang…" value={approvalHistorySearch} onChange={e=>setApprovalHistorySearch(e.target.value)}
                 style={{...sty.input,width:"auto",flex:"1 1 160px",minHeight:"unset",padding:"4px 8px",fontSize:12}}/>
               <input type="date" value={approvalHistoryDateFrom} onChange={e=>setApprovalHistoryDateFrom(e.target.value)}

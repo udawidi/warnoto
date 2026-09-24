@@ -803,17 +803,22 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Slip Reservasi ULTG ${esc(txn.id)}</title>
-<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto;box-shadow:none}}</style></head><body>
+<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.pln-kop{display:flex;align-items:center;border-bottom:2px solid #003087;padding:4px 0 7px;margin-bottom:10px;gap:10px}.pln-kop-logo{width:42px;height:42px;object-fit:contain}.pln-kop-text{line-height:1.18;flex:1}.pln-kop-company{font-size:13px;font-weight:800}.pln-kop-unit{font-size:9px;font-weight:700;letter-spacing:.25px}.pln-kop-ultg{font-size:11px;font-weight:800;text-transform:uppercase}.pln-kop-ultg span{font-size:9px;font-weight:600;text-transform:none}.pln-kop-doc{font-size:14px;font-weight:800;color:#003087}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto;box-shadow:none}}</style></head><body>
 <div class="print-bar">📄 Slip Reservasi siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
-<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-  <div><b>PT PLN (PERSERO)</b><br/>${esc(ultg.nama||"ULTG")}</div>
-  <div style="font-weight:800;font-size:14px">RESERVASI</div>
+<div class="pln-kop">
+  <img class="pln-kop-logo" src="${PLN_LOGO_DATA_URI}" alt="Logo PLN"/>
+  <div class="pln-kop-text">
+    <div class="pln-kop-company">PT PLN (PERSERO)</div>
+    <div class="pln-kop-unit">UNIT LAYANAN TRANSMISI DAN GARDU INDUK</div>
+    <div class="pln-kop-ultg">${esc(ultg.nama || "-")}${ultg.kode ? ` <span>(${esc(ultg.kode)})</span>` : ""}</div>
+  </div>
+  <div class="pln-kop-doc">RESERVASI</div>
 </div>
 <div class="doctitle"><h2>SLIP RESERVASI BARANG (ULTG)</h2><div class="docno">${esc(docs?.tug5||txn.id)}</div></div>
 <table class="meta" style="border:1px solid #ccc;padding:6px;border-radius:4px;margin-bottom:10px">
-  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${esc(ultg.nama||"-")} (${esc(ultg.kode||"-")})</td></tr>
+  <tr><td class="label">Diajukan oleh</td><td class="colon">:</td><td>${esc(ultg.nama||"-")}${ultg.kode ? ` (${esc(ultg.kode)})` : ""}</td></tr>
   <tr><td class="label">Nama Pekerjaan</td><td class="colon">:</td><td>${esc(txn.namaPekerjaan||"-")}</td></tr>
   <tr><td class="label">Lokasi Pekerjaan</td><td class="colon">:</td><td>${esc(txn.lokasiPekerjaan||"-")}</td></tr>
 </table>
@@ -829,9 +834,15 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
   <tbody>${itemRows}</tbody>
 </table>
 <div style="text-align:right;font-size:10px;margin-bottom:14px">${tanggalApprove||fmtDate(txn.createdAt)}</div>
-<div class="sig-row">
+<div class="sig-row" style="display:flex;justify-content:space-between;gap:24px">
+  <div class="sig-col" style="flex:1;text-align:center">
+    <b>PENANGGUNG JAWAB</b>
+    <div class="sig-space"></div>
+    <div class="sig-name">${esc(txn.penanggungJawab||".....................")}</div>
+    <div style="font-size:11px">${esc(txn.jabatanPenanggungJawab||"")}</div>
+  </div>
   <div class="sig-col">
-    <b>MANAGER ULTG${ultg.nama?" — "+esc(ultg.nama.toUpperCase().replace(/^ULTG\s+/,"")):""}</b>
+    <b>MENGETAHUI, MANAGER ULTG${ultg.nama?" — "+esc(ultg.nama.toUpperCase().replace(/^ULTG\s+/,"")):""}</b>
     <div class="sig-space">${isApproved?`<div class="digital-stamp">✓ DISETUJUI SECARA DIGITAL<br/>${tanggalApprove}</div>`:""}</div>
     <div class="sig-name">${esc(mgrUltgUser.name||".....................")}</div>
   </div>

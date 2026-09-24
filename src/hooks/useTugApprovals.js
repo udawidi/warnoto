@@ -552,6 +552,11 @@ export function useTugApprovals({
     if (!hasRole(currentUser, "ADMIN","TL")) { showToast("Hanya Admin/TL UPT yang bisa mengadopsi pengajuan ini.","error"); return; }
     if (txn.adoptedBy) { showToast("Pengajuan ini sudah di-adopt UPT lain.","error"); return; }
     const ultg = ultgList.find(u=>u.id===txn.ultgId);
+    const resolveGudangId = (items) => {
+      const selected = (items || []).map(si => stocks.find(s => s.id === si.stockId) ||
+        stocks.filter(s => s.katalogId === si.katalogId).sort((a,b)=>(b.qty||0)-(a.qty||0))[0]).find(Boolean);
+      return selected?.gudangId || lokasiList.find(l => l.id === selected?.lokasiId)?.gudangId || "";
+    };
     // Cocokkan katalogId dari pengajuan TUG-5 ULTG ke baris stok aktual (pilih stok dengan
     // qty terbesar untuk katalog tsb) — supaya list material TIDAK hilang saat masuk draft TUG-9,
     // karena form TUG-9 me-render item lewat stocks.find(s=>s.id===si.stockId), bukan katalogId.
@@ -559,6 +564,7 @@ export function useTugApprovals({
       id: `DRAFT-TUG9-` + uid().slice(-6),
       docType: "TUG9", draftLabel:"DRAFT — nomor resmi saat diajukan",
       uptId: currentUserUptId || currentUser?.uptId || "",
+      gudangId: resolveGudangId(txn.stockItems),
       tug5Id: txn.id, tug5DocNo: txn.docNumbers.tug5,
       namaPekerjaan: txn.keteranganUmum || "Reservasi Material ULTG",
       lokasiPekerjaan: ultg?.nama || "ULTG",
@@ -590,7 +596,11 @@ export function useTugApprovals({
   // setelah seluruh data, stok, dan lampiran lolos validasi.
   function openDraftTug9(txn) {
     canonicalActionKeysRef.current = null;
-    setTxnForm({ ...txn, uptId:txn.uptId || currentUserUptId || currentUser?.uptId || "", stockItems: txn.stockItems.length ? txn.stockItems : [{stockId:"",qty:1}] });
+    const stockItems = txn.stockItems?.length ? txn.stockItems : [{stockId:"",qty:1}];
+    const selected = stockItems.map(si => stocks.find(s => s.id === si.stockId) ||
+      stocks.filter(s => s.katalogId === si.katalogId).sort((a,b)=>(b.qty||0)-(a.qty||0))[0]).find(Boolean);
+    const gudangId = txn.gudangId || selected?.gudangId || lokasiList.find(l => l.id === selected?.lokasiId)?.gudangId || "";
+    setTxnForm({ ...txn, gudangId, uptId:txn.uptId || currentUserUptId || currentUser?.uptId || "", stockItems });
     setEditingDraftTxnId(txn.id);
     setTxnModal(true);
   }

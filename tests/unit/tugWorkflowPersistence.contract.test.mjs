@@ -117,6 +117,13 @@ test("TUG-3 pending edit is not demoted by Save Draft", () => {
   assert.match(transactions, /targetStage = "PENDING_TL"/);
 });
 
+test("ULTG reservation requires Penanggung Jawab only when submitted", () => {
+  assert.match(transactions, /docType === "TUG5" && txnForm\.sourceType === "ULTG"/);
+  assert.match(transactions, /targetStage === "DRAFT"/);
+  assert.match(transactions, /!txnForm\.penanggungJawab\?\.trim\(\)/);
+  assert.match(transactions, /Penanggung Jawab wajib diisi sebelum mengajukan Reservasi/);
+});
+
 test("workflow scope maps TUG-7 and UIT TUG-5 children to UIT only", () => {
   assert.match(sync, /docType === "TUG7"/);
   assert.match(sync, /txn\.stage === "DRAFT_UIT"/);

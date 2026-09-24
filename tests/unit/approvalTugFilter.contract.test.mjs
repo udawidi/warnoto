@@ -15,13 +15,21 @@ test("Approval pending queue keeps sorted pagination without subtype filter", ()
 test("Approval history has permanent TUG subtype filter", () => {
   assert.match(hub, /const \[historyTugFilter, setHistoryTugFilter\] = useState\("ALL"\)/);
   assert.match(hub, /id:`TUG-\$\{t\.id\}`, type:"TUG", docType:t\.docType/);
-  assert.match(hub, /t\.approvedBy \|\| t\.approvedByAsman/);
-  assert.match(hub, /t\.approvedAt \|\| t\.approvedAtAsman/);
+  assert.match(hub, /t\.approvedByMgrUltg \|\| t\.approvedByManager \|\| t\.approvedBy \|\| t\.approvedByAsman/);
+  assert.match(hub, /t\.approvedAtMgrUltg \|\| t\.approvedAtManager \|\| t\.approvedAt \|\| t\.approvedAtAsman/);
   assert.match(hub, /uptId:t\.uptId, requestedBy:t\.createdBy/);
   assert.match(hub, /subtypeFiltered = \(approvalTypeFilter!=="ALL" && approvalTypeFilter!=="TUG"\) \|\| historyTugFilter === "ALL"/);
   assert.match(hub, /label:"Semua TUG"/);
   assert.match(hub, /x\.docType==="TUG3"\?"TUG-3\/4"/);
   assert.match(hub, /setApprovalHistoryPage\(1\); \}, \[historyTugFilter\]/);
+});
+
+test("Approval history is actor-only for the active account", () => {
+  assert.match(hub, /\.filter\(h => h\.decidedBy === currentUser\.id\)/);
+  assert.doesNotMatch(hub, /Approval saya/);
+  assert.doesNotMatch(hub, /approvalHistoryMineOnly.*setApprovalHistoryMineOnly/);
+  assert.match(hub, /approvedByMgrUltg/);
+  assert.match(hub, /approvedAtMgrUltg/);
 });
 
 test("legacy Asman stock moves remain in the TL queue only", () => {

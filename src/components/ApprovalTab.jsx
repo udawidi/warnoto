@@ -4,7 +4,7 @@ import { KAPASITAS_LABEL, UIT, UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
-import { statusMaterialBadgeStyle, resolveSapLabel, formatKontrakSumber } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, resolveSapLabel, formatKontrakSumber, sourceLotLabel } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
 import { PhotoSlot } from "./PhotoSlot.jsx";
@@ -20,6 +20,8 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const [tug3Previewed, setTug3Previewed] = useState(false);
   const [tug10ReviewTxn, setTug10ReviewTxn] = useState(null);
   const [tug10Previewed, setTug10Previewed] = useState(false);
+  const [tug5ReviewTxn, setTug5ReviewTxn] = useState(null);
+  const [tug5Checks, setTug5Checks] = useState([false, false, false]);
   function openTug4Modal(txn) {
     // Sama seperti TUG3Tab.jsx openTug4Modal — status SAP/Non-SAP per barang diputuskan
     // di sini (TL, tahap TUG-4), default dibawa dari pilihan form TUG-3.
@@ -257,7 +259,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               {t.docType==="TUG5" && t.sourceType==="ULTG" && t.stage==="PENDING_MGR_ULTG" && hasRole(currentUser, "MGR_ULTG") && (
                 rejectingId===t.id
                   ? <><button className="approval-btn--danger" onClick={()=>{rejectTUG5_MgrULTG(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></>
-                  : <><button className="approval-btn--approve" onClick={()=>approveTUG5_MgrULTG(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager ULTG)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
+                  : <><button className="approval-btn--approve" onClick={()=>{setTug5Checks([false,false,false]);setTug5ReviewTxn(t);}}><span className="approval-btn__ic" aria-hidden="true">✓</span>Periksa & Setujui (Manager ULTG)</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></>
               )}
               {/* TL/SUPERADMIN bisa perbaiki file ajuan admin yang salah input, tanpa reject-recreate */}
               {/* TUG-3 hanya editable in-place di stage PENDING_TL; stage MENUNGGU_TUG4/PENDING_ASMAN kalau diedit akan renumber+regress (isEditInPlace cuma cek PENDING_TL) */}
@@ -545,6 +547,30 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               <button style={{...sty.btn("primary"),flex:2}} disabled={!tug10Previewed} onClick={()=>{approveTxn(tug10ReviewTxn);setTug10ReviewTxn(null);}}>{tug10ReviewTxn.stage==="PENDING_TL" ? "✓ Teruskan ke Asman" : "✓ Setujui — Stok Masuk"}</button>
             </div>
             {!tug10Previewed && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
+          </div>
+        </div>
+      )}
+
+      {tug5ReviewTxn && (
+        <div role="dialog" aria-modal="true" aria-labelledby="tug5-review-title" style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:12}}>
+          <div style={{...sty.card,width:560,maxWidth:"100%",maxHeight:"92dvh",overflowY:"auto"}}>
+            <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM APPROVAL</div>
+            <h3 id="tug5-review-title" style={{fontSize:17,fontWeight:800,margin:"4px 0 12px"}}>Review Reservasi ULTG</h3>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:8,fontSize:12,marginBottom:12}}>
+              <div><b>ULTG</b><br/>{(ultgList||[]).find(u=>u.id===tug5ReviewTxn.ultgId)?.nama||tug5ReviewTxn.ultgId||"-"}</div>
+              <div><b>Penanggung Jawab</b><br/>{tug5ReviewTxn.penanggungJawab||"-"}{tug5ReviewTxn.jabatanPenanggungJawab ? ` (${tug5ReviewTxn.jabatanPenanggungJawab})` : ""}</div>
+              <div><b>Pekerjaan</b><br/>{tug5ReviewTxn.namaPekerjaan||tug5ReviewTxn.pekerjaan||"-"}</div>
+              <div><b>Lokasi</b><br/>{tug5ReviewTxn.lokasiPekerjaan||"-"}</div>
+            </div>
+            <div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:8,marginBottom:12,fontSize:12}}>
+              <b>Material yang diminta</b>
+              {(tug5ReviewTxn.stockItems||[]).map((si,i)=>{const kat=(katalogList||[]).find(k=>k.id===si.katalogId); const stock=stocks.find(s=>s.id===si.stockId); const sumber=formatKontrakSumber(si.sourceSnapshot,stock?.kontrakRefs)||sourceLotLabel(stock); return <div key={i} style={{padding:"5px 0",borderTop:i?`1px solid ${C.border}`:"none"}}>{kat?.name||si.snapshot?.name||"-"} — <b>{si.permintaan||si.qty||0} {kat?.satuan||si.unit||""}</b>{sumber&&<div style={{fontSize:11,color:C.muted}}>Sumber: {sumber}</div>}</div>;})}
+            </div>
+            <div style={{display:"grid",gap:7,fontSize:12,marginBottom:14}}>
+              {["Identitas dan Penanggung Jawab sudah benar.","Pekerjaan, material, qty, dan satuan sudah diperiksa.","Ajuan layak di-adopt menjadi draft TUG-9."] .map((label,i)=><label key={label} style={{display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer"}}><input type="checkbox" checked={tug5Checks[i]} onChange={e=>setTug5Checks(c=>c.map((v,j)=>j===i?e.target.checked:v))} /> <span>{label}</span></label>)}
+            </div>
+            <div style={{display:"flex",gap:10}}><button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug5ReviewTxn(null)}>Batal</button><button style={{...sty.btn("primary"),flex:2}} disabled={!tug5Checks.every(Boolean)} onClick={()=>{approveTUG5_MgrULTG(tug5ReviewTxn);setTug5ReviewTxn(null);}}>✓ Setujui Reservasi</button></div>
+            {!tug5Checks.every(Boolean)&&<div style={{fontSize:12,color:C.muted,marginTop:7}}>Centang semua pemeriksaan sebelum menyetujui.</div>}
           </div>
         </div>
       )}

@@ -197,7 +197,10 @@ test("derived TUG-8/9 drafts reserve no official number and replace themselves c
   assert.match(tugTransactions, /submittedItems\.some\(si => !si\.stockId \|\| !\(Number\(si\.qty\) > 0\)\)/);
   assert.match(tugTransactions, /const canonicalUptId = currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
   assert.match(adopt, /uptId: currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
+  assert.match(adopt, /gudangId: resolveGudangId\(txn\.stockItems\)/);
+  assert.match(adopt, /selected\?\.gudangId \|\| lokasiList\.find\(l => l\.id === selected\?\.lokasiId\)\?\.gudangId/);
   assert.match(tugApprovals, /uptId:txn\.uptId \|\| currentUserUptId \|\| currentUser\?\.uptId \|\| ""/);
+  assert.match(tugApprovals, /const gudangId = txn\.gudangId \|\| selected\?\.gudangId \|\| lokasiList\.find\(l => l\.id === selected\?\.lokasiId\)\?\.gudangId/);
   assert.match(tugTransactions, /adoptedTug9Id === replaceDraftId/);
   assert.match(tugTransactions, /tug8DraftId === replaceDraftId/);
   assert.match(tugApprovals, /openDraftTug9\(txn\)/);

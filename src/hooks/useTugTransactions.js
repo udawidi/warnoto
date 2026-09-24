@@ -409,6 +409,7 @@ export function useTugTransactions({
         await commitNewTxn(docType, { ...txnForm }, { targetStage: "DRAFT", replaceDraftId: editingDraftTxnId });
         return;
       }
+      if (!txnForm.penanggungJawab?.trim()) { showToast("Penanggung Jawab wajib diisi sebelum mengajukan Reservasi.","error"); return; }
       if (!txnForm.ultgId) { showToast("Unit ULTG kamu tidak terdeteksi. Hubungi Admin.","error"); return; }
       if (!txnForm.gudangId) { showToast("Pilih Gudang UPT sumber.","error"); return; }
       const validItems = txnForm.stockItems.filter(si => si.stockId && si.permintaan > 0);
