@@ -148,7 +148,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   // Viewer multi-UPT (UIT/Pusat/Global, non-MSB) juga boleh mempersempit ke 1 UPT — reuse
   // mekanisme effectiveUptFilter/myUptSelected yang sudah ada utk MSB, dropdown-nya baru
   // dirender kalau uptOptions>1 (lihat controls di bawah).
-  const isMultiUptViewer = ["UIT", "PUSAT", "GLOBAL"].includes(roleTier(currentUser?.role));
+  const officialUitRole = ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT"].includes(currentUser?.role);
+  const isMultiUptViewer = officialUitRole || ["PUSAT", "GLOBAL"].includes(roleTier(currentUser?.role));
   const uptFilterControllable = isMSB || isMultiUptViewer;
   const [viewMode, setViewMode] = useState("armada");
   const [myUptSelected, setMyUptSelected] = useState(uptFilterControllable ? "" : (myUpt || ""));
@@ -168,8 +169,12 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const [returnEvidence, setReturnEvidence] = useState("");
   const [returnQuantities, setReturnQuantities] = useState({good:0,damaged:0,lost:0,conditionNote:""});
   const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [returnProgress, setReturnProgress] = useState("");
   const [editingEquipment, setEditingEquipment] = useState(null);
   const [editForm, setEditForm] = useState({statusAlat:"LAYAK", foto:null});
+
+  const getRequesterName = loan => loan?.requestedByName || loan?.data?.requestedByName
+    || users?.find(user => user.id === (loan?.requestedBy || loan?.data?.requestedBy))?.name || "?";
 
   const normalizedLoans = loans.map(l=>({
     ...l,
@@ -187,8 +192,8 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   // Role UIT (bukan MSB, tanpa uptId) melihat riwayat & armada SEMUA UPT di UIT-nya — bukan
   // nasional. Set nama UPT (terpangkas prefix, sesuai ownerUpt/requesterUpt) dalam UIT viewer.
   // null untuk non-UIT (UPT sudah dibatasi effectiveUptFilter; Pusat/SUPERADMIN nasional).
-  const uitScopeNames = roleTier(currentUser?.role) === "UIT"
-    ? new Set(uptList.filter(u => u.uitId === currentUser?.uitId).map(u => (u.nama||"").replace(/^UPT\s+/i,"").trim()))
+  const uitScopeUptIds = (officialUitRole || isHarUit)
+    ? new Set(uptList.filter(u => u.uitId === currentUser?.uitId).map(u => u.id).filter(Boolean))
     : null;
   const inHarUitScope = loan => isHarUit && (
     getHeavyEquipmentLoanRequesterUitId(loan) === currentUser?.uitId
@@ -199,7 +204,9 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
     (!effectiveUptFilter || l.ownerUpt===effectiveUptFilter || l.requesterUpt===effectiveUptFilter
       || getHeavyEquipmentLoanOwnerUptId(l, uptList) === currentUser?.uptId
       || getHeavyEquipmentLoanRequesterUptId(l, uptList) === currentUser?.uptId)
-    && (!uitScopeNames || uitScopeNames.has(l.ownerUpt) || uitScopeNames.has(l.requesterUpt))
+    && (!uitScopeUptIds
+      || uitScopeUptIds.has(getHeavyEquipmentLoanOwnerUptId(l, uptList))
+      || uitScopeUptIds.has(getHeavyEquipmentLoanRequesterUptId(l, uptList)))
     && (!isHarUit || inHarUitScope(l)));
   const uptOptions = Array.from(new Set([
     ...equipmentList.map(e=>e.upt),
@@ -234,7 +241,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const overdueCount = scopedLoans.filter(l=>l.runtimeStatus==="OVERDUE").length;
   // Alat yang ter-scope ke UPT aktif (non-MSB dikunci ke UPT sendiri) — dipakai KPI di bawah &
   // status grid. Dulu 3 count ini dihitung dari equipmentList mentah tanpa filter UPT.
-  const scopedEquipment = equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter) && (!uitScopeNames||uitScopeNames.has(e.upt)) && (!isHarUit || harUptIds.has(getHeavyEquipmentUptId(e, uptList))));
+  const scopedEquipment = equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter) && (!uitScopeUptIds||uitScopeUptIds.has(getHeavyEquipmentUptId(e, uptList))) && (!isHarUit || harUptIds.has(getHeavyEquipmentUptId(e, uptList))));
 
   // 5 status alat yang bisa dipilih Admin/TL lewat tombol Edit Alat
   const STATUS_ALAT_OPTIONS = [
@@ -341,12 +348,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   ];
 
   const categoryCounts = EQUIPMENT_CATEGORIES.reduce((acc, cat) => {
-    acc[cat.id] = cat.id==="ALL" ? equipmentList.length : equipmentList.filter(e=>getEquipmentCategory(e)===cat.id).length;
+    acc[cat.id] = cat.id==="ALL" ? scopedEquipment.length : scopedEquipment.filter(e=>getEquipmentCategory(e)===cat.id).length;
     return acc;
   }, {});
 
-  const filteredEquipment = equipmentList.filter(e =>
-    (!effectiveUptFilter || e.upt===effectiveUptFilter) &&
+  const filteredEquipment = scopedEquipment.filter(e =>
     (!isHarUit || harUptIds.has(getHeavyEquipmentUptId(e, uptList))) &&
     (categoryFilter==="ALL" || getEquipmentCategory(e)===categoryFilter) &&
     (kondisiFilter==="ALL" || e.statusAlat===kondisiFilter || (kondisiFilter==="DIPINJAM" && !!activeLoanForEquipment(e.id)))
@@ -370,13 +376,13 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
 
   // Kondisi overview data
   const kondisiGroups = [
-    {id:"ALL",      label:"Semua Alat",     color:C.accent,   count:equipmentList.filter(e=>!effectiveUptFilter||e.upt===effectiveUptFilter).length},
-    {id:"LAYAK",    label:"Layak",          color:C.green,    count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="LAYAK").length},
-    {id:"DIPINJAM", label:"Dipinjam",       color:"#c2410c",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&activeLoanForEquipment(e.id)).length},
-    {id:"MAINTENANCE", label:"Maintenance", color: "#64748b",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="MAINTENANCE").length},
-    {id:"KIR",      label:"Sedang KIR",     color:"#1d4ed8",  count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="KIR").length},
-    {id:"PERLU_SERVICE", label:"Perlu Servis", color:"#f59e0b", count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="PERLU_SERVICE").length},
-    {id:"RUSAK",    label:"Rusak",          color:C.red,      count:equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter)&&e.statusAlat==="RUSAK").length},
+    {id:"ALL",      label:"Semua Alat",     color:C.accent,   count:scopedEquipment.length},
+    {id:"LAYAK",    label:"Layak",          color:C.green,    count:scopedEquipment.filter(e=>e.statusAlat==="LAYAK").length},
+    {id:"DIPINJAM", label:"Dipinjam",       color:"#c2410c",  count:scopedEquipment.filter(e=>activeLoanForEquipment(e.id)).length},
+    {id:"MAINTENANCE", label:"Maintenance", color: "#64748b",  count:scopedEquipment.filter(e=>e.statusAlat==="MAINTENANCE").length},
+    {id:"KIR",      label:"Sedang KIR",     color:"#1d4ed8",  count:scopedEquipment.filter(e=>e.statusAlat==="KIR").length},
+    {id:"PERLU_SERVICE", label:"Perlu Servis", color:"#f59e0b", count:scopedEquipment.filter(e=>e.statusAlat==="PERLU_SERVICE").length},
+    {id:"RUSAK",    label:"Rusak",          color:C.red,      count:scopedEquipment.filter(e=>e.statusAlat==="RUSAK").length},
   ].filter(g=>g.id==="ALL"||g.count>0);
   const scopedPhysicalBalances = scopedEquipment.map(e=>({equipment:e,balance:heavyEquipmentQuantityBalance(e, scopedLoans)}));
   const scopedPhysicalTotal = scopedPhysicalBalances.reduce((sum,item)=>sum+item.balance.total,0);
@@ -598,12 +604,11 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
               <div style={{fontWeight:800,fontSize:13,marginBottom:10,color:C.red}}>Alat melewati jadwal pengembalian ({overdueCount})</div>
               {scopedLoans.filter(l=>l.runtimeStatus==="OVERDUE").map(l=>{
                 const eq = equipmentList.find(e=>e.id===l.equipmentId);
-                const pemohon = users.find(u=>u.id===l.requestedBy);
                 return (
                   <div key={l.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:`1px solid ${C.border}`,gap:10,flexWrap:"wrap"}}>
                     <div>
                       <div style={{fontSize:12,fontWeight:700}}>{eq?.nama||l.equipmentId} • {l.ownerUpt} → {l.requesterUpt}</div>
-                      <div style={{fontSize:12,color:C.muted}}>Rencana kembali: {l.tanggalKembali||"-"} • {l.namaPekerjaan||"-"} • Diajukan oleh {pemohon?.name||"?"}</div>
+                      <div style={{fontSize:12,color:C.muted}}>Rencana kembali: {l.tanggalKembali||"-"} • {l.namaPekerjaan||"-"} • Diajukan oleh {getRequesterName(l)}</div>
                     </div>
                     {canCompleteHeavyEquipmentLoan(currentUser, l, uptList) && (
                       <button aria-label="Tandai Alat Kembali" style={sty.btn("success","sm")} onClick={()=>setReturningLoan(l)}>Tandai Alat Kembali</button>
@@ -623,7 +628,6 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
               const isActive=["PENDING_OWNER_ASMAN","TERJADWAL","DIPINJAM","OVERDUE"].includes(loan.runtimeStatus);
               const hariDiff=Math.round((new Date(loan.tanggalKembali)-new Date(loan.tanggalAmbil))/86400000)+1;
               const durasiLabel=Number.isFinite(hariDiff)?`${loan.tanggalAmbil} - ${loan.tanggalKembali} (${hariDiff} hari)`:"-";
-              const pemohon=users.find(u=>u.id===loan.requestedBy);
               const penyetuju=users.find(u=>u.id===loan.approvedBy);
               return (
                 <div key={loan.id} className="operations-row-card" style={{...sty.card,padding:12,borderLeft:`4px solid ${loanBorderColor(loan.runtimeStatus)}`,opacity:isActive?1:0.85}}>
@@ -638,7 +642,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                   <div className="equipment-loan-facts" style={{marginBottom:isActive?6:0}}>
                     {eq?.trackingMode === "QUANTITY" && <div><span className="equipment-fact-label">Jumlah</span><span className="equipment-fact-value">{loan.quantityBorrowed||1} {eq.unit||"unit"} • sisa {getHeavyEquipmentLoanRemainingQuantity(loan)}</span></div>}
                     <div><span className="equipment-fact-label">Durasi</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{durasiLabel}</span></div>
-                    <div><span className="equipment-fact-label">Pemohon</span><span className="equipment-fact-value">{pemohon?.name||"?"}</span></div>
+                    <div><span className="equipment-fact-label">Pemohon</span><span className="equipment-fact-value">{getRequesterName(loan)}</span></div>
                     <div><span className="equipment-fact-label">Diajukan</span><span className="equipment-fact-value" style={{fontVariantNumeric:"tabular-nums"}}>{fmtDateOnly(loan.requestedAt)}</span></div>
                     <div><span className="equipment-fact-label">Keperluan</span><span className="equipment-fact-value" style={{WebkitLineClamp:2,WebkitBoxOrient:"vertical",display:"-webkit-box",overflow:"hidden"}}>{loan.keperluan||"-"}</span></div>
                     {loan.loanBatchId && <div><span className="equipment-fact-label">Batch</span><span className="equipment-fact-value">{loan.loanBatchId}</span></div>}
@@ -682,7 +686,6 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
       {reviewingLoan && (()=>{
         const loan = reviewingLoan;
         const eq = equipmentList.find(e=>e.id===loan.equipmentId);
-        const pemohon = users.find(u=>u.id===loan.requestedBy);
         const ambil = new Date(loan.tanggalAmbil);
         const kembali = new Date(loan.tanggalKembali);
         const hariDiff = Math.round((kembali-ambil)/86400000)+1;
@@ -702,7 +705,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
                 {loan.catatan && <div><b>Catatan:</b> {loan.catatan}</div>}
                 <div><b>Durasi:</b> {loan.tanggalAmbil} s/d {loan.tanggalKembali} ({hariLabel})</div>
                 {eq?.trackingMode === "QUANTITY" && <div><b>Jumlah:</b> {loan.quantityBorrowed||1} {eq.unit||"unit"} • sisa {getHeavyEquipmentLoanRemainingQuantity(loan)}</div>}
-                <div><b>Diajukan oleh:</b> {pemohon?.name||"?"}</div>
+                <div><b>Diajukan oleh:</b> {getRequesterName(loan)}</div>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
                 {LOAN_APPROVAL_ATTESTATIONS.map(([key,label])=>(
@@ -729,7 +732,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
         const isQuantityLoan = eq?.trackingMode === "QUANTITY";
         const returnedSum = Number(returnQuantities.good||0)+Number(returnQuantities.damaged||0)+Number(returnQuantities.lost||0);
         const allReturnChecked = LOAN_RETURN_CHECKS.every(([key])=>returnChecked[key]);
-        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); setReturnEvidence(""); setReturnQuantities({good:0,damaged:0,lost:0,conditionNote:""}); };
+        const closeReturn = ()=>{ setReturningLoan(null); setReturnChecked({}); setReturnEvidence(""); setReturnQuantities({good:0,damaged:0,lost:0,conditionNote:""}); setReturnProgress(""); };
         return (
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
             <div role="dialog" aria-label="Konfirmasi Alat Kembali" style={{...sty.card,width:420,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
@@ -761,7 +764,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
               </label>
               <div style={{display:"flex",gap:10}}>
                 <button className="approval-btn--cancel" style={{flex:1}} onClick={closeReturn}>Batal</button>
-                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked || !returnEvidence || returnSubmitting || (isQuantityLoan && (returnedSum<1 || returnedSum>remaining || ((Number(returnQuantities.damaged||0)+Number(returnQuantities.lost||0)>0)&&!returnQuantities.conditionNote.trim())))} onClick={async()=>{setReturnSubmitting(true);try { if (await completeLoan(loan.id,{returnEvidence,quantityReturnedGood:isQuantityLoan?Number(returnQuantities.good||0):remaining,quantityReturnedDamaged:isQuantityLoan?Number(returnQuantities.damaged||0):0,quantityReturnedLost:isQuantityLoan?Number(returnQuantities.lost||0):0,conditionNote:returnQuantities.conditionNote})) closeReturn(); } finally { setReturnSubmitting(false); }}}>{returnSubmitting?"Menyimpan…":"Tandai Sudah Kembali"}</button>
+                <button className="approval-btn--approve" style={{flex:2}} disabled={!allReturnChecked || !returnEvidence || returnSubmitting || (isQuantityLoan && (returnedSum<1 || returnedSum>remaining || ((Number(returnQuantities.damaged||0)+Number(returnQuantities.lost||0)>0)&&!returnQuantities.conditionNote.trim())))} onClick={async()=>{setReturnSubmitting(true);setReturnProgress("Menyiapkan bukti pengembalian…");try { if (await completeLoan(loan.id,{returnEvidence,quantityReturnedGood:isQuantityLoan?Number(returnQuantities.good||0):remaining,quantityReturnedDamaged:isQuantityLoan?Number(returnQuantities.damaged||0):0,quantityReturnedLost:isQuantityLoan?Number(returnQuantities.lost||0):0,conditionNote:returnQuantities.conditionNote,onProgress:setReturnProgress})) closeReturn(); } finally { setReturnSubmitting(false); setReturnProgress(""); }}}>{returnSubmitting?(returnProgress||"Menyimpan…"):"Tandai Sudah Kembali"}</button>
               </div>
             </div>
           </div>

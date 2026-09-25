@@ -2522,6 +2522,81 @@ grant select on public.tug_workflow_transactions to authenticated;
 
 notify pgrst, 'reload schema';
 
+-- Snapshot the requester display name into each new heavy-equipment loan.
+-- The value is server-authoritative and remains readable when profile SELECT
+-- scope hides the requester profile from another UPT.
+
+create or replace function public.snapshot_heavy_equipment_requester_name()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_catalog
+as $$
+declare
+  v_name text;
+begin
+  select nullif(trim(p.name), '')
+    into v_name
+    from public.profiles p
+   where p.id::text = nullif(trim(new.data->>'requestedBy'), '');
+
+  if v_name is null then
+    raise exception 'Nama pemohon wajib berasal dari profil yang valid.' using errcode = '23514';
+  end if;
+
+  new.data := coalesce(new.data, '{}'::jsonb) - 'requestedByName';
+  new.data := new.data || jsonb_build_object('requestedByName', v_name);
+  return new;
+end;
+$$;
+
+revoke all on function public.snapshot_heavy_equipment_requester_name() from public;
+
+drop trigger if exists trg_heavy_equipment_requester_name_snapshot on public.heavy_equipment_loans;
+create trigger trg_heavy_equipment_requester_name_snapshot
+before insert on public.heavy_equipment_loans
+for each row execute function public.snapshot_heavy_equipment_requester_name();
+
+notify pgrst, 'reload schema';
+
+-- Official UIT roles: read-only access to same-UIT equipment, loans, and
+-- referenced private evidence. UPT, HAR_UIT, and national branches above remain.
+drop policy if exists "Heavy equipment scoped read" on public.heavy_equipment;
+create policy "Heavy equipment scoped read" on public.heavy_equipment
+  for select to authenticated using (exists (select 1 from public.profiles actor where actor.id = auth.uid() and (
+    actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT')
+    or actor.upt_id = heavy_equipment.upt_id
+    or (heavy_equipment.is_cross_upt_borrowable and actor.upt_id is not null)
+    or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and exists (
+      select 1 from public.upt scoped_upt where scoped_upt.id = heavy_equipment.upt_id and scoped_upt.uit_id = actor.uit_id
+    ))
+  )));
+drop policy if exists "Heavy equipment loan scoped read" on public.heavy_equipment_loans;
+create policy "Heavy equipment loan scoped read" on public.heavy_equipment_loans
+  for select to authenticated using (exists (select 1 from public.profiles actor where actor.id = auth.uid() and (
+    actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT')
+    or actor.upt_id = owner_upt_id or actor.upt_id = requester_upt_id
+    or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and (
+      exists (select 1 from public.upt scoped_upt where scoped_upt.id = owner_upt_id and scoped_upt.uit_id = actor.uit_id)
+      or exists (select 1 from public.upt scoped_upt where scoped_upt.id = requester_upt_id and scoped_upt.uit_id = actor.uit_id)
+    ))
+  )));
+drop policy if exists "Heavy equipment evidence read" on storage.objects;
+create policy "Heavy equipment evidence read" on storage.objects
+  for select to authenticated using (bucket_id = 'heavy-equipment-evidence' and exists (select 1 from public.profiles actor where actor.id = auth.uid() and (
+    actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT') or actor.upt_id = (storage.foldername(name))[1]
+    or exists (select 1 from public.heavy_equipment_loans l where (
+      l.data->>'pickupEvidencePath' = name or l.data->>'returnEvidencePath' = name
+      or exists (select 1 from jsonb_array_elements(coalesce(l.data->'returnEvents', '[]'::jsonb)) event where event->>'evidencePath' = name)
+    ) and (actor.upt_id = l.requester_upt_id or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and (
+      exists (select 1 from public.upt scoped_upt where scoped_upt.id = l.owner_upt_id and scoped_upt.uit_id = actor.uit_id)
+      or exists (select 1 from public.upt scoped_upt where scoped_upt.id = l.requester_upt_id and scoped_upt.uit_id = actor.uit_id)
+    )))
+  )));
+
+notify pgrst, 'reload schema';
+
+
 
 
 -- HAR_UIT direct borrower parity (migration 20260921).
@@ -3580,4 +3655,13 @@ begin
 end
 $migration$;
 
+notify pgrst, 'reload schema';
+
+-- Official UIT read scope (final policy parity).
+drop policy if exists "Heavy equipment scoped read" on public.heavy_equipment;
+create policy "Heavy equipment scoped read" on public.heavy_equipment for select to authenticated using (exists (select 1 from public.profiles actor where actor.id = auth.uid() and (actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT') or actor.upt_id = heavy_equipment.upt_id or (heavy_equipment.is_cross_upt_borrowable and actor.upt_id is not null) or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and exists (select 1 from public.upt u where u.id = heavy_equipment.upt_id and u.uit_id = actor.uit_id)))));
+drop policy if exists "Heavy equipment loan scoped read" on public.heavy_equipment_loans;
+create policy "Heavy equipment loan scoped read" on public.heavy_equipment_loans for select to authenticated using (exists (select 1 from public.profiles actor where actor.id = auth.uid() and (actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT') or actor.upt_id = owner_upt_id or actor.upt_id = requester_upt_id or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and (exists (select 1 from public.upt u where u.id = owner_upt_id and u.uit_id = actor.uit_id) or exists (select 1 from public.upt u where u.id = requester_upt_id and u.uit_id = actor.uit_id))))));
+drop policy if exists "Heavy equipment evidence read" on storage.objects;
+create policy "Heavy equipment evidence read" on storage.objects for select to authenticated using (bucket_id = 'heavy-equipment-evidence' and exists (select 1 from public.profiles actor where actor.id = auth.uid() and (actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT') or actor.upt_id = (storage.foldername(name))[1] or exists (select 1 from public.heavy_equipment_loans l where (l.data->>'pickupEvidencePath' = name or l.data->>'returnEvidencePath' = name or exists (select 1 from jsonb_array_elements(coalesce(l.data->'returnEvents', '[]'::jsonb)) event where event->>'evidencePath' = name)) and (actor.upt_id = l.requester_upt_id or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and (exists (select 1 from public.upt u where u.id = l.owner_upt_id and u.uit_id = actor.uit_id) or exists (select 1 from public.upt u where u.id = l.requester_upt_id and u.uit_id = actor.uit_id))))))));
 notify pgrst, 'reload schema';

@@ -2,6 +2,16 @@ import { useState } from "react";
 import { uid } from "../lib/utils.js";
 import { logAudit } from "../lib/audit.js";
 import { compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "../lib/supabaseSync.js";
+
+const RETURN_EVIDENCE_MAX_BYTES = 1_000_000;
+
+function isSmallJpegDataUrl(value) {
+  const match = typeof value === "string" && value.match(/^data:image\/jpeg;base64,([a-z0-9+/=\s]+)$/i);
+  if (!match) return false;
+  const payload = match[1].replace(/\s/g, "");
+  const padding = payload.endsWith("==") ? 2 : payload.endsWith("=") ? 1 : 0;
+  return Math.floor(payload.length * 3 / 4) - padding <= RETURN_EVIDENCE_MAX_BYTES;
+}
 import {
   normalizeHeavyEquipmentRecord,
   normalizeHeavyEquipmentLoan,
@@ -262,11 +272,16 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
     if (!supabaseClient?.rpc) { showToast("Server pengembalian alat belum tersedia.", "error"); return false; }
     const evidence = returnForm.returnEvidence || returnForm.fotoKembali;
     if (!evidence) { showToast("Foto pengembalian wajib diunggah.", "error"); return false; }
-    const ownerId = getHeavyEquipmentLoanOwnerUptId(loan, uptList);
+    const ownerId = getHeavyEquipmentLoanOwnerUptId(loan, uptList) || currentUser?.uptId;
+    if (!ownerId) { showToast("UPT pemilik alat tidak ditemukan. Muat ulang data lalu coba lagi.", "error"); return false; }
     const evidencePath = `${ownerId}/${loan.loanBatchId || loan.data?.loanBatchId || loanId}/return-${loanId}-${uid().slice(-10)}.jpg`;
     try {
-      const compressed = await compressImage(evidence, { maxBytes: 1_000_000 });
-      await _withTimeout(uploadPhotoToStorage(compressed, "heavy-equipment-evidence", evidencePath, { upsert:false }), 30_000, "unggah bukti pengembalian");
+      returnForm.onProgress?.("Menyiapkan bukti pengembalian…");
+      const uploadEvidence = isSmallJpegDataUrl(evidence)
+        ? evidence
+        : await compressImage(evidence, { maxBytes: RETURN_EVIDENCE_MAX_BYTES });
+      returnForm.onProgress?.("Mengunggah bukti pengembalian…");
+      await _withTimeout(uploadPhotoToStorage(uploadEvidence, "heavy-equipment-evidence", evidencePath, { upsert:false }), 30_000, "unggah bukti pengembalian");
       const equipment = heavyEquipmentList.find(eq => eq.id === loan.equipmentId);
       const isQuantityLoan = normalizeHeavyEquipmentRecord(equipment || {}).trackingMode === "QUANTITY" || Number(loan.quantityBorrowed || loan.quantity_borrowed) > 1;
       const remaining = getHeavyEquipmentLoanRemainingQuantity(loan);
@@ -280,9 +295,14 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
       const rpcArgs = isQuantityLoan
         ? { p_loan_id: loanId, p_good: good, p_damaged: damaged, p_lost: lost, p_return_evidence_path: evidencePath, p_condition_note: returnForm.conditionNote || "" }
         : { p_loan_ids: [loanId], p_return_evidence_path: evidencePath, p_condition_note: returnForm.conditionNote || "" };
-      const { data, error } = isQuantityLoan
-        ? await supabaseClient.rpc("complete_heavy_equipment_quantity_loan", rpcArgs)
-        : await supabaseClient.rpc("complete_heavy_equipment_batch", rpcArgs);
+      returnForm.onProgress?.("Menyimpan pengembalian ke server…");
+      const { data, error } = await _withTimeout(
+        isQuantityLoan
+          ? supabaseClient.rpc("complete_heavy_equipment_quantity_loan", rpcArgs)
+          : supabaseClient.rpc("complete_heavy_equipment_batch", rpcArgs),
+        30_000,
+        "simpan pengembalian alat"
+      );
       if (error || (isQuantityLoan ? !data?.loan : !data?.loans)) throw error || new Error("Respons server tidak lengkap.");
       const rows = Array.isArray(data.loans) ? data.loans.map(normalizeHeavyEquipmentLoan) : (data.loan ? [normalizeHeavyEquipmentLoan(data.loan)] : []);
       setHeavyEquipmentLoans(prev => prev.map(l => rows.find(row => row.id === l.id) || l));
@@ -291,7 +311,7 @@ export function useHeavyEquipment({ currentUser, uptList, showToast, stateRef, s
       showToast("Alat ditandai sudah kembali.");
       return true;
     } catch (rpcError) {
-      await supabaseClient.storage?.from("heavy-equipment-evidence").remove([evidencePath]).catch(() => {});
+      void supabaseClient.storage?.from("heavy-equipment-evidence").remove([evidencePath]).catch(() => {});
       showToast(`Gagal menandai alat kembali: ${rpcError?.message || "Server tidak dapat dihubungi."}`, "error");
       return false;
     }

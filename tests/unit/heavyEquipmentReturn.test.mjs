@@ -46,9 +46,20 @@ test("return hook is server-first and exposes an atomic RPC", () => {
   assert.match(hook, /rpc\("complete_heavy_equipment_batch"/);
   assert.match(returnBlock, /setHeavyEquipmentLoans\(prev/);
   assert.match(returnBlock, /returnEvidence/);
+  assert.match(returnBlock, /onProgress\?\.\("Mengunggah bukti pengembalian/);
+  assert.match(returnBlock, /_withTimeout\([\s\S]*?simpan pengembalian alat/);
+  assert.match(returnBlock, /void supabaseClient\.storage/);
   assert.match(returnBlock, /catch \(rpcError\)/);
   assert.match(returnBlock, /return false/);
   assert.doesNotMatch(returnBlock, /saveToCloud/);
+});
+
+test("return evidence skips compression only for small JPEG data URLs", () => {
+  const hook = fs.readFileSync(path.join(root, "src/hooks/useHeavyEquipment.js"), "utf8");
+  assert.match(hook, /data:image\\\/jpeg;base64/);
+  assert.match(hook, /RETURN_EVIDENCE_MAX_BYTES = 1_000_000/);
+  assert.match(hook, /isSmallJpegDataUrl\(evidence\)/);
+  assert.match(hook, /await compressImage\(evidence, \{ maxBytes: RETURN_EVIDENCE_MAX_BYTES \}\)/);
 });
 
 test("return migration locks both rows, authorizes owner, and grants only authenticated RPC access", () => {

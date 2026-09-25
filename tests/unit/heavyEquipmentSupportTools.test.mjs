@@ -17,8 +17,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260920_heavy_equipment_upt_id_loans.sql"), "utf8");
 const harMigration = fs.readFileSync(path.join(root, "supabase/migrations/20260921_har_uit_heavy_equipment_loans.sql"), "utf8");
 const optionalLetterMigration = fs.readFileSync(path.join(root, "supabase/migrations/20260921b_har_uit_optional_loan_letter.sql"), "utf8");
+const officialUitMigration = fs.readFileSync(path.join(root, "supabase/migrations/20260925_heavy_equipment_official_uit_read_scope.sql"), "utf8");
+const evidenceInsertFixMigration = fs.readFileSync(path.join(root, "supabase/migrations/20260925b_fix_heavy_equipment_evidence_insert_policy.sql"), "utf8");
 const schema = fs.readFileSync(path.join(root, "supabase/schema.sql"), "utf8");
 const appSource = fs.readFileSync(path.join(root, "App.jsx"), "utf8");
+
+test("heavy-equipment evidence insert policy qualifies the storage object name", () => {
+  assert.match(evidenceInsertFixMigration, /drop policy if exists "Heavy equipment evidence insert" on storage\.objects/i);
+  assert.match(evidenceInsertFixMigration, /create policy "Heavy equipment evidence insert" on storage\.objects/i);
+  assert.match(evidenceInsertFixMigration, /storage\.foldername\(storage\.objects\.name\)/i);
+  assert.doesNotMatch(evidenceInsertFixMigration, /foldername\(actor\.name\)/i);
+  assert.match(evidenceInsertFixMigration, /actor\.role = 'TL'/i);
+  assert.match(evidenceInsertFixMigration, /actor\.role = 'HAR_UIT'/i);
+});
 
 test("support-tools migration exposes typed scope, private evidence, and batch RPCs", () => {
   assert.match(migration, /add column if not exists upt_id text/i);
@@ -139,4 +150,17 @@ test("HAR_UIT borrower fields are editable and contact prefills from profile", (
   assert.match(component, /value=\{loanForm\.borrowerName\} onChange/);
   assert.match(component, /value=\{loanForm\.borrowerPic\} onChange/);
   assert.match(component, /value=\{loanForm\.borrowerContact\} onChange/);
+});
+
+test("official UIT roles read only same-UIT equipment, loans, and referenced evidence", () => {
+  assert.match(officialUitMigration, /actor\.role in \('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT'\)/i);
+  assert.match(officialUitMigration, /scoped_upt\.id = heavy_equipment\.upt_id[\s\S]*scoped_upt\.uit_id = actor\.uit_id/i);
+  assert.match(officialUitMigration, /scoped_upt\.id = owner_upt_id[\s\S]*scoped_upt\.uit_id = actor\.uit_id/i);
+  assert.match(officialUitMigration, /bucket_id = 'heavy-equipment-evidence'/i);
+  assert.match(officialUitMigration, /l\.data->>'pickupEvidencePath' = name/i);
+  assert.match(officialUitMigration, /no write policy is added for UIT roles/i);
+  const component = fs.readFileSync(path.join(root, "src/components/HeavyEquipmentTabV2.jsx"), "utf8");
+  assert.match(component, /officialUitRole/);
+  assert.match(component, /getHeavyEquipmentUptId\(e, uptList\)/);
+  assert.match(component, /getHeavyEquipmentLoanOwnerUptId\(l, uptList\)/);
 });

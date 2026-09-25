@@ -72,3 +72,9 @@ T018 before T019. T019-T021 before client integration. T022-T024 before T025. T0
 ## HAR UIT Independent Test Criteria
 
 - US5: HAR_UIT with `uit_id` and no `upt_id` sees canonical registry photos and all in-UIT history, submits a same-UIT cross-enabled equipment request with mandatory evidence, receives owner Asman pending status, and cannot access cross-UIT data or perform owner actions.
+
+## Phase 10: Convergence
+
+- [X] T028 Extend read-only UIT scope to all official UIT roles for registry, loan history, and referenced private evidence per FR-014
+- [X] T029 Use typed owner/requester UPT IDs for the client-side UIT history boundary per FR-001
+- [X] T030 Add regression coverage for official UIT role reads, cross-UIT denial, and write denial per FR-014 and SC-007
