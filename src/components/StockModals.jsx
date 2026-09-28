@@ -8,13 +8,18 @@ import { resolveSapLabel } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG7HTML, downloadTUG5HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, downloadTUG7HTML } from "../lib/docBuilders.js";
 import { SearchableSelect } from "./SearchableSelect.jsx";
+import { sortBlokOptions } from "../lib/masterSync.js";
 
 // Field-field form edit Data Stok — dipakai INLINE di dalam modal detail (App.jsx,
 // mode stockModal==="edit") supaya view+edit jadi SATU modal (bukan dua pop-up
 // berlapis). Dulunya bagian dari StockDetailModal (form tambah+edit terpisah),
 // tapi jalur "Tambah Data Stok Baru" sudah tidak ada pemanggilnya lagi — jadi ini
 // murni form edit sekarang.
-export function StockEditFields({ stockModal, stockForm, setStockForm, katalogList, lokasiList, setLightboxImg, handleImg, isMobile, sty, C }) {
+export function StockEditFields({ stockModal, stockForm, setStockForm, katalogList, lokasiList, subGudangList = [], setLightboxImg, handleImg, isMobile, sty, C }) {
+  const subById = new Map(subGudangList.map(s => [s.id, s]));
+  const groups = [...new Map(lokasiList.map(l => [l.subGudangId || "__umum__", l.subGudangId && subById.has(l.subGudangId) ? subById.get(l.subGudangId) : null])).entries()]
+    .sort((a,b) => { if (a[0] === "__umum__") return 1; if (b[0] === "__umum__") return -1; return String(a[1]?.nama || "").localeCompare(String(b[1]?.nama || ""), "id", {numeric:true,sensitivity:"base"}); });
+  const lokasiGroups = groups.map(([groupId, sg]) => ({ id: groupId, label: sg?.nama || "Umum / Tanpa Sub Gudang", options: sortBlokOptions(lokasiList.filter(l => (l.subGudangId && subById.has(l.subGudangId) ? l.subGudangId : "__umum__") === groupId)) }));
   return (
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12}}>
               <div style={{gridColumn:"1/-1"}}>
@@ -34,7 +39,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 <label style={sty.label}>Lokasi (dari Master Lokasi)</label>
                 <select style={sty.select} value={stockForm.lokasiId||""} onChange={e=>setStockForm(sf=>({...sf,lokasiId:e.target.value}))}>
                   <option value="">-- Pilih Lokasi --</option>
-                  {lokasiList.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan ? `— ${l.keterangan}` : ""}</option>)}
+                  {lokasiGroups.map(group=><optgroup key={group.id} label={group.label}>{group.options.map(l=><option key={l.id} value={l.id}>{l.kode || l.nama || l.id}{l.keterangan ? ` — ${l.keterangan}` : ""}</option>)}</optgroup>)}
                 </select>
                 {lokasiList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Blok Lokasi. Tambahkan dulu di Master Data → Master Gudang.</div>}
               </div>

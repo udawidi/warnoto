@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-25
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-28
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -70,6 +70,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Tambah Sub Gudang dan pengelompokan lokasi selesai lokal (2026-09-28).** Role TL/SUPERADMIN dapat menambah Sub Gudang dari Master Data > Gudang; tombol Simpan melakukan upsert satu baris ke database self-host dengan validasi wajib, duplikat per gudang, rollback, audit, dan toast. Dropdown Lokasi pada Edit Data Stok memakai grup native per Sub Gudang, blok diurutkan natural, dan lokasi tanpa Sub Gudang ditempatkan terakhir. Verifikasi: 437/437 unit test, build, dan diff-check lulus; belum push/deploy.
 
 - **Alur Alat Berat pulih di production (2026-09-25).** Konfirmasi alat kembali tidak lagi gagal RLS; policy INSERT bukti sudah mengacu ke nama objek Storage. Scope baca role UIT resmi mencakup semua UPT dalam UIT. Penyimpanan loan baru kini gagal bila profil pemohon tidak valid dan selalu menyimpan snapshot nama pemohon; history lama dibiarkan tanpa backfill sesuai keputusan pengguna. Backup terakhir: `/mnt/backup2/manual/warnoto_pre_requester_snapshot_20260925-163242.dump`. Verifikasi: 21 test heavy-equipment dan build lulus; submit pengembalian berhasil pada localhost.
 
@@ -641,6 +643,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel, login sebagai TL dan SUPERADMIN: tambah satu Sub Gudang yang disetujui, refresh untuk memastikan data tetap tersimpan di self-host, lalu buka Data Stok > Edit dan pastikan dropdown Lokasi menampilkan grup Sub Gudang beserta daftar blok yang terurut.
 - Setelah deploy Vercel, buat satu peminjaman baru dan pastikan nama pemohon tampil pada history serta role UIT resmi tetap hanya memiliki akses baca.
 - Setelah persetujuan pengguna, commit/push perbaikan evidence Maturity tanpa ikut membawa perubahan Stock Opname. Sesudah deploy, buka beberapa audit lama dari menu Maturity Level > Input; pastikan evidence aktif terbuka, evidence yang sudah di-unlink tidak tampil, Form 5S tetap ada, dan tidak muncul lagi `Evidence tidak ditemukan.`
 - Setelah deploy, smoke draft lintas perangkat untuk TUG-3/5/7/8/9/10; pastikan nomor baru muncul hanya saat Ajukan, konflik versi tampil jelas, dan tiga derivasi parent-child tidak menggandakan draft.
@@ -787,5 +790,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-23 Codex: **Cetak BA + TUG-15 pulih untuk ASMAN se-UPT; RPC self-host diterapkan, browser test lulus, dan commit `c455467` + `db10af9` sudah push ke main.**
 - 2026-09-25 Codex: **Alur Alat Berat dipulihkan; scope history UIT, policy upload bukti, progres pengembalian, dan snapshot nama pemohon baru aktif di production.**
+- 2026-09-28 Codex: **Tambah Sub Gudang untuk TL/SUPERADMIN dan dropdown Lokasi Data Stok berkelompok per Sub Gudang selesai lokal; test dan build lulus.**

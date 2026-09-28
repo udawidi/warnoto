@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { uid } from "../lib/utils.js";
 import { logAudit } from "../lib/audit.js";
 import { CLOUD } from "../lib/cloud.js";
-import { syncMasterTable } from "../lib/masterSync.js";
+import { syncMasterTable, syncMasterTableRows } from "../lib/masterSync.js";
+import { hasRole } from "../lib/roles.js";
 
 // Diperketat: hilangkan tanda baca umum, rapatkan spasi — TIDAK mengubah data asli,
 // cuma dipakai saat membandingkan. Lihat komentar asli di App.jsx (sebelum ekstraksi
@@ -62,6 +63,8 @@ export function useWarehouseConfig({
   const [showGudangDenahTools, setShowGudangDenahTools] = useState(false);
   const [expandedSubGudangToolsIds, setExpandedSubGudangToolsIds] = useState(() => new Set());
   const [selectedSubGudangId, setSelectedSubGudangId] = useState(null);
+  const [subGudangModal, setSubGudangModal] = useState(null);
+  const [subGudangForm, setSubGudangForm] = useState({});
 
   // Tambah/edit/hapus blok lokasi langsung berlaku, tanpa approval siapapun —
   // menu ini cuma bisa diakses ADMIN (lihat gating hasRole di render Master
@@ -155,6 +158,24 @@ export function useWarehouseConfig({
   // GI shadow berada di tabel, tetapi lifecycle-nya berasal dari GI master; jangan diedit lewat Master Gudang.
   function syncGudang(ng) { return syncMasterTable("gudang", ng.filter(g => !isGiShadow(g)), g => ({ upt_id: g.uptId || null })); }
   function syncSubGudang(nsg) { return syncMasterTable("sub_gudang", nsg, sg => ({ gudang_id: sg.gudangId || null })); }
+  function openAddSubGudang(gudangId) { setSubGudangForm({ id: `SGD-${uid().slice(-8)}`, nama: "", gudangId, createdAt: Date.now() }); setSubGudangModal("add"); }
+  function closeSubGudangModal() { setSubGudangModal(null); setSubGudangForm({}); }
+  async function saveSubGudang() {
+    if (!hasRole(currentUser, "TL", "SUPERADMIN")) { showToast("Hanya TL atau SUPERADMIN yang dapat menambah Sub Gudang.", "error"); return; }
+    const nama = String(subGudangForm.nama || "").trim();
+    if (!nama) { showToast("Nama Sub Gudang wajib diisi.", "error"); return; }
+    const norm = normalizeGudangName(nama);
+    if (subGudangList.some(s => s.gudangId === subGudangForm.gudangId && normalizeGudangName(s.nama) === norm)) { showToast("Nama Sub Gudang sudah ada di Gudang ini.", "error"); return; }
+    const baru = { ...subGudangForm, nama };
+    const prev = subGudangList;
+    const next = [...prev, baru];
+    setSubGudangList(next); closeSubGudangModal();
+    const ok = await syncMasterTableRows("sub_gudang", [baru], sg => ({ gudang_id: sg.gudangId || null }));
+    if (!ok) { setSubGudangList(prev); showToast("Gagal menyimpan Sub Gudang ke server, perubahan dibatalkan.", "error"); return; }
+    CLOUD.set("pln_sub_gudang_v1", next);
+    logAudit(currentUser, "CREATE", "sub_gudang", baru.id, { nama, gudangId: baru.gudangId });
+    showToast("Sub Gudang berhasil ditambahkan.");
+  }
 
   // Cari Master UPT yang cocok dengan label string UPT dari laporan kapasitas (fuzzy, uppercase)
   function findMatchingUpt(uptLabel) {
@@ -647,6 +668,7 @@ export function useWarehouseConfig({
     mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub,
     showGudangDenahTools, setShowGudangDenahTools, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds,
     selectedSubGudangId, setSelectedSubGudangId,
+    subGudangModal, subGudangForm, setSubGudangForm, openAddSubGudang, closeSubGudangModal, saveSubGudang,
     openEditLokasi, isKodeDuplicateInSubGudang, syncLokasi, saveLokasi, requestDeleteLokasi, confirmDeleteLokasi,
     gudangModal, setGudangModal, gudangForm, setGudangForm,
     mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, expandedGudangId, setExpandedGudangId,
