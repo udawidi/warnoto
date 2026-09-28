@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { JENIS_BARANG, STATUS_SAP_FILTER } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
-import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabel, isLegacySourceAllocation, legacySourceCandidates } from "../lib/sap.js";
+import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabel, isLegacySourceAllocation, legacySourceCandidates, resolveKartuGantungUptId } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
@@ -44,7 +44,8 @@ export function DataStokTab({
   const [splitRows, setSplitRows] = useState([]);
   const [splitRequestKey, setSplitRequestKey] = useState("");
   const searchInputRef = useRef(null);
-  const stockGudangOptions = stockVisibleGudangList || visibleGudangList;
+  const stockGudangOptions = (stockVisibleGudangList || visibleGudangList || [])
+    .filter(g => !stockUptFilter || (g.uptId || g.upt_id) === stockUptFilter);
 
   function openSourceSplit(st) {
     const candidates = legacySourceCandidates(st);
@@ -65,7 +66,11 @@ export function DataStokTab({
   }
 
   function katalogForStock(st) {
-    return katalogList.find(k => k.id === st.katalogId) || {
+    const katalog = katalogList.find(k => k.id === st.katalogId);
+    const uptId = resolveKartuGantungUptId(st, lokasiList, gudangList);
+    const uptNama = (uptList || []).find(u => u.id === uptId)?.nama || null;
+    if (katalog) return { ...katalog, uptId, uptNama };
+    return {
       id: st.katalogId,
       name: st.name,
       katalog: st.katalog,
@@ -73,6 +78,8 @@ export function DataStokTab({
       category: st.category,
       jenis: st.jenis,
       keterangan: st.keterangan,
+      uptId,
+      uptNama,
     };
   }
 
@@ -188,7 +195,7 @@ export function DataStokTab({
                 </select>
                 {/* Filter lokasi material per UPT — hanya muncul utk viewer multi-UPT (UIT/Pusat). */}
                 {stockUptFilterOptions?.length>0 && (
-                  <select style={{...sty.select,maxWidth:280}} value={stockUptFilter} onChange={e=>setStockUptFilter(e.target.value)} aria-label="Filter UPT">
+                  <select style={{...sty.select,maxWidth:280}} value={stockUptFilter} onChange={e=>{setStockUptFilter(e.target.value);setStockGudangSelect("");setStockBlokSelect("");}} aria-label="Filter UPT">
                     <option value="">Semua UPT</option>{stockUptFilterOptions.map(u=><option key={u.id} value={u.id}>{u.nama}</option>)}
                   </select>
                 )}

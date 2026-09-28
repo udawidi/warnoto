@@ -2,22 +2,26 @@
 import { useState } from "react";
 import { fmtDate, fmtDateOnly, scanUrlFor } from "../lib/utils.js";
 import { fmtNum, getSAPLabel } from "../lib/ragShared.mjs";
-import { buildKartuGantungHistory, resolveLokasiLengkap, getSAPBadgeStyle, jenisBarangAccentColor, stockSapLabel } from "../lib/sap.js";
+import { buildKartuGantungHistory, resolveLokasiLengkap, getSAPBadgeStyle, jenisBarangAccentColor, stockSapLabel, scopeKartuGantungData } from "../lib/sap.js";
 import { buildTUG2FrontHTML, buildTUG2BackHTML } from "../lib/docBuilders.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
 import { UPT } from "../constants.js";
 
-export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangList, subGudangList, sty, C, onClose, uptNama }) {
+export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangList, subGudangList, users = [], sty, C, onClose, uptNama }) {
   const [view, setView] = useState("front"); // "front" | "back"
-  const history = buildKartuGantungHistory(katalog, txns, stocks, lokasiList, subGudangList, gudangList);
+  const scoped = scopeKartuGantungData(katalog, stocks, txns, lokasiList, gudangList, users);
+  const scopedStocks = scoped.stocks;
+  const scopedTxns = scoped.txns;
+  const kartuUptNama = katalog.uptNama || uptNama;
+  const history = buildKartuGantungHistory(katalog, scopedTxns, scopedStocks, lokasiList, subGudangList, gudangList);
   // "Lokasi :" di header kartu = gabungan Gudang + Sub Gudang + Blok Gudang.
-  const gudangStr = resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList);
-  const sampleStock = stocks.find(s=>s.katalogId===katalog.id && s.fotoKeseluruhan);
+  const gudangStr = resolveLokasiLengkap(katalog, scopedStocks, lokasiList, subGudangList, gudangList);
+  const sampleStock = scopedStocks.find(s=>s.katalogId===katalog.id && s.fotoKeseluruhan);
   const sampleFoto = sampleStock ? resolveStockPhotoUrl(sampleStock.fotoKeseluruhan) : null;
-  const kategoriStock = stocks.find(s=>s.katalogId===katalog.id);
+  const kategoriStock = scopedStocks.find(s=>s.katalogId===katalog.id);
   const kategoriMaterial = kategoriStock ? stockSapLabel(kategoriStock) : "-";
-  const opnameHistory = [...new Map((stocks||[]).filter(s=>s.katalogId===katalog.id).flatMap(s=>Array.isArray(s.opnameHistory)?s.opnameHistory:[]).map(h=>[h.opnameId || `${h.tanggal}-${h.semester}`, h])).values()].sort((a,b)=>b.tanggal-a.tanggal);
+  const opnameHistory = [...new Map(scopedStocks.flatMap(s=>Array.isArray(s.opnameHistory)?s.opnameHistory:[]).map(h=>[h.opnameId || `${h.tanggal}-${h.semester}`, h])).values()].sort((a,b)=>b.tanggal-a.tanggal);
 
   const scanUrl = scanUrlFor(katalog.id);
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
@@ -27,7 +31,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   // sudah hilang dan browser memblokir popup (w=null, tak ada yang tercetak).
   const handlePrintFront = async () => {
     const w = window.open("", "_blank");
-    const html = await buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList, uptNama);
+    const html = await buildTUG2FrontHTML(katalog, scopedStocks, lokasiList, subGudangList, gudangList, kartuUptNama);
     if (w) {
       w.document.write(html);
       w.document.close();
@@ -36,7 +40,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
 
   const handlePrintBack = async () => {
     const w = window.open("", "_blank");
-    const html = await buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGudangList, gudangList, uptNama);
+    const html = await buildTUG2BackHTML(katalog, scopedStocks, scopedTxns, lokasiList, subGudangList, gudangList, kartuUptNama);
     if (w) {
       w.document.write(html);
       w.document.close();
@@ -94,7 +98,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   <div>
                     <div style={{fontSize:11,fontWeight:800,color:"#0f172a",lineHeight:1.2}}>PT PLN (PERSERO)</div>
                     <div style={{fontSize:10,fontWeight:700,color:"#334155",lineHeight:1.2}}>TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{(uptNama||UPT||"UNIT PELAKSANA SURABAYA").toUpperCase()}</div>
+                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{(kartuUptNama||UPT||"UNIT PELAKSANA SURABAYA").toUpperCase()}</div>
                   </div>
                 </div>
                 <div style={{fontSize:15,fontWeight:900,color:"#0f172a",letterSpacing:1}}>
@@ -169,7 +173,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   <div>
                     <div style={{fontSize:11,fontWeight:800,color:"#0f172a",lineHeight:1.2}}>PT PLN (PERSERO)</div>
                     <div style={{fontSize:10,fontWeight:700,color:"#334155",lineHeight:1.2}}>TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{(uptNama||UPT||"UNIT PELAKSANA SURABAYA").toUpperCase()}</div>
+                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{(kartuUptNama||UPT||"UNIT PELAKSANA SURABAYA").toUpperCase()}</div>
                   </div>
                 </div>
                 <div style={{fontSize:15,fontWeight:900,color:"#0f172a",letterSpacing:1}}>

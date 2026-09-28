@@ -17,7 +17,7 @@ import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty, UPT_MAP_COLOR } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
-import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation } from "./src/lib/sap.js";
+import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation, scopeKartuGantungData, resolveKartuGantungUptId } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { activePairedGudangRows, dropCachedGiRows } from "./src/lib/giWarehouse.js";
@@ -4321,7 +4321,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     for (const s of filteredStocks) {
       // Per-Katalog mode remains an aggregate view, but never collapses distinct
       // source lots into one selectable/detail row.
-      const key = `${s.katalogId || s.katalog}|${s.sourceLot?.key || s.id}`;
+      const resolvedUptId = resolveKartuGantungUptId(s, lokasiList, gudangList);
+      // Fail-closed: legacy rows tanpa UPT tidak boleh bergabung satu sama lain.
+      const uptKey = resolvedUptId || `__UNSCOPED__:${s.id}`;
+      const key = `${uptKey}|${s.katalogId || s.katalog}|${s.sourceLot?.key || s.id}`;
       let g = groups.get(key);
       if (!g) { g = { ...s, id:"AGG-"+key, qty:0, minQty:0, lokasiId:undefined, lokasiCount:0, aggMembers:[], deletePending:false, editPending:false }; groups.set(key, g); }
       g.qty += Number(s.qty)||0;
@@ -5104,14 +5107,17 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         const discardEdit = () => { setConfirmDiscard(false); setStockModal(null); };
         const printKartuGantung = async () => {
           if (!kat) return;
+          const kartuUptId = resolveKartuGantungUptId(st, lokasiList, gudangList);
+          const kartuKatalog = { ...kat, uptId: kartuUptId, uptNama: uptList.find(u => u.id === kartuUptId)?.nama || null };
+          const kartuScope = scopeKartuGantungData(kartuKatalog, stocks, txns, lokasiList, gudangList, users);
           if (isMobile) {
-            const html = await buildTUG2FrontHTML(kat, stocks, lokasiList, subGudangList, gudangList, currentUptNama);
+            const html = await buildTUG2FrontHTML(kartuKatalog, kartuScope.stocks, lokasiList, subGudangList, gudangList, kartuKatalog.uptNama || currentUptNama);
             const w = window.open("", "_blank");
             if (w) { w.document.write(html); w.document.close(); }
             else showToast("Popup diblokir browser. Izinkan popup untuk mencetak.", "error");
           } else {
             closeModal();
-            setKartuGantungDetail(kat);
+            setKartuGantungDetail(kartuKatalog);
           }
         };
         const fotoBox = (label, field) => {
@@ -5177,7 +5183,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <StockEditFields stockModal={stockModal} stockForm={stockForm} setStockForm={setStockForm} katalogList={katalogList} lokasiList={lokasiList} subGudangList={subGudangList} setLightboxImg={setLightboxImg} handleImg={handleImg} isMobile={isMobile} sty={sty} C={C}/>
               ) : stockDetailTab === "riwayat" ? (
                 (() => {
-                  const history = kat ? buildKartuGantungHistory(kat, txns, stocks, lokasiList, subGudangList, gudangList) : [];
+                  const history = kat ? (() => {
+                    const kartuUptId = resolveKartuGantungUptId(st, lokasiList, gudangList);
+                    const kartuKatalog = { ...kat, uptId: kartuUptId, uptNama: uptList.find(u => u.id === kartuUptId)?.nama || null };
+                    const kartuScope = scopeKartuGantungData(kartuKatalog, stocks, txns, lokasiList, gudangList, users);
+                    return buildKartuGantungHistory(kartuKatalog, kartuScope.txns, kartuScope.stocks, lokasiList, subGudangList, gudangList);
+                  })() : [];
                   const newestFirst = [...history].reverse(); // buildKartuGantungHistory urut lama→baru; balik sekali di sini.
                   const mutasi = newestFirst.filter(h=>h.masuk>0||h.keluar>0); // baris baseline "Migrasi Data" bukan mutasi
                   if (mutasi.length === 0) {
@@ -5293,7 +5304,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {kartuGantungDetail && (
         <KartuGantungModal
           katalog={kartuGantungDetail}
-          stocks={stocks} txns={txns} lokasiList={lokasiList} gudangList={gudangList} subGudangList={subGudangList}
+          stocks={stocks} txns={txns} users={users} lokasiList={lokasiList} gudangList={gudangList} subGudangList={subGudangList}
           sty={sty} C={C} uptNama={currentUptNama}
           onClose={()=>setKartuGantungDetail(null)}
         />

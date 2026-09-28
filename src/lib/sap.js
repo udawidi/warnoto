@@ -4,6 +4,27 @@
 import { subGudangKodeMap } from "./masterSync.js";
 import { getSAPLabel, resolveSapLabel as resolveSapLabelShared, rowSapLabel } from "./ragShared.mjs";
 
+// Kartu Gantung selalu scoped ke UPT baris stok yang dibuka. Data legacy boleh
+// fallback ke lokasi/gudang, tetapi data tanpa UPT yang dapat dipastikan ditolak.
+export function resolveKartuGantungUptId(row, lokasiList = [], gudangList = []) {
+  const lokasi = row?.lokasiId ? (lokasiList || []).find(l => l.id === row.lokasiId) : null;
+  const gudangId = lokasi?.gudangId || row?.gudangId;
+  return (gudangId ? (gudangList || []).find(g => g.id === gudangId)?.uptId : null) || row?.uptId || row?.upt_id || null;
+}
+
+export function scopeKartuGantungData(katalog, stocks, txns, lokasiList = [], gudangList = [], users = []) {
+  const targetUptId = katalog?.uptId || katalog?.upt_id || null;
+  if (!targetUptId) return { uptId: null, stocks: [], txns: [] };
+  const scopedStocks = (stocks || []).filter(s => s.katalogId === katalog.id && resolveKartuGantungUptId(s, lokasiList, gudangList) === targetUptId);
+  const stockIds = new Set(scopedStocks.map(s => s.id));
+  const scopedTxns = (txns || []).filter(t => {
+    const directUptId = t.uptId || t.upt_id || users.find(u => u.id === t.createdBy)?.uptId || users.find(u => u.id === t.createdBy)?.upt_id;
+    if (directUptId) return directUptId === targetUptId;
+    return (t.stockItems || []).some(si => stockIds.has(si.stockId) || resolveKartuGantungUptId({ lokasiId: si.lokasiId }, lokasiList, gudangList) === targetUptId);
+  });
+  return { uptId: targetUptId, stocks: scopedStocks, txns: scopedTxns };
+}
+
 // ─── PENCARIAN MATERIAL: struktur nama (KATEGORI;SUBTIPE;SPEK...) di katalog
 // TIDAK diubah — hanya cara membandingkannya saat search yang disesuaikan,
 // supaya orang yang tidak tahu singkatan/istilah teknis PLN tetap bisa
