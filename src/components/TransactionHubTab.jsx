@@ -1,5 +1,6 @@
 // Komponen TransactionHubTab — dipindah dari App.jsx (refactor batch 2c).
 // Murni relokasi blok hub pemilihan jenis TUG (tab==="transaction"); JSX/logic tidak berubah.
+import { useEffect, useState } from "react";
 import { TUG3Tab } from "./TUG3Tab.jsx";
 import { TUG5Tab } from "./TUG5Tab.jsx";
 import { TUG15Tab } from "./TUG15Tab.jsx";
@@ -37,6 +38,32 @@ export function TransactionHubTab({
   const uptFilteredTxns = tugUptFilter
     ? txns.filter(t=>(t.uptId||users.find(u=>u.id===t.createdBy)?.uptId)===tugUptFilter)
     : txns;
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(1);
+  const pagedDocTypes = ["TUG3", "TUG10", "TUG9", "TUG8"];
+  const filteredDocTxns = pagedDocTypes.includes(tugSubTab)
+    ? filteredTxns.filter(t=>t.docType===tugSubTab)
+    : [];
+  const totalPages = Math.max(1, Math.ceil(filteredDocTxns.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedDocTxns = filteredDocTxns.slice((currentPage-1)*pageSize, currentPage*pageSize);
+  useEffect(()=>setPage(1), [tugSubTab, filterStatus, tugUptFilter, pageSize]);
+  const renderPager = filteredDocTxns.length > 0 ? (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,flexWrap:"wrap",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted}}>
+        Tampilkan
+        <select style={{...sty.select,width:"auto",paddingTop:4,paddingBottom:4,paddingLeft:8,paddingRight:8,minHeight:"unset",fontSize:12}} value={pageSize} onChange={e=>setPageSize(Number(e.target.value))}>
+          {[10,20,50].map(n=><option key={n} value={n}>{n}</option>)}
+        </select>
+        item per halaman — {filteredDocTxns.length} total
+      </div>
+      <div style={{display:"flex",alignItems:"center",gap:6}}>
+        <button style={{...sty.btn("ghost","sm")}} disabled={currentPage<=1} onClick={()=>setPage(p=>Math.max(1,p-1))}>← Sebelumnya</button>
+        <span style={{fontSize:12,color:C.muted,padding:"0 6px"}}>Halaman {currentPage} / {totalPages}</span>
+        <button style={{...sty.btn("ghost","sm")}} disabled={currentPage>=totalPages} onClick={()=>setPage(p=>Math.min(totalPages,p+1))}>Berikutnya →</button>
+      </div>
+    </div>
+  ) : null;
   return (
           <div className="workspace-page tug-page">
             <section className={`kpi-banner tug-summary-banner${tugSubTab==="TUG15"?" is-context-only":""}`} aria-label="Ringkasan transaksi TUG">
@@ -101,17 +128,20 @@ export function TransactionHubTab({
             </div>}
 
             {tugSubTab==="TUG3" ? (
-              <TUG3Tab
-                txns={uptFilteredTxns.filter(t=>t.docType==="TUG3")}
-                filterStatus={filterStatus}
-                users={users} sty={sty} C={C} currentUser={currentUser}
-                katalogList={katalogList} lokasiList={lokasiList} uptList={uptList} timMutuList={timMutuList}
-                approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
-                submitTUG4DanLampiran={submitTUG4DanLampiran}
-                approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
-                editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
-                handleImg={handleImg} setDocPreview={setDocPreview}
-              />
+              <>
+                <TUG3Tab
+                  txns={pagedDocTxns}
+                  filterStatus={filterStatus}
+                  users={users} sty={sty} C={C} currentUser={currentUser}
+                  katalogList={katalogList} lokasiList={lokasiList} uptList={uptList} timMutuList={timMutuList}
+                  approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
+                  submitTUG4DanLampiran={submitTUG4DanLampiran}
+                  approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
+                  editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
+                  handleImg={handleImg} setDocPreview={setDocPreview}
+                />
+                {renderPager}
+              </>
             ) : tugSubTab==="TUG5" ? (
               <TUG5Tab
                 txns={uptFilteredTxns}
@@ -139,7 +169,7 @@ export function TransactionHubTab({
             ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {filteredTxns.filter(t=>t.docType===tugSubTab).length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada transaksi {tugSubTab.replace("TUG","TUG-")}</div>}
-              {filteredTxns.filter(t=>t.docType===tugSubTab).map(t=>{
+              {pagedDocTxns.map(t=>{
                 const creator = users.find(u=>u.id===t.createdBy)||{};
                 const approver = users.find(u=>u.id===t.approvedBy)||{};
                 const dKey = t.docType==="TUG9"?"tug9":t.docType==="TUG8"?"tug8":"tug10";
@@ -199,6 +229,7 @@ export function TransactionHubTab({
                   </div>
                 );
               })}
+              {renderPager}
             </div>
             )}
           </div>
