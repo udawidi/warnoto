@@ -3316,7 +3316,6 @@ export default function PLNWarehouse() {
       const touchedKatalogIds = new Set();
 
       txn.stockItems.forEach((si, itemIdx) => {
-        if (si.statusMaterial === "Bongkaran ATTB (MTU)") return; // ke modul ATTB (BAGIAN B), bukan Data Stok
         const qty = Number(si.qty) || 0;
         const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
         const effectKey = `${txn.id}:${itemIdx}`;

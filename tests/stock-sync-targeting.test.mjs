@@ -88,3 +88,28 @@ test("TUG-10 approval is retry-safe after a partial stock write", () => {
   assert.match(approval, /tug10ApprovalInFlightRef\.current\.has\(txn\.id\)/);
   assert.match(approval, /tug10ApprovalInFlightRef\.current\.delete\(txn\.id\)/);
 });
+
+test("TUG-10 ATTB approval posts stock and keeps the MRWI candidate", () => {
+  const approval = transactionApprovalSource();
+  assert.doesNotMatch(approval, /if \(si\.statusMaterial === "Bongkaran ATTB \(MTU\)"\) return/);
+  assert.match(approval, /const jenisBarangFinal = STATUS_RETUR_TO_JENIS\[si\.statusMaterial\]/);
+  assert.match(approval, /jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP"/);
+  assert.match(approval, /if \(si\.statusMaterial !== "Bongkaran ATTB \(MTU\)"\) return/);
+  assert.match(approval, /sourceTxnId: txn\.id,\s*sourceItemIdx: idx/);
+});
+
+test("TUG-10 ATTB backfill is dry-run, canonical, and DB-payload safe", async () => {
+  const source = await readFile(new URL("../scripts/backfill_tug10_attb_stock.mjs", import.meta.url), "utf8");
+  assert.match(source, /sourceLotKey\(/);
+  assert.match(source, /SUPABASE_SERVICE_ROLE_KEY/);
+  assert.match(source, /stage: row\.stage/);
+  assert.match(source, /katalog_id:kat\.id, lokasi_id:txn\.lokasiTujuanId, data:next/);
+  assert.match(source, /id:kat\.id, data:kat, created_at/);
+  assert.match(source, /sourceLot cocok tanpa marker; perlu review/);
+  assert.match(source, /katalogMode === "existing" && !kat/);
+  assert.match(source, /canonicalKatalogCode\(k\.katalog\)/);
+  assert.match(source, /some\(si => si\.statusMaterial === "Bongkaran ATTB \(MTU\)"\)/);
+  assert.match(source, /sourceDate:txn\.approvedAt \|\| txn\.updatedAt \|\| txn\.createdAt/);
+  assert.match(source, /changes/);
+  assert.match(source, /if \(!APPLY\)/);
+});
