@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { isReceiptPhotoReference, missingReceiptPhotos, receiptPhotoPath } from "../../src/lib/receiptPhoto.js";
+import { isReceiptPhotoReference, missingReceiptPhotos, receiptPhotoPath, normalizeTug10ReceiptPhotoSlots } from "../../src/lib/receiptPhoto.js";
 
 const app = fs.readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
 const stockModal = fs.readFileSync(new URL("../../src/components/StockModals.jsx", import.meta.url), "utf8");
@@ -76,4 +76,53 @@ test("stored receipt photo rejects nested or cross-document paths", () => {
   const crossFamily = { id: "TUG10-current", docType: "TUG10", stockItems: [{ fotoBarangRetur: `${base}TUG3-old/item0-fotoBarangRetur.jpg` }] };
   assert.equal(missingReceiptPhotos(nested, { requireStored: true }).length, 1);
   assert.equal(missingReceiptPhotos(crossFamily, { requireStored: true }).length, 1);
+});
+
+test("TUG-10 photo slots survive row shifts and allocate the next free slot", () => {
+  const txn = { id: "TUG10-shift", docType: "TUG10", stockItems: [
+    { receiptPhotoSlot: 0, fotoBarangRetur: "a" },
+    { receiptPhotoSlot: 1, fotoBarangRetur: "b" },
+  ] };
+  const normalized = normalizeTug10ReceiptPhotoSlots(txn);
+  assert.deepEqual(normalized.stockItems.map(item => item.receiptPhotoSlot), [0, 1]);
+  const added = normalizeTug10ReceiptPhotoSlots({ ...normalized, stockItems: [...normalized.stockItems, {}] });
+  assert.equal(added.stockItems[2].receiptPhotoSlot, 2);
+});
+
+test("new TUG-10 rows get stable empty slots", () => {
+  const normalized = normalizeTug10ReceiptPhotoSlots({ id: "TUG10-new", docType: "TUG10", stockItems: [{}, {}] });
+  assert.deepEqual(normalized.stockItems.map(item => item.receiptPhotoSlot), [0, 1]);
+  assert.match(txns, /docType === "TUG10"[\s\S]*receiptPhotoSlot:0/);
+});
+
+test("mixed empty and explicit TUG-10 slots remain unique", () => {
+  const normalized = normalizeTug10ReceiptPhotoSlots({ id: "TUG10-mixed", docType: "TUG10", stockItems: [{}, { receiptPhotoSlot: 0 }] });
+  assert.deepEqual(normalized.stockItems.map(item => item.receiptPhotoSlot), [1, 0]);
+});
+
+test("TUG-10 duplicate legacy slot keeps exact-index owner and marks conflict for repair", () => {
+  const base = "https://warnoto.com/storage/v1/object/public/tug-photos/TUG10-old/";
+  const txn = { id: "TUG10-current", docType: "TUG10", stockItems: [
+    {},
+    ...Array.from({ length: 17 }, () => ({})),
+    { fotoBarangRetur: `${base}item19-fotoBarangRetur.jpg`, fotoNameplate: `${base}item19-fotoNameplate.jpg` },
+    { fotoBarangRetur: `${base}item19-fotoBarangRetur.jpg`, fotoNameplate: `${base}item19-fotoNameplate.jpg` },
+  ] };
+  const normalized = normalizeTug10ReceiptPhotoSlots(txn);
+  assert.equal(normalized.stockItems[18].receiptPhotoSlot, 0);
+  assert.equal(normalized.stockItems[18].receiptPhotoRepair, true);
+  assert.equal(normalized.stockItems[18].fotoBarangRetur, null);
+  assert.equal(normalized.stockItems[19].receiptPhotoSlot, 19);
+});
+
+test("repair marker is cleared after replacement photo is present", () => {
+  const normalized = normalizeTug10ReceiptPhotoSlots({ id: "TUG10-repair", docType: "TUG10", stockItems: [{ receiptPhotoSlot: 0, receiptPhotoRepair: true, fotoBarangRetur: "replacement" }] });
+  assert.equal(Object.hasOwn(normalized.stockItems[0], "receiptPhotoRepair"), false);
+});
+
+test("ATTB repair marker needs both replacement photos", () => {
+  const base = { id: "TUG10-repair-attb", docType: "TUG10", stockItems: [{ receiptPhotoSlot: 0, receiptPhotoRepair: true, statusMaterial: "Bongkaran ATTB (MTU)", fotoBarangRetur: "replacement" }] };
+  assert.equal(Object.hasOwn(normalizeTug10ReceiptPhotoSlots(base).stockItems[0], "receiptPhotoRepair"), true);
+  const complete = normalizeTug10ReceiptPhotoSlots({ ...base, stockItems: [{ ...base.stockItems[0], fotoNameplate: "nameplate" }] });
+  assert.equal(Object.hasOwn(complete.stockItems[0], "receiptPhotoRepair"), false);
 });

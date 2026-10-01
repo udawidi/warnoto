@@ -12,7 +12,7 @@ import { STATUS_SAP } from "../constants.js";
 import { nextSafeDocSeq } from "../lib/docSeqGuard.js";
 import { readTugRoute } from "../lib/tugRoute.js";
 import { isLegacySourceAllocation } from "../lib/sap.js";
-import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
+import { missingReceiptPhotos, normalizeTug10ReceiptPhotoSlots } from "../lib/receiptPhoto.js";
 
 const CANONICAL_TUG_REQUIRED = import.meta.env.VITE_TUG_CANONICAL_REQUIRED !== "false";
 
@@ -145,7 +145,7 @@ export function useTugTransactions({
       setTxnForm({
         ...base,
         uptId: canonicalUptId,
-        stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null }],
+        stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot:0 }],
         noBAPenggantian: "",
         // For TUG10 the flow is reversed: external party hands back to PLN
         menyerahkanUnit: "", menyerahkanNama: "",
@@ -226,7 +226,9 @@ export function useTugTransactions({
     }
     setTxnForm(tf => {
       if (tf.docType === "TUG10") {
-        return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null }] };
+        const used = new Set(tf.stockItems.map(si => si.receiptPhotoSlot).filter(Number.isInteger));
+        let receiptPhotoSlot = 0; while (used.has(receiptPhotoSlot)) receiptPhotoSlot++;
+        return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot }] };
       }
       if (tf.docType === "TUG5") {
         return { ...tf, stockItems: [...tf.stockItems, { ...(tf.sourceType==="ULTG" ? { stockId:"" } : {}), katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }] };
@@ -854,6 +856,7 @@ export function useTugTransactions({
 
   // ── Draft TUG-10 (Barang Kembali) — sama pola dengan draft TUG-3 di atas ──
   function editDraftTug10(txn) {
+    txn = normalizeTug10ReceiptPhotoSlots(txn);
     const stage = txn.stage || (txn.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : txn.status === "PENDING" ? "PENDING_TL" : "DRAFT");
     setTxnForm({ ...txn, stage });
     setEditingDraftTxnId(txn.id);

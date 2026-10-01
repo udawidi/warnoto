@@ -7,6 +7,7 @@ import { fmtDateOnly } from "./utils.js";
 import { resolveSapLabel } from "./sap.js";
 import { syncMasterTable } from "./masterSync.js";
 import { normalizeKatalogCode } from "./normalizeKatalogCode.js";
+import { normalizeTug10ReceiptPhotoSlots } from "./receiptPhoto.js";
 
 // Marker sync harus mengikuti endpoint. Jangan baca marker global lama: marker
 // dari Supabase Cloud tidak boleh menekan recheck idempoten ke self-host baru.
@@ -251,11 +252,13 @@ export async function processTxnPhotos(txn, prefix, onProgress) {
     }));
   }
   if (Array.isArray(t.stockItems)) {
+    if (t.docType === "TUG10") Object.assign(t, normalizeTug10ReceiptPhotoSlots(t));
     t.stockItems = await Promise.all(t.stockItems.map(async (si, idx) => {
       const nsi = { ...si };
+      const photoIndex = t.docType === "TUG10" ? (nsi.receiptPhotoSlot ?? idx) : idx;
       for (const field of ["fotoNameplate", "fotoBarangRetur", "fotoBarang"]) {
         if (_isDataUrl(nsi[field])) {
-          try { nsi[field] = await _withTimeout(uploadPhotoToStorage(await compressImage(nsi[field], { maxBytes: 1_000_000 }), "tug-photos", `${prefix}/item${idx}-${field}.jpg`), 30_000, "unggah foto"); }
+          try { nsi[field] = await _withTimeout(uploadPhotoToStorage(await compressImage(nsi[field], { maxBytes: 1_000_000 }), "tug-photos", `${prefix}/item${photoIndex}-${field}.jpg`), 30_000, "unggah foto"); }
           catch { pending.push(`item${idx}.${field}`); }
           tick();
         }

@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-09-28
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-01
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -70,6 +70,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Slot foto bukti TUG-10 distabilkan (2026-10-01).** Setiap item memakai `receiptPhotoSlot` permanen sehingga hapus/tambah atau pergeseran baris tidak mengubah path Storage. Dokumen legacy dinormalisasi dari URL foto; konflik slot tidak memakai foto item lain dan ditandai untuk unggah ulang. Upload serta validasi foto memakai slot yang sama. Verifikasi: 454/454 unit test, build, dan `git diff --check` lulus.
 
 - **Tambah Sub Gudang dan pengelompokan lokasi selesai lokal (2026-09-28).** Role TL/SUPERADMIN dapat menambah Sub Gudang dari Master Data > Gudang; tombol Simpan melakukan upsert satu baris ke database self-host dengan validasi wajib, duplikat per gudang, rollback, audit, dan toast. Dropdown Lokasi pada Edit Data Stok memakai grup native per Sub Gudang, blok diurutkan natural, dan lokasi tanpa Sub Gudang ditempatkan terakhir. Verifikasi: 437/437 unit test, build, dan diff-check lulus; belum push/deploy.
 
@@ -643,6 +645,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel, buka satu draft TUG-10 lama yang itemnya pernah bergeser atau memiliki URL foto slot ganda. Pastikan item konflik meminta unggah ulang, foto item lain tidak tertukar, lalu simpan dan refresh untuk memastikan foto pengganti tetap benar.
 - Setelah deploy Vercel, login sebagai TL dan SUPERADMIN: tambah satu Sub Gudang yang disetujui, refresh untuk memastikan data tetap tersimpan di self-host, lalu buka Data Stok > Edit dan pastikan dropdown Lokasi menampilkan grup Sub Gudang beserta daftar blok yang terurut.
 - Setelah deploy Vercel, buat satu peminjaman baru dan pastikan nama pemohon tampil pada history serta role UIT resmi tetap hanya memiliki akses baca.
 - Setelah persetujuan pengguna, commit/push perbaikan evidence Maturity tanpa ikut membawa perubahan Stock Opname. Sesudah deploy, buka beberapa audit lama dari menu Maturity Level > Input; pastikan evidence aktif terbuka, evidence yang sudah di-unlink tidak tampil, Form 5S tetap ada, dan tidak muncul lagi `Evidence tidak ditemukan.`
@@ -790,5 +793,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-25 Codex: **Alur Alat Berat dipulihkan; scope history UIT, policy upload bukti, progres pengembalian, dan snapshot nama pemohon baru aktif di production.**
 - 2026-09-28 Codex: **Tambah Sub Gudang untuk TL/SUPERADMIN dan dropdown Lokasi Data Stok berkelompok per Sub Gudang selesai lokal; test dan build lulus.**
+- 2026-10-01 Codex: **Slot foto bukti TUG-10 dibuat stabil; konflik URL legacy gagal tertutup dan meminta unggah ulang.**
