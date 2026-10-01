@@ -1451,7 +1451,8 @@ export default function PLNWarehouse() {
     approvalHistoryShowAll, setApprovalHistoryShowAll,
     approveLokasiChange, rejectLokasiChange,
   } = useApprovalHub({ currentUser, showToast, stateRef, logApprovalHistory, lokasiList, setLokasiList });
-  stateRef.current = { stocks, txns, docSeq, satpamList, supplierList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, maturityAudits, maturityAuditHistory, maturity5SAssessments, heavyEquipmentList, heavyEquipmentLoans, attbList, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview, users, currentUser };
+  // Keep hook-provided callbacks and derived data on the shared ref between renders.
+  Object.assign(stateRef.current, { stocks, txns, docSeq, satpamList, supplierList, katalogList, lokasiList, timMutuList, uitList, uptList, gudangList, subGudangList, rencanaKedatanganList, opnameList, stockCountList, approvalHistoryList, maturityAssessments, maturityAudits, maturityAuditHistory, maturity5SAssessments, heavyEquipmentList, heavyEquipmentLoans, attbList, materialCadangData, materialCadangHealthData, materialCadangAiInsights, gudangCapacityList, gudangCapacityImports, migratedTug15History, migrasiPendingReview, users, currentUser });
 
   const {
     lokasiModal, setLokasiModal, lokasiForm, setLokasiForm, lokasiDeleteConfirm, setLokasiDeleteConfirm,

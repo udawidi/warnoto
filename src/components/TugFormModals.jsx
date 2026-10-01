@@ -463,7 +463,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               const bs = statusMaterialBadgeStyle(si.statusMaterial);
               const hint = txt => <div style={{fontSize:12,color:"#be185d",marginTop:4}}>{txt}</div>;
               return (
-              <div key={idx} ref={setRef(`item-${idx}`)} style={{border:`1px solid ${complete?"#bbf7d0":C.border}`,borderRadius:10,padding:12,marginBottom:10,background:complete?"#f6fefb":"#f9fafb",...hl(`item-${idx}`)}}>
+              <div key={idx} ref={setRef(`item-${idx}`)} style={{border:`1px solid ${complete?"#bbf7d0":C.border}`,borderRadius:10,padding:10,marginBottom:8,background:complete?"#f6fefb":"#f9fafb",...hl(`item-${idx}`)}}>
                 <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:collapsed?0:8,flexWrap:"wrap"}}>
                   <span style={{fontSize:12,fontWeight:800,color:C.accent}}>Barang #{n}</span>
                   <span style={{fontSize:12,fontWeight:700,padding:"1px 8px",borderRadius: 14,background:bs.bg,color:bs.fg}}>{si.statusMaterial}</span>
@@ -500,9 +500,11 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                     {si.katalogId && txnForm.lokasiTujuanId && (() => {
                       const candidates = targetCandidates(si);
                       if (candidates.length === 0) return <div style={{fontSize:12,color:C.muted,marginTop:5}}>Belum ada stok dengan katalog dan blok ini. Approval akan membuat lot baru.</div>;
-                      return <div style={{marginTop:8}}>
+                      return <div className="tug10-stock-handling" style={{marginTop:6}}>
                         <label style={sty.label}>Penanganan stok *</label>
-                        <select style={sty.select} value={handling} onChange={e=>updateItemRow(idx,"stockHandling",e.target.value)}><option value="">-- Pilih Gabungkan atau Pisah --</option><option value="MERGE">Gabungkan ke stok eksisting</option><option value="SEPARATE">Buat lot retur terpisah</option></select>
+                        <div role="group" aria-label="Penanganan stok" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                          {[['MERGE','Gabungkan'],['SEPARATE','Pisah lot']].map(([value,label])=><button key={value} type="button" aria-pressed={handling===value} style={{minHeight:44,padding:"7px 8px",borderRadius:8,border:`1px solid ${handling===value?C.accent:C.border}`,background:handling===value?"#eff6ff":"white",color:handling===value?C.accent:C.muted,fontWeight:700,fontSize:12,cursor:"pointer"}} onClick={()=>updateItemRow(idx,"stockHandling",value)}>{label}</button>)}
+                        </div>
                         {handling === "MERGE" && <><label style={{...sty.label,marginTop:7}}>Stok tujuan *</label>{candidates.length===1 ? <div style={{fontSize:12,color:"#166534",marginTop:5}}>Stok tujuan: <b>{candidates[0].id}</b> · saldo {fmtNum(candidates[0].qty)} {candidates[0].unit||satuanDisplay} (dipilih otomatis)</div> : <select style={sty.select} value={si.targetStockId||""} onChange={e=>updateItemRow(idx,"targetStockId",e.target.value)}><option value="">-- Pilih baris stok --</option>{candidates.map(s=><option key={s.id} value={s.id}>{s.id} · saldo {fmtNum(s.qty)} {s.unit||satuanDisplay}</option>)}</select>}{!si.targetStockId && hint("Wajib memilih stok tujuan agar saldo eksisting bertambah.")}</>}
                         {handling === "SEPARATE" && <div style={{fontSize:12,color:C.muted,marginTop:5}}>Akan dibuat lot retur baru saat approval.</div>}
                       </div>;
@@ -554,12 +556,12 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 
                 <div style={{marginBottom:8}}>
                   <label style={sty.label}>Status Material</label>
-                  <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8}}>
+                  <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(3,1fr)",gap:6}}>
                     {STATUS_MATERIAL_RETUR.map(sm=>{
                       const smbs = statusMaterialBadgeStyle(sm);
                       const active = si.statusMaterial===sm;
                       return (
-                        <button key={sm} type="button" style={{flex:1,padding:"8px",borderRadius: 10,border:`2px solid ${active?smbs.fg:C.border}`,background:active?smbs.bg:"white",color:active?smbs.fg:C.muted,cursor:"pointer",fontWeight:700,fontSize:12}} onClick={()=>updateItemRow(idx,"statusMaterial",sm)}>{sm}</button>
+                        <button key={sm} type="button" style={{minHeight:44,padding:"7px 6px",borderRadius:8,border:`1px solid ${active?smbs.fg:C.border}`,background:active?smbs.bg:"white",color:active?smbs.fg:C.muted,cursor:"pointer",fontWeight:700,fontSize:11}} onClick={()=>updateItemRow(idx,"statusMaterial",sm)}>{sm}</button>
                       );
                     })}
                   </div>
@@ -569,10 +571,10 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 
                 <div style={{background:"#f0fdf4",border:`1px solid #bbf7d0`,borderRadius: 10,padding:10,marginBottom:isAttb?8:0}}>
                   <label style={sty.label}>Foto Barang * (wajib untuk semua status)</label>
-                  <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
-                    {si.fotoBarangRetur && <img src={si.fotoBarangRetur} alt="barang" style={{width:isMobile?"100%":72,height:isMobile?140:72,objectFit:"cover",borderRadius: 10}}/>}
-                    <label style={{...sty.btn("ghost","sm"),cursor:"pointer"}}>📷 {si.fotoBarangRetur?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" style={{display:"none"}} onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoBarangRetur",img))}/></label>
-                    {si.fotoBarangRetur && <button type="button" style={{...sty.btn("danger","sm")}} onClick={()=>updateItemRow(idx,"fotoBarangRetur",null)}>Hapus</button>}
+                  <div style={{display:"flex",gap:8,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
+                    {si.fotoBarangRetur && <img src={si.fotoBarangRetur} alt="barang" style={{width:56,height:56,objectFit:"cover",borderRadius:8,flexShrink:0}}/>}
+                    <label style={{...sty.btn("ghost","sm"),cursor:"pointer",minHeight:44,display:"inline-flex",alignItems:"center"}}>📷 {si.fotoBarangRetur?"Ganti Foto":"Ambil / Pilih Foto"}<input type="file" style={{display:"none"}} onChange={e=>handleImg(e, img=>updateItemRow(idx,"fotoBarangRetur",img))}/></label>
+                    {si.fotoBarangRetur && <button type="button" style={{...sty.btn("danger","sm"),minHeight:44}} onClick={()=>updateItemRow(idx,"fotoBarangRetur",null)}>Hapus</button>}
                   </div>
                   {!fotoOk && hint("Wajib: unggah foto barang.")}
                 </div>

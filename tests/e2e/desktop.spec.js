@@ -1,4 +1,4 @@
-const { test, expect } = require("./fixtures");
+const { test, expect, CLOUD_FIXTURES } = require("./fixtures");
 const { openApp, openRoute } = require("./support/responsive");
 
 test.describe("WARNOTO desktop preservation smoke", () => {
@@ -44,6 +44,34 @@ test.describe("WARNOTO desktop preservation smoke", () => {
       await expect(dialog).toBeVisible();
       await expect(page.getByText(/Approval TUG-10 gagal: layanan database belum tersedia/)).toBeVisible();
       expect(await page.evaluate(() => localStorage.getItem("warnoto_pln_stocks_v4"))).toBe(stockBefore);
+    });
+  });
+
+  test.describe("TUG-10 compact return item", () => {
+    test.use({
+      cloudOverrides: {
+        pln_stocks_v4: [{ ...CLOUD_FIXTURES.pln_stocks_v4[0], id:"ST-E2E-TUG10", lokasiId:"LOK-E2E-A", gudangId:"GDG-E2E-01", uptId:"UPT-SBY" }],
+      },
+    });
+
+    test("switches MERGE to SEPARATE and back without ErrorBoundary", async ({ isolatedPage:page }) => {
+      await openApp(page);
+      await openRoute(page, { tab:"transaction", menuPath:["TUG", "Barang Masuk"], actions:[{ role:"tab", name:/Barang Kembali/ }], readySelector:".tug-page" });
+      await page.getByRole("button", { name:"Catat Barang Kembali", exact:true }).click();
+      const form = page.getByText("Formulir TUG-10 — Bon Pengembalian", { exact:true });
+      await expect(form).toBeVisible();
+      await page.locator("select").filter({ has: page.locator('option[value="GDG-E2E-01"]') }).selectOption("GDG-E2E-01");
+      await page.locator("select").filter({ has: page.locator('option[value="LOK-E2E-A"]') }).selectOption("LOK-E2E-A");
+      await page.getByPlaceholder("-- Cari & pilih dari Master Katalog --").click();
+      await page.getByText("Isolator Keramik 150 kV", { exact:false }).last().click();
+      await expect(page.getByRole("button", { name:"Gabungkan", exact:true })).toBeVisible();
+      await page.getByRole("button", { name:"Gabungkan", exact:true }).click();
+      await expect(page.getByText(/Stok tujuan: ST-E2E-TUG10/)).toBeVisible();
+      await page.getByRole("button", { name:"Pisah lot", exact:true }).click();
+      await expect(page.getByText("Akan dibuat lot retur baru saat approval.", { exact:true })).toBeVisible();
+      await page.getByRole("button", { name:"Gabungkan", exact:true }).click();
+      await expect(page.getByText(/Stok tujuan: ST-E2E-TUG10/)).toBeVisible();
+      await expect(page.getByText("Terjadi kesalahan, silakan refresh halaman", { exact:true })).toHaveCount(0);
     });
   });
 

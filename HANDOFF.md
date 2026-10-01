@@ -72,6 +72,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Kartu material TUG-10 compact dan crash pilihan lot diperbaiki (2026-10-01).** `stateRef.current` kini diperbarui in-place agar `enrichedStocks` dan callback hook tidak hilang di tengah render. Pilihan MERGE/SEPARATE menjadi segmented button, tampilan status/foto dipadatkan, dan target sentuh mobile dijaga minimal 44px. Verifikasi lokal: 467 unit test, E2E MERGE→SEPARATE→MERGE, build, dan review senior lulus.
+
 - **Target stok TUG-10 aktif di production (2026-10-01).** Migration `20261001_tug10_target_stock.sql` diterapkan setelah dump penuh 25 MB dan public 24 MB. Scratch PostgreSQL dari snapshot production membuktikan dokumen `276.TUG-10/LOG.00.01/UPT-SBYA/X/2026` menggabungkan `STK-SAP-2020136` dari 3 menjadi 6, retry tetap 6, tidak membuat lot baru, dan rollback kembali 3/PENDING. Production verifier `TUG10_ATOMIC_OK` lulus; dokumen 276 tetap PENDING dan stok production tetap 3 sampai disetujui manual. Verifikasi kode: 467 unit test, build, E2E fokus, dan diff-check lulus.
 
 - **Edit Data Stok diperbaiki (2026-10-01).** `jenisBarang` per baris stok kini menjadi nilai utama dan tidak lagi ditimpa Master Katalog setelah TL menyimpan; katalog hanya fallback untuk data stok lama yang kosong. Semua input Update Gambar di Data Stok memakai pemilih file native sehingga ponsel dapat memilih kamera atau galeri, tanpa mengubah alur kompresi/upload Storage. Tidak ada schema atau dependency baru. Verifikasi gabungan: 457/457 unit test, build, dan `git diff --check` lulus.
@@ -650,6 +652,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel, buka form TUG-10 dengan katalog dan blok yang sudah memiliki stok. Uji Gabungkan → Pisah lot → Gabungkan; form tidak boleh error, target stok harus kembali otomatis, dan kartu material harus tetap compact di desktop maupun ponsel.
 - Setelah deploy Vercel selesai, refresh bersih lalu buka Approval TUG-10 dokumen `276.TUG-10/LOG.00.01/UPT-SBYA/X/2026`. Preview harus menampilkan mode Gabungkan dan proyeksi `3 → 6`; klik Setuju satu kali, lalu pastikan status APPROVED dan `STK-SAP-2020136` tepat 6.
 - Setelah deploy Vercel, login sebagai TL di ponsel: ubah Jenis Barang satu baris Data Stok, simpan, refresh, dan pastikan nilainya tetap serta baris berkatalog sama tidak ikut berubah. Dari Detail/Edit pilih gambar melalui galeri untuk Foto Nameplate dan Foto Keseluruhan, simpan, lalu refresh untuk memastikan keduanya tetap tersimpan; pastikan kamera masih tersedia dari pemilih native perangkat.
 - Setelah deploy Vercel, buka satu draft TUG-10 lama yang itemnya pernah bergeser atau memiliki URL foto slot ganda. Pastikan item konflik meminta unggah ulang, foto item lain tidak tertukar, lalu simpan dan refresh untuk memastikan foto pengganti tetap benar.
@@ -801,4 +804,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-09-28 Codex: **Tambah Sub Gudang untuk TL/SUPERADMIN dan dropdown Lokasi Data Stok berkelompok per Sub Gudang selesai lokal; test dan build lulus.**
-- 2026-10-01 Codex: **Approval TUG-10 dibuat atomik dengan pilihan merge/separate; migration production, scratch rehearsal dokumen 276, test, dan build lulus.**
+- 2026-10-01 Codex: **Approval TUG-10 atomik dengan pilihan merge/separate aktif; crash pilihan lot diperbaiki dan kartu material dibuat compact, dengan test serta build lulus.**
