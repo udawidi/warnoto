@@ -71,6 +71,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Edit Data Stok diperbaiki (2026-10-01).** `jenisBarang` per baris stok kini menjadi nilai utama dan tidak lagi ditimpa Master Katalog setelah TL menyimpan; katalog hanya fallback untuk data stok lama yang kosong. Semua input Update Gambar di Data Stok memakai pemilih file native sehingga ponsel dapat memilih kamera atau galeri, tanpa mengubah alur kompresi/upload Storage. Tidak ada schema atau dependency baru. Verifikasi gabungan: 457/457 unit test, build, dan `git diff --check` lulus.
+
 - **Slot foto bukti TUG-10 distabilkan (2026-10-01).** Setiap item memakai `receiptPhotoSlot` permanen sehingga hapus/tambah atau pergeseran baris tidak mengubah path Storage. Dokumen legacy dinormalisasi dari URL foto; konflik slot tidak memakai foto item lain dan ditandai untuk unggah ulang. Upload serta validasi foto memakai slot yang sama. Verifikasi: 454/454 unit test, build, dan `git diff --check` lulus.
 
 - **Tambah Sub Gudang dan pengelompokan lokasi selesai lokal (2026-09-28).** Role TL/SUPERADMIN dapat menambah Sub Gudang dari Master Data > Gudang; tombol Simpan melakukan upsert satu baris ke database self-host dengan validasi wajib, duplikat per gudang, rollback, audit, dan toast. Dropdown Lokasi pada Edit Data Stok memakai grup native per Sub Gudang, blok diurutkan natural, dan lokasi tanpa Sub Gudang ditempatkan terakhir. Verifikasi: 437/437 unit test, build, dan diff-check lulus; belum push/deploy.
@@ -645,6 +647,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel, login sebagai TL di ponsel: ubah Jenis Barang satu baris Data Stok, simpan, refresh, dan pastikan nilainya tetap serta baris berkatalog sama tidak ikut berubah. Dari Detail/Edit pilih gambar melalui galeri untuk Foto Nameplate dan Foto Keseluruhan, simpan, lalu refresh untuk memastikan keduanya tetap tersimpan; pastikan kamera masih tersedia dari pemilih native perangkat.
 - Setelah deploy Vercel, buka satu draft TUG-10 lama yang itemnya pernah bergeser atau memiliki URL foto slot ganda. Pastikan item konflik meminta unggah ulang, foto item lain tidak tertukar, lalu simpan dan refresh untuk memastikan foto pengganti tetap benar.
 - Setelah deploy Vercel, login sebagai TL dan SUPERADMIN: tambah satu Sub Gudang yang disetujui, refresh untuk memastikan data tetap tersimpan di self-host, lalu buka Data Stok > Edit dan pastikan dropdown Lokasi menampilkan grup Sub Gudang beserta daftar blok yang terurut.
 - Setelah deploy Vercel, buat satu peminjaman baru dan pastikan nama pemohon tampil pada history serta role UIT resmi tetap hanya memiliki akses baca.
@@ -794,4 +797,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-09-28 Codex: **Tambah Sub Gudang untuk TL/SUPERADMIN dan dropdown Lokasi Data Stok berkelompok per Sub Gudang selesai lokal; test dan build lulus.**
-- 2026-10-01 Codex: **Slot foto bukti TUG-10 dibuat stabil; konflik URL legacy gagal tertutup dan meminta unggah ulang.**
+- 2026-10-01 Codex: **Slot foto TUG-10 distabilkan; Edit Data Stok mempertahankan Jenis Barang per baris dan Update Gambar mendukung galeri.**

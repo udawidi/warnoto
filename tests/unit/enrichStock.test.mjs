@@ -11,7 +11,17 @@ test("ATTB and Bongkaran preserve stock jenisBarang, including legacy rows", () 
   }
 });
 
-test("ordinary stock keeps master catalog jenisBarang precedence", () => {
+test("ordinary stock keeps its own jenisBarang over master catalog", () => {
   const row = enrichStock({ katalogId: "K1", jenisBarang: "Persediaan" }, katalog, []);
+  assert.equal(row.jenisBarang, "Persediaan");
+});
+
+test("stock without jenisBarang falls back to master catalog", () => {
+  const row = enrichStock({ katalogId: "K1" }, katalog, []);
+  assert.equal(row.jenisBarang, "Cadang");
+});
+
+test("stock without jenisBarang or catalog type falls back to Cadang", () => {
+  const row = enrichStock({ katalogId: "MISSING" }, katalog, []);
   assert.equal(row.jenisBarang, "Cadang");
 });

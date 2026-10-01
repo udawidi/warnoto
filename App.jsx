@@ -5136,7 +5136,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 <>
                   <label style={{...sty.btn("ghost","sm"),display:"block",textAlign:"center",marginTop:6,cursor:"pointer"}}>
                     Update Gambar
-                    <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
+                    <input type="file" accept="image/*" style={{display:"none"}}
                       onChange={e=>handleImg(e, img=>setPendingFoto(p=>({...p,[field]:img})))}/>
                   </label>
                   {hasUnsaved && (

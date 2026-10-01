@@ -72,7 +72,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 {stockForm.img && <img src={resolveStockPhotoUrl(stockForm.img)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.img))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
-                  <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,img})))} style={{display:"none"}}/>
+                  <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,img})))} style={{display:"none"}}/>
                 </label>
               </div>
               <div>
@@ -80,7 +80,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 {stockForm.fotoNameplate && <img src={resolveStockPhotoUrl(stockForm.fotoNameplate)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoNameplate))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
-                  <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoNameplate:img})))} style={{display:"none"}}/>
+                  <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoNameplate:img})))} style={{display:"none"}}/>
                 </label>
               </div>
               <div>
@@ -88,7 +88,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
                 {stockForm.fotoKeseluruhan && <img src={resolveStockPhotoUrl(stockForm.fotoKeseluruhan)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.fotoKeseluruhan))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
-                  <input type="file" accept="image/*" capture="environment" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoKeseluruhan:img})))} style={{display:"none"}}/>
+                  <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,fotoKeseluruhan:img})))} style={{display:"none"}}/>
                 </label>
               </div>
               {Array.isArray(stockForm.kontrakRefs) && stockForm.kontrakRefs.length > 0 && (

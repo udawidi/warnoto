@@ -353,11 +353,8 @@ export function enrichStock(stock, katalogList, lokasiList) {
     lokasi: lok.kode || stock.lokasi || "-",
     lokasiKeterangan: lok.keterangan || "",
     gudangId: lok.gudangId ?? null,
-    // ATTB/Bongkaran harus tetap terlihat sebagai jenis stoknya, termasuk baris legacy.
-    // Baris lain tetap memakai Master Katalog sebagai sumber kebenaran.
-    jenisBarang: ["ATTB", "Bongkaran"].includes(stock.jenisBarang)
-      ? stock.jenisBarang
-      : kat.jenisBarang || stock.jenisBarang || "Cadang",
+    // Jenis pada baris stok dapat diedit tanpa mengubah Master Katalog.
+    jenisBarang: stock.jenisBarang || kat.jenisBarang || "Cadang",
   };
 }
 

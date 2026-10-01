@@ -16,6 +16,16 @@ test("Data Stok photo fields are optional", () => {
   assert.match(stockModal, /Foto Keseluruhan \(opsional\)/);
 });
 
+test("Data Stok photo inputs support gallery selection", () => {
+  const stockInputs = [...stockModal.matchAll(/<input type="file"[^>]*>/g)].map(match => match[0]);
+  const detailInputs = [...app.matchAll(/<input type="file"[^>]*>/g)].map(match => match[0]);
+  assert.equal(stockInputs.length, 3);
+  assert.ok(stockInputs.every(input => input.includes('accept="image/*"') && !input.includes('capture=')));
+  assert.ok(detailInputs.some(input => input.includes('accept="image/*"') && !input.includes('capture=') && input.includes('onChange')));
+  assert.match(stockModal, /handleImg\(e, img=>setStockForm/);
+  assert.match(app, /handleImg\(e, img=>setPendingFoto/);
+});
+
 test("receipt photo path is stable and strict", () => {
   const txnId = "TUG3-abc123";
   const expected = "https://warnoto.com/storage/v1/object/public/tug-photos/TUG3-abc123/item0-fotoBarang.jpg";
