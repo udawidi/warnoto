@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { activePairedGudangRows, dropCachedGiRows } from "../../src/lib/giWarehouse.js";
 
 const migration = await readFile(new URL("../../supabase/migrations/20260918_gi_tug_warehouse.sql", import.meta.url), "utf8");
+const tug10AtomicMigration = await readFile(new URL("../../supabase/migrations/20261001_tug10_atomic_final_approval.sql", import.meta.url), "utf8");
 const app = await readFile(new URL("../../App.jsx", import.meta.url), "utf8");
 const masterSync = await readFile(new URL("../../src/lib/masterSync.js", import.meta.url), "utf8");
 const forms = await readFile(new URL("../../src/components/TugFormModals.jsx", import.meta.url), "utf8");
@@ -84,7 +85,8 @@ test("TUG forms use GI's real location and leave satpam empty", () => {
   assert.match(forms, /const isGI = !!selGud\?\.__gi/);
   assert.match(forms, /lokasiTujuanId:\s*giLokasi\.id/);
   assert.match(forms, /isLegacyGud\|\|isGI/);
-  assert.match(app, /lokasiId:txn\.lokasiTujuanId, uptId:txn\.uptId \|\| currentUserUptId \|\| null/);
+  assert.match(tug10AtomicMigration, /where l\.id = nullif\(btrim\(v_data->>'lokasiTujuanId'\), ''\)/);
+  assert.match(tug10AtomicMigration, /'uptId', v_txn\.upt_id/);
 });
 
 test("warehouse configuration cannot edit GI shadow rows", () => {

@@ -35,7 +35,7 @@ test("cloud bootstrap clears refresh state when a loader throws", () => {
 
 test("cloud bootstrap bounds pending loaders", () => {
   assert.match(app, /const bootstrapLoad = \(promise, label = "bootstrap cloud"\)/);
-  assert.match(app, /_withTimeout\(Promise\.resolve\(promise\), 15000, label\)/);
+  assert.match(app, /_withTimeout\(Promise\.resolve\(promise\), 30000, label\)/);
 });
 
 test("dismissed maturity migration does not abort cloud bootstrap", () => {

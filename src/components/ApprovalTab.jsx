@@ -20,6 +20,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const [tug3Previewed, setTug3Previewed] = useState(false);
   const [tug10ReviewTxn, setTug10ReviewTxn] = useState(null);
   const [tug10Previewed, setTug10Previewed] = useState(false);
+  const [tug10SubmittingId, setTug10SubmittingId] = useState(null);
   const [tug5ReviewTxn, setTug5ReviewTxn] = useState(null);
   const [tug5Checks, setTug5Checks] = useState([false, false, false]);
   function openTug4Modal(txn) {
@@ -508,9 +509,9 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
       {/* TUG-10 review — wajib buka preview dokumen sebelum boleh approve, stok bertambah */}
       {tug10ReviewTxn && (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:20}}>
-          <div style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
+          <div role="dialog" aria-modal="true" aria-labelledby="tug10-review-title" style={{...sty.card,width:600,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
             <div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM KEPUTUSAN APPROVAL</div>
-            <h3 style={{fontSize:17,fontWeight:800,margin:"4px 0 10px"}}>Penerimaan TUG-10 / {tug10ReviewTxn.docNumbers?.tug10}</h3>
+            <h3 id="tug10-review-title" style={{fontSize:17,fontWeight:800,margin:"4px 0 10px"}}>Penerimaan TUG-10 / {tug10ReviewTxn.docNumbers?.tug10}</h3>
             <div style={{background:tug10ReviewTxn.stage==="PENDING_TL"?"#eff6ff":"#fefce8",border:`1px solid ${tug10ReviewTxn.stage==="PENDING_TL"?"#bfdbfe":"#fde68a"}`,borderRadius:10,padding:"8px 10px",fontSize:12,color:tug10ReviewTxn.stage==="PENDING_TL"?"#1d4ed8":"#92400e",marginBottom:12}}>
               {tug10ReviewTxn.stage==="PENDING_TL" ? "Tahap TL: teruskan ke Asman setelah data benar. Stok belum berubah." : "Tahap Asman final: persetujuan ini akan menambah stok."}
             </div>
@@ -543,9 +544,23 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               </div>
             </details>
             <div style={{display:"flex",gap:10}}>
-              <button style={{...sty.btn("ghost"),flex:1}} onClick={()=>setTug10ReviewTxn(null)}>Batal</button>
-              <button style={{...sty.btn("primary"),flex:2}} disabled={!tug10Previewed} onClick={()=>{approveTxn(tug10ReviewTxn);setTug10ReviewTxn(null);}}>{tug10ReviewTxn.stage==="PENDING_TL" ? "✓ Teruskan ke Asman" : "✓ Setujui — Stok Masuk"}</button>
+              <button style={{...sty.btn("ghost"),flex:1}} disabled={tug10SubmittingId===tug10ReviewTxn.id} onClick={()=>setTug10ReviewTxn(null)}>Batal</button>
+              <button
+                style={{...sty.btn("primary"),flex:2}}
+                disabled={!tug10Previewed || tug10SubmittingId===tug10ReviewTxn.id}
+                onClick={async()=>{
+                  if (tug10SubmittingId===tug10ReviewTxn.id) return;
+                  setTug10SubmittingId(tug10ReviewTxn.id);
+                  try {
+                    const ok = await approveTxn(tug10ReviewTxn);
+                    if (ok) setTug10ReviewTxn(null);
+                  } finally {
+                    setTug10SubmittingId(null);
+                  }
+                }}
+              >{tug10SubmittingId===tug10ReviewTxn.id ? "Menyetujui…" : tug10ReviewTxn.stage==="PENDING_TL" ? "✓ Teruskan ke Asman" : "✓ Setujui — Stok Masuk"}</button>
             </div>
+            {tug10SubmittingId===tug10ReviewTxn.id && <div role="status" style={{fontSize:12,color:C.muted,marginTop:7}}>Persetujuan sedang diproses di server. Jangan tutup halaman.</div>}
             {!tug10Previewed && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
           </div>
         </div>

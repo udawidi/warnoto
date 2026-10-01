@@ -6,6 +6,15 @@ const app = fs.readFileSync(new URL("../../App.jsx", import.meta.url), "utf8");
 const txns = fs.readFileSync(new URL("../../src/hooks/useTugTransactions.js", import.meta.url), "utf8");
 const approval = fs.readFileSync(new URL("../../src/components/ApprovalTab.jsx", import.meta.url), "utf8");
 
+test("TUG-10 final button stays open and reports server submission", () => {
+  assert.match(approval, /const \[tug10SubmittingId, setTug10SubmittingId\]/);
+  assert.match(approval, /const ok = await approveTxn\(tug10ReviewTxn\)/);
+  assert.match(approval, /if \(ok\) setTug10ReviewTxn\(null\)/);
+  assert.match(approval, /Menyetujui…/);
+  assert.match(approval, /disabled=\{!tug10Previewed \|\| tug10SubmittingId===tug10ReviewTxn\.id\}/);
+  assert.doesNotMatch(approval, /onClick=\{\(\)=>\{approveTxn\(tug10ReviewTxn\);setTug10ReviewTxn\(null\);\}\}/);
+});
+
 test("TUG-10 has explicit TL then Asman stages", () => {
   assert.match(txns, /nextTug10Stage[\s\S]*?"PENDING_TL"/);
   assert.match(txns, /nextTug10Stage[\s\S]*?"PENDING_ASMAN"/);

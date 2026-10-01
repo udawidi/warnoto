@@ -118,8 +118,14 @@ export function useAccountAdmin({ currentUser, showToast, reloadUsers }) {
       return;
     }
     const { error: updateErr } = await supabase.auth.updateUser({ password: f.newPassword });
+    if (updateErr) { setGantiPasswordBusy(false); showToast("Gagal mengubah password: "+updateErr.message,"error"); return; }
+    // Verifikasi jalur login yang dipakai halaman login. Supabase dapat menerima
+    // update sesi tetapi login berikutnya gagal bila mapping email/auth tidak cocok.
+    const { error: verifyErr } = await supabase.auth.signInWithPassword({
+      email: usernameToAuthEmail(currentUser.username), password: f.newPassword,
+    });
     setGantiPasswordBusy(false);
-    if (updateErr) { showToast("Gagal mengubah password: "+updateErr.message,"error"); return; }
+    if (verifyErr) { showToast("Password tersimpan, tetapi verifikasi login gagal: "+verifyErr.message,"error"); return; }
     setGantiPasswordModal(false);
     logAudit(currentUser, "UPDATE", "akun", currentUser.username, {gantiPassword:true});
     showToast("✅ Password berhasil diubah!");

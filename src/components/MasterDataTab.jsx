@@ -21,6 +21,7 @@ import { buildLabelBlokHTML } from "../lib/docBuilders.js";
 
 export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockSubTab, filteredKatalog, satpamList: rawSatpamList, supplierList, openAddSupplier, openEditSupplier, deleteSupplier, timMutuList: rawTimMutuList, uitList: rawUitList, uptList: rawUptList, ultgList: rawUltgList, users, gudangList: rawGudangList, lokasiList: rawLokasiList, subGudangList, subGudangModal, subGudangForm, setSubGudangForm, openAddSubGudang, closeSubGudangModal, saveSubGudang, visibleGudangList: rawVisibleGudangList, openAddKatalog, openAddSatpam, openAddUIT, openAddGudang, openAddAkun, importGudangOpen, setImportGudangOpen, showGudangMaintenance, setShowGudangMaintenance, importLokasiOpen, setImportLokasiOpen, gudangCapacityImports, setGudangCapacityImports, saveToCloud, showToast, backfillGudangCoordFromCapacity, dedupeGudangDanSubGudang, isKodeDuplicateInSubGudang, setLokasiList, syncLokasi, maraUploadProgress, maraUploadLoading, uploadMaraToDB, katalogList, katalogSearch, setKatalogSearch, katalogFilterBelumMara, setKatalogFilterBelumMara, pagedKatalog, stocks, openEditKatalog, deleteKatalog, katalogPageSize, setKatalogPageSize, katalogPageClamped, setKatalogPage, katalogTotalPages, openEditSatpam, deleteSatpam, openEditTimMutu, orgSearch, setOrgSearch, collapsedUitIds, setCollapsedUitIds, openAddUPT, openEditUIT, deleteUIT, openAddULTG, openEditUPT, deleteUPT, openEditULTG, deleteULTG, expandedGudangId, setExpandedGudangId, openEditGudang, deleteGudang, showGudangDenahTools, setShowGudangDenahTools, uploadDenahGudang, denahLoading, mapConfigGudangId, setMapConfigGudangId, pendingMapLokasi, setPendingMapLokasi, manualAddMode, setManualAddMode, ocrSuggestGudangId, setOcrSuggestGudangId, ocrSuggestSubGudangId, setOcrSuggestSubGudangId, ocrSuggestions, setOcrSuggestions, assignLokasiKoordinat, suggestKodeFromOcr, expandedSubGudangToolsIds, setExpandedSubGudangToolsIds, uploadDenahSubGudang, denahSubLoading, mapConfigSubGudangId, setMapConfigSubGudangId, pendingMapLokasiSub, setPendingMapLokasiSub, manualAddModeSub, setManualAddModeSub, assignLokasiKoordinatSub, openEditLokasi, requestDeleteLokasi, selectedSubGudangId, setSelectedSubGudangId, openEditAkun, resetMfa, openResetPassword, txns, migratedTug15History, setMigratedTug15History, migrasiPendingReview, setMigrasiPendingReview, maraReference, setMaraReference, setStocks, setKatalogList, setTxns, reloadRolePerms, onGiSaved }) {
   const [akunSearch, setAkunSearch] = useState("");
+  const [akunUitFilter, setAkunUitFilter] = useState("");
   const [akunUptFilter, setAkunUptFilter] = useState("");
   const [masterUptFilter, setMasterUptFilter] = useState("");
   // UIT dulu dianggap "global" (nasional) — sekarang dibatasi ke semua UPT di UIT-nya lewat
@@ -798,12 +799,15 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
               }).sort((a,b) => TIER_ORDER[a.tier]-TIER_ORDER[b.tier] || (a.u.name||"").localeCompare(b.u.name||""));
               // Filter UPT hanya untuk role lintas-UPT (superadmin/Pusat/UIT). Admin UPT lihat
               // daftar apa adanya (users prop sudah discope RLS), jadi tak perlu filter UPT.
-              const showUptFilter = ["GLOBAL","PUSAT","UIT"].includes(roleTier(currentUser?.role));
+              const showUnitFilters = ["GLOBAL","PUSAT","UIT"].includes(roleTier(currentUser?.role));
+              const visibleUptOptions = akunUitFilter ? uptList.filter(u => u.uitId === akunUitFilter) : uptList;
               const q = akunSearch.trim().toLowerCase();
               const filtered = rows.filter(({u,tier,unit}) => {
+                const userUitId = u.uitId || uptList.find(x => x.id === u.uptId)?.uitId || "";
+                const matchUit = !akunUitFilter || userUitId === akunUitFilter;
                 const matchUpt = !akunUptFilter || u.uptId === akunUptFilter;
                 const matchQ = !q || [u.name, u.username, ROLES[u.role]||u.role, u.jabatan, unit].some(v => (v||"").toLowerCase().includes(q)) || TIER_BADGE[tier].label.toLowerCase().includes(q);
-                return matchUpt && matchQ;
+                return matchUit && matchUpt && matchQ;
               });
               return (
               <div style={sty.card}>
@@ -813,10 +817,16 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                   <>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",marginBottom:12}}>
                     <input style={{...sty.input,maxWidth:360,marginBottom:0}} placeholder="Cari nama, username, role, atau unit…" value={akunSearch} onChange={e=>setAkunSearch(e.target.value)}/>
-                    {showUptFilter && (
+                    {showUnitFilters && (
+                      <select style={{...sty.select,maxWidth:240}} value={akunUitFilter} onChange={e=>{setAkunUitFilter(e.target.value);setAkunUptFilter("");}} aria-label="Filter UIT">
+                        <option value="">Semua UIT</option>
+                        {uitList.map(u=><option key={u.id} value={u.id}>{u.nama}</option>)}
+                      </select>
+                    )}
+                    {showUnitFilters && visibleUptOptions.length > 1 && (
                       <select style={{...sty.select,maxWidth:240}} value={akunUptFilter} onChange={e=>setAkunUptFilter(e.target.value)} aria-label="Filter UPT">
                         <option value="">Semua UPT</option>
-                        {uptList.map(u=><option key={u.id} value={u.id}>{u.nama}</option>)}
+                        {visibleUptOptions.map(u=><option key={u.id} value={u.id}>{u.nama}</option>)}
                       </select>
                     )}
                   </div>

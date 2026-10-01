@@ -28,6 +28,7 @@ import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, at
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
 import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, deleteMasterTableRow, loadWarehouseCapacity, syncWarehouseCapacity, syncWarehouseCapacityRows, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { runBootstrapTasks } from "./src/lib/bootstrapScheduler.js";
 import { getDefaultMaturityAuditHistory, loadMaturityAssessments, loadMaturityAudits, loadMaturityAuditHistory, loadMaturity5SAssessments, upsertMaturityAssessments, upsertMaturityAudits } from "./src/lib/maturitySync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
 import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
@@ -118,7 +119,7 @@ import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoM
 import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
-import { loadTug10Transactions, upsertTug10Transaction } from "./src/lib/tug10Sync.js";
+import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final } from "./src/lib/tug10Sync.js";
 import { loadTugWorkflowTransactions, mergeWorkflowServerWins, migrateLegacyWorkflowDrafts, isWorkflowDoc } from "./src/lib/tugWorkflowSync.js";
 import { readTugRoute, writeTugRoute, TUG_ROUTE_DEFAULTS, TUG_ROUTE_OPTIONS } from "./src/lib/tugRoute.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
@@ -607,6 +608,7 @@ export default function PLNWarehouse() {
   // One user action keeps the same RPC idempotency keys across retry after a timeout.
   const canonicalActionKeysRef = useRef(null);
   const canonicalDecisionKeysRef = useRef({});
+  const tug10ApprovalKeysRef = useRef({});
   const tug10ApprovalInFlightRef = useRef(new Set());
   const [docPreviewDoc, setDocPreviewDoc] = useState(null); // versi docPreview dgn SIM/KTP privat sudah jadi signed URL
   const [kartuGantungDetail, setKartuGantungDetail] = useState(null);
@@ -721,12 +723,9 @@ export default function PLNWarehouse() {
       // Timeout hanya mengubah hasil request yang macet menjadi null; request normal
       // dan alur fallback/cache tetap sama.
       const bootstrapLoad = (promise, label = "bootstrap cloud") =>
-        _withTimeout(Promise.resolve(promise), 15000, label).catch(() => null);
+        _withTimeout(Promise.resolve(promise), 30000, label).catch(() => null);
       // Self-host melalui tunnel mudah overload saat semua master ditembak bersamaan.
-      // Dataset non-kritis mulai setelah first screen punya kesempatan render.
-      const deferredBootstrapLoad = (loader, label) => new Promise(resolve => {
-        setTimeout(() => resolve(bootstrapLoad(loader(), label)), 2500);
-      });
+      // Scheduler di bawah menjaga maksimal tiga request aktif dan memprioritaskan layar awal.
       if (currentUser?.role === "HAR_UIT") {
         // Jangan render cache domain tersembunyi selama bootstrap HAR_UIT.
         setLoading(true);
@@ -811,38 +810,65 @@ export default function PLNWarehouse() {
       // Resolve the UPT catalog first so Stock Opname/Count can add a typed
       // client-side filter. If this lookup fails, the loader deliberately omits
       // the filter and PostgreSQL RLS remains the boundary.
-      const uptLoadPromise = bootstrapLoad(loadMasterTable("upt"), "bootstrap upt");
+      let resolveUptLoad;
+      const uptLoadPromise = new Promise(resolve => { resolveUptLoad = resolve; });
       const stockScopeLoad = table => uptLoadPromise.then(remoteUpts => {
         const uptIds = Array.isArray(remoteUpts) ? getScopeUptIds(currentUser, remoteUpts) : undefined;
         return loadMasterTable(table, { uptIds });
       });
-      const masterLoads = [
-        deferredBootstrapLoad(() => loadMasterTable("uit"), "bootstrap master uit"),
-        uptLoadPromise,
-        deferredBootstrapLoad(() => loadMasterTable("ultg"), "bootstrap master ultg"),
-        deferredBootstrapLoad(() => loadMasterTable("gudang"), "bootstrap master gudang"),
-        deferredBootstrapLoad(() => loadMasterTable("sub_gudang"), "bootstrap master sub_gudang"),
-        loadMasterTable("lokasi"),
-        deferredBootstrapLoad(() => loadMasterTable("satpam"), "bootstrap master satpam"),
-        deferredBootstrapLoad(() => loadMasterTable("tim_mutu"), "bootstrap master tim_mutu"),
-        loadMasterTable("katalog"),
-        loadMasterTable("stocks"),
-        deferredBootstrapLoad(() => loadWarehouseCapacity(), "bootstrap master warehouse capacity"),
-        deferredBootstrapLoad(() => loadWarehouseCapacityImports(), "bootstrap master warehouse imports"),
-        deferredBootstrapLoad(() => loadMasterTable("heavy_equipment"), "bootstrap master heavy equipment"),
-        deferredBootstrapLoad(() => loadMasterTable("heavy_equipment_loans"), "bootstrap master heavy equipment loans"),
-        deferredBootstrapLoad(() => stockScopeLoad("stock_opname"), "bootstrap master stock opname"),
-        deferredBootstrapLoad(() => stockScopeLoad("stock_count"), "bootstrap master stock count"),
-        deferredBootstrapLoad(() => loadMasterTable("attb_list"), "bootstrap master attb"),
-        deferredBootstrapLoad(() => loadMasterTable("supplier"), "bootstrap master supplier"),
-      ].map((p, i) => bootstrapLoad(p, `bootstrap master ${i}`));
+      const initialResolvers = {};
+      const initialLoads = [5, 8, 9].map(index => new Promise(resolve => { initialResolvers[index] = resolve; }));
+      const bootstrapTask = (loader, label, onResult) => async () => {
+        const result = await bootstrapLoad(Promise.resolve().then(loader), label);
+        onResult?.(result);
+        return result;
+      };
+      const masterTasks = [
+        bootstrapTask(() => loadMasterTable("uit"), "bootstrap master 0"),
+        bootstrapTask(() => loadMasterTable("upt"), "bootstrap master 1", result => resolveUptLoad(result)),
+        bootstrapTask(() => loadMasterTable("ultg"), "bootstrap master 2"),
+        bootstrapTask(() => loadMasterTable("gudang"), "bootstrap master 3"),
+        bootstrapTask(() => loadMasterTable("sub_gudang"), "bootstrap master 4"),
+        bootstrapTask(() => loadMasterTable("lokasi"), "bootstrap master 5", result => {
+          try {
+            if (result !== null) setLokasiList(result?.length ? dedupeById(result).list : (result ? [] : (dropCachedGiRows(clokLocal) || DEFAULT_LOKASI)));
+          } finally {
+            initialResolvers[5](result);
+          }
+        }),
+        bootstrapTask(() => loadMasterTable("satpam"), "bootstrap master 6"),
+        bootstrapTask(() => loadMasterTable("tim_mutu"), "bootstrap master 7"),
+        bootstrapTask(() => loadMasterTable("katalog"), "bootstrap master 8", result => {
+          try {
+            if (result !== null) setKatalogList(result?.some(k => k.name) ? dedupeById(result.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
+          } finally {
+            initialResolvers[8](result);
+          }
+        }),
+        bootstrapTask(() => loadMasterTable("stocks"), "bootstrap master 9", result => {
+          try {
+            if (result !== null) setStocks(result?.length ? dedupeById(result).list : (cs || DEFAULT_STOCKS));
+          } finally {
+            initialResolvers[9](result);
+          }
+        }),
+        bootstrapTask(() => loadWarehouseCapacity(), "bootstrap master 10"),
+        bootstrapTask(() => loadWarehouseCapacityImports(), "bootstrap master 11"),
+        bootstrapTask(() => loadMasterTable("heavy_equipment"), "bootstrap master 12"),
+        bootstrapTask(() => loadMasterTable("heavy_equipment_loans"), "bootstrap master 13"),
+        bootstrapTask(() => stockScopeLoad("stock_opname"), "bootstrap master 14"),
+        bootstrapTask(() => stockScopeLoad("stock_count"), "bootstrap master 15"),
+        bootstrapTask(() => loadMasterTable("attb_list"), "bootstrap master 16"),
+        bootstrapTask(() => loadMasterTable("supplier"), "bootstrap master 17"),
+      ];
       // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
-      const maturityLoads = [
-        deferredBootstrapLoad(() => loadMaturityAssessments(), "bootstrap maturity assessments"),
-        deferredBootstrapLoad(() => loadMaturityAudits(), "bootstrap maturity audits"),
-        deferredBootstrapLoad(() => loadMaturityAuditHistory(), "bootstrap maturity audit history"),
-        deferredBootstrapLoad(() => loadMaturity5SAssessments(), "bootstrap maturity 5s"),
-      ].map((p, i) => bootstrapLoad(p, `bootstrap maturity ${i}`));
+      const maturityTasks = [
+        bootstrapTask(() => loadMaturityAssessments(), "bootstrap maturity assessments"),
+        bootstrapTask(() => loadMaturityAudits(), "bootstrap maturity audits"),
+        bootstrapTask(() => loadMaturityAuditHistory(), "bootstrap maturity audit history"),
+        bootstrapTask(() => loadMaturity5SAssessments(), "bootstrap maturity 5s"),
+      ];
+      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks], { limit: 3, priority: [5, 8, 9] });
       // FIX perf reload: dulu dua fetch ini menunggu masterLoads SELESAI dulu baru mulai
       // (ekor serial) — di balik Cloudflare tunnel self-host tiap round-trip mahal. Keduanya
       // tak butuh hasil masterLoads, jadi mulai SEKARANG supaya jalan konkuren; hasilnya
@@ -866,12 +892,12 @@ export default function PLNWarehouse() {
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
       // tidak-menulis yang ada di bawah.
-      const [initialLokasi, initialKatalog, initialStocks] = await Promise.all([masterLoads[5], masterLoads[8], masterLoads[9]]);
-      if (initialLokasi !== null) setLokasiList(initialLokasi?.length ? dedupeById(initialLokasi).list : (initialLokasi ? [] : (dropCachedGiRows(clokLocal) || DEFAULT_LOKASI)));
-      if (initialKatalog !== null) setKatalogList(initialKatalog?.some(k => k.name) ? dedupeById(initialKatalog.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
-      if (initialStocks !== null) setStocks(initialStocks?.length ? dedupeById(initialStocks).list : (cs || DEFAULT_STOCKS));
+      await Promise.all(initialLoads);
       setLoading(false);
 
+      const allBootstrapLoads = await bootstrapLoadsPromise;
+      const masterLoads = allBootstrapLoads.slice(0, masterTasks.length);
+      const maturityLoads = allBootstrapLoads.slice(masterTasks.length);
       const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, csup, cmaRemote, cmauRemote, cmahRemote, cm5sRemote] = await Promise.all([...masterLoads, ...maturityLoads]);
       const clok = clokRemote || dropCachedGiRows(clokLocal); // cache virtual dibuang; shadow DB dipertahankan untuk history
       const cgdgRows = cgdg;
@@ -3242,217 +3268,90 @@ export default function PLNWarehouse() {
       }
       tug10ApprovalInFlightRef.current.add(txn.id);
       try {
-      const approvalStage = txn.stage || (txn.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : txn.status === "PENDING" ? "PENDING_TL" : txn.status);
-      const missingReceiptPhoto = missingReceiptPhotos(txn, { requireStored: true });
-      if (missingReceiptPhoto.length) {
-        showToast(`Approval TUG-10 diblokir: ${missingReceiptPhoto.map(x => x.label).join(", ")}. Lengkapi foto di transaksi.`, "error");
-        return false;
-      }
-      // TUG-10 is a two-stage receipt: TL checks the data first, then Asman
-      // performs the final approval that changes stock.
-      if (approvalStage === "PENDING_TL") {
-        if (!hasRole(currentUser, "TL") && currentUser.role !== "SUPERADMIN") { showToast("Hanya TL Logistik yang bisa memeriksa TUG-10.", "error"); return false; }
-        const forwardedTxn = { ...txn, stage: "PENDING_ASMAN", status: "PENDING", requiredApprover: "ASMAN", approvedByTL: currentUser.id, approvedAtTL: Date.now() };
-        const newTxns = txns.map(t => t.id === txn.id ? forwardedTxn : t);
-        setTxns(newTxns);
-        const savedOk = await saveToCloud({ txns: newTxns });
-        if (savedOk === false) {
-          setTxns(txns);
-          showToast("TUG-10 gagal diteruskan ke Asman. Perubahan dibatalkan; coba lagi.", "error");
+        const approvalStage = txn.stage || (txn.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : txn.status === "PENDING" ? "PENDING_TL" : txn.status);
+        const missingReceiptPhoto = missingReceiptPhotos(txn, { requireStored: true });
+        if (missingReceiptPhoto.length) {
+          showToast(`Approval TUG-10 diblokir: ${missingReceiptPhoto.map(x => x.label).join(", ")}. Lengkapi foto di transaksi.`, "error");
           return false;
         }
-        if (!(await upsertTug10Transaction(forwardedTxn))) {
-          setTxns(txns);
-          try { await saveToCloud({ txns }); } catch {}
-          showToast("TUG-10 gagal disimpan ke database. Status tetap menunggu TL; coba lagi.", "error");
+        if (approvalStage === "PENDING_TL") {
+          if (!hasRole(currentUser, "TL") && currentUser.role !== "SUPERADMIN") {
+            showToast("Hanya TL Logistik yang bisa memeriksa TUG-10.", "error");
+            return false;
+          }
+          const forwardedTxn = { ...txn, stage: "PENDING_ASMAN", status: "PENDING", requiredApprover: "ASMAN", approvedByTL: currentUser.id, approvedAtTL: Date.now() };
+          const newTxns = txns.map(t => t.id === txn.id ? forwardedTxn : t);
+          setTxns(newTxns);
+          const savedOk = await saveToCloud({ txns: newTxns });
+          if (savedOk === false) {
+            setTxns(txns);
+            showToast("TUG-10 gagal diteruskan ke Asman. Perubahan dibatalkan; coba lagi.", "error");
+            return false;
+          }
+          if (!(await upsertTug10Transaction(forwardedTxn))) {
+            setTxns(txns);
+            try { await saveToCloud({ txns }); } catch {}
+            showToast("TUG-10 gagal disimpan ke database. Status tetap menunggu TL; coba lagi.", "error");
+            return false;
+          }
+          logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.[dKey] || txn.id, { stage: "PENDING_ASMAN" });
+          showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} diteruskan ke Asman. Stok belum berubah.`);
+          enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
+          return true;
+        }
+        if (approvalStage !== "PENDING_ASMAN") {
+          showToast("Transaksi TUG-10 belum berada di tahap approval yang valid.", "error");
           return false;
         }
-        logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.[dKey] || txn.id, { stage: "PENDING_ASMAN" });
-        showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} diteruskan ke Asman. Stok belum berubah.`);
-        enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
-        return true;
-      }
-      if (approvalStage !== "PENDING_ASMAN") {
-        showToast("Transaksi TUG-10 belum berada di tahap approval yang valid.", "error");
-        return false;
-      }
-      // Incoming material (return to warehouse): for each line item, either
-      // increase qty on an existing Data Stok row, or auto-create a new
-      // Master Katalog entry + new Data Stok row. Status maps to Jenis Barang via
-      // STATUS_RETUR_TO_JENIS: Bongkaran -> "Bongkaran", Bongkaran ATTB (MTU) -> "ATTB".
-      // Material Sisa Baru has no forced mapping, defaults to "Persediaan".
-      // Read the server baseline before applying effects. A previous attempt may have
-      // written stocks but failed while persisting the transaction; retry must see its
-      // marker instead of adding the same qty again.
-      let approvalKatalog = katalogList;
-      let approvalStocks = stocks;
-      let approvalAttb = attbList;
-      if (supabase) {
-        const [serverStocks, serverKatalog] = await Promise.all([
-          loadMasterTable("stocks"),
-          loadMasterTable("katalog"),
-        ]);
-        const needsAttb = (txn.stockItems || []).some(si => si.statusMaterial === "Bongkaran ATTB (MTU)");
-        const serverAttb = needsAttb ? await loadMasterTable("attb_list") : null;
-        if (!serverStocks || !serverKatalog || (needsAttb && !serverAttb)) {
-          showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — data server belum terbaca. Coba lagi.`, "error");
+        if (!supabase) {
+          showToast("Approval TUG-10 gagal: layanan database belum tersedia.", "error");
           return false;
         }
-        approvalStocks = serverStocks;
-        approvalKatalog = serverKatalog;
-        if (serverAttb) approvalAttb = serverAttb;
-      }
-      if (supabase && !txn.uptId) {
-        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — UPT transaksi tidak tersedia.`, "error");
-        return false;
-      }
-      let newKatalog = [...approvalKatalog];
-      let newStocks = [...approvalStocks];
-      let nextKatNum = newKatalog.length + 1;
-      let nextStkNum = newStocks.length + 1;
-      // Lacak baris stok & katalog yang benar-benar berubah/ditambah di transaksi ini,
-      // supaya sync ke Supabase cuma mengirim baris itu (bukan seluruh tabel `stocks`).
-      const touchedStockIds = new Set();
-      const touchedKatalogIds = new Set();
 
-      txn.stockItems.forEach((si, itemIdx) => {
-        const qty = Number(si.qty) || 0;
-        const jenisBarangFinal = STATUS_RETUR_TO_JENIS[si.statusMaterial] || "Persediaan";
-        const effectKey = `${txn.id}:${itemIdx}`;
-        const returnLot = { key: sourceLotKey({ kind:"TUG10_RETURN", transactionId:txn.id, itemIndex:itemIdx }), kind:"TUG10_RETURN", supplier:txn.menyerahkanUnit || "", sourceDocumentNo:txn.docNumbers?.tug10 || txn.id, sourceDate:Date.now(), sourceTransactionId:txn.id, sourceItemIndex:itemIdx, status:"ACTIVE" };
-        if (si.katalogMode === "existing" && si.katalogId) {
-          // Find an existing Data Stok row for this katalog+location; bump qty if found
-          const existingRow = newStocks.find(s => s.katalogId===si.katalogId && s.lokasiId===txn.lokasiTujuanId && s.sourceLot?.key===returnLot.key);
-          if (existingRow) {
-            const alreadyApplied = Number(existingRow._tug10Applied?.[effectKey]) || 0;
-            const qtyToApply = Math.max(0, qty - alreadyApplied);
-            if (!qtyToApply) return;
-            // Foto retur terbaru menjadi Foto Keseluruhan dan thumbnail stok.
-            newStocks = newStocks.map(s => s.id===existingRow.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, img: si.fotoBarangRetur, fotoKeseluruhan: si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
-            touchedStockIds.add(existingRow.id);
-          } else {
-            const newId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            // Retur TUG-10 masuk sbg Non-SAP dulu (belum terdaftar SAP Persediaan/Cadang) —
-            // admin reklasifikasi ke SAP kemudian. Baris existing yang cuma di-bump qty TIDAK diubah sapStatus-nya.
-            const kat = approvalKatalog.find(k => k.id === si.katalogId);
-            newStocks.push({ id:newId, katalogId:si.katalogId, lokasiId:txn.lokasiTujuanId, uptId:txn.uptId || currentUserUptId || null, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:kat?.name||"", katalog:kat?.katalog||"", unit:kat?.satuan||"", keteranganBarang:kat?.keterangan||"", source:"dupKatalog", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
-            touchedStockIds.add(newId);
-          }
-        } else {
-          // Brand-new item: register into Master Katalog first — dedup via canonicalKatalogCode
-          // (fix bug-3, identik approveTUG3Final_Asman) supaya kode ber-zero-padding lama
-          // tak dobel dengan input baru yang sama tapi tanpa padding.
-          const katCodeBaru = canonicalKatalogCode(si.katalogBaru || "");
-          const dupKatalog = katCodeBaru && newKatalog.find(k => canonicalKatalogCode(k.katalog) === katCodeBaru);
-          const newKatId = dupKatalog ? dupKatalog.id : `KAT-${String(nextKatNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-          if (!dupKatalog) {
-            newKatalog.push({ id:newKatId, katalog:si.katalogBaru||"", name:si.namaBaru, category:si.categoryBaru||"Lainnya", satuan:si.satuanBaru||"unit", sapStatus:"Non-SAP", createdAt:Date.now() });
-            touchedKatalogIds.add(newKatId);
-          }
-          const existingRow2 = newStocks.find(s => s.katalogId===newKatId && s.lokasiId===txn.lokasiTujuanId && s.sourceLot?.key===returnLot.key);
-          if (existingRow2) {
-            const alreadyApplied = Number(existingRow2._tug10Applied?.[effectKey]) || 0;
-            const qtyToApply = Math.max(0, qty - alreadyApplied);
-            if (!qtyToApply) return;
-            newStocks = newStocks.map(s => s.id===existingRow2.id ? { ...s, qty: (Number(s.qty) || 0) + qtyToApply, sourceLot:returnLot, img: si.fotoBarangRetur, fotoKeseluruhan: si.fotoBarangRetur, _tug10Applied: { ...(s._tug10Applied || {}), [effectKey]: Math.max(alreadyApplied, qty) } } : s);
-            touchedStockIds.add(existingRow2.id);
-          } else {
-            const newStkId = `STK-${String(nextStkNum++).padStart(3,"0")}-${uid().slice(-6)}`;
-            newStocks.push({ id:newStkId, katalogId:newKatId, lokasiId:txn.lokasiTujuanId, uptId:txn.uptId || currentUserUptId || null, qty, minQty:0, price:0, jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP", name:si.namaBaru||"", katalog:si.katalogBaru||"", unit:si.satuanBaru||"unit", keteranganBarang:si.keteranganBaru||si.keterangan||"", source:"item", sourceLot:returnLot, img:si.fotoBarangRetur||null, fotoKeseluruhan:si.fotoBarangRetur||null, _tug10Applied: { [effectKey]: qty }, createdAt:Date.now() });
-            touchedStockIds.add(newStkId);
-          }
-        }
-      });
+        // Final approval is a single RPC. It reads the stored transaction and
+        // mutates stock/catalog/ATTB/status atomically; no full-table fetch.
+        tug10ApprovalKeysRef.current[txn.id] ||= crypto.randomUUID();
+        const result = await approveTug10Final(txn.id, tug10ApprovalKeysRef.current[txn.id]);
+        const approvedTxn = {
+          ...txn,
+          ...(result.transaction || {}),
+          id: txn.id,
+          status: "APPROVED",
+          stage: "APPROVED",
+          requiredApprover: null,
+          approvedBy: currentUser.id,
+          approvedAt: Date.now(),
+        };
+        const mergeRows = (previous, rows) => {
+          if (!rows?.length) return previous;
+          const byId = new Map(previous.map(row => [row.id, row]));
+          rows.forEach(row => byId.set(row.id, row));
+          return [...byId.values()];
+        };
+        setTxns(prev => prev.map(t => t.id === txn.id ? approvedTxn : t));
+        setStocks(prev => mergeRows(prev, result.stocks));
+        setKatalogList(prev => mergeRows(prev, result.katalogs));
+        setAttbList(prev => mergeRows(prev, result.attbDrafts));
 
-      // BAGIAN B: item berstatus "Bongkaran ATTB (MTU)" ikut jadi kandidat ATTB Tahap 1
-      // (Usulan AE.1), pola sama createAttbItem di atas. Idempotent per txn+index barang
-      // supaya approve ulang/re-entrant tidak menggandakan kandidat.
-      const docNoTUG10 = txn.docNumbers?.tug10 || txn.id;
-      const newAttbItems = [];
-      txn.stockItems.forEach((si, idx) => {
-        if (si.statusMaterial !== "Bongkaran ATTB (MTU)") return;
-        if (approvalAttb.some(a => a.sourceTxnId === txn.id && a.sourceItemIdx === idx)) return;
-        const kat = si.katalogMode === "existing" ? approvalKatalog.find(k => k.id === si.katalogId) : null;
-        const namaBarang = si.katalogMode === "existing" ? (kat?.name || "-") : (si.namaBaru || "-");
-        const satuan = si.katalogMode === "existing" ? (kat?.satuan || "unit") : (si.satuanBaru || "unit");
-        const lokTujuan = lokasiList.find(l => l.id === txn.lokasiTujuanId);
-        const gdgTujuan = lokTujuan ? gudangList.find(g => g.id === lokTujuan.gudangId) : null;
-        const lokasiNama = [gdgTujuan?.nama, lokTujuan?.kode].filter(Boolean).join(" - ") || "-";
-        const nowAttb = Date.now();
-        newAttbItems.push({
-          id: `ATTB-${uid().slice(-8)}`,
-          jenisAset: "MATERIAL",
-          description: namaBarang,
-          kuantitas: si.qty,
-          satuan,
-          noEquipment: si.noSeri || "",
-          nomorAT: si.noSeri || "",
-          keterangan: `Material Bongkaran TUG-10 ${docNoTUG10}`,
-          lokasi: lokasiNama,
-          foto: si.fotoNameplate || si.fotoBarangRetur || null,
-          upt: txn.uptId,
-          stage: "USULAN_AE1",
-          approvalStatus: "DRAFT",
-          lanjutBelumLanjut: false,
-          stageHistory: [{ stage:"USULAN_AE1", tanggal:nowAttb, oleh:currentUser.id, catatan:"Dari penerimaan TUG-10 (Bongkaran ATTB/MTU)" }],
-          source: "TUG10",
-          sourceTxnId: txn.id,
-          sourceItemIdx: idx,
-          createdAt: nowAttb, createdBy: currentUser.id,
-          updatedAt: nowAttb, updatedBy: currentUser.id,
+        delete tug10ApprovalKeysRef.current[txn.id];
+        showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} DISETUJUI! Stok bertambah.`);
+        enqueueTugNotif({
+          eventType: "COMPLETION", docType: "TUG10",
+          docNumber: txn.docNumbers?.tug10 || "",
+          uptId: txn.uptId, txnId: txn.id, arah: "MASUK",
+          items: (txn.stockItems || []).map(si => ({
+            kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
+            nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",
+            qty: si.qty,
+            satuan: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.satuan : si.satuanBaru) || "",
+          })),
+          asal: { vendor: txn.menyerahkanUnit || "", pic: txn.menyerahkanNama || "" },
+          pekerjaan: txn.namaPekerjaan || "",
         });
-      });
-      const nextAttb = newAttbItems.length ? [...newAttbItems, ...approvalAttb] : approvalAttb;
-      if (newAttbItems.length) setAttbList(nextAttb);
-
-      const approvedTxn = { ...txn, status:"APPROVED", stage:"APPROVED", approvedBy:currentUser.id, approvedAt:Date.now(), asmanAutoApproved:isAdminCreated };
-      const newTxns = txns.map(t => t.id===txn.id ? approvedTxn : t);
-      const prevStocks = stocks, prevKatalogList = katalogList, prevTxns = txns, prevAttbList = attbList;
-      setTxns(newTxns); setStocks(newStocks); setKatalogList(newKatalog);
-      // Sinkronkan hanya tabel yang benar-benar berubah. Full-sync tabel yang tidak
-      // terkait dapat gagal karena RLS/koneksi dan membatalkan approval yang valid.
-      const saveOverrides = {txns: newTxns};
-      if (touchedStockIds.size) saveOverrides.stocks = newStocks;
-      if (touchedKatalogIds.size) saveOverrides.katalogList = newKatalog;
-      if (newAttbItems.length) saveOverrides.attbList = nextAttb;
-      const ok = await saveToCloud(saveOverrides, {
-        stocksChangedRows: newStocks.filter(s => touchedStockIds.has(s.id)),
-        katalogChangedRows: newKatalog.filter(k => touchedKatalogIds.has(k.id)),
-      });
-      if (!ok) {
-        setStocks(prevStocks); setKatalogList(prevKatalogList); setTxns(prevTxns);
-        if (newAttbItems.length) setAttbList(prevAttbList);
-        try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
-        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — sebagian data mungkin sudah tersimpan. Coba lagi; qty tidak digandakan.`, "error");
+        return true;
+      } catch (err) {
+        showToast(`Approval TUG-10 belum dijalankan: ${err?.message || err}`, "error");
         return false;
-      }
-      // Persist ke tabel dedicated TUG-10 (parity TUG-3) — fail-safe, blob tetap sumber cadangan.
-      let dedicatedSaved = false;
-      try { dedicatedSaved = await upsertTug10Transaction(approvedTxn); }
-      catch (err) { console.warn("upsertTug10Transaction (approve) gagal:", err); }
-      if (!dedicatedSaved) {
-        setTxns(prevTxns);
-        try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
-        showToast(`Approval ${txn.docNumbers?.[dKey] || txn.id} GAGAL — transaksi belum tersimpan. Stok tidak diulang saat retry.`, "error");
-        return false;
-      }
-      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
-      showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah. (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI! Stok bertambah.`);
-      // Notif WA/Telegram — TUG-10 blob, tidak punya trigger DB (sama pola TUG-3).
-      enqueueTugNotif({
-        eventType: "COMPLETION", docType: "TUG10",
-        docNumber: txn.docNumbers?.tug10 || "",
-        uptId: txn.uptId, txnId: txn.id, arah: "MASUK",
-        items: (txn.stockItems||[]).map(si => ({
-          kode: (si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.katalog : si.katalogBaru) || "",
-          nama: (si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.name : si.namaBaru) || "",
-          qty: si.qty,
-          satuan: (si.katalogMode==="existing" ? katalogList.find(k=>k.id===si.katalogId)?.satuan : si.satuanBaru) || "",
-        })),
-        asal: { vendor: txn.menyerahkanUnit||"", pic: txn.menyerahkanNama||"" },
-        pekerjaan: txn.namaPekerjaan||"",
-      });
-      return true;
       } finally {
         tug10ApprovalInFlightRef.current.delete(txn.id);
       }
@@ -4546,7 +4445,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     : null;
 
   return (
-    <div className="app-shell" data-current-tab={tab} style={{display:"flex",minHeight:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:C.bg,color:C.text}}>
+    <div className="app-shell" data-current-tab={tab} aria-busy={dataRefreshing} style={{display:"flex",minHeight:"100vh",fontFamily:"'Inter',system-ui,sans-serif",background:C.bg,color:C.text}}>
       <AppOverlays
         C={C} sty={sty} currentUser={currentUser} isMobile={isMobile}
         toast={toast} savingInfo={savingInfo}

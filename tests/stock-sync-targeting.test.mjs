@@ -5,6 +5,7 @@ import { readFile } from "node:fs/promises";
 const appSource = await readFile(new URL("../App.jsx", import.meta.url), "utf8");
 const masterSyncSource = await readFile(new URL("../src/lib/masterSync.js", import.meta.url), "utf8");
 const approvalsSource = await readFile(new URL("../src/hooks/useTugApprovals.js", import.meta.url), "utf8");
+const tug10AtomicMigration = await readFile(new URL("../supabase/migrations/20261001_tug10_atomic_final_approval.sql", import.meta.url), "utf8");
 
 function handlerSource(name) {
   const start = appSource.indexOf(`async function ${name}(id) {`);
@@ -67,35 +68,39 @@ test("master table loader paginates beyond the PostgREST 1000-row limit", () => 
   assert.match(masterSyncSource, /if \(!data \|\| data\.length < pageSize\) return rows/);
 });
 
-test("TUG-10 approval syncs only resources changed by the approved items", () => {
+test("TUG-10 final approval uses the atomic RPC and merges only touched rows", () => {
   const approval = transactionApprovalSource();
-  assert.match(approval, /const saveOverrides = \{txns: newTxns\}/);
-  assert.match(approval, /if \(touchedStockIds\.size\) saveOverrides\.stocks = newStocks/);
-  assert.match(approval, /if \(touchedKatalogIds\.size\) saveOverrides\.katalogList = newKatalog/);
-  assert.match(approval, /if \(newAttbItems\.length\) saveOverrides\.attbList = nextAttb/);
-  assert.doesNotMatch(approval, /saveToCloud\(\{stocks: newStocks, txns: newTxns, katalogList: newKatalog, attbList: nextAttb\}/);
+  const tug10 = approval.slice(approval.indexOf('if (txn.docType === "TUG10")'));
+  assert.match(tug10, /approveTug10Final\(txn\.id, tug10ApprovalKeysRef\.current\[txn\.id\]\)/);
+  assert.match(tug10, /setStocks\(prev => mergeRows\(prev, result\.stocks\)\)/);
+  assert.match(tug10, /setKatalogList\(prev => mergeRows\(prev, result\.katalogs\)\)/);
+  assert.match(tug10, /setAttbList\(prev => mergeRows\(prev, result\.attbDrafts\)\)/);
+  assert.doesNotMatch(tug10, /loadMasterTable\("stocks"\)/);
+  assert.doesNotMatch(tug10, /loadMasterTable\("katalog"\)/);
+  assert.doesNotMatch(tug10, /saveToCloud\(saveOverrides/);
 });
 
-test("TUG-10 approval is retry-safe after a partial stock write", () => {
+test("TUG-10 approval remains retry-safe and fail-closed", async () => {
   const approval = transactionApprovalSource();
-  assert.match(approval, /loadMasterTable\("stocks"\)/);
-  assert.match(approval, /loadMasterTable\("katalog"\)/);
-  assert.match(approval, /_tug10Applied/);
-  assert.match(approval, /const effectKey = `\$\{txn\.id\}:\$\{itemIdx\}`/);
-  assert.match(approval, /const qtyToApply = Math\.max\(0, qty - alreadyApplied\)/);
-  assert.match(approval, /dedicatedSaved = await upsertTug10Transaction\(approvedTxn\)/);
-  assert.match(approval, /if \(!dedicatedSaved\)/);
-  assert.match(approval, /tug10ApprovalInFlightRef\.current\.has\(txn\.id\)/);
-  assert.match(approval, /tug10ApprovalInFlightRef\.current\.delete\(txn\.id\)/);
+  const tug10 = approval.slice(approval.indexOf('if (txn.docType === "TUG10")'));
+  const sync = await readFile(new URL("../src/lib/tug10Sync.js", import.meta.url), "utf8");
+  assert.match(sync, /supabase\.rpc\("approve_tug10_final"/);
+  assert.match(sync, /p_idempotency_key: idempotencyKey/);
+  assert.match(tug10, /tug10ApprovalKeysRef\.current\[txn\.id\] \|\|= crypto\.randomUUID\(\)/);
+  assert.match(tug10, /approveTug10Final\(txn\.id, tug10ApprovalKeysRef\.current\[txn\.id\]\)/);
+  assert.match(tug10, /delete tug10ApprovalKeysRef\.current\[txn\.id\]/);
+  assert.match(tug10, /if \(!supabase\)/);
+  assert.match(tug10, /tug10ApprovalInFlightRef\.current\.has\(txn\.id\)/);
+  assert.match(tug10, /tug10ApprovalInFlightRef\.current\.delete\(txn\.id\)/);
+  assert.match(tug10AtomicMigration, /new\.data->'_tug10Applied'\) is distinct from \(old\.data->'_tug10Applied'/);
+  assert.match(tug10AtomicMigration, /> coalesce\(nullif\(old\.data->>'qty', ''\)::numeric, 0\)/);
+  assert.doesNotMatch(tug10AtomicMigration, /new\.data->>'qty' is distinct from old\.data->>'qty'/);
 });
 
 test("TUG-10 ATTB approval posts stock and keeps the MRWI candidate", () => {
   const approval = transactionApprovalSource();
-  assert.doesNotMatch(approval, /if \(si\.statusMaterial === "Bongkaran ATTB \(MTU\)"\) return/);
-  assert.match(approval, /const jenisBarangFinal = STATUS_RETUR_TO_JENIS\[si\.statusMaterial\]/);
-  assert.match(approval, /jenisBarang:jenisBarangFinal, sapStatus:"Non-SAP"/);
-  assert.match(approval, /if \(si\.statusMaterial !== "Bongkaran ATTB \(MTU\)"\) return/);
-  assert.match(approval, /sourceTxnId: txn\.id,\s*sourceItemIdx: idx/);
+  assert.match(approval, /result\.attbDrafts/);
+  assert.match(approval, /enqueueTugNotif\(\{[\s\S]*docType: "TUG10"/);
 });
 
 test("TUG-10 ATTB backfill is dry-run, canonical, and DB-payload safe", async () => {

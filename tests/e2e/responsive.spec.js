@@ -9,7 +9,7 @@ test.describe("WARNOTO responsive surface matrix", () => {
       await openApp(page);
       await openRoute(page, surface);
       await expect(page.locator(".app-shell")).toHaveAttribute("data-current-tab", surface.tab);
-
+      await expect(page.locator(".app-shell")).toHaveAttribute("aria-busy", "false");
       const scope = surface.readySelector;
       await page.evaluate(async () => {
         await document.fonts.ready;

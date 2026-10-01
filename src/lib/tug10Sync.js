@@ -71,6 +71,20 @@ export async function upsertTug10Transaction(txn) {
   return (data || []).length > 0;
 }
 
+// Final approval is intentionally server-side: the RPC reads the stored
+// transaction and mutates stock, catalog, ATTB, and status in one transaction.
+export async function approveTug10Final(txnId, idempotencyKey = globalThis.crypto?.randomUUID?.()) {
+  if (!supabase) throw new Error("Layanan database belum tersedia.");
+  if (!txnId || !idempotencyKey) throw new Error("Approval TUG-10 tidak memiliki kunci idempotensi.");
+  const { data, error } = await supabase.rpc("approve_tug10_final", {
+    p_tug10_id: txnId,
+    p_idempotency_key: idempotencyKey,
+  });
+  if (error) throw error;
+  if (!data?.transaction) throw new Error("Respons approval TUG-10 tidak lengkap.");
+  return data;
+}
+
 export async function deleteTug10Transaction(id) {
   if (!supabase || !id) return false;
   const { data, error } = await supabase.from("tug10_transactions").delete().eq("id", id).select("id");

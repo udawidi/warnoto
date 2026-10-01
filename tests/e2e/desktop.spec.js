@@ -2,6 +2,45 @@ const { test, expect } = require("./fixtures");
 const { openApp, openRoute } = require("./support/responsive");
 
 test.describe("WARNOTO desktop preservation smoke", () => {
+  test.describe("TUG-10 final approval", () => {
+    test.use({
+      cloudOverrides: {
+        pln_txns_v3: [{
+          id:"TUG10-E2E-ATOMIC", docType:"TUG10", status:"PENDING", stage:"PENDING_ASMAN",
+          requiredApprover:"ASMAN", uptId:"UPT-SBY", lokasiTujuanId:"LOK-E2E-A",
+          namaPekerjaan:"Uji approval atomik lokal", menyerahkanUnit:"ULTG Surabaya",
+          docNumbers:{ tug10:"TUG-10/E2E/ATOMIC" }, createdAt:1790827200000,
+          stockItems:[{
+            katalogMode:"existing", katalogId:"KAT-E2E-01", qty:1,
+            statusMaterial:"Material Sisa Baru",
+            fotoBarangRetur:"https://warnoto.com/storage/v1/object/public/tug-photos/TUG10-E2E-ATOMIC/item0-fotoBarangRetur.jpg",
+          }],
+        }],
+      },
+    });
+
+    test("review modal stays open and stock stays unchanged when RPC is unavailable", async ({ isolatedPage:page }) => {
+      await openApp(page);
+      await openRoute(page, { tab:"approval", menuPath:["Approval"], readySelector:".approval-queue" });
+      const card = page.locator(".approval-card").filter({ hasText:"TUG-10/E2E/ATOMIC" });
+      await expect(card).toBeVisible();
+      await card.getByRole("button", { name:/Setujui.*Stok Masuk/ }).click();
+
+      const dialog = page.locator('[role="dialog"]').filter({ hasText:"TUG-10/E2E/ATOMIC" });
+      await expect(dialog).toBeVisible();
+      const approve = dialog.getByRole("button", { name:/Setujui.*Stok Masuk/ });
+      await expect(approve).toBeDisabled();
+      await dialog.locator("summary").click();
+      await expect(approve).toBeEnabled();
+
+      const stockBefore = await page.evaluate(() => localStorage.getItem("warnoto_pln_stocks_v4"));
+      await approve.click();
+      await expect(dialog).toBeVisible();
+      await expect(page.getByText(/Approval TUG-10 gagal: layanan database belum tersedia/)).toBeVisible();
+      expect(await page.evaluate(() => localStorage.getItem("warnoto_pln_stocks_v4"))).toBe(stockBefore);
+    });
+  });
+
   test.describe("canonical derived TUG-8 draft", () => {
     test.use({
       expectedConsoleErrorPrefixes: ["commitNewTxn gagal:"],
