@@ -226,6 +226,14 @@ test("TUG-15 report files remain outside canonical scope", () => {
   assert.equal(diff.status, 0, "canonical work must not modify TUG > Laporan files");
 });
 
+test("canonical final approval does not block on full stock refresh and prevents double click", () => {
+  assert.match(app, /void loadMasterTable\("stocks"\)\.then\(freshStocks =>/);
+  assert.match(overview, /const \[approving, setApproving\] = useState\(false\)/);
+  assert.match(overview, /if\(approving\)return;setApproving\(true\)/);
+  assert.match(overview, /disabled=\{loading\|\|approving\|\|!!error\|\|fail\}/);
+  assert.match(overview, /approving \? "Menyetujui…" : finalLabel/);
+});
+
 test("source history is separate from signed item evidence and server-derived", () => {
   assert.match(sourceMigration, /alter table public\.tug_items[\s\S]*add column if not exists source_snapshot jsonb not null/i);
   assert.match(sourceMigration, /function public\.tug_source_snapshot_for_stock/i);

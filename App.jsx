@@ -3210,8 +3210,11 @@ export default function PLNWarehouse() {
         if (result.unavailable) throw new Error("Layanan transaksi canonical belum tersedia; approval final tidak dijalankan.");
         const isFinal = result.data.status === "FINAL_APPROVED";
         if (isFinal) {
-          const freshStocks = await loadMasterTable("stocks");
-          if (freshStocks !== null) setStocks(freshStocks);
+          // The decision RPC already commits stock atomically. Do not make the
+          // approval UI wait for a full-table refresh; reconcile in background.
+          void loadMasterTable("stocks").then(freshStocks => {
+            if (freshStocks !== null) setStocks(freshStocks);
+          }).catch(error => console.warn("Refresh stok setelah approval gagal:", error));
           // Client enqueue (BATCH 2) menggantikan trigger DB notif_outbox_on_tug_final
           // (20260902_notif_outbox.sql) — role-based (TL/UIT/Asman) butuh users/uptList
           // yang trigger SQL tidak punya. Trigger di-drop lewat migration proposal
