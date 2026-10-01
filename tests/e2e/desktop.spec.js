@@ -5,13 +5,18 @@ test.describe("WARNOTO desktop preservation smoke", () => {
   test.describe("TUG-10 final approval", () => {
     test.use({
       cloudOverrides: {
+        pln_stocks_v4: [{
+          id:"ST-E2E-01", katalogId:"KAT-E2E-01", lokasiId:"LOK-E2E-A", uptId:"UPT-SBY",
+          name:"Isolator Keramik 150 kV", qty:2, minQty:5, unit:"BUAH", price:1250000,
+          jenisBarang:"Material Cadang",
+        }],
         pln_txns_v3: [{
           id:"TUG10-E2E-ATOMIC", docType:"TUG10", status:"PENDING", stage:"PENDING_ASMAN",
           requiredApprover:"ASMAN", uptId:"UPT-SBY", lokasiTujuanId:"LOK-E2E-A",
           namaPekerjaan:"Uji approval atomik lokal", menyerahkanUnit:"ULTG Surabaya",
           docNumbers:{ tug10:"TUG-10/E2E/ATOMIC" }, createdAt:1790827200000,
           stockItems:[{
-            katalogMode:"existing", katalogId:"KAT-E2E-01", qty:1,
+            katalogMode:"existing", katalogId:"KAT-E2E-01", targetStockId:"ST-E2E-01", stockHandling:"MERGE", qty:1,
             statusMaterial:"Material Sisa Baru",
             fotoBarangRetur:"https://warnoto.com/storage/v1/object/public/tug-photos/TUG10-E2E-ATOMIC/item0-fotoBarangRetur.jpg",
           }],
@@ -31,6 +36,7 @@ test.describe("WARNOTO desktop preservation smoke", () => {
       const approve = dialog.getByRole("button", { name:/Setujui.*Stok Masuk/ });
       await expect(approve).toBeDisabled();
       await dialog.locator("summary").click();
+      await expect(dialog.getByText(/Mode: Gabungkan · Tujuan: ST-E2E-01/)).toBeVisible();
       await expect(approve).toBeEnabled();
 
       const stockBefore = await page.evaluate(() => localStorage.getItem("warnoto_pln_stocks_v4"));

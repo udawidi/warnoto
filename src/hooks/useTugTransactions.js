@@ -145,7 +145,7 @@ export function useTugTransactions({
       setTxnForm({
         ...base,
         uptId: canonicalUptId,
-        stockItems: [{ katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot:0 }],
+        stockItems: [{ katalogMode:"existing", katalogId:"", targetStockId:"", stockHandling:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot:0 }],
         noBAPenggantian: "",
         // For TUG10 the flow is reversed: external party hands back to PLN
         menyerahkanUnit: "", menyerahkanNama: "",
@@ -228,7 +228,7 @@ export function useTugTransactions({
       if (tf.docType === "TUG10") {
         const used = new Set(tf.stockItems.map(si => si.receiptPhotoSlot).filter(Number.isInteger));
         let receiptPhotoSlot = 0; while (used.has(receiptPhotoSlot)) receiptPhotoSlot++;
-        return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot }] };
+        return { ...tf, stockItems: [...tf.stockItems, { katalogMode:"existing", katalogId:"", targetStockId:"", stockHandling:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot }] };
       }
       if (tf.docType === "TUG5") {
         return { ...tf, stockItems: [...tf.stockItems, { ...(tf.sourceType==="ULTG" ? { stockId:"" } : {}), katalogId:"", pemakaianBulan:0, sisaPersediaan:0, permintaan:1, keterangan:"" }] };
@@ -244,6 +244,20 @@ export function useTugTransactions({
     setTxnForm(tf => {
       const items=[...tf.stockItems];
       items[i] = {...items[i], [key]: val};
+      if (tf.docType === "TUG10" && ["katalogMode", "katalogId"].includes(key)) {
+        items[i].targetStockId = "";
+        items[i].stockHandling = "";
+        if (items[i].katalogMode === "existing" && items[i].katalogId && tf.lokasiTujuanId) {
+          const candidates = stateRef.current.enrichedStocks.filter(s => s.katalogId === items[i].katalogId && s.lokasiId === tf.lokasiTujuanId && (!tf.uptId || !s.uptId || s.uptId === tf.uptId) && !isLegacySourceAllocation(s));
+          if (candidates.length === 0) items[i].stockHandling = "SEPARATE";
+        }
+      }
+      if (tf.docType === "TUG10" && key === "stockHandling") {
+        const candidates = items[i].katalogMode === "existing" && items[i].katalogId && tf.lokasiTujuanId
+          ? stateRef.current.enrichedStocks.filter(s => s.katalogId === items[i].katalogId && s.lokasiId === tf.lokasiTujuanId && (!tf.uptId || !s.uptId || s.uptId === tf.uptId) && !isLegacySourceAllocation(s))
+          : [];
+        items[i].targetStockId = val === "SEPARATE" ? "" : candidates.length === 1 ? candidates[0].id : "";
+      }
       // TUG-5 dari ULTG: begitu pilih katalog, auto-isi Sisa Persediaan dari total stok aktual UPT
       // (dijumlah lintas gudang/lokasi) — ULTG tidak punya stok sendiri untuk diketik manual.
       if (tf.docType==="TUG5" && tf.sourceType==="ULTG" && key==="katalogId") {
@@ -276,6 +290,13 @@ export function useTugTransactions({
       const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
       if (!barangOk) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih/nama barang` });
       if (!(si.qty>0)) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: jumlah` });
+      if (si.katalogMode === "existing" && si.katalogId && tf.lokasiTujuanId) {
+        const candidates = stateRef.current.enrichedStocks.filter(s => s.katalogId === si.katalogId && s.lokasiId === tf.lokasiTujuanId && (!tf.uptId || !s.uptId || s.uptId === tf.uptId) && !isLegacySourceAllocation(s));
+        const handling = si.stockHandling || (si.targetStockId ? "MERGE" : candidates.length === 0 ? "SEPARATE" : "");
+        if (candidates.length > 0 && !handling) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih Gabungkan atau Pisah` });
+        const legacy = !Object.prototype.hasOwnProperty.call(si, "stockHandling");
+        if (handling === "MERGE" && !si.targetStockId && (!legacy || candidates.length > 1)) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih stok tujuan` });
+      }
       if (!si.fotoBarangRetur && !si.fotoBarang) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto barang` });
       if (si.statusMaterial==="Bongkaran ATTB (MTU)") {
         if (!si.noSeri?.trim()) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: nomor seri (ATTB)` });

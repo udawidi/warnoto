@@ -4,7 +4,7 @@ import { KAPASITAS_LABEL, UIT, UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { ROLES, hasRole } from "../lib/roles.js";
-import { statusMaterialBadgeStyle, resolveSapLabel, formatKontrakSumber, sourceLotLabel } from "../lib/sap.js";
+import { statusMaterialBadgeStyle, resolveSapLabel, formatKontrakSumber, sourceLotLabel, isLegacySourceAllocation } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { TugFinalReviewModal } from "./TugFinalReviewModal.jsx";
 import { PhotoSlot } from "./PhotoSlot.jsx";
@@ -54,6 +54,12 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const pagedCapacityImports = showCap ? pendingCapacityImports.slice((capPage-1)*approvalPageSize, capPage*approvalPageSize) : [];
   const pagedLokasiChanges = showLokasi ? pendingLokasiChanges.slice((lokasiPage-1)*approvalPageSize, lokasiPage*approvalPageSize) : [];
   const tug10StageOf = t => t.stage || (t.requiredApprover === "ASMAN" ? "PENDING_ASMAN" : t.status === "PENDING" ? "PENDING_TL" : t.status);
+  const tug10HasAmbiguousTarget = tug10ReviewTxn?.stockItems?.some(si => {
+    const candidates = stocks.filter(s => s.katalogId === si.katalogId && s.lokasiId === tug10ReviewTxn.lokasiTujuanId && (!tug10ReviewTxn.uptId || !s.uptId || s.uptId === tug10ReviewTxn.uptId) && !isLegacySourceAllocation(s));
+    const handling = si.stockHandling || (si.targetStockId ? "MERGE" : candidates.length === 1 ? "MERGE" : candidates.length === 0 ? "SEPARATE" : "");
+    const legacy = !Object.prototype.hasOwnProperty.call(si, "stockHandling");
+    return !handling || (handling === "MERGE" && !si.targetStockId && (!legacy || candidates.length > 1));
+  }) || false;
   function renderPager(page, setPage, totalItems) {
     if (totalItems <= approvalPageSize) return null;
     const totalPages = Math.max(1, Math.ceil(totalItems/approvalPageSize));
@@ -529,10 +535,13 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
                     {tug10ReviewTxn.stockItems.map((si, idx) => {
                       const nama = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
                       const bs = statusMaterialBadgeStyle(si.statusMaterial);
-                      const stok = stocks.find(s=>s.katalogId===si.katalogId && s.lokasiId===tug10ReviewTxn.lokasiTujuanId);
+                      const candidates = stocks.filter(s=>s.katalogId===si.katalogId && s.lokasiId===tug10ReviewTxn.lokasiTujuanId && (!tug10ReviewTxn.uptId || !s.uptId || s.uptId===tug10ReviewTxn.uptId) && !isLegacySourceAllocation(s));
+                      const stok = si.targetStockId ? stocks.find(s=>s.id===si.targetStockId) : candidates.length===1 ? candidates[0] : null;
+                      const handling = si.stockHandling || (si.targetStockId ? "MERGE" : candidates.length===1 ? "MERGE" : candidates.length===0 ? "SEPARATE" : "");
+                      const targetLabel = handling === "SEPARATE" ? "Lot retur baru" : si.targetStockId || (candidates.length > 1 ? "Ambigu — pilih stok tujuan" : stok?.id || "Lot baru");
                       return (
                         <tr key={idx} style={{borderTop:`1px solid ${C.border}`}}>
-                          <td style={{padding:6}}>{nama} <span style={{padding:"2px 6px",borderRadius:14,fontSize:11,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span></td>
+                          <td style={{padding:6}}>{nama} <span style={{padding:"2px 6px",borderRadius:14,fontSize:11,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span><br/><span style={{fontSize:11,color:C.muted}}>Mode: {handling === "MERGE" ? "Gabungkan" : handling === "SEPARATE" ? "Pisah" : "Belum dipilih"} · Tujuan: {targetLabel}</span></td>
                           <td style={{padding:6,textAlign:"right"}}>{fmtNum(si.qty)}</td>
                           <td style={{padding:6,textAlign:"right"}}>{stok ? fmtNum(stok.qty) : "baru"}</td>
                           <td style={{padding:6,textAlign:"right",fontWeight:700}}>{stok ? fmtNum(stok.qty + si.qty) : `+${fmtNum(si.qty)}`}</td>
@@ -547,7 +556,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               <button style={{...sty.btn("ghost"),flex:1}} disabled={tug10SubmittingId===tug10ReviewTxn.id} onClick={()=>setTug10ReviewTxn(null)}>Batal</button>
               <button
                 style={{...sty.btn("primary"),flex:2}}
-                disabled={!tug10Previewed || tug10SubmittingId===tug10ReviewTxn.id}
+                disabled={!tug10Previewed || tug10SubmittingId===tug10ReviewTxn.id || tug10HasAmbiguousTarget}
                 onClick={async()=>{
                   if (tug10SubmittingId===tug10ReviewTxn.id) return;
                   setTug10SubmittingId(tug10ReviewTxn.id);
@@ -561,6 +570,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
               >{tug10SubmittingId===tug10ReviewTxn.id ? "Menyetujui…" : tug10ReviewTxn.stage==="PENDING_TL" ? "✓ Teruskan ke Asman" : "✓ Setujui — Stok Masuk"}</button>
             </div>
             {tug10SubmittingId===tug10ReviewTxn.id && <div role="status" style={{fontSize:12,color:C.muted,marginTop:7}}>Persetujuan sedang diproses di server. Jangan tutup halaman.</div>}
+            {tug10HasAmbiguousTarget && <div style={{fontSize:12,color:"#b91c1c",marginTop:7}}>Ada lebih dari satu lot dengan katalog dan blok sama. Perbaiki ajuan dan pilih stok tujuan sebelum approval.</div>}
             {!tug10Previewed && <div style={{fontSize:12,color:C.muted,marginTop:7}}>Buka preview dokumen terlebih dahulu sebelum menyetujui.</div>}
           </div>
         </div>

@@ -55,14 +55,14 @@ export function TugFinalReviewModal({ txn, stocks, katalogList, users, pendingTx
     : txn;
   const serverIdentity = reviewPayloadComplete ? review.identitySnapshot : {};
   const serverItems = reviewPayloadComplete
-    ? review.items.map(item => ({ ...(item.snapshot || {}), stockId:item.stockId, katalogId:item.katalogId, lokasiId:item.lokasiId, qty:item.qty, unit:item.unit }))
+    ? review.items.map(item => ({ ...(item.snapshot || {}), stockId:item.stockId, targetStockId:item.targetStockId, katalogId:item.katalogId, lokasiId:item.lokasiId, qty:item.qty, unit:item.unit }))
     : (loading ? (txn.stockItems || []) : []);
   const reviewStage = reviewPayloadComplete ? review.stage : null;
   const items = useMemo(() => serverItems.map((item, index) => {
-    const stock = stocks.find(s => s.id === item.stockId);
+    const stock = stocks.find(s => s.id === (item.targetStockId || item.stockId));
     const katalog = katalogList.find(k => k.id === (item.katalogId || stock?.katalogId));
     const qty = Number(item.qty || item.permintaan || 0);
-    const snapshot = (review?.stockSnapshot || []).find(s => s.stock_id === item.stockId);
+    const snapshot = (review?.stockSnapshot || []).find(s => s.stock_id === (item.targetStockId || item.stockId));
     const current = snapshot ? Number(snapshot.qty) : null;
     const pending = pendingTxns.filter(t => t.id !== txn.id && ["TUG8","TUG9"].includes(t.docType) && t.status === "PENDING").reduce((sum,t) => sum + (t.stockItems || []).filter(x => x.stockId === item.stockId).reduce((q,x) => q + Number(x.qty || 0), 0), 0);
     const after = outgoing && current !== null ? current - qty : incoming && current !== null ? current + qty : null;
@@ -98,7 +98,7 @@ export function TugFinalReviewModal({ txn, stocks, katalogList, users, pendingTx
   const serverDocNumber = reviewPayloadComplete ? review.docNumber : docNo(txn);
   const serverDocType = reviewPayloadComplete ? review.docType : txn.docType;
   const creator = users.find(u => u.id === review?.createdBy);
-  const preview = { nomor:serverDocNumber, jenis:serverDocType, pekerjaan:serverDocument.namaPekerjaan||serverDocument.pekerjaan, lokasi:serverDocument.lokasiPekerjaan, tujuan:serverDocument.unitTujuan||serverDocument.penerimaUnit, penerima:serverDocument.penerimaNama, material:serverItems.map(i=>({stockId:i.stockId,katalogId:i.katalogId,qty:i.qty||i.permintaan,unit:i.unit||i.satuan})) };
+  const preview = { nomor:serverDocNumber, jenis:serverDocType, pekerjaan:serverDocument.namaPekerjaan||serverDocument.pekerjaan, lokasi:serverDocument.lokasiPekerjaan, tujuan:serverDocument.unitTujuan||serverDocument.penerimaUnit, penerima:serverDocument.penerimaNama, material:serverItems.map(i=>({stockId:i.stockId,targetStockId:i.targetStockId,katalogId:i.katalogId,qty:i.qty||i.permintaan,unit:i.unit||i.satuan})) };
   return <div style={{position:"fixed",inset:0,zIndex:1800,background:"rgba(15,23,42,.58)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}} role="dialog" aria-modal="true" aria-label="Periksa transaksi sebelum approval final">
     <div style={{...sty.card,width:900,maxWidth:"100%",maxHeight:"92dvh",overflowY:"auto",padding:20}}>
       <div style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"flex-start",marginBottom:14}}><div><div style={{fontSize:12,fontWeight:800,color:C.muted,letterSpacing:.5}}>WAJIB PERIKSA SEBELUM APPROVAL FINAL</div><h2 style={{margin:"4px 0",fontSize:20}}>{reviewPayloadComplete || loading ? `${serverDocType.replace("TUG","TUG-")} / ${serverDocNumber}` : "Review server tidak tersedia"}</h2><div style={{fontSize:12,color:C.muted}}>Overview membaca payload dan snapshot stok server. Perubahan setelah review harus diperiksa ulang.</div></div><button className="approval-btn--cancel" onClick={onClose}>Tutup</button></div>

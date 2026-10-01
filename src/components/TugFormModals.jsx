@@ -329,7 +329,7 @@ export function Tug98FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, gudan
   );
 }
 
-export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, docSeq, currentUser, rolePerms, tug10Highlight, tug10Refs, tug10Missing, tug10Collapsed, setTug10Collapsed, lokasiList, subGudangList, satpamList, gudangList, visibleGudangList, uptList, katalogList, CATEGORIES, STATUS_MATERIAL_RETUR, addItemRow, removeItemRow, updateItemRow, handleImg, savingTxn, saveTxn, maraSearch, setMaraSearch, maraSearchResults, setMaraSearchResults, maraSearchLoading, maraSearchError, searchMaraCatalog, applyMaraToItemRow, isMobile, sty, C }) {
+export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, docSeq, currentUser, rolePerms, tug10Highlight, tug10Refs, tug10Missing, tug10Collapsed, setTug10Collapsed, lokasiList, subGudangList, satpamList, gudangList, visibleGudangList, uptList, katalogList, stocks = [], CATEGORIES, STATUS_MATERIAL_RETUR, addItemRow, removeItemRow, updateItemRow, handleImg, savingTxn, saveTxn, maraSearch, setMaraSearch, maraSearchResults, setMaraSearchResults, maraSearchLoading, maraSearchError, searchMaraCatalog, applyMaraToItemRow, isMobile, sty, C }) {
   const hl = key => tug10Highlight===key ? { boxShadow:"0 0 0 2px #dc2626", borderRadius: 10 } : {};
   const setRef = key => el => { tug10Refs.current[key] = el; };
   const isLegacyGud = txnForm.gudangTujuanId==="__legacy__";
@@ -345,11 +345,27 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
   const selSub = subGudangList.find(sg=>sg.id===txnForm.subGudangTujuanId);
   const selBlok = lokasiList.find(l=>l.id===txnForm.lokasiTujuanId);
   const breadcrumb = [selGud?.nama || (isLegacyGud?"Legacy (tanpa gudang)":null), selSub?.nama, selBlok?.kode].filter(Boolean).join(" › ");
+  const targetCandidates = si => stocks.filter(s => s.katalogId === si.katalogId && s.lokasiId === txnForm.lokasiTujuanId && (!txnForm.uptId || !s.uptId || s.uptId === txnForm.uptId) && !isLegacySourceAllocation(s));
+  useEffect(() => {
+    if (!txnForm.lokasiTujuanId) return;
+    const next = txnForm.stockItems.map(si => {
+      if (si.katalogMode !== "existing" || !si.katalogId) return si;
+      const candidates = targetCandidates(si);
+      const legacy = !Object.prototype.hasOwnProperty.call(si, "stockHandling");
+      if (!si.stockHandling && candidates.length === 0) return { ...si, stockHandling:"SEPARATE", targetStockId:"" };
+      if (legacy && si.targetStockId) return { ...si, stockHandling:"MERGE" };
+      if (legacy && !si.targetStockId && candidates.length === 1) return { ...si, stockHandling:"MERGE", targetStockId:candidates[0].id };
+      if (si.stockHandling === "MERGE" && candidates.length === 1 && si.targetStockId !== candidates[0].id) return { ...si, targetStockId:candidates[0].id };
+      if (si.stockHandling === "SEPARATE" && si.targetStockId) return { ...si, targetStockId:"" };
+      return si;
+    });
+    if (next.some((si, idx) => si !== txnForm.stockItems[idx])) setTxnForm(tf => ({ ...tf, stockItems:next }));
+  }, [txnForm.lokasiTujuanId, txnForm.uptId, stocks]);
   useEffect(() => {
     if (!isGI || !giLokasi) return;
     setTxnForm(tf => tf.lokasiTujuanId === giLokasi.id && !tf.subGudangTujuanId && !tf.satpamId
       ? tf
-      : { ...tf, lokasiTujuanId: giLokasi.id, subGudangTujuanId: "", satpamId: "" });
+      : { ...tf, lokasiTujuanId: giLokasi.id, subGudangTujuanId: "", satpamId: "", stockItems:tf.stockItems.map(si=>({...si,targetStockId:"",stockHandling:""})) });
   }, [isGI, giLokasi?.id]);
   const missingList = tug10Missing(txnForm);
   return (
@@ -388,7 +404,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               </div>
               <div>
                 <label style={sty.label}>Gudang Penyimpanan *</label>
-                <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>{ const gid=e.target.value; const selected=(visibleGudangList||[]).find(g=>g.id===gid); setTxnForm(tf=>{ const cand=selected?.__gi?[]:satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangTujuanId:gid, subGudangTujuanId:"", lokasiTujuanId:selected?.__gi?(lokasiList.find(l=>l.__gi&&l.gudangId===gid)?.id||""):"", satpamId: cand.length===1?cand[0].id:""}; }); }}>
+                <select style={sty.select} value={txnForm.gudangTujuanId||""} onChange={e=>{ const gid=e.target.value; const selected=(visibleGudangList||[]).find(g=>g.id===gid); setTxnForm(tf=>{ const cand=selected?.__gi?[]:satpamList.filter(sp=>sp.gudangId===gid); return {...tf, gudangTujuanId:gid, subGudangTujuanId:"", lokasiTujuanId:selected?.__gi?(lokasiList.find(l=>l.__gi&&l.gudangId===gid)?.id||""):"", satpamId: cand.length===1?cand[0].id:"", stockItems:tf.stockItems.map(si=>({...si,targetStockId:"",stockHandling:""}))}; }); }}>
                   <option value="">-- Pilih Gudang --</option>
                   {visibleGudangList.map(g=>{ const up=uptList.find(u=>u.id===g.uptId); return <option key={g.id} value={g.id}>{g.nama}{up?` — ${up.nama}`:""}</option>; })}
                   {hasLegacyBlok && <option value="__legacy__">Blok tanpa gudang (legacy)</option>}
@@ -398,7 +414,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               {!isLegacyGud && tug10Subs.length>0 && (
                 <div>
                   <label style={sty.label}>Sub Gudang</label>
-                  <select style={sty.select} value={txnForm.subGudangTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,subGudangTujuanId:e.target.value,lokasiTujuanId:""}))}>
+                  <select style={sty.select} value={txnForm.subGudangTujuanId||""} onChange={e=>setTxnForm(tf=>({...tf,subGudangTujuanId:e.target.value,lokasiTujuanId:"",stockItems:tf.stockItems.map(si=>({...si,targetStockId:"",stockHandling:""}))}))}>
                     <option value="">— Tanpa Sub Gudang —</option>
                     {tug10Subs.map(sg=><option key={sg.id} value={sg.id}>{sg.nama}</option>)}
                   </select>
@@ -406,7 +422,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               )}
               <div ref={setRef("lokasiTujuanId")} style={{...hl("lokasiTujuanId")}}>
                 <label style={sty.label}>Blok Penyimpanan *</label>
-                {isGI ? <div style={{...sty.input,display:"flex",alignItems:"center",color:C.muted}}>📍 {selGud?.nama}</div> : <select style={sty.select} value={txnForm.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>setTxnForm(tf=>({...tf,lokasiTujuanId:e.target.value}))}>
+                {isGI ? <div style={{...sty.input,display:"flex",alignItems:"center",color:C.muted}}>📍 {selGud?.nama}</div> : <select style={sty.select} value={txnForm.lokasiTujuanId||""} disabled={!txnForm.gudangTujuanId} onChange={e=>setTxnForm(tf=>({...tf,lokasiTujuanId:e.target.value,stockItems:tf.stockItems.map(si=>({...si,targetStockId:"",stockHandling:""}))}))}>
                   <option value="">{txnForm.gudangTujuanId?"-- Pilih Blok --":"Pilih gudang dulu"}</option>
                   {tug10Bloks.map(l=><option key={l.id} value={l.id}>{l.kode} {l.keterangan?`— ${l.keterangan}`:""}</option>)}
                 </select>}
@@ -429,12 +445,15 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
             {txnForm.stockItems.map((si,idx)=>{
               const n = idx+1;
               const isAttb = si.statusMaterial==="Bongkaran ATTB (MTU)";
+              const candidates = targetCandidates(si);
+              const handling = si.stockHandling || (si.targetStockId ? "MERGE" : candidates.length===0 && si.katalogId ? "SEPARATE" : "");
               const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
               const qtyOk = si.qty>0;
               const fotoOk = !!si.fotoBarangRetur || !!si.fotoBarang;
               const seriOk = !isAttb || !!si.noSeri?.trim();
               const nameplateOk = !isAttb || !!si.fotoNameplate;
-              const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk;
+              const stockHandlingOk = si.katalogMode!=="existing" || !si.katalogId || !txnForm.lokasiTujuanId || (candidates.length===0 ? handling==="SEPARATE" : !!handling && (handling!=="MERGE" || !!si.targetStockId));
+              const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk && stockHandlingOk;
               // Auto-ringkas begitu item lengkap (tiru UX tug3ExpandedIdx) — default collapsed
               // saat complete kecuali user eksplisit buka lagi (tug10Collapsed[idx]===false).
               const collapsed = complete && tug10Collapsed[idx] !== false;
@@ -478,6 +497,16 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                       sty={sty} C={C} isMobile={isMobile}
                     />
                     {!barangOk && hint("Wajib: pilih barang dari katalog.")}
+                    {si.katalogId && txnForm.lokasiTujuanId && (() => {
+                      const candidates = targetCandidates(si);
+                      if (candidates.length === 0) return <div style={{fontSize:12,color:C.muted,marginTop:5}}>Belum ada stok dengan katalog dan blok ini. Approval akan membuat lot baru.</div>;
+                      return <div style={{marginTop:8}}>
+                        <label style={sty.label}>Penanganan stok *</label>
+                        <select style={sty.select} value={handling} onChange={e=>updateItemRow(idx,"stockHandling",e.target.value)}><option value="">-- Pilih Gabungkan atau Pisah --</option><option value="MERGE">Gabungkan ke stok eksisting</option><option value="SEPARATE">Buat lot retur terpisah</option></select>
+                        {handling === "MERGE" && <><label style={{...sty.label,marginTop:7}}>Stok tujuan *</label>{candidates.length===1 ? <div style={{fontSize:12,color:"#166534",marginTop:5}}>Stok tujuan: <b>{candidates[0].id}</b> · saldo {fmtNum(candidates[0].qty)} {candidates[0].unit||satuanDisplay} (dipilih otomatis)</div> : <select style={sty.select} value={si.targetStockId||""} onChange={e=>updateItemRow(idx,"targetStockId",e.target.value)}><option value="">-- Pilih baris stok --</option>{candidates.map(s=><option key={s.id} value={s.id}>{s.id} · saldo {fmtNum(s.qty)} {s.unit||satuanDisplay}</option>)}</select>}{!si.targetStockId && hint("Wajib memilih stok tujuan agar saldo eksisting bertambah.")}</>}
+                        {handling === "SEPARATE" && <div style={{fontSize:12,color:C.muted,marginTop:5}}>Akan dibuat lot retur baru saat approval.</div>}
+                      </div>;
+                    })()}
                   </div>
                 ) : si._maraLocked ? (
                   <div style={{marginBottom:8}}>

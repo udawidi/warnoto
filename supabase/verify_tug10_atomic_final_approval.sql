@@ -4,6 +4,7 @@
 do $$
 declare
   v_constraint text;
+  v_rpc text;
 begin
   if to_regprocedure('public.approve_tug10_final(text,uuid)') is null then
     raise exception 'VERIFY_TUG10_RPC_MISSING';
@@ -34,6 +35,21 @@ begin
   if not has_function_privilege('authenticated', 'public.approve_tug10_final(text,uuid)', 'EXECUTE')
      or has_function_privilege('anon', 'public.approve_tug10_final(text,uuid)', 'EXECUTE') then
     raise exception 'VERIFY_TUG10_RPC_GRANT_INVALID';
+  end if;
+  select pg_get_functiondef('public.approve_tug10_final(text,uuid)'::regprocedure) into v_rpc;
+  if position('targetStockId' in v_rpc) = 0
+     or position('stockHandling' in v_rpc) = 0 then
+    raise exception 'VERIFY_TUG10_TARGET_STOCK_INPUT_MISSING';
+  end if;
+  if position('TUG10_TARGET_STOCK_MISMATCH' in v_rpc) = 0
+     or position('TUG10_TARGET_STOCK_AMBIGUOUS' in v_rpc) = 0 then
+    raise exception 'VERIFY_TUG10_TARGET_STOCK_GUARDS_MISSING';
+  end if;
+  if position('tug10ReturnEffects' in v_rpc) = 0
+     or position('returnStatus' in v_rpc) = 0
+     or position('TUG10_STOCK_HANDLING_INVALID' in v_rpc) = 0
+     or position('insert into public.stocks(id, katalog_id, lokasi_id, upt_id' in v_rpc) = 0 then
+    raise exception 'VERIFY_TUG10_TARGET_STOCK_EFFECTS_MISSING';
   end if;
 end $$;
 

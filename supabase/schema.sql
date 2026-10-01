@@ -2671,6 +2671,10 @@ declare
   v_stocks jsonb := '[]'::jsonb;
   v_katalogs jsonb := '[]'::jsonb;
   v_attb_rows jsonb := '[]'::jsonb;
+  v_target_stock_id text;
+  v_candidate_count integer;
+  v_return_effects jsonb;
+  v_handling text;
 begin
   if auth.uid() is null then
     raise exception 'TUG_AUTH_REQUIRED' using errcode = '42501';
@@ -2813,13 +2817,72 @@ begin
       'sourceDate', v_now, 'sourceTransactionId', v_txn.id,
       'sourceItemIndex', v_idx, 'status', 'ACTIVE'
     );
-    v_stock_id := 'STK-TUG10-' || md5(v_txn.id || ':' || v_idx);
-    select * into v_stock from public.stocks
-    where id = v_stock_id
-       or (katalog_id = v_katalog_id and lokasi_id = v_data->>'lokasiTujuanId'
-           and ((data->'sourceLot'->>'key') = v_source_key or (data->'_tug10Applied') ? v_effect_key))
-    order by case when id = v_stock_id then 0 else 1 end
-    limit 1 for update;
+
+    v_handling := upper(nullif(btrim(v_item->>'stockHandling'), ''));
+    if v_handling is not null and v_handling not in ('MERGE', 'SEPARATE') then
+      raise exception 'TUG10_STOCK_HANDLING_INVALID' using errcode = '23514';
+    end if;
+    v_target_stock_id := nullif(btrim(v_item->>'targetStockId'), '');
+    -- Backcompat: explicit target means MERGE; without a target, exactly one
+    -- eligible row means MERGE, zero means a separate deterministic lot, and
+    -- ambiguity fails closed.
+    if v_handling is null then
+      if v_target_stock_id is not null then
+        v_handling := 'MERGE';
+      else
+        select count(*) into v_candidate_count
+        from public.stocks
+        where katalog_id = v_katalog_id
+          and lokasi_id = (v_data->>'lokasiTujuanId')
+          and coalesce(upt_id, data->>'uptId') = v_txn.upt_id
+          and coalesce(data->'sourceLot'->>'status', '') <> 'NEEDS_SOURCE_ALLOCATION';
+        if v_candidate_count > 1 then
+          raise exception 'TUG10_TARGET_STOCK_AMBIGUOUS' using errcode = '23514';
+        elsif v_candidate_count = 1 then
+          select id into v_target_stock_id
+          from public.stocks
+          where katalog_id = v_katalog_id
+            and lokasi_id = (v_data->>'lokasiTujuanId')
+            and coalesce(upt_id, data->>'uptId') = v_txn.upt_id
+            and coalesce(data->'sourceLot'->>'status', '') <> 'NEEDS_SOURCE_ALLOCATION'
+          order by id limit 1;
+          v_handling := 'MERGE';
+        else
+          v_handling := 'SEPARATE';
+        end if;
+      end if;
+    end if;
+    if v_handling = 'SEPARATE' then
+      v_target_stock_id := null;
+    elsif v_target_stock_id is null then
+      raise exception 'TUG10_TARGET_STOCK_REQUIRED' using errcode = '23514';
+    end if;
+
+    if v_handling = 'MERGE' then
+      select * into v_stock
+      from public.stocks
+      where id = v_target_stock_id
+      for update;
+      if v_stock.id is null then
+        raise exception 'TUG10_TARGET_STOCK_NOT_FOUND' using errcode = 'P0002';
+      end if;
+      if v_stock.katalog_id is distinct from v_katalog_id
+         or v_stock.lokasi_id is distinct from (v_data->>'lokasiTujuanId')
+         or coalesce(v_stock.upt_id, v_stock.data->>'uptId') is distinct from v_txn.upt_id then
+        raise exception 'TUG10_TARGET_STOCK_MISMATCH' using errcode = '23514';
+      end if;
+      if coalesce(v_stock.data->'sourceLot'->>'status', '') = 'NEEDS_SOURCE_ALLOCATION' then
+        raise exception 'TUG10_TARGET_SOURCE_ALLOCATION_REQUIRED' using errcode = '23514';
+      end if;
+      v_stock_id := v_target_stock_id;
+    else
+      v_stock_id := 'STK-TUG10-' || md5(v_txn.id || ':' || v_idx);
+      select * into v_stock
+      from public.stocks
+      where id = v_stock_id
+      for update;
+    end if;
+
     if v_stock.id is null then
       v_stock_data := jsonb_build_object(
         'id', v_stock_id, 'katalogId', v_katalog_id, 'lokasiId', v_data->>'lokasiTujuanId',
@@ -2828,29 +2891,51 @@ begin
         'sapStatus', 'Non-SAP', 'name', coalesce(v_katalog_data->>'name',''),
         'katalog', coalesce(v_katalog_data->>'katalog',''), 'unit', coalesce(v_katalog_data->>'satuan','unit'),
         'keteranganBarang', coalesce(v_item->>'keteranganBaru', v_item->>'keterangan', ''),
-        'source', case when v_item_mode = 'existing' then 'dupKatalog' else 'item' end,
-        'sourceLot', v_source_lot, 'img', v_item->>'fotoBarangRetur',
+        'source', 'item', 'sourceLot', v_source_lot,
+        'returnStatus', v_item->>'statusMaterial', 'img', v_item->>'fotoBarangRetur',
         'fotoKeseluruhan', v_item->>'fotoBarangRetur',
-        '_tug10Applied', jsonb_build_object(v_effect_key, v_qty), 'createdAt', v_now
+        'tug10ReturnEffects', jsonb_build_object(v_effect_key, jsonb_build_object(
+          'qty', v_qty, 'at', v_now,
+          'sourceDocumentNo', coalesce(v_data->'docNumbers'->>'tug10', v_txn.doc_number, v_txn.id)
+        )), 'createdAt', v_now
       );
-      insert into public.stocks(id, katalog_id, lokasi_id, data, created_at)
-      values (v_stock_id, v_katalog_id, v_data->>'lokasiTujuanId', v_stock_data, v_now);
+      insert into public.stocks(id, katalog_id, lokasi_id, upt_id, data, created_at)
+      values (v_stock_id, v_katalog_id, v_data->>'lokasiTujuanId', v_txn.upt_id, v_stock_data, v_now);
       select * into v_stock from public.stocks where id = v_stock_id for update;
     else
       v_stock_data := coalesce(v_stock.data, '{}'::jsonb);
       v_old_qty := coalesce(nullif(v_stock_data->>'qty','')::numeric, 0);
-      v_already := coalesce(nullif(v_stock_data->'_tug10Applied'->>v_effect_key,'')::numeric, 0);
+      v_return_effects := coalesce(v_stock_data->'tug10ReturnEffects', '{}'::jsonb);
+      v_already := coalesce(
+        nullif(v_return_effects->v_effect_key->>'qty','')::numeric,
+        nullif(v_return_effects->>v_effect_key,'')::numeric,
+        nullif(v_stock_data->'_tug10Applied'->>v_effect_key,'')::numeric,
+        0
+      );
       if v_already > v_qty then
         raise exception 'TUG10_STOCK_MARKER_EXCEEDS_QTY' using errcode = '23514';
       end if;
       v_apply := v_qty - v_already;
-      v_stock_data := v_stock_data
-        || jsonb_build_object('katalogId', v_katalog_id, 'lokasiId', v_data->>'lokasiTujuanId',
-          'uptId', v_txn.upt_id, 'qty', v_old_qty + v_apply, 'sourceLot', v_source_lot,
-          'img', v_item->>'fotoBarangRetur', 'fotoKeseluruhan', v_item->>'fotoBarangRetur')
-        || jsonb_build_object('_tug10Applied', coalesce(v_stock_data->'_tug10Applied','{}'::jsonb) || jsonb_build_object(v_effect_key, v_qty));
-      update public.stocks set katalog_id = v_katalog_id, lokasi_id = v_data->>'lokasiTujuanId', data = v_stock_data where id = v_stock.id;
+      v_return_effects := v_return_effects || jsonb_build_object(v_effect_key, jsonb_build_object(
+        'qty', v_qty, 'at', v_now,
+        'sourceDocumentNo', coalesce(v_data->'docNumbers'->>'tug10', v_txn.doc_number, v_txn.id)
+      ));
+      if v_handling = 'MERGE' then
+        v_stock_data := v_stock_data
+          || jsonb_build_object('qty', v_old_qty + v_apply, 'img', v_item->>'fotoBarangRetur',
+            'fotoKeseluruhan', v_item->>'fotoBarangRetur')
+          || jsonb_build_object('tug10ReturnEffects', v_return_effects);
+      else
+        v_stock_data := v_stock_data
+          || jsonb_build_object('qty', v_old_qty + v_apply, 'returnStatus', v_item->>'statusMaterial',
+            'img', v_item->>'fotoBarangRetur', 'fotoKeseluruhan', v_item->>'fotoBarangRetur')
+          || jsonb_build_object('tug10ReturnEffects', v_return_effects);
+      end if;
+      update public.stocks
+      set data = v_stock_data, upt_id = coalesce(upt_id, v_txn.upt_id)
+      where id = v_stock.id;
     end if;
+
     select data || jsonb_build_object('id', id, 'katalogId', katalog_id, 'lokasiId', lokasi_id) into v_stock_data from public.stocks where id = v_stock.id;
     v_stocks := v_stocks || jsonb_build_array(v_stock_data);
 
@@ -2906,6 +2991,8 @@ begin
   return v_response;
 end;
 $$;
+
+
 
 revoke all on function public.approve_tug10_final(text, uuid) from public, anon;
 grant execute on function public.approve_tug10_final(text, uuid) to authenticated;

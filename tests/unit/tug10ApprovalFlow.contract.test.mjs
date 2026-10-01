@@ -11,7 +11,7 @@ test("TUG-10 final button stays open and reports server submission", () => {
   assert.match(approval, /const ok = await approveTxn\(tug10ReviewTxn\)/);
   assert.match(approval, /if \(ok\) setTug10ReviewTxn\(null\)/);
   assert.match(approval, /Menyetujui…/);
-  assert.match(approval, /disabled=\{!tug10Previewed \|\| tug10SubmittingId===tug10ReviewTxn\.id\}/);
+  assert.match(approval, /disabled=\{!tug10Previewed \|\| tug10SubmittingId===tug10ReviewTxn\.id(?: \|\| tug10HasAmbiguousTarget)?\}/);
   assert.doesNotMatch(approval, /onClick=\{\(\)=>\{approveTxn\(tug10ReviewTxn\);setTug10ReviewTxn\(null\);\}\}/);
 });
 
