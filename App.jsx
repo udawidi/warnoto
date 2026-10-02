@@ -2632,7 +2632,7 @@ export default function PLNWarehouse() {
       const original = stocks.find(s=>s.id===sf.id) || {};
       const isTL = hasRole(currentUser, "TL");
       const identityChanged = original.katalogId !== sf.katalogId; // ganti barang (name+katalog+satuan sekaligus)
-      const otherChanged = original.price!==sf.price || original.jenisBarang!==sf.jenisBarang;
+      const otherChanged = original.price!==sf.price || original.jenisBarang!==sf.jenisBarang || original.sapStatus!==sf.sapStatus;
       const fieldsChanged = identityChanged || otherChanged;
       if (fieldsChanged && !isTL) {
         wentToApproval = true;
@@ -2640,9 +2640,9 @@ export default function PLNWarehouse() {
         const updated = {
           ...sf,
           katalogId: original.katalogId, name: original.name, katalog: original.katalog, unit: original.unit, category: original.category,
-          price: original.price, jenisBarang: original.jenisBarang,
+          price: original.price, jenisBarang: original.jenisBarang, sapStatus: original.sapStatus,
           editPending: true,
-          pendingEditData: { katalogId: sf.katalogId, name: sf.name, katalog: sf.katalog, unit: sf.unit, category: sf.category, price: sf.price, jenisBarang: sf.jenisBarang },
+          pendingEditData: { katalogId: sf.katalogId, name: sf.name, katalog: sf.katalog, unit: sf.unit, category: sf.category, price: sf.price, jenisBarang: sf.jenisBarang, sapStatus: sf.sapStatus },
           editRequestedBy: currentUser.id, editRequestedAt: Date.now(),
         };
         ns = stocks.map(s=>s.id===sf.id?updated:s);
@@ -2651,9 +2651,11 @@ export default function PLNWarehouse() {
       }
     }
     else ns = [...stocks, {...sf, createdAt:Date.now()}];
-    setStocks(ns); setStockModal(null);
+
     // Hanya 1 baris berubah (edit/tambah baris id===sf.id) — sync ringan cuma baris itu.
-    await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===sf.id)});
+    const savedOk = await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===sf.id)});
+    if (!savedOk) return;
+    setStocks(ns); setStockModal(null);
     logAudit(currentUser, stockModal==="edit"?"UPDATE":"CREATE", "stocks", sf.id, {katalogId:sf.katalogId, lokasiId:sf.lokasiId, wentToApproval});
     showToast(wentToApproval ? "📨 Perubahan barang (nama/no katalog/satuan)/harga/jenis diajukan! Menunggu approval TL." : (stockModal==="edit" ? "Data Stok diupdate!" : "Data Stok baru ditambahkan!"));
   }
@@ -2837,6 +2839,7 @@ export default function PLNWarehouse() {
     if (p.katalog!=null && p.katalog!==st.katalog) parts.push(`barang → ${p.name} [${p.katalog}]`);
     if (p.price!=null && p.price!==st.price) parts.push(`harga Rp${fmtNum(st.price)}→Rp${fmtNum(p.price)}`);
     if (p.jenisBarang!=null && p.jenisBarang!==st.jenisBarang) parts.push(`jenis ${st.jenisBarang}→${p.jenisBarang}`);
+    if (p.sapStatus!=null && p.sapStatus!==st.sapStatus) parts.push(`status ${st.sapStatus||"-"}->${p.sapStatus||"-"}`);
     return parts.join(", ") || "perubahan data";
   }
 
