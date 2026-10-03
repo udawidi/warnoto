@@ -22,6 +22,7 @@ import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inSco
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { activePairedGudangRows, dropCachedGiRows } from "./src/lib/giWarehouse.js";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
+import { archiveManualPhotoChange, listScopedOpnameSessions, stockUptId } from "./src/lib/stockOpnamePhotoHistory.js";
 import { can } from "./src/lib/perms.js";
 import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentStatusFromKondisi, normalizeHeavyEquipmentRecord, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanStartDate, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName, normalizeHeavyEquipmentLoanStatus, isPendingHeavyEquipmentLoan, getHeavyEquipmentLoanRuntimeStatus, canApproveHeavyEquipmentLoan, getEquipmentCategory } from "./src/lib/heavyEquipment.js";
 import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, ATTB_FIELDS_BY_JENIS, ATTB_ALASAN_PENGHAPUSBUKUAN, ATTB_WAKTU_USULAN_OPTIONS, ATTB_CORE_FIELDS, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, parseAttbCurrency, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "./src/lib/attb.js";
@@ -621,6 +622,8 @@ export default function PLNWarehouse() {
   const [stockDetailId, setStockDetailId] = useState(null); // id stok yang dibuka detailnya (klik baris Data Stok)
   const [stockDetailTab, setStockDetailTab] = useState("detail"); // "detail" | "riwayat" — reset tiap ganti barang
   const [riwayatExpanded, setRiwayatExpanded] = useState(false); // "Tampilkan semua" tab Riwayat
+  const [opnamePhotoHistoryExpanded, setOpnamePhotoHistoryExpanded] = useState(false);
+  const [opnamePhotoActiveId, setOpnamePhotoActiveId] = useState(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false); // konfirmasi inline "buang perubahan?" mode edit
   const stockFormSnapshotRef = useRef(null); // snapshot stockForm saat masuk mode edit, buat cek isDirty
   const stockDetailTriggerRef = useRef(null); // elemen pemicu, difokuskan balik saat modal detail ditutup
@@ -641,6 +644,8 @@ export default function PLNWarehouse() {
     // Buka barang lain (atau tutup) jangan mewarisi tab/konfirmasi dari barang sebelumnya.
     setStockDetailTab("detail");
     setRiwayatExpanded(false);
+    setOpnamePhotoHistoryExpanded(false);
+    setOpnamePhotoActiveId(null);
     setConfirmDiscard(false);
   }, [stockDetailId]);
   useEffect(() => {
@@ -2652,6 +2657,22 @@ export default function PLNWarehouse() {
     }
     else ns = [...stocks, {...sf, createdAt:Date.now()}];
 
+    if (stockModal === "edit") {
+      const original = stocks.find(s => s.id === sf.id);
+      if (!stockUptId(original)) { showToast("Foto stok wajib memiliki UPT.", "error"); return; }
+      ns = ns.map(s => {
+        if (s.id !== sf.id) return s;
+        let next = s;
+        for (const field of ["fotoNameplate", "fotoKeseluruhan"]) {
+          if (next[field] && next[field] !== original[field]) {
+            const archived = archiveManualPhotoChange({ ...next, [field]: original[field] }, field, next[field]);
+            next = { ...next, photoHistory: archived.photoHistory || next.photoHistory, [field]: next[field] };
+            if (field === "fotoNameplate") next.fotoNameplateOcr = null;
+          }
+        }
+        return next;
+      });
+    }
     // Hanya 1 baris berubah (edit/tambah baris id===sf.id) — sync ringan cuma baris itu.
     const savedOk = await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===sf.id)});
     if (!savedOk) return;
@@ -2665,14 +2686,15 @@ export default function PLNWarehouse() {
   // Melempar kalau upload gagal — pemanggil WAJIB membatalkan simpan, bukan fallback base64.
   async function uploadStockFoto(katalogId, field, img, uptId) {
     if (!_isDataUrl(img)) return img; // sudah URL Storage
+    if (!uptId) throw new Error("Foto stok wajib memiliki UPT.");
     const kode = String(katalogId || "tanpa-katalog").replace(/^KAT-/, "");
     // Folder per-UPT supaya foto stok antar-UPT tidak saling menimpa (dulu hardcode
     // "upt-surabaya/" → dua UPT dgn katalog sama menulis path yang sama). Foto lama di
     // path lama tetap valid: URL tersimpan menunjuk file lama, file tidak dipindah.
-    const uptFolder = String(uptId || "upt-tanpa").toLowerCase();
+    const uptFolder = String(uptId).toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
     const versi = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const path = `${uptFolder}/${kode}/${field==="fotoNameplate"?"tambahan":"utama"}-${versi}.jpg`;
-    return _withTimeout(uploadPhotoToStorage(await compressImage(img, {maxBytes:1_000_000}), "stock-photos", path), 30_000, "unggah foto");
+    return _withTimeout(uploadPhotoToStorage(await compressImage(img, {maxBytes:1_000_000}), "stock-photos", path, { upsert: false }), 30_000, "unggah foto");
   }
   // Upload langsung foto Nameplate/Keseluruhan dari modal detail (klik baris Data Stok) — khusus Admin/TL
   // Return true kalau tersimpan, false kalau upload gagal (foto pending jangan dibuang).
@@ -2683,7 +2705,9 @@ export default function PLNWarehouse() {
       console.warn("Upload foto Data Stok gagal:", id, field, e?.message||e);
       showToast("Gagal upload foto ke server, coba lagi.","error"); return false;
     }
-    let ns = stocks.map(s=>s.id===id?{...s,[field]:url}:s);
+    const original = stocks.find(s => s.id === id);
+    if (!original || !stockUptId(original)) { showToast("Foto stok wajib memiliki UPT.", "error"); return false; }
+    let ns = stocks.map(s=>s.id===id?{...archiveManualPhotoChange(s, field, url), [field]:url, ...(field === "fotoNameplate" && s.fotoNameplate !== url ? { fotoNameplateOcr: null } : {})}:s);
     setStocks(ns);
     // Foto = payload paling berat; cuma 1 baris berubah → sync ringan baris itu saja.
     // saveToCloud return false kalau write ke Supabase gagal (401 sesi expired/RLS/network) —
@@ -2757,12 +2781,10 @@ export default function PLNWarehouse() {
 
   // Cari barang dengan foto — dua mode:
   //  • "bentuk"   : embed foto query (Cohere image) → cocokkan ke stock_photo_embeddings
-  //                 via RPC match_stock_photos (skor tertinggi per katalog, ≥75%, top 10).
-  //                 p_upt=null di RPC (katalog lintas-UPT); filter UPT client-side lewat
-  //                 allowedKatalog (katalog yang punya stok di scope efektif / stockUptFilter).
+  //                 via tenant-scoped RPC; filter UPT client-side again at the stock boundary.
   //  • "nameplate": OCR.space baca teks nameplate di foto → cocokkan ke Master
   //                 Katalog (nomor katalog/nama/type/merk) DAN ke teks foto
-  //                 nameplate tersimpan (fotoNameplateOcr) — matchNameplateAll.
+  //                 nameplate tersimpan (fotoNameplateOcr + historical embeddings) on demand.
   async function runPhotoSearch() {
     if (!photoSearchImg) return;
     setPhotoSearchLoading(true);
@@ -2776,29 +2798,61 @@ export default function PLNWarehouse() {
         return (gid ? gudangList.find(g => g.id === gid)?.uptId : null) || s.uptId || null;
       };
       const scope = getScopeUptIds(currentUser, uptList);
-      const allowedKatalog = new Set(
-        stocks
-          .filter(s => stockUptFilter ? uptOf(s) === stockUptFilter : inScopeUpt(uptOf(s), scope))
-          .map(s => String(s.katalog))
-          .filter(k => k && k !== "undefined" && k !== "null")
-      );
-      const keepInScope = (rows) => (rows || []).filter(r => allowedKatalog.has(String(r.katalog)));
+      const scopedPhotoStocks = stocks.filter(s => stockUptFilter ? uptOf(s) === stockUptFilter : inScopeUpt(uptOf(s), scope));
+      const allowedPairs = new Set(scopedPhotoStocks.map(s => `${uptOf(s)}\u0000${String(s.katalog || "")}`));
+      const keepInScope = (rows) => (rows || []).filter(r => {
+        const rowUpt = r.upt_id || r.uptId || r.upt;
+        return rowUpt && allowedPairs.has(`${rowUpt}\u0000${String(r.katalog || "")}`);
+      });
 
       if (photoSearchMode === "nameplate") {
         const text = await ocrSpaceOCR(photoSearchImg);
         setPhotoSearchOcrText(text);
         setPhotoSearchResultMode("nameplate");
-        setPhotoSearchResults(keepInScope(matchNameplateAll(text, katalogList, stocks)));
+        const best = new Map();
+        const put = (uptId, katalog, similarity) => {
+          if (!uptId || katalog == null || similarity < NAMEPLATE_MIN) return;
+          if (!allowedPairs.has(`${uptId}\u0000${String(katalog)}`)) return;
+          const key = `${uptId}\u0000${String(katalog)}`;
+          if (!best.has(key) || best.get(key).similarity < similarity) best.set(key, { upt_id: uptId, katalog: String(katalog), similarity });
+        };
+        // Master match is safe to fan out only to UPTs that actually carry the
+        // catalog. Current-stock OCR/description signals stay inside each UPT.
+        for (const row of matchNameplateToKatalog(text, katalogList)) {
+          for (const stock of scopedPhotoStocks) {
+            if (String(stock.katalog || "") === String(row.katalog || "")) put(uptOf(stock), row.katalog, Number(row.similarity) || 0);
+          }
+        }
+        const stocksByUpt = new Map();
+        for (const stock of scopedPhotoStocks) {
+          const uptId = uptOf(stock);
+          if (!uptId) continue;
+          if (!stocksByUpt.has(uptId)) stocksByUpt.set(uptId, []);
+          stocksByUpt.get(uptId).push(stock);
+        }
+        for (const [uptId, uptStocks] of stocksByUpt) {
+          for (const row of matchNameplateAll(text, [], uptStocks)) put(uptId, row.katalog, Number(row.similarity) || 0);
+        }
+        if (supabase) {
+          const scopedUptIds = stockUptFilter ? [stockUptFilter] : [...new Set(scopedPhotoStocks.map(uptOf).filter(Boolean))];
+          let query = supabase.from("stock_photo_embeddings").select("upt_id,katalog,ocr_text").not("ocr_text", "is", null);
+          if (scopedUptIds.length) query = query.in("upt_id", scopedUptIds);
+          const { data: historicalRows, error: historicalError } = await query;
+          if (historicalError) throw historicalError;
+          const qTokens = npTokens(text);
+          const qNums = npNums(text);
+          for (const row of historicalRows || []) put(row.upt_id, row.katalog, nameplateTextSim(qTokens, qNums, row.ocr_text));
+        }
+        setPhotoSearchResults([...best.values()].sort((a, b) => b.similarity - a.similarity).slice(0, 10));
         setPhotoSearchOpen(false);
       } else {
         if (!supabase) return;
         const vec = await cohereEmbedImage(photoSearchImg);
-        // p_upt=null (lintas-UPT) lalu difilter client-side via keepInScope. match_count
-        // sengaja besar (bukan 10): RPC ambil top-N GLOBAL dulu, jadi kalau cuma 10 dan
-        // top-10 didominasi UPT lain, match dalam scope user (UPT/UIT) bisa terpotong →
-        // hasil kosong palsu. 100 kandidat cukup untuk disaring keepInScope tanpa boros.
-        const { data, error } = await supabase.rpc("match_stock_photos", {
-          query_embedding: vec, p_upt: null, match_count: 100, min_similarity: 0.75,
+        const { data, error } = await supabase.rpc("match_stock_photos_scoped", {
+          query_embedding: vec,
+          p_upt_ids: stockUptFilter ? [stockUptFilter] : scope,
+          match_count: 100,
+          min_similarity: 0.75,
         });
         if (error) throw error;
         setPhotoSearchOcrText("");
@@ -4551,8 +4605,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                 stockVisibleGudangList={visibleTugGudangList}
                 stockGudangFilter={stockGudangFilter}
                 setStockGudangFilter={setStockGudangFilter}
-                showWork={opnameSubTab==="opname"}
-                showHistory={opnameSubTab==="history" && opnameHistoryTab==="opname"}
+                showWork={tab==="opname" && opnameSubTab==="opname"}
+                showHistory={tab==="opname" && opnameSubTab==="history" && opnameHistoryTab==="opname"}
                 onOpenWork={()=>setOpnameSubTab("opname")}
               />
             <StockCountTab
@@ -5080,6 +5134,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                   <div className="operations-segments" role="group" aria-label="Tab detail barang" style={{marginBottom:14}}>
                     <button type="button" aria-pressed={stockDetailTab==="detail"} className={stockDetailTab==="detail"?"is-active":""} onClick={()=>setStockDetailTab("detail")}>Detail</button>
                     <button type="button" aria-pressed={stockDetailTab==="riwayat"} className={stockDetailTab==="riwayat"?"is-active":""} onClick={()=>setStockDetailTab("riwayat")}>Riwayat</button>
+                    <button type="button" aria-pressed={stockDetailTab==="opname"} className={stockDetailTab==="opname"?"is-active":""} onClick={()=>setStockDetailTab("opname")}>Opname</button>
                   </div>
                 )}
               </div>
@@ -5135,6 +5190,41 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       {!riwayatExpanded && mutasi.length > 20 && (
                         <button style={{...sty.btn("ghost","sm"),width:"100%"}} onClick={()=>setRiwayatExpanded(true)}>Tampilkan semua ({mutasi.length})</button>
                       )}
+                    </div>
+                  );
+                })()
+              ) : stockDetailTab === "opname" ? (
+                (() => {
+                  const sessions = listScopedOpnameSessions(st, scopedOpnameList, stocks);
+                  const history = Array.isArray(st.photoHistory) ? st.photoHistory.filter(entry => entry?.uptId === stockUptId(st)) : [];
+                  const shown = opnamePhotoHistoryExpanded ? sessions : sessions.slice(0, 10);
+                  const activeId = opnamePhotoActiveId || shown[0]?.opname?.id || null;
+                  const renderPhoto = (url, label) => {
+                    const src = resolveStockPhotoUrl(url);
+                    return src ? <img key={`${label}-${src}`} src={src} alt={label} loading="lazy" decoding="async" onClick={()=>setLightboxImg(src)} style={{width:84,height:64,objectFit:"cover",borderRadius:8,border:`1px solid ${C.border}`,cursor:"zoom-in"}}/> : null;
+                  };
+                  return (
+                    <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:8}}>
+                      <div style={{fontSize:12,color:C.muted}}>Foto utama tetap dipakai di Detail. Foto hasil opname disimpan per UPT dan tidak menghapus foto lama.</div>
+                      {history.length > 0 && (
+                        <div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10}}>
+                          <div style={{fontSize:12,fontWeight:800,marginBottom:7}}>Foto yang pernah menjadi foto utama</div>
+                          <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                            {history.flatMap(entry => [entry.before?.fotoKeseluruhan, entry.before?.fotoNameplate].map((url, index) => renderPhoto(url, `${entry.source || "Foto sebelumnya"} ${index + 1}`)))}
+                          </div>
+                        </div>
+                      )}
+                      {shown.length === 0 && history.length === 0 && <div style={{fontSize:12,color:C.muted,padding:"24px 0",textAlign:"center"}}>Belum ada foto hasil Stock Opname untuk material ini.</div>}
+                      {shown.map(({ opname, items }) => (
+                        <details key={opname.id} open={activeId === opname.id} onToggle={event => { if (event.currentTarget.open) setOpnamePhotoActiveId(opname.id); }} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:"8px 10px"}}>
+                          <summary style={{cursor:"pointer",fontSize:12,fontWeight:800}}>{opname.semester || "Stock Opname"} · {opname.status || "-"}</summary>
+                          <div style={{fontSize:11,color:C.muted,margin:"5px 0 8px"}}>UPT {opname.uptId || opname.upt_id || "-"} · {opname.tanggal || opname.dibuatAt ? new Date(opname.tanggal || opname.dibuatAt).toLocaleDateString("id-ID") : "-"}</div>
+                          {activeId === opname.id && <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                            {items.flatMap(item => [item.fotoKeseluruhan, item.fotoNameplate].map((url, index) => renderPhoto(url, `${opname.id}-${index + 1}`)))}
+                          </div>}
+                        </details>
+                      ))}
+                      {!opnamePhotoHistoryExpanded && sessions.length > 10 && <button style={{...sty.btn("ghost","sm"),width:"100%"}} onClick={()=>setOpnamePhotoHistoryExpanded(true)}>Tampilkan lainnya ({sessions.length})</button>}
                     </div>
                   );
                 })()

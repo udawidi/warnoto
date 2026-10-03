@@ -42,7 +42,8 @@ const dotenv = loadDotEnv();
 
 const SUPABASE_URL = process.env.NEW_SUPABASE_URL || dotenv.NEW_SUPABASE_URL;
 const SUPABASE_KEY = process.env.NEW_SUPABASE_SECRET_KEY || dotenv.NEW_SUPABASE_SECRET_KEY;
-const COHERE_API_KEY = process.env.COHERE_API_KEY || dotenv.VITE_COHERE_API_KEY;
+const COHERE_API_KEY = process.env.COHERE_API_KEY || dotenv.COHERE_API_KEY || dotenv.VITE_COHERE_API_KEY;
+const OCRSPACE_API_KEY = process.env.OCRSPACE_API_KEY || dotenv.OCRSPACE_API_KEY;
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error("❌ Butuh NEW_SUPABASE_URL + NEW_SUPABASE_SECRET_KEY (service_role, .env atau env var).");
@@ -74,6 +75,7 @@ const PLANT_TO_UPT = {
 const GRESIK_UPT = "UPT Gresik";
 // --all: resolusi data.uptId → nama tampilan lewat master UPT (satu sumber kebenaran).
 const UPTID_TO_NAMA = new Map(DEFAULT_UPT_LIST.map((u) => [u.id, u.nama]));
+const UPT_NAMA_TO_ID = new Map([...UPTID_TO_NAMA.entries()].map(([id, nama]) => [nama, id]));
 
 function uptSlug(nama) {
   return nama.toLowerCase().replace(/\s+/g, "-");
@@ -96,40 +98,49 @@ async function embedImageWithRetry(dataUri, attempt = 0) {
 async function main() {
   console.log(`WARNOTO — Embed foto stok (${ALL ? "--all" : "UPT baru"}, ${COMMIT ? "COMMIT" : "DRY-RUN"})\n`);
 
-  const jobs = []; // {id, upt, katalog, source, photoUrl}
+  const jobs = []; // {id, uptId, upt, katalog, source, photoUrl, ocr}
+  const stockRowsForOpname = [];
 
   if (ALL) {
-    // Sapu SEMUA stok yang punya foto, UPT apa pun. Resume alami: id sudah dikenal
-    // (mis. Surabaya lama) otomatis ke-skip di langkah 3 tanpa perlu logika khusus.
+    // Ambil semua identity stok supaya opname dapat dipetakan walau stok belum
+    // punya foto utama; job embedding tetap hanya dibuat bila ada URL foto.
     const { data: rows, error: allErr } = await supabase
-      .from("stocks").select("id,data")
-      .or("data->>fotoKeseluruhan.not.is.null,data->>fotoNameplate.not.is.null");
+      .from("stocks").select("id,upt_id,data");
     if (allErr) { console.error("❌ Gagal baca stocks (--all):", allErr.message); process.exit(1); }
     let unknownUpt = 0;
     for (const s of rows || []) {
-      const nama = UPTID_TO_NAMA.get(s.data?.uptId);
-      if (!nama) { unknownUpt++; continue; } // kolom upt NOT NULL — jangan insert nama kosong
-      pushJobs(jobs, s, nama);
+      stockRowsForOpname.push(s);
+      const uptId = s.upt_id || s.data?.uptId;
+      const nama = UPTID_TO_NAMA.get(uptId) || uptId;
+      if (!uptId || !nama) { unknownUpt++; continue; }
+      pushJobs(jobs, s, uptId, nama);
     }
     if (unknownUpt) console.log(`(lewati ${unknownUpt} baris: uptId tak dikenal)`);
   } else {
     // 1. Ambil stok target: 4 UPT baru (id STK-SAP-361%) + Gresik (data.uptId='UPT-GRS').
     const { data: sap, error: sapErr } = await supabase
-      .from("stocks").select("id,data").like("id", "STK-SAP-361%");
+      .from("stocks").select("id,upt_id,data").like("id", "STK-SAP-361%");
     if (sapErr) { console.error("❌ Gagal baca stocks (SAP):", sapErr.message); process.exit(1); }
     const { data: grs, error: grsErr } = await supabase
-      .from("stocks").select("id,data").filter("data->>uptId", "eq", "UPT-GRS");
+      .from("stocks").select("id,upt_id,data").filter("data->>uptId", "eq", "UPT-GRS");
     if (grsErr) { console.error("❌ Gagal baca stocks (Gresik):", grsErr.message); process.exit(1); }
 
     // 2. Bangun daftar foto (katalog, upt, source, url) dari kedua kelompok.
     for (const s of sap || []) {
+      stockRowsForOpname.push(s);
       const plant = (s.id.match(/^STK-SAP-(\d{4})-/) || [])[1];
       const upt = PLANT_TO_UPT[plant];
       if (!upt) continue; // plant lain di luar daftar — jangan sentuh (termasuk Surabaya)
-      pushJobs(jobs, s, upt);
+      pushJobs(jobs, s, UPT_NAMA_TO_ID.get(upt) || s.upt_id || s.data?.uptId, upt);
     }
-    for (const s of grs || []) pushJobs(jobs, s, GRESIK_UPT);
+    for (const s of grs || []) { stockRowsForOpname.push(s); pushJobs(jobs, s, s.upt_id || s.data?.uptId || "UPT-GRS", GRESIK_UPT); }
   }
+
+  // Foto historis hanya ikut AI setelah sesi benar-benar SELESAI.
+  const { data: opnameRows, error: opnameErr } = await supabase
+    .from("stock_opname").select("id,upt_id,data").eq("status", "SELESAI");
+  if (opnameErr) { console.error("❌ Gagal baca stock_opname:", opnameErr.message); process.exit(1); }
+  for (const row of opnameRows || []) pushOpnameJobs(jobs, row, stockRowsForOpname);
 
   // Dedup by id: banyak baris stok (lokasi berbeda) berbagi katalog yang sama →
   // foto per katalog, jangan embed berkali-kali untuk katalog yang sama.
@@ -140,16 +151,17 @@ async function main() {
 
   // 3. Skip yang sudah ada embedding-nya (resume), kecuali --force.
   const { data: existing, error: exErr } = await supabase
-    .from("stock_photo_embeddings").select("id");
+    .from("stock_photo_embeddings").select("id,photo_url,ocr_text");
   if (exErr) { console.error("❌ Gagal baca stock_photo_embeddings:", exErr.message); process.exit(1); }
-  const doneIds = new Set((existing || []).map((r) => r.id));
+  const existingById = new Map((existing || []).map((r) => [r.id, r]));
 
   const perUpt = {};
   const todo = [];
   for (const j of uniqJobs) {
     perUpt[j.upt] = perUpt[j.upt] || { total: 0, todo: 0, done: 0 };
     perUpt[j.upt].total++;
-    if (!FORCE && doneIds.has(j.id)) { perUpt[j.upt].done++; continue; }
+    const prior = existingById.get(j.id);
+    if (!FORCE && prior?.photo_url === j.photoUrl && (!j.ocr || prior.ocr_text || !OCRSPACE_API_KEY)) { perUpt[j.upt].done++; continue; }
     perUpt[j.upt].todo++;
     todo.push(j);
   }
@@ -172,8 +184,9 @@ async function main() {
       const mime = res.headers.get("content-type") || "image/jpeg";
       const vec = await embedImageWithRetry(`data:${mime};base64,${buf.toString("base64")}`);
 
+      const ocrText = j.ocr ? await ocrNameplate(j.photoUrl) : null;
       const { error: upErr } = await supabase.from("stock_photo_embeddings").upsert(
-        [{ id: j.id, upt: j.upt, katalog: j.katalog, source: j.source, photo_url: j.photoUrl, embedding: vec, updated_at: new Date().toISOString() }],
+        [{ id: j.id, upt_id: j.uptId, upt: j.upt, katalog: j.katalog, source: j.source, photo_url: j.photoUrl, embedding: vec, ocr_text: ocrText, updated_at: new Date().toISOString() }],
         { onConflict: "id" }
       );
       if (upErr) throw new Error("upsert: " + upErr.message);
@@ -189,13 +202,53 @@ async function main() {
   console.log("✔ COMMIT selesai.");
 }
 
-function pushJobs(jobs, stockRow, upt) {
+function pushJobs(jobs, stockRow, uptId, upt) {
   const d = stockRow.data || {};
   const katalog = String(d.katalog ?? "").trim();
-  if (!katalog) return;
-  const slug = uptSlug(upt);
-  if (d.fotoKeseluruhan) jobs.push({ id: `spe_${slug}_${katalog}_utama`, upt, katalog, source: "utama", photoUrl: d.fotoKeseluruhan });
-  if (d.fotoNameplate) jobs.push({ id: `spe_${slug}_${katalog}_tambahan`, upt, katalog, source: "tambahan", photoUrl: d.fotoNameplate });
+  if (!katalog || !uptId) return;
+  const slug = uptSlug(uptId);
+  if (d.fotoKeseluruhan) jobs.push({ id: `spe_${slug}_${katalog}_utama`, uptId, upt, katalog, source: "utama", photoUrl: d.fotoKeseluruhan });
+  if (d.fotoNameplate) jobs.push({ id: `spe_${slug}_${katalog}_tambahan`, uptId, upt, katalog, source: "tambahan", photoUrl: d.fotoNameplate, ocr: true });
+}
+
+function pushOpnameJobs(jobs, opnameRow, stockRows) {
+  const data = opnameRow.data || {};
+  const uptId = opnameRow.upt_id || data.uptId || data.upt_id;
+  if (!uptId || data.status && data.status !== "SELESAI") return;
+  const upt = UPTID_TO_NAMA.get(uptId) || uptId;
+  for (const [index, item] of (data.items || []).entries()) {
+    const exact = item.stockId ? (stockRows || []).find(row => String(row.id) === String(item.stockId) && (row.upt_id || row.data?.uptId) === uptId) : null;
+    const itemCode = String(item.katalogId || "").trim();
+    const itemKatalog = String(item.noKatalog || "").trim();
+    const candidates = (stockRows || []).filter(row => {
+      if ((row.upt_id || row.data?.uptId) !== uptId) return false;
+      const rowId = String(row.data?.katalogId || "").trim();
+      const rowCode = String(row.data?.katalog || "").trim();
+      return (itemCode && rowId === itemCode) || (itemKatalog && rowCode === itemKatalog);
+    });
+    const stock = exact || (candidates.length === 1 ? candidates[0] : null);
+    const katalog = String(item.noKatalog || stock?.data?.katalog || "").trim();
+    if (!katalog) continue;
+    const key = String(item.stockId || item.katalogId || item.noKatalog || index).replace(/[^a-zA-Z0-9_-]+/g, "-");
+    const slug = uptSlug(uptId);
+    if (item.fotoKeseluruhan) jobs.push({ id: `spe_${slug}_opname_${opnameRow.id}_${key}_utama`, uptId, upt, katalog, source: "opname-utama", photoUrl: item.fotoKeseluruhan });
+    if (item.fotoNameplate) jobs.push({ id: `spe_${slug}_opname_${opnameRow.id}_${key}_nameplate`, uptId, upt, katalog, source: "opname-nameplate", photoUrl: item.fotoNameplate, ocr: true });
+  }
+}
+
+async function ocrNameplate(photoUrl) {
+  if (!OCRSPACE_API_KEY) return null;
+  const res = await fetch(photoUrl);
+  if (!res.ok) throw new Error(`download OCR gagal ${res.status}`);
+  const blob = new Blob([await res.arrayBuffer()], { type: res.headers.get("content-type") || "image/jpeg" });
+  const form = new FormData();
+  form.append("language", "eng");
+  form.append("isOverlayRequired", "false");
+  form.append("file", blob, "nameplate.jpg");
+  const response = await fetch("https://api.ocr.space/parse/image", { method: "POST", headers: { apikey: OCRSPACE_API_KEY }, body: form });
+  if (!response.ok) throw new Error(`OCR.space gagal ${response.status}`);
+  const data = await response.json();
+  return (data.ParsedResults || []).map(row => row.ParsedText || "").join("\n").trim();
 }
 
 main().catch((e) => { console.error("FATAL:", e); process.exit(1); });

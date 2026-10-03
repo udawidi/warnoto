@@ -32,7 +32,7 @@ test("supplied photos still normalize before persistence", async () => {
   assert.deepEqual(calls, [["KAT-1", "fotoKeseluruhan", "data:image/jpeg;base64,AAA", "UPT-SBY"]]);
   assert.match(result.items[0].fotoKeseluruhan, /stock-photos/);
   assert.match(hook, /normalizeOpnamePhotos\(opn, uploadStockFoto\)/);
-  assert.match(hook, /fotoByStockId\[photoTarget\]/);
+  assert.match(hook, /resolveOpnamePhotoTarget/);
   assert.match(card, /Telah dilakukan Stock Opname pada tanggal/);
   assert.match(docs, /Telah dilakukan Stock Opname pada tanggal/);
 });

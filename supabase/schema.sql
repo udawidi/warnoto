@@ -2032,6 +2032,7 @@ create extension if not exists vector;   -- (idempotent; sudah ada dari section 
 
 create table if not exists stock_photo_embeddings (
   id         text primary key,      -- "spe_<uptslug>_<katalog>_<source>", stabil → re-run = upsert
+  upt_id     text not null,         -- canonical UPT scope; migration maps unique master name/slug, never catalog alone
   upt        text not null,         -- scope UPT (Opsi B) — "UPT Surabaya" dst
   katalog    text not null,         -- join key ke Master Katalog / stocks
   source     text not null,         -- 'utama' | 'tambahan' | 'nameplate'
@@ -2041,13 +2042,17 @@ create table if not exists stock_photo_embeddings (
   updated_at timestamptz default now()
 );
 create index if not exists idx_spe_upt_katalog on stock_photo_embeddings(upt, katalog);
+create index if not exists idx_spe_upt_id_katalog on stock_photo_embeddings(upt_id, katalog);
 create index if not exists idx_spe_embedding on stock_photo_embeddings using hnsw (embedding vector_cosine_ops);
 
 alter table stock_photo_embeddings enable row level security;
 drop policy if exists "Authenticated read spe" on stock_photo_embeddings;
 drop policy if exists "Authenticated write spe" on stock_photo_embeddings;
-create policy "Authenticated read spe"  on stock_photo_embeddings for select using (auth.role() = 'authenticated');
-create policy "Authenticated write spe" on stock_photo_embeddings for all   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "Scoped read stock photo embeddings" on stock_photo_embeddings for select to authenticated
+  using (public.can_access_upt(upt_id));
+revoke insert, update, delete on stock_photo_embeddings from anon, authenticated;
+grant select on stock_photo_embeddings to authenticated;
+grant all on stock_photo_embeddings to service_role;
 
 -- Pencarian similarity per MATERIAL: skor = kemiripan tertinggi antar foto katalog
 -- itu, disaring >= min_similarity (default 0.60), top match_count (default 10).
@@ -2071,6 +2076,29 @@ as $$
   order by similarity desc
   limit match_count;
 $$;
+
+-- Tenant-safe replacement. Keep the legacy RPC above during staged frontend rollout.
+create or replace function public.match_stock_photos_scoped(
+  query_embedding vector(1024),
+  p_upt_ids text[] default null,
+  match_count int default 10,
+  min_similarity float default 0.6
+)
+returns table(upt_id text, katalog text, similarity float)
+language sql stable
+as $$
+  select e.upt_id, e.katalog, max(1 - (e.embedding <=> query_embedding))::float as similarity
+  from public.stock_photo_embeddings e
+  where e.embedding is not null
+    and public.can_access_upt(e.upt_id)
+    and (p_upt_ids is null or e.upt_id = any(p_upt_ids))
+  group by e.upt_id, e.katalog
+  having max(1 - (e.embedding <=> query_embedding)) >= min_similarity
+  order by similarity desc
+  limit greatest(0, least(coalesce(match_count, 10), 100));
+$$;
+revoke all on function public.match_stock_photos_scoped(vector(1024), text[], int, float) from public;
+grant execute on function public.match_stock_photos_scoped(vector(1024), text[], int, float) to authenticated;
 
 -- Bucket foto untuk visual search (dedicated, terpisah dari 'material-photos').
 -- Public-read supaya thumbnail cepat tampil; upload lewat service key (migrasi)

@@ -1548,7 +1548,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
 
   return (
     <div>
-      <div style={{display:showWork?"block":"none"}}>
+      {showWork && <div>
       <OperationsHero
         eyebrow="Stock Opname"
         title="Stock Opname"
@@ -1679,7 +1679,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
       <StockOpnameApprovalReview opn={reviewApproval} C={C} sty={sty} users={users} lokasiList={lokasiList}
         onApprove={approveOpname_Asman} onClose={()=>setReviewApproval(null)} />
       {/* Sekat: pisahkan proses opname (atas) dari riwayat (bawah) — hairline + judul seksi (Apple-like). */}
-      </div>
+      </div>}
 
       {/* Fase F: metadata resmi disimpan di JSON sesi sebelum popup diisi. Sengaja di LUAR
           div showWork/showHistory — dipicu tombol dari dua tempat (panel kerja & Riwayat),
@@ -1745,7 +1745,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         </div>
       )}
 
-      <div className="inventory-assurance-history" style={{display:showHistory?"block":"none"}}>
+      {showHistory && <div className="inventory-assurance-history">
       <div style={{borderTop:`1px solid ${C.border}`,marginTop:24,paddingTop:16,marginBottom:10}}>
         <div className="inventory-assurance-history__title">Riwayat Opname</div>
       </div>
@@ -1807,7 +1807,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
           </div>
         )}
       </div>
-      </div>
+      </div>}
     </div>
   );
 

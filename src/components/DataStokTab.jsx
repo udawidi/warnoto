@@ -10,6 +10,7 @@ import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceL
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
+import { stockUptId } from "../lib/stockOpnamePhotoHistory.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { Camera, X, ImageSquare, Tag, MapPin, ArrowsLeftRight, CaretUp, CaretDown, CaretRight, Clock, Barcode } from "@phosphor-icons/react";
 import { OperationsHero } from "./OperationsHero.jsx";
@@ -242,15 +243,17 @@ export function DataStokTab({
                   ) : (
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
                       {photoSearchResults.map(r=>{
-                        const est = enrichedStocks.find(s=>String(s.katalog)===String(r.katalog));
+                        const resultUpt = r.upt_id || r.uptId || r.upt || null;
+                        const est = resultUpt ? enrichedStocks.find(s=>String(s.katalog)===String(r.katalog) && String(stockUptId(s))===String(resultUpt)) : null;
                         const thumb = resolveStockPhotoUrl(est?.fotoKeseluruhan || est?.img);
                         const pct = Math.round((r.similarity||0)*100);
                         return (
-                          <div key={r.katalog} onClick={()=>est&&setStockDetailId(est.id)} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,cursor:est?"pointer":"default",display:"flex",gap:10,alignItems:"center",background:C.surface}}>
-                            {thumb ? <img src={thumb} alt="" style={{width:54,height:54,objectFit:"cover",borderRadius: 10,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius: 10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ImageSquare size={22} color={C.accent} aria-hidden="true"/></div>}
+                          <div key={`${resultUpt}|${r.katalog}`} onClick={()=>est&&setStockDetailId(est.id)} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,cursor:est?"pointer":"default",display:"flex",gap:10,alignItems:"center",background:C.surface}}>
+                            {thumb ? <img src={thumb} alt="" loading="lazy" decoding="async" style={{width:54,height:54,objectFit:"cover",borderRadius: 10,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius: 10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ImageSquare size={22} color={C.accent} aria-hidden="true"/></div>}
                             <div style={{minWidth:0,flex:1}}>
                               <div style={{fontWeight:700,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{est?.name||"(tidak ada di Data Stok)"}</div>
                               <div style={{fontSize:12,color:"#0098da",fontWeight:700}}><Tag size={13} style={{verticalAlign:"-0.15em",marginRight:3}} aria-hidden="true"/> {r.katalog}</div>
+                              {resultUpt && <div style={{fontSize:11,color:C.muted}}>UPT: {resultUpt}</div>}
                               <div style={{fontSize:12,fontWeight:800,color:pct>=80?C.green:pct>=70?"#d97706":C.muted,marginTop:2}}>{pct}% {photoSearchResultMode==="nameplate"?"cocok":"mirip"}</div>
                             </div>
                           </div>

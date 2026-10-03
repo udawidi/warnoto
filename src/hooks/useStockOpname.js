@@ -9,6 +9,7 @@ import { approveStockOpnameAtomically } from "../lib/stockOpnameApproval.js";
 import { buildStockOpnameComparisons, stockOpnameDiscrepancyNoteErrors } from "../lib/stockOpnameReconciliation.js";
 import { mergeOpnameForSave } from "../lib/stockOpnameFlow.js";
 import { mapStockScopeRow } from "../lib/stockScope.js";
+import { archiveAndPromoteOpnamePhoto, resolveOpnamePhotoTarget, stockUptId } from "../lib/stockOpnamePhotoHistory.js";
 
 function readCachedList(key) {
   try { return JSON.parse(localStorage.getItem('warnoto_' + key) || "null"); } catch { return null; }
@@ -278,40 +279,35 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
       notulenList.push({ katalog: item.noKatalog, nama: item.namaBarang, dari, ke: item.pindahJenis, catatan: "Diusulkan masuk SAP" });
     });
 
-    // Fase D — riwayat Stock Opname per katalog (Kartu Gantung) + foto opname auto-update
-    // ke Data Stok kalau ADA foto baru (base64 → Storage; kalau tak ada, foto lama dipertahankan).
+    // Fase D — riwayat Stock Opname per stok+UPT + foto opname auto-update.
+    // Katalog bukan identitas tenant: nomor sama antar-UPT tidak boleh tertukar.
     const nowHist = Date.now();
     const histEntry = { opnameId: opn.id, tanggal: nowHist, tahun: new Date(nowHist).getFullYear(), semester: opn.semester || "" };
-    const countedKatalogIds = new Set();
-    const fotoByStockId = {};
-    const fotoByKatalog = {};
+    const countedStockIds = new Set();
+    const photoItems = [];
     for (const item of (opn.items||[])) {
       if (!itemCounted(item)) continue;
-      const resolvedKatalogId = item.katalogId || materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
-      if (resolvedKatalogId) countedKatalogIds.add(resolvedKatalogId);
       if (Number(item.qtsFisik) <= 0) continue;
-      const photoTarget = item.stockId;
+      const resolvedKatalogId = item.katalogId || materialBaruKatalogByCode.get(String(item.noKatalog || "").trim());
+      const normalizedItem = resolvedKatalogId && resolvedKatalogId !== item.katalogId ? { ...item, katalogId: resolvedKatalogId } : item;
       for (const field of ["fotoKeseluruhan","fotoNameplate"]) {
-        const val = item[field];
+        const val = normalizedItem[field];
         if (typeof val === "string" && val.startsWith("data:")) throw new Error("Foto legacy belum dinormalisasi.");
-        if (typeof val === "string" && val && !val.startsWith("data:")) {
-          if (photoTarget) fotoByStockId[photoTarget] = { ...(fotoByStockId[photoTarget] || {}), [field]: val };
-          else if (resolvedKatalogId) fotoByKatalog[resolvedKatalogId] = { ...(fotoByKatalog[resolvedKatalogId] || {}), [field]: val };
-        }
+      }
+      const target = resolveOpnamePhotoTarget(normalizedItem, newStocks, opn);
+      if (target.stock) {
+        countedStockIds.add(target.stock.id);
+        photoItems.push({ item: normalizedItem, target: target.stock });
       }
     }
     newStocks = newStocks.map(s => {
-      if (!countedKatalogIds.has(s.katalogId)) return s;
+      if (!countedStockIds.has(s.id) || stockUptId(s) !== sessionUptId) return s;
       const hist = Array.isArray(s.opnameHistory) ? s.opnameHistory : [];
-      const already = hist.some(h => h.opnameId === opn.id);
-      const sameCatalogRows = newStocks.filter(row => row.katalogId === s.katalogId);
-      const foto = fotoByStockId[s.id] || (sameCatalogRows.length === 1 ? fotoByKatalog[s.katalogId] : {}) || {};
-      return { ...s,
-        opnameHistory: already ? hist : [...hist, histEntry],
-        ...(foto.fotoKeseluruhan ? { fotoKeseluruhan: foto.fotoKeseluruhan } : {}),
-        ...(foto.fotoNameplate ? { fotoNameplate: foto.fotoNameplate } : {}),
-        updatedAt: nowHist,
-      };
+      const already = hist.some(h => h.opnameId === opn.id && (h.uptId || sessionUptId) === sessionUptId);
+      let next = { ...s, opnameHistory: already ? hist : [...hist, { ...histEntry, uptId: sessionUptId }] };
+      const item = photoItems.find(row => row.target.id === s.id)?.item;
+      if (item) next = archiveAndPromoteOpnamePhoto(next, item, opn, nowHist).stock;
+      return { ...next, updatedAt: nowHist };
     });
 
     const approvedItems = (opn.items || []).map(item => {

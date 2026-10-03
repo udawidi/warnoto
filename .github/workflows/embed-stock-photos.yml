@@ -21,4 +21,5 @@ jobs:
           NEW_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           NEW_SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
+          OCRSPACE_API_KEY: ${{ secrets.OCRSPACE_API_KEY }}
         run: node scripts/embed_stock_photos.mjs --all --commit

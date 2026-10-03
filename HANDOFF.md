@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-01
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-03
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -9,7 +9,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ### Infrastruktur & data
 - **Production = Supabase SELF-HOST** di `minipc-gudang` (domain `warnoto.com`), migrasi dari Cloud (`tadxodrzoquugnsyejld`) selesai 2026-07-22. Cloud lama sengaja DIBIARKAN HIDUP sebagai jaring rollback tapi **aplikasi TIDAK membacanya**. Akses DB: `ssh minipc-gudang` + `docker exec supabase-db psql`. **Perubahan skema = proposal dulu, eksekusi hanya setelah konfirmasi user.** JANGAN drop `wa_sync_status` (masih dipakai bot Telegram).
-- **Stack docker-compose di minipc-gudang (6, jangan saling-tumpuk edit):** `vps-backup` (pg_dump `-Fc` public tiap jam + `backup-auth-storage.sh` harian 02:00 schema auth/storage/vault + `mirror-to-disk2.sh` ke `/mnt/backup2`); **`vps-dr-stack` = PRODUCTION AKTIF sesungguhnya** (koreksi 2026-07-28 — bukan "standby" seperti catatan lama; traffic production benar-benar lewat sini, jangan dimatikan); `vps-monitor` (healthcheck GoTrue, alert Telegram); `vps-observability` (Prometheus/Grafana/Alertmanager, LAN-only); `vps-staging` (Caddy static); `vps-remote-ssh` (tunnel Cloudflare SSH). SSH host: `minipc-gudang` (LAN 10.91.21.202, static sejak 2026-08-09; alias `~/.ssh/config` sempat basi di .231) / `minipc-gudang-home` (tunnel `ssh-admin.warnoto.com`). Disk root 879GB, `/mnt/backup2` 445GB. Supabase self-host TIDAK punya PITR — dump ini jaring utama.
+- **Stack docker-compose di minipc-gudang (6, jangan saling-tumpuk edit):** `vps-backup` membackup langsung container production self-host `supabase-db`—public tiap jam memakai `supabase_admin --role=supabase_read_only_user`, serta auth/storage/vault harian 02:00 UTC memakai `supabase_admin`; konfigurasi aktif tidak lagi menunjuk Cloud lama. Ada dua mirror: (1) PVE warm standby dengan PostgreSQL physical streaming realtime dan rsync Storage tiap 2 menit; (2) `mirror-to-disk2.sh` yang menyalin dump ke `/mnt/backup2` setiap 03:00 WIB (`20:00 UTC`). Dump Cloud lama dipisahkan ke subfolder `legacy-cloud` pada sumber dan disk kedua. Restore bersih memerlukan extension preflight (`pgcrypto`, `uuid-ossp`, `vector`, `pg_net`, `supabase_vault`) dan urutan auth/storage/vault pre-data+data → public → post-data. **`vps-dr-stack` = PRODUCTION AKTIF sesungguhnya** (koreksi 2026-07-28 — bukan "standby" seperti catatan lama; traffic production benar-benar lewat sini, jangan dimatikan); `vps-monitor` (healthcheck GoTrue, alert Telegram); `vps-observability` (Prometheus/Grafana/Alertmanager, LAN-only); `vps-staging` (Caddy static); `vps-remote-ssh` (tunnel Cloudflare SSH). SSH host: `minipc-gudang` (LAN 10.91.21.202, static sejak 2026-08-09; alias `~/.ssh/config` sempat basi di .231) / `minipc-gudang-home` (tunnel `ssh-admin.warnoto.com`). Disk root 879GB, `/mnt/backup2` 445GB. Supabase self-host TIDAK punya PITR — dump ini jaring utama.
 - **JANGAN test via `curl` langsung ke `/rest/v1/*` di `warnoto.com` dengan ID mirip data asli** (pernah menimpa baris stok produksi, 2026-07-22). Pakai prefix `TEST-` konsisten atau container Postgres scratch terpisah.
 - **Domain:** akses produksi = `pln.warnoto.com` (`warnoto.vercel.app` redirect 308). Apex `warnoto.com` = endpoint DB self-host (`VITE_SUPABASE_URL`, Cloudflare Tunnel) — **JANGAN disentuh**.
 - **Realtime Data Stok self-host aktif** — publication `supabase_realtime` berisi hanya `public.stocks`.
@@ -71,6 +71,12 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Riwayat foto Stock Opname pada Data Stok selesai lokal (2026-10-03).** Foto sesi `SELESAI` dipromosikan menjadi foto utama tanpa menghapus foto lama; modal Data Stok memiliki switch `Detail | Riwayat | Opname` dengan render gambar hanya untuk sesi aktif. Upload, galeri, pencarian visual, dan OCR historis diisolasi per UPT. Migration RLS/RPC scoped serta backfill dry-run sudah disiapkan tetapi belum diterapkan ke production. Verifikasi lokal: 484/484 test, build, dan diff-check lulus. Spec: `specs/025-opname-photo-history/`.
+
+- **Backup production self-host dan recovery PVE terverifikasi (2026-10-03).** Backup per jam dan backup auth/storage/vault yang sebelumnya masih menunjuk Supabase Cloud lama sudah dialihkan ke container production `supabase-db`. Dump Cloud lama dipindahkan tanpa dihapus ke `legacy-cloud` (190 public dan 31 auth/storage/vault) serta tercermin identik di disk kedua. Dump baru public 25.643.048 byte dan auth/storage/vault 1.093.831 byte sudah dimirror ke `/mnt/backup2`; jadwal mirror disk kedua kini 03:00 WIB. Restore penuh di container PostgreSQL kosong lulus tanpa error; jumlah baris 236 tabel cocok, termasuk `auth.users=45`, `storage.objects=5771`, `stocks=776`, `katalog=1082`, dan `profiles=45`. Standby PVE tetap `streaming` dengan lag WAL 0 byte; checksum seluruh 5.771 objek Storage cocok. Konfigurasi lama tersimpan sebagai `*.pre-selfhost-20261003-ops` dan crontab lama sebagai `crontab.pre-mirror-time-20261003-ops`.
+
+- **Pendaftaran akun role Perencanaan (`RENEV`) pulih di production (2026-10-03, `28c7e74`).** Validasi role pada `admin-create-user`, `admin-update-user`, dan importer akun bulk sudah disinkronkan dengan role/permission frontend. `RENEV` tetap UPT-scoped, tanpa kuota struktural, dan hanya memiliki akses reservasi/TUG-5 sesuai permission existing. Kedua Edge Function sudah dideploy ke self-host tanpa restart. Contract test 2/2 dan build production lulus; smoke pendaftaran akun nyata oleh SUPERADMIN masih perlu dilakukan.
 
 - **Approval final TUG-8/TUG-9 tidak lagi menunggu refresh penuh stok (2026-10-01, lokal).** RPC keputusan tetap ditunggu sebagai sumber kebenaran, sedangkan reload stok berjalan di background. Modal Asman mengunci tombol dan penutupan selama proses serta menampilkan `Menyetujui…` untuk mencegah klik ganda. Verifikasi: 468/468 unit test, build, diff-check, dan review senior lulus; belum commit/push.
 
@@ -654,6 +660,10 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Jalankan pengujian localhost untuk Data Stok > detail material > switch `Opname`: pastikan default tetap `Detail`, hanya sesi aktif memuat gambar, foto lama terlihat, dan katalog sama dari UPT lain tidak muncul. Setelah localhost disetujui pengguna, review dry-run production, lalu minta persetujuan terpisah sebelum migration/backfill, commit/push, dan verifikasi production.
+
+- Login sebagai SUPERADMIN dan daftarkan satu akun role Perencanaan pada UPT yang benar; pastikan akun berhasil login dan hanya melihat alur reservasi/TUG-5 sesuai permission `RENEV`.
+
 - Setelah commit/push dan deploy Vercel, login sebagai Asman lalu setujui satu TUG-9 yang valid. Pastikan tombol segera berubah menjadi `Menyetujui…`, tidak dapat diklik ganda, modal selesai tanpa menunggu reload seluruh stok, status menjadi APPROVED, dan saldo stok berkurang tepat sekali.
 - Setelah deploy Vercel, buka form TUG-10 dengan katalog dan blok yang sudah memiliki stok. Uji Gabungkan → Pisah lot → Gabungkan; form tidak boleh error, target stok harus kembali otomatis, dan kartu material harus tetap compact di desktop maupun ponsel.
 - Setelah deploy Vercel selesai, refresh bersih lalu buka Approval TUG-10 dokumen `276.TUG-10/LOG.00.01/UPT-SBYA/X/2026`. Preview harus menampilkan mode Gabungkan dan proyeksi `3 → 6`; klik Setuju satu kali, lalu pastikan status APPROVED dan `STK-SAP-2020136` tepat 6.
@@ -786,6 +796,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - `npm run build`
 - `npm test`
 - `node --test tests/unit/authBootstrap.contract.test.mjs tests/unit/stockOpnameRequiredPhoto.test.mjs`
+- `node --test tests/unit/stockOpnamePhotoHistory.test.mjs tests/unit/stockOpnamePhotoScoped.contract.test.mjs`
 - `node --test tests/unit/stockOpnameFlow.test.mjs tests/unit/stockOpnameDocumentPackage.test.mjs`
 - `npx playwright test tests/e2e/opname-lapangan.spec.js --project=phone-360 --workers=1`
 - `npx playwright test tests/e2e/stock-opname-sap-first.spec.js`
@@ -806,5 +817,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-09-28 Codex: **Tambah Sub Gudang untuk TL/SUPERADMIN dan dropdown Lokasi Data Stok berkelompok per Sub Gudang selesai lokal; test dan build lulus.**
 - 2026-10-01 Codex: **Approval TUG-10 atomik dengan pilihan merge/separate aktif; crash pilihan lot diperbaiki dan kartu material dibuat compact, dengan test serta build lulus.**
+- 2026-10-03 Codex: **Role Perencanaan pulih; backup/recovery self-host terverifikasi; riwayat foto Stock Opname per UPT selesai lokal dan siap diuji di localhost.**
