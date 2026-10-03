@@ -36,4 +36,7 @@ test("TUG3 history card contract title order and fallback", () => {
   const tug3Source = fs.readFileSync(new URL("../../src/components/TUG3Tab.jsx", import.meta.url), "utf8");
   assert.ok(tug3Source.indexOf("{t.dariSupplier}") < tug3Source.indexOf("Judul Kontrak: {t.judulKontrak || \"-\"}"));
   assert.match(tug3Source, /Judul Kontrak: \{t\.judulKontrak \|\| "-"\}/);
+  assert.match(tug3Source, /No\. TUG:/);
+  assert.match(tug3Source, /minHeight:44,padding:"10px 12px"/);
+  assert.match(tug3Source, /<summary style=/);
 });

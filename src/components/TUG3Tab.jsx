@@ -57,22 +57,24 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
           const approval = approvalLine(t, tlUser, asmanUser);
           return (
             <div key={t.id} style={{...sty.card,padding:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
-                <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",minWidth:0,flex:"1 1 260px"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:10,flexWrap:"wrap",marginBottom:8}}>
+                <div style={{display:"flex",flexDirection:"column",gap:5,minWidth:0,flex:"1 1 280px"}}>
                   <div style={{display:"flex",flexDirection:"column",gap:3,minWidth:0}}>
-                  <span style={{fontWeight:800,fontSize:13}}>{t.dariSupplier}</span>
-                  <span style={{fontSize:12,color:C.muted,overflowWrap:"anywhere"}}>Judul Kontrak: {t.judulKontrak || "-"}</span>
+                    <span style={{fontWeight:800,fontSize:13}}>{t.dariSupplier}</span>
+                    <span style={{fontSize:12,color:C.muted,overflowWrap:"anywhere"}}>Judul Kontrak: {t.judulKontrak || "-"}</span>
                   </div>
-                  <span style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers?.tug3 || (t.stage==="DRAFT" ? "Draft" : "-")}</span>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",fontSize:12}}>
+                    <span style={{color:"#0098da",fontWeight:700,overflowWrap:"anywhere"}}>No. TUG: {t.docNumbers?.tug3 || (t.stage==="DRAFT" ? "Draft" : "-")}</span>
                   <span style={{fontSize:12,color:C.muted}}>{t.tanggalDiterima||"-"} · {t.stockItems.length} barang{tm ? ` · Tim: ${tm.label}` : ""}</span>
+                  </div>
                 </div>
-                {stageBadge(t.stage)}
+                <div style={{flex:"0 0 auto",maxWidth:"100%"}}>{stageBadge(t.stage)}</div>
               </div>
 
               {approval && <div style={{fontSize:12,color:C.muted,marginBottom:6}}>{approval}</div>}
 
               <details style={{marginBottom:6}}>
-                <summary style={{cursor:"pointer",color:C.muted,fontSize:12}}>Lihat item ({t.stockItems.length})</summary>
+                <summary style={{cursor:"pointer",color:C.text,fontSize:12,fontWeight:700,minHeight:44,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,border:`1px solid ${C.border}`,borderRadius:8,background:C.bg2||"#f9fafb"}}>Lihat item ({t.stockItems.length})</summary>
                 <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginTop:4}}>
                   {t.stockItems.map((si,idx)=>{
                     const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name || si.snapshot?.name || "?") : si.namaBaru;

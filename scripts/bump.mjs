@@ -1,14 +1,19 @@
 // Bump versi WARNOTO dengan carry-at-100: patch 0-99, saat mencapai 100 → minor +1, patch 00.
-// Contoh: 2.0.99 → 2.1.0 (tampil V2.1.00), 2.1.99 → 2.2.0 (tampil V2.2.00). Major tetap.
+// Contoh: 2.0.99 → 2.1.0 (tampil V2.1.00), 2.99.99 → 3.0.0.
 // npm version bawaan TIDAK carry di batas 100 (2.0.99 → 2.0.100), makanya skrip sendiri.
+// Carry patch ke minor dan minor ke major ditangani penuh pada basis 100.
 // Simpan semver valid (tanpa leading zero) di package.json; padding 2-digit hanya di tampilan.
-// ponytail: minor→major carry tak ditangani (YAGNI, minor masih jauh dari 100).
 import { readFileSync, writeFileSync } from "node:fs";
 
+export function normalizeVersion(v) {
+  const [major, minor, patch] = String(v).split(".").map(Number);
+  const minorTotal = minor + Math.floor(patch / 100);
+  return `${major + Math.floor(minorTotal / 100)}.${minorTotal % 100}.${patch % 100}`;
+}
+
 export function nextVersion(v) {
-  const [major, minor, patch] = v.split(".").map(Number);
-  const c = minor * 100 + patch + 1;
-  return `${major}.${Math.floor(c / 100)}.${c % 100}`;
+  const [major, minor, patch] = normalizeVersion(v).split(".").map(Number);
+  return normalizeVersion(`${major}.${minor}.${patch + 1}`);
 }
 
 // Self-check: batas carry harus benar.
@@ -23,5 +28,10 @@ if (isMain) {
   const next = nextVersion(pkg.version);
   pkg.version = next;
   writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+  const lockPath = new URL("../package-lock.json", import.meta.url);
+  const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+  lock.version = next;
+  if (lock.packages?.[""]) lock.packages[""].version = next;
+  writeFileSync(lockPath, JSON.stringify(lock, null, 2) + "\n");
   console.log(`versi: ${next}`);
 }
