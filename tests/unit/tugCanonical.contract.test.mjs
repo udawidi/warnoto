@@ -228,10 +228,16 @@ test("TUG-15 report files remain outside canonical scope", () => {
 
 test("canonical final approval does not block on full stock refresh and prevents double click", () => {
   assert.match(app, /void loadMasterTable\("stocks"\)\.then\(freshStocks =>/);
+  assert.match(app, /canonicalApprovalInFlightRef = useRef\(new Set\(\)\)/);
+  assert.match(app, /canonicalApprovalInFlightRef\.current\.has\(txn\.id\)/);
+  assert.match(app, /if \(txn\.docType === "TUG9" \|\| txn\.docType === "TUG8"\) \{[\s\S]*?canonicalApprovalInFlightRef\.current\.add\(txn\.id\)/);
+  assert.match(app, /canonicalApprovalInFlightRef\.current\.delete\(txn\.id\)/);
   assert.match(overview, /const \[approving, setApproving\] = useState\(false\)/);
   assert.match(overview, /if\(approving\)return;setApproving\(true\)/);
   assert.match(overview, /disabled=\{loading\|\|approving\|\|!!error\|\|fail\}/);
   assert.match(overview, /approving \? "Menyetujui…" : finalLabel/);
+  assert.match(overview, /Meneruskan ke Asman…/);
+  assert.match(overview, /role="status"/);
 });
 
 test("source history is separate from signed item evidence and server-derived", () => {

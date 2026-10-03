@@ -609,6 +609,7 @@ export default function PLNWarehouse() {
   // One user action keeps the same RPC idempotency keys across retry after a timeout.
   const canonicalActionKeysRef = useRef(null);
   const canonicalDecisionKeysRef = useRef({});
+  const canonicalApprovalInFlightRef = useRef(new Set());
   const tug10ApprovalKeysRef = useRef({});
   const tug10ApprovalInFlightRef = useRef(new Set());
   const [docPreviewDoc, setDocPreviewDoc] = useState(null); // versi docPreview dgn SIM/KTP privat sudah jadi signed URL
@@ -3261,6 +3262,10 @@ export default function PLNWarehouse() {
 
     if (txn.canonical) {
       if (!review?.reviewToken || !review?.attestations) { showToast("Buka dan selesaikan overview server sebelum approval final.", "error"); return false; }
+      if (canonicalApprovalInFlightRef.current.has(txn.id)) {
+        showToast("Approval transaksi ini sedang diproses.", "info"); return false;
+      }
+      canonicalApprovalInFlightRef.current.add(txn.id);
       try {
         canonicalDecisionKeysRef.current[txn.id] ||= newCanonicalActionKeys().decide;
         const result = await decideCanonicalTug({ txn, decision:"APPROVE", reviewToken:review.reviewToken, attestations:review.attestations, idempotencyKey:canonicalDecisionKeysRef.current[txn.id] });
@@ -3290,6 +3295,8 @@ export default function PLNWarehouse() {
       } catch (err) {
         showToast(`Approval final belum dijalankan: ${err?.message||err}`, "error");
         return false;
+      } finally {
+        canonicalApprovalInFlightRef.current.delete(txn.id);
       }
     }
 
@@ -3302,6 +3309,11 @@ export default function PLNWarehouse() {
     }
 
     if (txn.docType === "TUG9" || txn.docType === "TUG8") {
+      if (canonicalApprovalInFlightRef.current.has(txn.id)) {
+        showToast("Approval transaksi ini sedang diproses.", "info"); return false;
+      }
+      canonicalApprovalInFlightRef.current.add(txn.id);
+      try {
       // Outgoing material: decrease Data Stok qty at the specific location row.
       for (const si of txn.stockItems) {
         const stock = stocks.find(s=>s.id===si.stockId);
@@ -3320,6 +3332,9 @@ export default function PLNWarehouse() {
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers[dKey], {stage: txn.stage||null});
       showToast(isAdminCreated ? `✅ ${txn.docNumbers[dKey]} DISETUJUI! (Asman otomatis ikut menyetujui)` : `✅ ${txn.docNumbers[dKey]} DISETUJUI!`);
       return true;
+      } finally {
+        canonicalApprovalInFlightRef.current.delete(txn.id);
+      }
     }
 
     if (txn.docType === "TUG10") {
@@ -3341,20 +3356,14 @@ export default function PLNWarehouse() {
             return false;
           }
           const forwardedTxn = { ...txn, stage: "PENDING_ASMAN", status: "PENDING", requiredApprover: "ASMAN", approvedByTL: currentUser.id, approvedAtTL: Date.now() };
-          const newTxns = txns.map(t => t.id === txn.id ? forwardedTxn : t);
-          setTxns(newTxns);
-          const savedOk = await saveToCloud({ txns: newTxns });
-          if (savedOk === false) {
-            setTxns(txns);
-            showToast("TUG-10 gagal diteruskan ke Asman. Perubahan dibatalkan; coba lagi.", "error");
-            return false;
-          }
           if (!(await upsertTug10Transaction(forwardedTxn))) {
-            setTxns(txns);
-            try { await saveToCloud({ txns }); } catch {}
             showToast("TUG-10 gagal disimpan ke database. Status tetap menunggu TL; coba lagi.", "error");
             return false;
           }
+          const latestTxns = stateRef.current.txns || txns;
+          const newTxns = latestTxns.map(t => t.id === txn.id ? forwardedTxn : t);
+          setTxns(newTxns);
+          try { CLOUD.set("pln_txns_v3", newTxns); } catch (error) { console.warn("Cache TUG-10 gagal diperbarui:", error); }
           logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.[dKey] || txn.id, { stage: "PENDING_ASMAN" });
           showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} diteruskan ke Asman. Stok belum berubah.`);
           enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });

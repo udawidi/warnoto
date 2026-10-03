@@ -15,6 +15,15 @@ test("TUG-10 final button stays open and reports server submission", () => {
   assert.doesNotMatch(approval, /onClick=\{\(\)=>\{approveTxn\(tug10ReviewTxn\);setTug10ReviewTxn\(null\);\}\}/);
 });
 
+test("TUG-10 TL forwarding persists server-first and only caches the transaction", () => {
+  const forwarding = app.match(/const forwardedTxn = \{[\s\S]*?\n          \}/)?.[0] || "";
+  assert.match(app, /tug10ApprovalInFlightRef\.current\.has\(txn\.id\)/);
+  assert.match(app, /await upsertTug10Transaction\(forwardedTxn\)/);
+  assert.match(app, /const latestTxns = stateRef\.current\.txns \|\| txns/);
+  assert.match(app, /CLOUD\.set\("pln_txns_v3", newTxns\)/);
+  assert.ok(!forwarding.includes("saveToCloud"), "TUG-10 TL forwarding must not full-sync before server ack");
+});
+
 test("TUG-10 has explicit TL then Asman stages", () => {
   assert.match(txns, /nextTug10Stage[\s\S]*?"PENDING_TL"/);
   assert.match(txns, /nextTug10Stage[\s\S]*?"PENDING_ASMAN"/);
