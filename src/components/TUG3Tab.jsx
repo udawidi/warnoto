@@ -7,7 +7,7 @@ import { resolveSapLabel } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { PhotoSlot } from "./PhotoSlot.jsx";
 
-export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, uptList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview }) {
+export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, uptList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview, historySearchActive }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug4Modal, setTug4Modal] = useState(null); // txn being filled (TUG-4 + lampiran final)
@@ -49,7 +49,7 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
   return (
     <div>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {filtered.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada transaksi TUG-3</div>}
+        {filtered.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>{historySearchActive ? "Tidak ada hasil. Coba kata lain atau reset pencarian." : "Belum ada transaksi TUG-3"}</div>}
         {filtered.map(t=>{
           const tlUser = users.find(u=>u.id===t.approvedByTL)||{};
           const asmanUser = users.find(u=>u.id===t.approvedByAsman)||{};
@@ -58,8 +58,11 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
           return (
             <div key={t.id} style={{...sty.card,padding:12}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
-                <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",minWidth:0}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap",minWidth:0,flex:"1 1 260px"}}>
+                  <div style={{display:"flex",flexDirection:"column",gap:3,minWidth:0}}>
                   <span style={{fontWeight:800,fontSize:13}}>{t.dariSupplier}</span>
+                  <span style={{fontSize:12,color:C.muted,overflowWrap:"anywhere"}}>Judul Kontrak: {t.judulKontrak || "-"}</span>
+                  </div>
                   <span style={{fontSize:12,color:"#0098da",fontWeight:700}}>{t.docNumbers?.tug3 || (t.stage==="DRAFT" ? "Draft" : "-")}</span>
                   <span style={{fontSize:12,color:C.muted}}>{t.tanggalDiterima||"-"} · {t.stockItems.length} barang{tm ? ` · Tim: ${tm.label}` : ""}</span>
                 </div>

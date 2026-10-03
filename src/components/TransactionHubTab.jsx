@@ -1,6 +1,7 @@
 // Komponen TransactionHubTab — dipindah dari App.jsx (refactor batch 2c).
 // Murni relokasi blok hub pemilihan jenis TUG (tab==="transaction"); JSX/logic tidak berubah.
-import { useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
+import { MagnifyingGlass } from "@phosphor-icons/react";
 import { TUG3Tab } from "./TUG3Tab.jsx";
 import { TUG5Tab } from "./TUG5Tab.jsx";
 import { TUG15Tab } from "./TUG15Tab.jsx";
@@ -8,6 +9,7 @@ import { ROLES, hasRole } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { fmtDate } from "../lib/utils.js";
 import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
+import { matchesTugHistorySearch } from "../lib/tugSearch.js";
 
 export function TransactionHubTab({
   C, sty, currentUser, isMobile,
@@ -40,14 +42,18 @@ export function TransactionHubTab({
     : txns;
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(1);
+  const [historySearchOpen, setHistorySearchOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState("");
+  const deferredHistorySearch = useDeferredValue(historySearch);
   const pagedDocTypes = ["TUG3", "TUG10", "TUG9", "TUG8"];
-  const filteredDocTxns = pagedDocTypes.includes(tugSubTab)
-    ? filteredTxns.filter(t=>t.docType===tugSubTab)
-    : [];
+  const scopedDocTxns = pagedDocTypes.includes(tugSubTab) ? filteredTxns.filter(t=>t.docType===tugSubTab) : [];
+  const filteredDocTxns = scopedDocTxns.filter(t=>matchesTugHistorySearch(t, deferredHistorySearch, { enrichedStocks, katalogList }));
   const totalPages = Math.max(1, Math.ceil(filteredDocTxns.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedDocTxns = filteredDocTxns.slice((currentPage-1)*pageSize, currentPage*pageSize);
-  useEffect(()=>setPage(1), [tugSubTab, filterStatus, tugUptFilter, pageSize]);
+  // Existing pagination filters remain part of the reset contract: [tugSubTab, filterStatus, tugUptFilter, pageSize]
+  useEffect(()=>setPage(1), [tugSubTab, filterStatus, tugUptFilter, pageSize, deferredHistorySearch]);
+  useEffect(()=>{ setHistorySearch(""); setHistorySearchOpen(false); }, [tugSubTab]);
   const renderPager = filteredDocTxns.length > 0 ? (
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,flexWrap:"wrap",gap:10}}>
       <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:C.muted}}>
@@ -126,6 +132,29 @@ export function TransactionHubTab({
                 </select>
               )}
             </div>}
+            {pagedDocTypes.includes(tugSubTab) && <section aria-label="Pencarian riwayat transaksi TUG" style={{marginTop:8,marginBottom:12}}>
+              <button
+                type="button"
+                aria-expanded={historySearchOpen}
+                onClick={()=>setHistorySearchOpen(open=>{ if (open) { setHistorySearch(""); setPage(1); } return !open; })}
+                style={{...sty.btn("ghost","sm"),minHeight:44,display:"inline-flex",alignItems:"center",gap:7}}
+              ><MagnifyingGlass size={18} weight="bold" aria-hidden="true" /> Cari Riwayat</button>
+              {historySearchOpen && <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginTop:8}}>
+                <label htmlFor="tug-history-search" style={{fontSize:12,fontWeight:700,color:C.muted}}>Cari transaksi</label>
+                <input
+                  id="tug-history-search"
+                  autoFocus
+                  type="search"
+                  value={historySearch}
+                  onChange={e=>setHistorySearch(e.target.value)}
+                  placeholder="Penyedia, material, pekerjaan, nomor dokumen…"
+                  aria-label="Cari penyedia, material, pekerjaan, atau nomor dokumen"
+                  style={{...sty.input,flex:"1 1 320px",minHeight:44,fontSize:16}}
+                />
+                {historySearch && <button type="button" style={{...sty.btn("ghost","sm"),minHeight:44}} onClick={()=>setHistorySearch("")}>Reset</button>}
+                <span aria-live="polite" style={{fontSize:12,color:C.muted}}>{filteredDocTxns.length} dokumen ditemukan</span>
+              </div>}
+            </section>}
 
             {tugSubTab==="TUG3" ? (
               <>
@@ -137,6 +166,7 @@ export function TransactionHubTab({
                   approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
                   submitTUG4DanLampiran={submitTUG4DanLampiran}
                   approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
+                  historySearchActive={!!deferredHistorySearch}
                   editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
                   handleImg={handleImg} setDocPreview={setDocPreview}
                 />
@@ -168,7 +198,7 @@ export function TransactionHubTab({
               />
             ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {filteredTxns.filter(t=>t.docType===tugSubTab).length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>Belum ada transaksi {tugSubTab.replace("TUG","TUG-")}</div>}
+              {filteredDocTxns.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>{deferredHistorySearch ? "Tidak ada hasil. Coba kata lain atau reset pencarian." : `Belum ada transaksi ${tugSubTab.replace("TUG","TUG-")}`}</div>}
               {pagedDocTxns.map(t=>{
                 const creator = users.find(u=>u.id===t.createdBy)||{};
                 const approver = users.find(u=>u.id===t.approvedBy)||{};
