@@ -41,7 +41,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 const AUTH_EMAIL_DOMAIN = "@warnoto.pln.local"; // harus SAMA PERSIS dengan AUTH_EMAIL_DOMAIN di App.jsx
 
-const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT","ADMIN_ULTG","MGR_ULTG","PENGADAAN","VIEWER","SUPERADMIN"];
+const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT","MGR_LOGISTIK_UIT","ADMIN_LOG_PUSAT","ADMIN_ULTG","MGR_ULTG","PENGADAAN","VIEWER","SUPERADMIN","RENEV"];
 
 // Kuota role per UPT/UIT (hard limit) — sama seperti admin-create-user/admin-update-user,
 // supaya batch import CSV tidak bisa bikin 2 Manager/Asman/TL/Admin/Pengadaan di 1 UPT/UIT
