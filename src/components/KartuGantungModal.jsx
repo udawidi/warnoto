@@ -1,16 +1,20 @@
 // Komponen KartuGantungModal — membedakan Halaman Depan (QR Code) & Halaman Belakang (Riwayat Transaksi) TUG.2.
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Printer } from "@phosphor-icons/react";
 import { fmtDate, fmtDateOnly, scanUrlFor } from "../lib/utils.js";
 import { fmtNum, getSAPLabel } from "../lib/ragShared.mjs";
 import { buildKartuGantungHistory, resolveLokasiLengkap, getSAPBadgeStyle, jenisBarangAccentColor, stockSapLabel, scopeKartuGantungData } from "../lib/sap.js";
 import { buildTUG2FrontHTML, buildTUG2FrontCompactHTML, buildTUG2BackHTML } from "../lib/docBuilders.js";
+import { friendlyNiimbotError, printCompactLabelM2h } from "../lib/niimbotM2h.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
 import { UPT } from "../constants.js";
 
 export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangList, subGudangList, users = [], sty, C, onClose, uptNama }) {
   const [view, setView] = useState("front"); // "front" | "back"
+  const [niimbotState, setNiimbotState] = useState("idle");
+  const [niimbotMessage, setNiimbotMessage] = useState("");
+  const niimbotBusyRef = useRef(false);
   const scoped = scopeKartuGantungData(katalog, stocks, txns, lokasiList, gudangList, users);
   const scopedStocks = scoped.stocks;
   const scopedTxns = scoped.txns;
@@ -45,6 +49,33 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
     if (w) {
       w.document.write(html);
       w.document.close();
+    }
+  };
+
+  const handlePrintFrontCompactNiimbot = async () => {
+    if (niimbotBusyRef.current || ["connecting", "preparing", "printing"].includes(niimbotState)) return;
+    niimbotBusyRef.current = true;
+    let phase = "connecting";
+    setNiimbotState("connecting");
+    setNiimbotMessage("Menghubungkan ke NIIMBOT M2-H…");
+    try {
+      await printCompactLabelM2h(katalog, {
+        onStatus: (status) => {
+          phase = status;
+          setNiimbotState(status);
+          setNiimbotMessage({
+            connecting: "Menghubungkan ke NIIMBOT M2-H…",
+            preparing: "Menyiapkan label compact…",
+            printing: "Mencetak label ke NIIMBOT M2-H…",
+            success: "Label compact berhasil dikirim ke NIIMBOT M2-H.",
+          }[status] || "");
+        },
+      });
+    } catch (error) {
+      setNiimbotState("error");
+      setNiimbotMessage(friendlyNiimbotError(error, { phase }));
+    } finally {
+      niimbotBusyRef.current = false;
     }
   };
 
@@ -163,7 +194,18 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
             </div>
 
             {/* Print Button for Front Page */}
+            <div role="status" aria-live="polite" style={{minHeight:18,marginTop:8,textAlign:"center",fontSize:11,color:niimbotState === "error" ? "#b91c1c" : niimbotState === "success" ? "#166534" : "#475569"}}>
+              {niimbotMessage}
+            </div>
             <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",marginTop:14}}>
+              <button
+                onClick={handlePrintFrontCompactNiimbot}
+                disabled={["connecting", "preparing", "printing"].includes(niimbotState)}
+                aria-label="Cetak kartu compact ke NIIMBOT M2-H"
+                style={{...sty.btn("success","sm"),display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:42,padding:"8px 14px",fontSize:12,fontWeight:700,opacity:["connecting", "preparing", "printing"].includes(niimbotState)?0.65:1}}
+              >
+                <Printer size={16} weight="bold" aria-hidden="true" /> NIIMBOT M2-H
+              </button>
               <button onClick={handlePrintFront} style={{...sty.btn("primary","sm"),display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:42,padding:"8px 14px",fontSize:12,fontWeight:700}}>
                 <Printer size={16} weight="bold" aria-hidden="true" /> A4 Existing
               </button>

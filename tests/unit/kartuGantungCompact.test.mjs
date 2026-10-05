@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { buildTUG2FrontHTML, buildTUG2FrontCompactHTML } from "../../src/lib/docBuilders.js";
 
 const katalog = { id: "kat-1", katalog: "CAT-<&\"", name: "Motor <uji> & panjang material dengan deskripsi sangat panjang", satuan: "BH<&" };
@@ -31,4 +32,15 @@ test("compact Kartu Gantung is 70x50 landscape, QR-linked, escaped, and minimal"
   assert.equal((html.match(/class="code"/g) || []).length, 1);
   assert.match(html, /description (?:md|sm|xs)/);
   for (const forbidden of ["foto", "lokasi", "kategori", "PLN_LOGO_DATA_URI"]) assert.equal(html.toLowerCase().includes(forbidden.toLowerCase()), false);
+});
+
+test("Kartu Gantung keeps A4 browser print and compact preview separate from NIIMBOT", async () => {
+  const source = await readFile(new URL("../../src/components/KartuGantungModal.jsx", import.meta.url), "utf8");
+  const a4Handler = source.match(/const handlePrintFront = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || "";
+  const compactHandler = source.match(/const handlePrintFrontCompact = async \(\) => \{([\s\S]*?)\n  \};/)?.[1] || "";
+  assert.match(a4Handler, /buildTUG2FrontHTML/);
+  assert.doesNotMatch(a4Handler, /Niimbot|niimbot/i);
+  assert.match(compactHandler, /buildTUG2FrontCompactHTML/);
+  assert.match(source, /handlePrintFrontCompactNiimbot/);
+  assert.match(source, /aria-live="polite"/);
 });
