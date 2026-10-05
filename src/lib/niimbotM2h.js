@@ -162,6 +162,9 @@ export function friendlyNiimbotError(error, { phase = "connecting" } = {}) {
   if (/counter.*(?:stopped|stalled)|(?:stopped|stalled).*counter/i.test(message)) {
     return "Counter printer NIIMBOT berhenti (stalled). Pastikan roll label terpasang dan printer siap, lalu coba lagi.";
   }
+  if (/Failed to write to BLE|writeValue|Operation failed/i.test(message)) {
+    return "NIIMBOT gagal mengirim data BLE (mode=acked, bundle=0). Pastikan Bluetooth aktif, printer dekat, lalu coba lagi.";
+  }
   if (phase === "printing") {
     return "NIIMBOT gagal menyelesaikan cetak. Label mungkin sudah tercetak sebagian; periksa printer lalu coba lagi.";
   }
@@ -196,7 +199,8 @@ export async function printCompactLabelM2h(katalog, { onStatus } = {}) {
       await resetConnection(driver);
       throw new Error(`Printer model ${printer?.modelId ?? "unknown"} bukan NIIMBOT M2-H (4608).`);
     }
-    driver.WRITE_MODE = "paced";
+    driver.WRITE_MODE = "acked";
+    driver.BUNDLE_MAX = 0;
     onStatus?.("printing");
     await driver.printImage(rasterDataUrl, {
       model: NIIMBOT_M2H_MODEL,
