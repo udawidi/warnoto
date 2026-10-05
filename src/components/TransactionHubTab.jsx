@@ -1,7 +1,7 @@
 // Komponen TransactionHubTab — dipindah dari App.jsx (refactor batch 2c).
 // Murni relokasi blok hub pemilihan jenis TUG (tab==="transaction"); JSX/logic tidak berubah.
-import { useDeferredValue, useEffect, useState } from "react";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { useDeferredValue, useEffect, useRef, useState } from "react";
+import { MagnifyingGlass, Printer } from "@phosphor-icons/react";
 import { TUG3Tab } from "./TUG3Tab.jsx";
 import { TUG5Tab } from "./TUG5Tab.jsx";
 import { TUG15Tab } from "./TUG15Tab.jsx";
@@ -10,6 +10,7 @@ import { can } from "../lib/perms.js";
 import { fmtDate } from "../lib/utils.js";
 import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
 import { matchesTugHistorySearch } from "../lib/tugSearch.js";
+import { friendlyNiimbotError, printCompactLabelM2h, resolveCompactLabelKatalog } from "../lib/niimbotM2h.js";
 
 export function TransactionHubTab({
   C, sty, currentUser, isMobile,
@@ -44,6 +45,8 @@ export function TransactionHubTab({
   const [page, setPage] = useState(1);
   const [historySearchOpen, setHistorySearchOpen] = useState(false);
   const [historySearch, setHistorySearch] = useState("");
+  const niimbotBusyRef = useRef(false);
+  const [niimbotPrint, setNiimbotPrint] = useState({ busy:false, key:"", phase:"", message:"" });
   const deferredHistorySearch = useDeferredValue(historySearch);
   const pagedDocTypes = ["TUG3", "TUG10", "TUG9", "TUG8"];
   const scopedDocTxns = pagedDocTypes.includes(tugSubTab) ? filteredTxns.filter(t=>t.docType===tugSubTab) : [];
@@ -51,6 +54,32 @@ export function TransactionHubTab({
   const totalPages = Math.max(1, Math.ceil(filteredDocTxns.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedDocTxns = filteredDocTxns.slice((currentPage-1)*pageSize, currentPage*pageSize);
+  const getLabelKatalog = item => resolveCompactLabelKatalog(item, katalogList);
+  const niimbotPhaseText = phase => ({
+    connecting: "Menghubungkan ke NIIMBOT…",
+    preparing: "Menyiapkan label…",
+    printing: "Mengirim ke printer…",
+    success: "Cetak selesai.",
+  }[phase] || "");
+  const handlePrintTugLabel = async (item, key) => {
+    if (niimbotBusyRef.current) return;
+    const katalog = getLabelKatalog(item);
+    if (!katalog) return;
+    let phase = "connecting";
+    niimbotBusyRef.current = true;
+    setNiimbotPrint({ busy:true, key, phase:"connecting", message:niimbotPhaseText("connecting") });
+    try {
+      await printCompactLabelM2h(katalog, { onStatus: nextPhase => {
+        phase = nextPhase;
+        setNiimbotPrint({ busy:true, key, phase, message:niimbotPhaseText(phase) });
+      } });
+      setNiimbotPrint({ busy:false, key, phase:"success", message:niimbotPhaseText("success") });
+    } catch (error) {
+      setNiimbotPrint({ busy:false, key, phase:"error", message:friendlyNiimbotError(error, { phase }) });
+    } finally {
+      niimbotBusyRef.current = false;
+    }
+  };
   // Existing pagination filters remain part of the reset contract: [tugSubTab, filterStatus, tugUptFilter, pageSize]
   useEffect(()=>setPage(1), [tugSubTab, filterStatus, tugUptFilter, pageSize, deferredHistorySearch]);
   useEffect(()=>{ setHistorySearch(""); setHistorySearchOpen(false); }, [tugSubTab]);
@@ -169,6 +198,8 @@ export function TransactionHubTab({
                   historySearchActive={!!deferredHistorySearch}
                   editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
                   handleImg={handleImg} setDocPreview={setDocPreview}
+                  getLabelKatalog={getLabelKatalog} onPrintLabel={handlePrintTugLabel}
+                  niimbotBusy={niimbotPrint.busy} niimbotActiveKey={niimbotPrint.key} niimbotMessage={niimbotPrint.message}
                 />
                 {renderPager}
               </>
@@ -231,9 +262,17 @@ export function TransactionHubTab({
                         const kontrakSumber = formatKontrakSumber(si.sourceSnapshot, stock?.kontrakRefs);
                         return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||si.snapshot?.name||"?"} <b>x{si.qty}</b> {stock?.unit||si.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span>{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 Sumber lot: {kontrakSumber}</span>}</div>;
                       }) : t.stockItems.map((si,idx)=>{
-                        const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name||"?") : si.namaBaru;
+                        const labelKatalog = getLabelKatalog(si);
+                        const namaBarang = si.katalogMode==="existing" ? (labelKatalog?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);
-                        return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius: 14,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:12,color:C.muted}}> • SN: {si.noSeri}</span>}</div>;
+                        const labelKey = `${t.id}:${idx}`;
+                        return <div key={idx} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:12,padding:"4px 0"}}>
+                          <span style={{flex:"1 1 220px",minWidth:0,overflowWrap:"anywhere"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius:14,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:12,color:C.muted}}> • SN: {si.noSeri}</span>}</span>
+                          {t.status==="APPROVED" && <span style={{display:"inline-flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                            <button type="button" disabled={niimbotPrint.busy || !labelKatalog} aria-label={labelKatalog ? `Cetak label ${namaBarang}` : "Katalog belum sinkron"} title={!labelKatalog ? "Katalog belum sinkron" : "Cetak label NIIMBOT"} onClick={()=>handlePrintTugLabel(si,labelKey)} style={{...sty.btn("ghost","sm"),minHeight:44,padding:"8px 12px",display:"inline-flex",alignItems:"center",gap:6,opacity:labelKatalog ? 1 : .65}}><Printer size={16} aria-hidden="true" />{labelKatalog ? "Cetak label" : "Katalog belum sinkron"}</button>
+                            {niimbotPrint.key===labelKey && niimbotPrint.message && <span role="status" aria-live="polite" style={{fontSize:11,color:C.muted}}>{niimbotPrint.message}</span>}
+                          </span>}
+                        </div>;
                       })}
                     </div>
                     {t.status==="APPROVED" && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}

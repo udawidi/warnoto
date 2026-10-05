@@ -28,6 +28,20 @@ export function getCompactLabelPayload(katalog = {}) {
   };
 }
 
+// Resolve the master row before printing. History rows may predate the catalog id
+// being persisted, so new-material rows use the same canonical catalog code used by
+// the master-data screens.
+export function resolveCompactLabelKatalog(item = {}, katalogList = []) {
+  const list = Array.isArray(katalogList) ? katalogList : [];
+  if (item.katalogId) {
+    const byId = list.find(k => k?.id === item.katalogId);
+    if (byId) return byId;
+  }
+  const code = canonicalKatalogCode(item.katalogBaru);
+  if (!code) return null;
+  return list.find(k => canonicalKatalogCode(k?.katalog) === code) || null;
+}
+
 export function getCompactLabelCanvasSize() {
   return { landscape: { ...LANDSCAPE_LABEL }, printer: { ...COMPACT_LABEL_RASTER } };
 }
@@ -41,21 +55,69 @@ export function rotateLandscapeCanvasToPrinter(landscapeCanvas, printerCanvas) {
   return printerCanvas;
 }
 
-function wrapCanvasText(context, text, maxWidth) {
-  const words = String(text || "-").split(/\s+/);
+export function wrapCanvasText(context, text, maxWidth) {
+  const words = String(text || "-").trim().split(/\s+/).filter(Boolean);
   const lines = [];
   let line = "";
+  const pushToken = token => {
+    let chunk = "";
+    for (const character of Array.from(token)) {
+      const next = `${chunk}${character}`;
+      if (chunk && context.measureText(next).width > maxWidth) {
+        lines.push(chunk);
+        chunk = character;
+      } else {
+        chunk = next;
+      }
+    }
+    if (chunk) line = chunk;
+  };
   for (const word of words) {
     const next = line ? `${line} ${word}` : word;
     if (line && context.measureText(next).width > maxWidth) {
       lines.push(line);
-      line = word;
+      line = "";
+      pushToken(word);
+    } else if (context.measureText(word).width > maxWidth) {
+      if (line) lines.push(line);
+      line = "";
+      pushToken(word);
     } else {
       line = next;
     }
   }
   if (line) lines.push(line);
   return lines.length ? lines : ["-"];
+}
+
+function ellipsizeCanvasText(context, text, maxWidth, force = false) {
+  const value = String(text || "");
+  if (!force && context.measureText(value).width <= maxWidth) return value;
+  let output = "";
+  for (const character of Array.from(value)) {
+    const next = `${output}${character}`;
+    if (context.measureText(`${next}…`).width > maxWidth) break;
+    output = next;
+  }
+  return `${output}…`;
+}
+
+export function getCompactDescriptionLayout(context, text, maxWidth, maxLines = 5) {
+  const fontSizes = [36, 32, 28, 24, 21, 18, 16];
+  let selected = fontSizes[fontSizes.length - 1];
+  let lines = [];
+  for (const fontSize of fontSizes) {
+    context.font = `700 ${fontSize}px Arial, sans-serif`;
+    const candidate = wrapCanvasText(context, text, maxWidth);
+    selected = fontSize;
+    lines = candidate;
+    if (candidate.length <= maxLines) break;
+  }
+  if (lines.length > maxLines) {
+    lines = lines.slice(0, maxLines);
+    lines[maxLines - 1] = ellipsizeCanvasText(context, lines[maxLines - 1], maxWidth, true);
+  }
+  return { fontSize: selected, lineHeight: Math.max(24, selected + 5), lines };
 }
 
 function loadImage(dataUrl) {
@@ -71,8 +133,8 @@ function loadImage(dataUrl) {
   });
 }
 
-function drawCenteredLines(context, lines, x, y, lineHeight) {
-  lines.forEach((line, index) => context.fillText(line, x, y + (index * lineHeight)));
+function drawCenteredLines(context, lines, x, y, lineHeight, maxWidth) {
+  lines.forEach((line, index) => context.fillText(line, x, y + (index * lineHeight), maxWidth));
 }
 
 /** Render the compact card as a native PNG, independent from browser print CSS. */
@@ -111,14 +173,17 @@ export async function renderCompactLabelRaster(katalog) {
   context.font = "900 40px Arial, sans-serif";
   context.fillText(payload.unit, centerX, 122);
 
-  context.font = payload.description.length > 90 ? "700 23px Arial, sans-serif"
-    : payload.description.length > 55 ? "700 27px Arial, sans-serif"
-      : payload.description.length > 28 ? "700 31px Arial, sans-serif"
-        : "700 36px Arial, sans-serif";
-  const descriptionLines = wrapCanvasText(context, payload.description, maxTextWidth).slice(0, 5);
-  const descriptionLineHeight = 36;
+  const descriptionLayout = getCompactDescriptionLayout(context, payload.description, maxTextWidth, 5);
+  context.font = `700 ${descriptionLayout.fontSize}px Arial, sans-serif`;
+  const descriptionLines = descriptionLayout.lines;
+  const descriptionLineHeight = descriptionLayout.lineHeight;
   const descriptionY = 282 - ((descriptionLines.length - 1) * descriptionLineHeight) / 2;
-  drawCenteredLines(context, descriptionLines, centerX, descriptionY, descriptionLineHeight);
+  context.save?.();
+  context.beginPath();
+  context.rect?.(centerX - (maxTextWidth / 2), 150, maxTextWidth, 245);
+  context.clip?.();
+  drawCenteredLines(context, descriptionLines, centerX, descriptionY, descriptionLineHeight, maxTextWidth);
+  context.restore?.();
 
   context.beginPath();
   context.moveTo(510, 425);
@@ -130,7 +195,7 @@ export async function renderCompactLabelRaster(katalog) {
   context.font = "900 34px Arial, sans-serif";
   context.fillStyle = "#111";
   const catalogLines = wrapCanvasText(context, payload.catalogCode, maxTextWidth).slice(0, 2);
-  drawCenteredLines(context, catalogLines, centerX, 515, 35);
+  drawCenteredLines(context, catalogLines, centerX, 515, 35, maxTextWidth);
 
   const printerCanvas = document.createElement("canvas");
   printerCanvas.width = COMPACT_LABEL_RASTER.w_px;

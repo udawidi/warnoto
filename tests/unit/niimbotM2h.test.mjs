@@ -10,6 +10,8 @@ import {
   friendlyNiimbotError,
   isSupportedM2hPrinter,
   printCompactLabelM2h,
+  wrapCanvasText,
+  getCompactDescriptionLayout,
 } from "../../src/lib/niimbotM2h.js";
 
 test("M2-H profile and printer identity are fail-closed", () => {
@@ -40,6 +42,17 @@ test("compact payload keeps required order and safe fallbacks", () => {
     unit: "BH",
     description: "-",
   });
+});
+
+test("compact description wraps long ATTB tokens by measured pixels", () => {
+  const context = { measureText: value => ({ width: Array.from(String(value)).length * 10 }) };
+  const lines = wrapCanvasText(context, "ATTB/001-VERY-LONG-MATERIAL-CODE", 100);
+  assert.ok(lines.length > 1);
+  assert.ok(lines.every(line => context.measureText(line).width <= 100));
+
+  const layout = getCompactDescriptionLayout(context, "ATTB/".repeat(80), 100, 5);
+  assert.ok(layout.lines.length <= 5);
+  assert.match(layout.lines.at(-1), /…$/);
 });
 
 test("printer raster is 567x827 after rotating 827x567 landscape", () => {

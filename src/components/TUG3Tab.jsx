@@ -1,5 +1,6 @@
 // Komponen TUG3Tab — dipindah dari App.jsx (refactor Fase 5b).
 import { useState } from "react";
+import { Printer } from "@phosphor-icons/react";
 import { UPT } from "../constants.js";
 import { fmtDate } from "../lib/utils.js";
 import { hasRole } from "../lib/roles.js";
@@ -7,7 +8,7 @@ import { resolveSapLabel } from "../lib/sap.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { PhotoSlot } from "./PhotoSlot.jsx";
 
-export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, uptList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview, historySearchActive }) {
+export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalogList, lokasiList, uptList, timMutuList, approveTUG3_TL, rejectTUG3_TL, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman, editDraftTug3, submitDraftTug3, deleteDraftTug3, handleImg, setDocPreview, historySearchActive, getLabelKatalog, onPrintLabel, niimbotBusy, niimbotActiveKey, niimbotMessage }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug4Modal, setTug4Modal] = useState(null); // txn being filled (TUG-4 + lampiran final)
@@ -77,8 +78,16 @@ export function TUG3Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 <summary style={{cursor:"pointer",color:C.text,fontSize:12,fontWeight:700,minHeight:44,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,border:`1px solid ${C.border}`,borderRadius:8,background:C.bg2||"#f9fafb"}}>Lihat item ({t.stockItems.length})</summary>
                 <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginTop:4}}>
                   {t.stockItems.map((si,idx)=>{
-                    const namaBarang = si.katalogMode==="existing" ? (katalogList.find(k=>k.id===si.katalogId)?.name || si.snapshot?.name || "?") : si.namaBaru;
-                    return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {namaBarang} <b>x{si.qty}</b></div>;
+                    const labelKatalog = getLabelKatalog?.(si);
+                    const namaBarang = si.katalogMode==="existing" ? (labelKatalog?.name || si.snapshot?.name || "?") : si.namaBaru;
+                    const labelKey = `${t.id}:${idx}`;
+                    return <div key={idx} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:12,padding:"4px 0"}}>
+                      <span style={{flex:"1 1 220px",minWidth:0,overflowWrap:"anywhere"}}>📦 {namaBarang} <b>x{si.qty}</b></span>
+                      {(t.stage==="APPROVED" || t.status==="APPROVED") && <span style={{display:"inline-flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <button type="button" disabled={niimbotBusy || !labelKatalog} aria-label={labelKatalog ? `Cetak label ${namaBarang}` : "Katalog belum sinkron"} title={!labelKatalog ? "Katalog belum sinkron" : "Cetak label NIIMBOT"} onClick={()=>onPrintLabel?.(si,labelKey)} style={{...sty.btn("ghost","sm"),minHeight:44,padding:"8px 12px",display:"inline-flex",alignItems:"center",gap:6,opacity:labelKatalog ? 1 : .65}}><Printer size={16} aria-hidden="true" />{labelKatalog ? "Cetak label" : "Katalog belum sinkron"}</button>
+                        {niimbotActiveKey===labelKey && niimbotMessage && <span role="status" aria-live="polite" style={{fontSize:11,color:C.muted}}>{niimbotMessage}</span>}
+                      </span>}
+                    </div>;
                   })}
                 </div>
               </details>
