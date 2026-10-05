@@ -38,6 +38,12 @@ const cfg = JSON.parse(fs.readFileSync(path.join(ROOT, "vercel.json"), "utf8"));
 const cspHeader = cfg.headers[0].headers.find(h => h.key === "Content-Security-Policy");
 if (!cspHeader) { console.error("Header Content-Security-Policy (enforcing) tidak ada di vercel.json — masih Report-Only?"); process.exit(1); }
 const CSP = cspHeader.value;
+const connectSrc = CSP.match(/(?:^|;)\s*connect-src\s+([^;]+)/i)?.[1]?.trim().split(/\s+/) || [];
+if (!connectSrc.includes("data:")) { console.error("connect-src harus mengizinkan data: untuk payload gambar NIIMBOT."); process.exit(1); }
+if (connectSrc.includes("*") || connectSrc.includes("blob:") || connectSrc.includes("http:") || connectSrc.includes("ws:")) {
+  console.error("connect-src kehilangan strictness: wildcard, blob:, http:, atau ws: tidak diizinkan.");
+  process.exit(1);
+}
 
 const MIME = { ".html":"text/html", ".js":"text/javascript", ".mjs":"text/javascript", ".css":"text/css", ".json":"application/json", ".png":"image/png", ".svg":"image/svg+xml", ".woff2":"font/woff2", ".webmanifest":"application/manifest+json", ".ico":"image/x-icon" };
 
