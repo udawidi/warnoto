@@ -1745,6 +1745,34 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
 </body></html>`;
 }
 
+// Halaman 1 compact: label landscape 70 x 50 mm, hanya identitas material.
+export async function buildTUG2FrontCompactHTML(katalog) {
+  const esc = (s) => String(s ?? "").replace(/[&<>\"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;" }[c]));
+  const code = canonicalKatalogCode(katalog.katalog);
+  const description = String(katalog.name || "-");
+  const descriptionClass = description.length > 90 ? "description xs" : description.length > 55 ? "description sm" : description.length > 28 ? "description md" : "description";
+  const qrDataUrl = await QRCode.toDataURL(scanUrlFor(katalog.id), { margin: 1, width: 300 });
+  return `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>Kartu Gantung Compact - ${esc(code)}</title>
+<style>
+  @page { size: 70mm 50mm; margin: 0; } * { box-sizing: border-box; }
+  html, body { margin: 0; width: 70mm; min-height: 50mm; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; background: #e5e7eb; }
+  .bar { position: sticky; top: 0; background: #003087; color: #fff; padding: 6px; text-align: center; font-size: 11px; font-weight: 700; }
+  .bar button { background: #16a34a; color: #fff; border: 0; border-radius: 4px; padding: 4px 8px; font-size: 10px; cursor: pointer; }
+  .card { width: 70mm; min-height: 50mm; padding: 3mm; background: #fff; border: .3mm solid #111; display: flex; align-items: stretch; gap: 2mm; }
+  .qr-panel { width: 34mm; flex: 0 0 34mm; padding-right: 1.25mm; border-right: .25mm solid #111; display: flex; align-items: center; justify-content: center; }
+  .qr { width: 32mm; height: 32mm; display: block; }
+  .code { width: 100%; text-align: center; font-size: 10pt; line-height: 1.05; font-weight: 900; overflow-wrap: anywhere; }
+  .info-panel { min-width: 0; flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 1mm; }
+  .rule { border-top: .25mm solid #111; } .label { width: 100%; text-align: center; font-size: 5.5pt; font-weight: 700; letter-spacing: .3px; color: #475569; }
+  .description { width: 100%; text-align: center; font-size: 9pt; line-height: 1.06; font-weight: 800; overflow-wrap: anywhere; word-break: break-word; max-height: 25mm; overflow: hidden; }
+  .description.md { font-size: 8pt; } .description.sm { font-size: 7pt; } .description.xs { font-size: 6pt; line-height: 1.02; max-height: 25mm; }
+  .unit { align-self: center; border: .3mm solid #111; min-width: 15mm; padding: 1mm 2mm; text-align: center; font-size: 10pt; font-weight: 900; }
+  @media print { .bar { display: none; } body { background: #fff; } .card { border: 0; } }
+</style></head><body><div class="bar">Kartu Compact 70×50 mm <button onclick="window.print()">Print</button></div>
+<main class="card"><div class="qr-panel"><img class="qr" src="${qrDataUrl}" alt="QR katalog"/></div><div class="info-panel"><div class="label">SATUAN</div><div class="unit">${esc(katalog.satuan || "BH")}</div><div class="rule"></div><div class="label">MATERIAL DESCRIPTION</div><div class="${descriptionClass}">${esc(description)}</div><div class="rule"></div><div class="label">NO. CATALOG</div><div class="code">${esc(code)}</div></div></main></body></html>`;
+}
+
 // Halaman 2 (Belakang): Header + Metadata + Tabel Riwayat Keluar-Masuk (SISA PERSEDIAAN: RAK / PETI / JMLH)
 export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGudangList, gudangList, uptNama) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));

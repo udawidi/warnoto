@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-03
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-05
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -71,6 +71,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Kartu Gantung depan memiliki dua format cetak (2026-10-05).** Format existing A4 tetap tersedia. Format compact baru memakai kertas landscape 70×50 mm dengan QR katalog 32 mm di sisi kiri dan panel kanan berurutan Satuan, Material Description, lalu No. Catalog. Tombol cetak dipadatkan dan dipisahkan 8 px. Tidak ada perubahan skema atau dependensi. Test khusus 2/2, seluruh 494 unit test, build, dan diff-check lulus.
 
 - **Riwayat foto Stock Opname pada Data Stok selesai lokal (2026-10-03).** Foto sesi `SELESAI` dipromosikan menjadi foto utama tanpa menghapus foto lama; modal Data Stok memiliki switch `Detail | Riwayat | Opname` dengan render gambar hanya untuk sesi aktif. Upload, galeri, pencarian visual, dan OCR historis diisolasi per UPT. Migration RLS/RPC scoped serta backfill dry-run sudah disiapkan tetapi belum diterapkan ke production. Verifikasi lokal: 484/484 test, build, dan diff-check lulus. Spec: `specs/025-opname-photo-history/`.
 
@@ -817,5 +819,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-01 Codex: **Approval TUG-10 atomik dengan pilihan merge/separate aktif; crash pilihan lot diperbaiki dan kartu material dibuat compact, dengan test serta build lulus.**
 - 2026-10-03 Codex: **Role Perencanaan pulih; backup/recovery self-host terverifikasi; riwayat foto Stock Opname per UPT selesai lokal dan siap diuji di localhost.**
+- 2026-10-05 Codex: **Kartu Gantung depan mendapat format compact landscape 70×50 mm tanpa mengubah format A4 existing; test dan build lulus.**

@@ -1,9 +1,10 @@
 // Komponen KartuGantungModal — membedakan Halaman Depan (QR Code) & Halaman Belakang (Riwayat Transaksi) TUG.2.
 import { useState } from "react";
+import { Printer } from "@phosphor-icons/react";
 import { fmtDate, fmtDateOnly, scanUrlFor } from "../lib/utils.js";
 import { fmtNum, getSAPLabel } from "../lib/ragShared.mjs";
 import { buildKartuGantungHistory, resolveLokasiLengkap, getSAPBadgeStyle, jenisBarangAccentColor, stockSapLabel, scopeKartuGantungData } from "../lib/sap.js";
-import { buildTUG2FrontHTML, buildTUG2BackHTML } from "../lib/docBuilders.js";
+import { buildTUG2FrontHTML, buildTUG2FrontCompactHTML, buildTUG2BackHTML } from "../lib/docBuilders.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
 import { UPT } from "../constants.js";
@@ -32,6 +33,15 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const handlePrintFront = async () => {
     const w = window.open("", "_blank");
     const html = await buildTUG2FrontHTML(katalog, scopedStocks, lokasiList, subGudangList, gudangList, kartuUptNama);
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+    }
+  };
+
+  const handlePrintFrontCompact = async () => {
+    const w = window.open("", "_blank");
+    const html = await buildTUG2FrontCompactHTML(katalog);
     if (w) {
       w.document.write(html);
       w.document.close();
@@ -153,9 +163,12 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
             </div>
 
             {/* Print Button for Front Page */}
-            <div style={{display:"flex",justifyContent:"center",marginTop:14}}>
-              <button onClick={handlePrintFront} style={{...sty.btn("primary"),display:"flex",alignItems:"center",gap:8,padding:"10px 24px",fontSize:13,fontWeight:700}}>
-                🖨️ Cetak Kartu Depan (Foto Barang & QR Code)
+            <div style={{display:"flex",justifyContent:"center",gap:8,flexWrap:"wrap",marginTop:14}}>
+              <button onClick={handlePrintFront} style={{...sty.btn("primary","sm"),display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:42,padding:"8px 14px",fontSize:12,fontWeight:700}}>
+                <Printer size={16} weight="bold" aria-hidden="true" /> A4 Existing
+              </button>
+              <button onClick={handlePrintFrontCompact} style={{...sty.btn("ghost","sm"),display:"flex",alignItems:"center",justifyContent:"center",gap:6,minHeight:42,padding:"8px 14px",fontSize:12,fontWeight:700}}>
+                <Printer size={16} weight="bold" aria-hidden="true" /> 70×50 mm Compact
               </button>
             </div>
           </div>
