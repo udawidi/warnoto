@@ -63,7 +63,10 @@ test("printer errors are actionable and do not hide disconnect risk", () => {
   assert.match(friendlyNiimbotError(new Error("User cancelled the requestDevice chooser")), /dibatalkan/i);
   assert.match(friendlyNiimbotError(new Error("Connected printer is B1")), /M2-H|4608/i);
   assert.match(friendlyNiimbotError(new Error("Not connected")), /terputus|hubungkan/i);
-  assert.match(friendlyNiimbotError(new Error("PageEnd timeout"), { phase: "printing" }), /mungkin sudah tercetak/i);
+  assert.match(friendlyNiimbotError(new Error("PageEnd timeout"), { phase: "printing" }), /PageEnd|akhir halaman/i);
+  assert.match(friendlyNiimbotError(new Error("PageEnd not acknowledged"), { phase: "printing" }), /PageEnd|akhir halaman/i);
+  assert.match(friendlyNiimbotError(new Error("printer counter stalled"), { phase: "printing" }), /counter|stalled/i);
+  assert.match(friendlyNiimbotError(new Error("write failed"), { phase: "printing" }), /mungkin sudah tercetak sebagian/i);
 });
 
 test("one print sends one raster with the M2-H contract and retry resets the connection", async () => {
@@ -81,20 +84,28 @@ test("one print sends one raster with the M2-H contract and retry resets the con
   globalThis.Image = class FakeImage {
     set src(value) { this.onload?.(); }
   };
-  globalThis.Niimbot = {
+  const driver = {
     identify: async model => { calls.push(["identify", model]); return { modelId: 4608 }; },
-    printImage: async (url, options) => calls.push(["printImage", url, options]),
+    printImage: async (url, options) => calls.push(["printImage", url, options, driver.WRITE_MODE]),
     disconnect: async () => calls.push(["disconnect"]),
   };
+  let writeMode;
+  Object.defineProperty(driver, "WRITE_MODE", {
+    get: () => writeMode,
+    set: value => { writeMode = value; calls.push(["writeMode", value]); },
+  });
+  globalThis.Niimbot = driver;
   try {
     await printCompactLabelM2h({ id: "kat-1", katalog: "123", name: "Motor", satuan: "BH" }, { onStatus: value => statuses.push(value) });
     assert.deepEqual(statuses, ["connecting", "preparing", "printing", "success"]);
     assert.equal(calls[0][0], "identify");
-    assert.equal(calls[1][0], "printImage");
-    assert.equal(calls[1][1], "data:image/png;base64,label");
-    assert.deepEqual(calls[1][2].size, { w_px: 567, h_px: 827 });
-    assert.equal(calls[1][2].density, 3);
-    assert.equal(calls[1][2].copies, 1);
+    assert.deepEqual(calls[1], ["writeMode", "paced"]);
+    assert.equal(calls[2][0], "printImage");
+    assert.equal(calls[2][1], "data:image/png;base64,label");
+    assert.equal(calls[2][3], "paced");
+    assert.deepEqual(calls[2][2].size, { w_px: 567, h_px: 827 });
+    assert.equal(calls[2][2].density, 3);
+    assert.equal(calls[2][2].copies, 1);
   } finally {
     globalThis.Niimbot = previousDriver;
     globalThis.document = previousDocument;

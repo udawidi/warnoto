@@ -32,6 +32,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Frontend dev role (Kevin `kevinnsetiawan`, user 2026-08-12):** boleh edit presentasi (`src/components/*`, `src/theme.js`, `src/index.css`, JSX `App.jsx`) + **push langsung ke `main` tanpa PR**. Zona terlarang: state/handler/`saveToCloud`/`src/lib/*`/`src/hooks/*`/schema/workflows/deps. Aturan lengkap di `.github/ROLE_FRONTEND_DEVELOPER.md`. **Proteksi `main` DILONGGARKAN**: required PR review + required status check `build` DIHAPUS (force_push tetap off). Jaring rollback: Vercel Instant Rollback (UI) + tag `snapshot-YYYY-MM-DD` harian (`.github/workflows/daily-snapshot.yml`) + dump DB per-jam `vps-backup`.
 
 ### Fitur canonical
+- **Cetak Kartu Gantung NIIMBOT (2026-10-05):** NIIMBOT hanya untuk compact 70×50 mm melalui Web Bluetooth dengan `niimbot-web-bluetooth@2.6.0`; model `4608` wajib cocok dan selain itu fail-closed. A4 tetap `window.print()`; tidak ada perubahan schema/API.
 - **Alat Berat & Alat Bantu per-UPT (2026-09-25, production aktif):** aset memakai `heavy_equipment.upt_id` wajib dan flag `is_cross_upt_borrowable`; peminjaman memakai `owner_upt_id` wajib serta `requester_upt_id` opsional. TL UPT pemilik mengelola aset, checkout batch, dan pengembalian parsial; pinjaman antar-UPT menunggu ASMAN UPT pemilik, sedangkan vendor/GI/unit lain langsung aktif. Semua perubahan status pinjaman berjalan lewat RPC atomik. Bukti pickup/pengembalian disimpan di bucket private `heavy-equipment-evidence` dengan prefix UPT pemilik. Role UIT resmi dapat membaca seluruh history dalam UIT tanpa hak tulis. Policy upload bukti wajib memakai `storage.objects.name`, bukan `profiles.name`. Loan baru wajib menyimpan snapshot `requestedByName` dari profil server; tiga history lama sengaja tidak di-backfill dan dapat tetap menampilkan `?`. Migration 20260920/20260925/20260925b/20260925c sudah diterapkan ke production self-host.
 - **QR Blok Lokasi Gudang (2026-09-21, production aktif):** `lokasi.public_token` adalah bearer token UUID unik yang dicetak di fragment URL `?loc=<id>#t=<token>`. RPC baca-saja `public_block_stock(text,uuid)` hanya dapat dieksekusi `anon`/`authenticated`, memakai `search_path=pg_catalog`, dan mengembalikan identitas UPT/gudang/subgudang/blok serta material dengan qty positif. Payload material juga membawa label Status SAP dan Jenis Barang; agregasi dipisah per katalog/status/jenis. Mode Lapangan hanya memakai `loc` untuk memilih blok yang memang ada di sesi opname aktif. Kartu cetak = A6 portrait dengan logo PLN, garis pembatas, dan QR 48 mm; domain canonical `https://pln.warnoto.com`.
 - **Freeze transaksi Stock Opname dihapus penuh (2026-09-21, production aktif):** UI, guard TUG, RPC, trigger, dan fungsi database freeze tidak lagi dipakai. Realtime `stock_opname`, trigger `updated_at`, autosave, dan data legacy `data.freeze` tetap dipertahankan; metadata legacy bersifat inert dan tidak dimigrasikan massal.
@@ -72,7 +73,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Kartu Gantung depan memiliki dua format cetak (2026-10-05).** Format existing A4 tetap tersedia. Format compact baru memakai kertas landscape 70×50 mm dengan QR katalog 32 mm di sisi kiri dan panel kanan berurutan Satuan, Material Description, lalu No. Catalog. Tombol cetak dipadatkan dan dipisahkan 8 px. Tidak ada perubahan skema atau dependensi. Test khusus 2/2, seluruh 494 unit test, build, dan diff-check lulus.
+- **Kartu Gantung depan memiliki dua format cetak (2026-10-05).** Format existing A4 tetap memakai `window.print()` dan tidak memakai NIIMBOT. Format compact memakai kertas landscape 70×50 mm dengan QR katalog 32 mm di sisi kiri dan panel kanan berurutan Satuan, Material Description, lalu No. Catalog; preview compact tetap tersedia. Cetak langsung Web Bluetooth khusus NIIMBOT M2-H model `4608`, dengan dependency `niimbot-web-bluetooth@2.6.0`, raster `567×827`, density `3`. Commit `e81c059` dan `64d6b34` sudah pushed ke `origin/main`. 500 test, build, dan diff-check lulus; hardware smoke test belum dilakukan.
 
 - **Riwayat foto Stock Opname pada Data Stok selesai lokal (2026-10-03).** Foto sesi `SELESAI` dipromosikan menjadi foto utama tanpa menghapus foto lama; modal Data Stok memiliki switch `Detail | Riwayat | Opname` dengan render gambar hanya untuk sesi aktif. Upload, galeri, pencarian visual, dan OCR historis diisolasi per UPT. Migration RLS/RPC scoped serta backfill dry-run sudah disiapkan tetapi belum diterapkan ke production. Verifikasi lokal: 484/484 test, build, dan diff-check lulus. Spec: `specs/025-opname-photo-history/`.
 
@@ -662,6 +663,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Smoke test fisik di Android Chrome melalui HTTPS atau `localhost` dengan NIIMBOT M2-H: cek pairing, orientasi/edge/QR, cetak kedua memakai koneksi yang sama, dan pastikan A4 tidak meminta Bluetooth.
+
 - Jalankan pengujian localhost untuk Data Stok > detail material > switch `Opname`: pastikan default tetap `Detail`, hanya sesi aktif memuat gambar, foto lama terlihat, dan katalog sama dari UPT lain tidak muncul. Setelah localhost disetujui pengguna, review dry-run production, lalu minta persetujuan terpisah sebelum migration/backfill, commit/push, dan verifikasi production.
 
 - Login sebagai SUPERADMIN dan daftarkan satu akun role Perencanaan pada UPT yang benar; pastikan akun berhasil login dan hanya melihat alur reservasi/TUG-5 sesuai permission `RENEV`.
@@ -797,6 +800,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
 - `npm test`
+- `node --test tests/unit/niimbotM2h.test.mjs tests/unit/kartuGantungCompact.test.mjs`
 - `node --test tests/unit/authBootstrap.contract.test.mjs tests/unit/stockOpnameRequiredPhoto.test.mjs`
 - `node --test tests/unit/stockOpnamePhotoHistory.test.mjs tests/unit/stockOpnamePhotoScoped.contract.test.mjs`
 - `node --test tests/unit/stockOpnameFlow.test.mjs tests/unit/stockOpnameDocumentPackage.test.mjs`
@@ -820,4 +824,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-10-03 Codex: **Role Perencanaan pulih; backup/recovery self-host terverifikasi; riwayat foto Stock Opname per UPT selesai lokal dan siap diuji di localhost.**
-- 2026-10-05 Codex: **Kartu Gantung depan mendapat format compact landscape 70×50 mm tanpa mengubah format A4 existing; test dan build lulus.**
+- 2026-10-05 Codex: **Kartu Gantung compact NIIMBOT M2-H langsung via Web Bluetooth selesai dan pushed (`e81c059`, `64d6b34`); A4 tetap `window.print()`, verifikasi hardware belum dilakukan.**

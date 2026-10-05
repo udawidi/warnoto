@@ -156,6 +156,12 @@ export function friendlyNiimbotError(error, { phase = "connecting" } = {}) {
   if (/Not connected|disconnect|link dropped|gatt/i.test(message)) {
     return "Koneksi NIIMBOT terputus. Pastikan printer menyala, lalu coba lagi.";
   }
+  if (/PageEnd|not acknowledged|unconfirmed/i.test(message)) {
+    return "NIIMBOT belum mengonfirmasi akhir halaman (PageEnd). Pastikan label terpasang lurus, lalu coba lagi.";
+  }
+  if (/counter.*(?:stopped|stalled)|(?:stopped|stalled).*counter/i.test(message)) {
+    return "Counter printer NIIMBOT berhenti (stalled). Pastikan roll label terpasang dan printer siap, lalu coba lagi.";
+  }
   if (phase === "printing") {
     return "NIIMBOT gagal menyelesaikan cetak. Label mungkin sudah tercetak sebagian; periksa printer lalu coba lagi.";
   }
@@ -190,6 +196,7 @@ export async function printCompactLabelM2h(katalog, { onStatus } = {}) {
       await resetConnection(driver);
       throw new Error(`Printer model ${printer?.modelId ?? "unknown"} bukan NIIMBOT M2-H (4608).`);
     }
+    driver.WRITE_MODE = "paced";
     onStatus?.("printing");
     await driver.printImage(rasterDataUrl, {
       model: NIIMBOT_M2H_MODEL,
