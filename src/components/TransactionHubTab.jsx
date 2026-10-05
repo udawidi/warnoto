@@ -261,7 +261,9 @@ export function TransactionHubTab({
                         const stock = enrichedStocks.find(s=>s.id===si.stockId);
                         const kontrakSumber = formatKontrakSumber(si.sourceSnapshot, stock?.kontrakRefs);
                         return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {stock?.name||si.snapshot?.name||"?"} <b>x{si.qty}</b> {stock?.unit||si.unit} <span style={{fontSize:12,color:C.muted}}>@ {stock?.lokasi}</span> <span style={sty.jenisBadge(stock?.jenisBarang)}>{stock?.jenisBarang}</span>{kontrakSumber && <span style={{fontSize:11,color:C.muted}}> · 📄 Sumber lot: {kontrakSumber}</span>}</div>;
-                      }) : t.stockItems.map((si,idx)=>{
+                      }) : <details>
+                        <summary style={{minHeight:44,display:"flex",alignItems:"center",cursor:"pointer",fontSize:12,fontWeight:700}}>Lihat item ({t.stockItems.length})</summary>
+                        <div style={{paddingTop:6}}>{t.stockItems.map((si,idx)=>{
                         const labelKatalog = getLabelKatalog(si);
                         const namaBarang = si.katalogMode==="existing" ? (labelKatalog?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);
@@ -273,7 +275,8 @@ export function TransactionHubTab({
                             {niimbotPrint.key===labelKey && niimbotPrint.message && <span role="status" aria-live="polite" style={{fontSize:11,color:C.muted}}>{niimbotPrint.message}</span>}
                           </span>}
                         </div>;
-                      })}
+                        })}</div>
+                      </details>}
                     </div>
                     {t.status==="APPROVED" && <div style={{fontSize:12,color:C.green,marginBottom:8}}>✅ Disetujui oleh {approver.name} ({ROLES[approver.role]}) • {fmtDate(t.approvedAt)} {t.asmanAutoApproved && "• Asman Konstruksi otomatis ikut menyetujui"}</div>}
                     {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ Ditolak: {t.rejectReason}</div>}
