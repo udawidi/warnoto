@@ -25,6 +25,43 @@ test("maturity Drive derives scope canonically and assigns only recorded unassig
   assert.match(edge, /reconcileAssignments/);
 });
 
+test("maturity evidence allows supported formats and rejects ZIP/RAR/EXE", () => {
+  assert.match(client, /ALLOWED_MIME = new Set\(\["application\/pdf"/);
+  assert.match(client, /IMAGE_EXT = \/\\\.\(jpg\|jpeg\|png\|webp\|heic\|heif\|gif\|bmp\)\$\/i/);
+  assert.match(client, /FORBIDDEN_MIME = new Set\(\["application\/zip"/);
+  assert.match(client, /FORBIDDEN_EXT = \/\(\?:\^\|\\\.\).*zip\|rar\|exe/);
+  assert.match(edge, /IMAGE_EXT = \/\\\.\(jpg\|jpeg\|png\|webp\|heic\|heif\|gif\|bmp\)\$\/i/);
+  assert.match(edge, /FORBIDDEN_MIME = new Set\(\[[\s\S]*application\/zip/);
+  assert.match(edge, /FORBIDDEN_EXT = \/\(\?:\^\|\\\.\).*zip\|rar\|exe/);
+  assert.doesNotMatch(editor, /accept="[^"]*\\.(zip|rar|exe)/i);
+});
+
+test("client preparation is wired to both evidence upload paths", () => {
+  assert.match(client, /uploadMaturityDriveEvidence[\s\S]*file = await prepareMaturityUpload\(file\)/);
+  assert.match(client, /uploadForm5SPhoto[\s\S]*file = await prepareMaturityUpload\(file\)/);
+  assert.match(client, /const MAX_EVIDENCE_BYTES = 3 \* 1024 \* 1024/);
+  assert.match(client, /const SOURCE_MAX_BYTES = 25 \* 1024 \* 1024/);
+  assert.match(client, /imageFileFromDataUrl/);
+  assert.match(client, /pdfFileName/);
+  assert.match(client, /DOC\/DOCX, XLS\/XLSX, TXT, dan CSV di atas 3 MB tidak dapat dikompres otomatis/);
+});
+
+test("server separates 3 MiB uploads from 25 MiB Sheet exports", () => {
+  assert.match(edge, /const MAX_UPLOAD_BYTES = 3 \* 1024 \* 1024/);
+  assert.match(edge, /const MAX_EXPORT_BYTES = 25 \* 1024 \* 1024/);
+  assert.match(edge, /file\.size <= MAX_UPLOAD_BYTES/);
+  assert.match(edge, /approxBytes > MAX_EXPORT_BYTES/);
+  assert.doesNotMatch(edge, /approxBytes > MAX_UPLOAD_BYTES/);
+});
+
+test("PDF preparation preserves page dimensions and retries bounded presets", () => {
+  assert.match(client, /maxDim: 1800/);
+  assert.match(client, /maxDim: 600/);
+  assert.match(client, /pageWidth, pageHeight/);
+  assert.match(client, /doc\.addPage\(format, orientation\)/);
+  assert.match(client, /PDF tetap lebih besar dari 3 MB/);
+});
+
 test("viewer memuat ulang evidence canonical dan tidak fallback setelah sign error", () => {
   assert.match(client, /export const loadMaturityDriveEvidence = auditId => request\("sync", \{ auditId, scanDrive: false \}\)/);
   assert.match(client, /const signed = await signMaturityDriveEvidence\(evidenceId\)/);

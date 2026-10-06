@@ -1,6 +1,103 @@
 import { SUPABASE_URL, SUPABASE_KEY, fetchSupabase, supabase } from "../supabaseClient.js";
+import { compressImage } from "./supabaseSync.js";
 
 const FUNCTION_PATH = "/functions/v1/maturity-drive";
+const MAX_EVIDENCE_BYTES = 3 * 1024 * 1024;
+const SOURCE_MAX_BYTES = 25 * 1024 * 1024;
+const FORBIDDEN_MIME = new Set(["application/zip", "application/x-zip-compressed", "multipart/x-zip", "application/vnd.rar", "application/x-rar-compressed", "application/vnd.microsoft.portable-executable", "application/x-msdownload", "application/x-msdos-program"]);
+const ALLOWED_MIME = new Set(["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/csv"]);
+const IMAGE_EXT = /\.(jpg|jpeg|png|webp|heic|heif|gif|bmp)$/i;
+const ALLOWED_EXT = /\.(jpg|jpeg|png|webp|heic|heif|gif|bmp|pdf|doc|docx|xls|xlsx|txt|csv)$/i;
+const FORBIDDEN_EXT = /(?:^|\.)((?:zip|rar|exe))(?:\.|$)/i;
+
+function allowedEvidenceFile(file) {
+  const mime = String(file?.type || "").toLowerCase();
+  if (FORBIDDEN_MIME.has(mime) || FORBIDDEN_EXT.test(file?.name || "")) return false;
+  return file?.size > 0 && file.size <= SOURCE_MAX_BYTES && (mime.startsWith("image/") || IMAGE_EXT.test(file.name || "") || ALLOWED_MIME.has(mime) || ALLOWED_EXT.test(file.name || ""));
+}
+
+const isImageFile = file => String(file?.type || "").toLowerCase().startsWith("image/") || IMAGE_EXT.test(file?.name || "");
+const isPdfFile = file => String(file?.type || "").toLowerCase() === "application/pdf" || /\.pdf$/i.test(file?.name || "");
+
+function pdfFileName(name) {
+  const value = String(name || "evidence.pdf").trim() || "evidence.pdf";
+  return /\.pdf$/i.test(value) ? value : `${value}.pdf`;
+}
+
+function imageFileFromDataUrl(dataUrl, source) {
+  const match = /^data:([^;,]+)?;base64,(.*)$/i.exec(dataUrl || "");
+  if (!match) throw new Error("Hasil kompresi foto tidak valid.");
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  const sourceName = String(source?.name || "evidence").replace(/\.[^.]+$/, "") || "evidence";
+  return new File([bytes], `${sourceName}.jpg`, { type: "image/jpeg", lastModified: source?.lastModified });
+}
+
+async function compressPdf(file) {
+  const [pdfjsLib, pdfWorker, jspdf] = await Promise.all([
+    import("pdfjs-dist"),
+    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
+    import("jspdf"),
+  ]);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker.default || pdfWorker;
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise;
+  const { jsPDF } = jspdf;
+  const presets = [
+    { maxDim: 1800, quality: 0.72 },
+    { maxDim: 1400, quality: 0.58 },
+    { maxDim: 1100, quality: 0.45 },
+    { maxDim: 800, quality: 0.32 },
+    { maxDim: 600, quality: 0.22 },
+  ];
+  try {
+    for (const preset of presets) {
+      let doc = null;
+      for (let index = 1; index <= pdf.numPages; index += 1) {
+        const page = await pdf.getPage(index);
+        const rotation = Number(page.rotate) || 0;
+        const baseViewport = page.getViewport({ scale: 1, rotation });
+        const pageWidth = Math.max(1, baseViewport.width);
+        const pageHeight = Math.max(1, baseViewport.height);
+        const renderScale = Math.min(1, preset.maxDim / Math.max(pageWidth, pageHeight));
+        const viewport = page.getViewport({ scale: renderScale, rotation });
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.ceil(viewport.width));
+        canvas.height = Math.max(1, Math.ceil(viewport.height));
+        const context = canvas.getContext("2d", { alpha: false });
+        if (!context) throw new Error("Canvas kompresi PDF tidak tersedia.");
+        await page.render({ canvasContext: context, viewport }).promise;
+        const orientation = pageWidth > pageHeight ? "landscape" : "portrait";
+        const format = [pageWidth, pageHeight];
+        if (!doc) doc = new jsPDF({ unit: "pt", format, orientation, compress: true });
+        else doc.addPage(format, orientation);
+        doc.addImage(canvas.toDataURL("image/jpeg", preset.quality), "JPEG", 0, 0, pageWidth, pageHeight, undefined, "FAST");
+        canvas.width = 1;
+        canvas.height = 1;
+        page.cleanup();
+      }
+      const blob = doc.output("blob");
+      if (blob.size <= MAX_EVIDENCE_BYTES) return new File([blob], pdfFileName(file.name), { type: "application/pdf", lastModified: file.lastModified });
+    }
+  } finally {
+    await pdf.destroy();
+  }
+  throw new Error("PDF tetap lebih besar dari 3 MB setelah kompresi aplikasi.");
+}
+
+export async function prepareMaturityUpload(file) {
+  if (!allowedEvidenceFile(file)) throw new Error("Format tidak didukung. Gunakan foto, PDF, DOC/DOCX, XLS/XLSX, TXT, atau CSV; ZIP, RAR, dan EXE ditolak. Sumber maksimal 25 MB.");
+  if (file.size <= MAX_EVIDENCE_BYTES) return file;
+  let result = file;
+  if (isImageFile(file)) {
+    const dataUrl = await compressImage(file, { maxBytes: MAX_EVIDENCE_BYTES, maxDim: 2400 });
+    result = imageFileFromDataUrl(dataUrl, file);
+  }
+  else if (isPdfFile(file)) result = await compressPdf(file);
+  else throw new Error("DOC/DOCX, XLS/XLSX, TXT, dan CSV di atas 3 MB tidak dapat dikompres otomatis. Kecilkan berkas lalu upload ulang.");
+  if (result.size > MAX_EVIDENCE_BYTES) throw new Error("Berkas tetap lebih besar dari 3 MB setelah kompresi aplikasi.");
+  return result;
+}
 
 async function request(action, body = {}, { formData = null, responseType = "json" } = {}) {
   if (!supabase || !SUPABASE_URL) throw new Error("Koneksi server belum tersedia.");
@@ -34,6 +131,7 @@ export const exportMaturitySheet = payload => request("export-sheet", payload);
 export const unlinkMaturityDriveEvidence = payload => request("unlink", payload);
 
 export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
+  file = await prepareMaturityUpload(file);
   const formData = new FormData();
   formData.set("file", file, file.name);
   const result = await request("upload", metadata, { formData });
@@ -41,6 +139,7 @@ export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
 }
 
 export async function uploadForm5SPhoto({ file, uptId, bulan, tahun }) {
+  file = await prepareMaturityUpload(file);
   const formData = new FormData();
   formData.set("file", file, file.name);
   const result = await request("upload-5s", { uptId, bulan, tahun }, { formData });

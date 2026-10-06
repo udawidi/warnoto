@@ -12,13 +12,22 @@ const SHEET_EXPORT_FOLDER_ID = "1wh7A1c96VYEjYJ10ZcCFwImyqJxPAThB";
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_DRIVE_CLIENT_ID") ?? "";
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_DRIVE_CLIENT_SECRET") ?? "";
 const GOOGLE_REFRESH_TOKEN = Deno.env.get("GOOGLE_DRIVE_REFRESH_TOKEN") ?? "";
-const MAX_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
+const MAX_EXPORT_BYTES = 25 * 1024 * 1024;
+const FORBIDDEN_MIME = new Set([
+  "application/zip", "application/x-zip-compressed", "multipart/x-zip",
+  "application/vnd.rar", "application/x-rar-compressed",
+  "application/vnd.microsoft.portable-executable", "application/x-msdownload", "application/x-msdos-program",
+]);
 const ALLOWED_MIME = new Set([
-  "application/pdf", "application/zip", "application/x-rar-compressed", "application/vnd.rar",
+  "application/pdf",
   "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "text/plain", "text/csv",
 ]);
+const IMAGE_EXT = /\.(jpg|jpeg|png|webp|heic|heif|gif|bmp)$/i;
+const ALLOWED_EXT = /\.(jpg|jpeg|png|webp|heic|heif|gif|bmp|pdf|doc|docx|xls|xlsx|txt|csv)$/i;
+const FORBIDDEN_EXT = /(?:^|\.)((?:zip|rar|exe))(?:\.|$)/i;
 // Selaras hirarki resmi 2026-08-02 dan jenjang review Maturity:
 // UPT menulis lewat ADMIN/TL saja (ASMAN & MANAGER read-only), peninjau UIT dan
 // Pusat juga perlu menulis karena mereka mengoreksi evidence saat review.
@@ -74,9 +83,20 @@ function periodFromKey(value?: unknown) {
 }
 function fileAllowed(file: File) {
   const mime = text(file.type, 120).toLowerCase();
-  const image = mime.startsWith("image/");
-  const extensionOk = /\.(pdf|doc|docx|xls|xlsx|zip|rar|txt|csv)$/i.test(file.name || "");
-  return file.size > 0 && file.size <= MAX_FILE_BYTES && (image || ALLOWED_MIME.has(mime) || extensionOk);
+  if (FORBIDDEN_MIME.has(mime) || FORBIDDEN_EXT.test(file.name || "")) return false;
+  const image = mime.startsWith("image/") || IMAGE_EXT.test(file.name || "");
+  const extensionOk = ALLOWED_EXT.test(file.name || "");
+  return file.size > 0 && file.size <= MAX_UPLOAD_BYTES && (image || ALLOWED_MIME.has(mime) || extensionOk);
+}
+function fileMimeType(file: File) {
+  const mime = text(file.type, 120).toLowerCase();
+  if (mime && mime !== "application/octet-stream") return mime;
+  const extension = /\.([a-z0-9]+)$/i.exec(file.name || "")?.[1]?.toLowerCase();
+  const inferred = new Map([
+    ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"], ["png", "image/png"], ["webp", "image/webp"], ["heic", "image/heic"], ["heif", "image/heif"], ["gif", "image/gif"], ["bmp", "image/bmp"],
+    ["pdf", "application/pdf"], ["doc", "application/msword"], ["docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"], ["xls", "application/vnd.ms-excel"], ["xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"], ["txt", "text/plain"], ["csv", "text/csv"],
+  ]).get(extension);
+  return inferred || mime || "application/octet-stream";
 }
 // Access token valid ~1 jam; cache di scope modul (isolate) supaya tidak tukar
 // refresh-token ke Google tiap driveFetch — satu sync bisa puluhan panggilan Drive.
@@ -310,7 +330,8 @@ async function upsertEvidence(input: any) {
 async function uploadDriveFile(file: File, folderId: string, mappingKey: string) {
   const boundary = `warnoto-${crypto.randomUUID()}`;
   const metadata = JSON.stringify({ name: safeName(file.name, "evidence"), parents: [folderId] });
-  const head = new TextEncoder().encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${file.type || "application/octet-stream"}\r\n\r\n`);
+  const contentType = fileMimeType(file);
+  const head = new TextEncoder().encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
   const tail = new TextEncoder().encode(`\r\n--${boundary}--`);
   const bytes = new Uint8Array(head.length + file.size + tail.length);
   bytes.set(head); bytes.set(new Uint8Array(await file.arrayBuffer()), head.length); bytes.set(tail, head.length + file.size);
@@ -500,7 +521,7 @@ Deno.serve(async (req) => {
     }
     if (action === "upload") {
       const file = form?.get("file");
-      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau ukurannya melebihi 25 MB." }, 400);
+      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau hasilnya melebihi 3 MB." }, 400);
       const context = await resolveAuditContext(body, ctx, { createDraft: true });
       await assertUptAccess(ctx, context.upt, true);
       assertMutableAudit(context.audit);
@@ -509,7 +530,7 @@ Deno.serve(async (req) => {
       const driveFile = await uploadDriveFile(file, tree.itemFolder.drive_folder_id, tree.itemFolder.mapping_key);
       const storagePath = storageKey(tree.period.key, context.upt.name, text(body.categoryId), text(body.aspectId), text(body.itemId), file.name);
       try {
-        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "application/octet-stream", upsert: true });
+        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: fileMimeType(file), upsert: true });
         if (storageError) throw storageError;
       } catch (storageError) {
         await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive gagal setelah backup self-host gagal:", cleanupError));
@@ -521,7 +542,7 @@ Deno.serve(async (req) => {
     }
     if (action === "upload-5s") {
       const file = form?.get("file");
-      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau ukurannya melebihi 25 MB." }, 400);
+      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau hasilnya melebihi 3 MB." }, 400);
       const uptId = text(body.uptId, 120);
       if (!uptId) return json({ ok: false, error: "uptId canonical wajib diisi." }, 400);
       const upt = await findUptById(uptId);
@@ -535,13 +556,14 @@ Deno.serve(async (req) => {
       const driveFile = await uploadDriveFile(file, form5sFolder.drive_folder_id, form5sFolder.mapping_key);
       const storagePath = storageKey("form-5s", upt.id, `${Number(body.tahun)}-${String(Number(body.bulan) + 1).padStart(2, "0")}`, driveFile.id, file.name);
       try {
-        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: file.type || "image/jpeg", upsert: true });
+        const contentType = fileMimeType(file);
+        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType, upsert: true });
         if (storageError) throw storageError;
       } catch (storageError) {
         await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive 5S gagal setelah backup self-host gagal:", cleanupError));
         throw new Error(`Backup self-host foto 5S wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
       }
-      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), mimeType: file.type || "image/jpeg", driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
+      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), mimeType: contentType, driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
     }
     if (action === "sign-5s-photo") {
       const assessmentId = text(body.assessmentId, 120);
@@ -616,7 +638,7 @@ Deno.serve(async (req) => {
       const base64 = String(body.base64 || "");
       if (!base64) return json({ ok: false, error: "Data Sheet wajib diisi." }, 400);
       const approxBytes = Math.ceil((base64.length * 3) / 4);
-      if (approxBytes > MAX_FILE_BYTES) return json({ ok: false, error: "Berkas export melebihi batas ukuran." }, 400);
+      if (approxBytes > MAX_EXPORT_BYTES) return json({ ok: false, error: "Berkas export melebihi batas ukuran." }, 400);
       const upt = await findUptByName(text(body.namaUpt, 120));
       await assertUptAccess(ctx, upt, true);
       const fileName = safeName(body.filename, `Maturity Level Gudang - ${upt.name}`);

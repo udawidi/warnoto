@@ -713,7 +713,7 @@ export function MaturityAuditEditor({
                               <details style={{ marginTop: 3 }}>
                                 <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: C.muted, fontSize: 12, fontWeight: 700 }}>Lokasi folder &amp; format file</summary>
                                 <div style={{ paddingBottom: 5, color: C.muted, fontSize: 12, lineHeight: 1.5, overflowWrap: "anywhere" }}>📍 {isMobile ? `Aspek ${activeAspect.id} / ${eviItem.label}` : targetFolderPath}</div>
-                                {canScoreUPT && !isAutoFilled && <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5 }}>Maks. 25 MB per berkas; foto, PDF, dokumen Office, ZIP/RAR, TXT, atau CSV.</div>}
+                                {canScoreUPT && !isAutoFilled && <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5 }}>Maks. 3 MB setelah kompresi aplikasi; foto, PDF, DOC/DOCX, XLS/XLSX, TXT, atau CSV. ZIP, RAR, dan EXE ditolak.</div>}
                               </details>
                             </div>
                           </div>
@@ -762,10 +762,10 @@ export function MaturityAuditEditor({
                               transition: "background-color .15s ease, border-color .15s ease, box-shadow .15s ease"
                             }}>
                               <Icons.Upload />
-                              <span>{uploadingItems[eviItem.id] ? "⌛ Mengunggah..." : isUploaded ? "+ Tambah / Ganti File" : "Pilih File / Foto"}</span>
+                              <span>{uploadingItems[eviItem.id] ? "⌛ Mengompres & Mengunggah..." : isUploaded ? "+ Tambah / Ganti File" : "Pilih File / Foto"}</span>
                               <input
                                 type="file"
-                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.zip,.rar,.txt,.csv"
+                                accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
                                 multiple
                                 hidden
                                 disabled={maturityEvidenceLoading}
@@ -2255,7 +2255,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
           </div>
           {samplePhotos.length < 3 && (<>
             <div style={{ position: "relative", flexShrink: 0, marginLeft: 12 }}>
-              <button type="button" aria-haspopup="dialog" aria-expanded={photoPickerOpen} disabled={uploading5S} onClick={() => setPhotoPickerOpen(open => !open)} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 10, cursor: uploading5S ? "wait" : "pointer", background: "#1d4ed8", color: "white", fontSize: 13, fontWeight: 800, border: 0 }}>{uploading5S ? "Mengunggah..." : "Tambah Foto"}</button>
+              <button type="button" aria-haspopup="dialog" aria-expanded={photoPickerOpen} disabled={uploading5S} onClick={() => setPhotoPickerOpen(open => !open)} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 10, cursor: uploading5S ? "wait" : "pointer", background: "#1d4ed8", color: "white", fontSize: 13, fontWeight: 800, border: 0 }}>{uploading5S ? "Mengompres & Mengunggah..." : "Tambah Foto"}</button>
               {photoPickerOpen && <div role="dialog" aria-label="Pilih sumber foto" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 5, display: "grid", gap: 6, minWidth: 170, padding: 8, borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, boxShadow: "0 10px 24px rgba(15,23,42,.14)" }}>
                 <button type="button" onClick={() => { setPhotoPickerOpen(false); cameraInputRef.current?.click(); }} style={{ minHeight: 44, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Kamera</button>
                 <button type="button" onClick={() => { setPhotoPickerOpen(false); galleryInputRef.current?.click(); }} style={{ minHeight: 44, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Galeri</button>
