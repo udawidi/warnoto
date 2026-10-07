@@ -1,7 +1,7 @@
 // Modal-modal terkait stok & dokumen (dipindah dari App.jsx, refactor batch 1).
 // StockDetailModal (form tambah/edit stok), MaturityAssessmentModal (asesmen manual),
 // DocPreviewModal (preview & unduh dokumen TUG).
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { resolveSapLabel } from "../lib/sap.js";
@@ -143,19 +143,46 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
   // URL publik). Fallback ke docPreview mentah selama resolusi berjalan.
   const dp = docPreviewDoc || docPreview;
   const iframeRef = useRef(null);
+  const [previewReady, setPreviewReady] = useState(false);
+  const documentHtml = dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList, gudangList);
+  const previewHtml = documentHtml.replace(/<div class="print-bar">[\s\S]*?<\/div>/, "");
+
+  useEffect(() => {
+    setPreviewReady(false);
+  }, [documentHtml]);
+
+  const handlePreviewLoad = () => {
+    const frameDocument = iframeRef.current?.contentDocument;
+    if (!frameDocument) {
+      setPreviewReady(true);
+      return;
+    }
+    const imageReady = Array.from(frameDocument.images || []).map(image => {
+      if (image.complete) return Promise.resolve();
+      return new Promise(resolve => {
+        const settle = () => resolve();
+        image.addEventListener("load", settle, { once: true });
+        image.addEventListener("error", settle, { once: true });
+      });
+    });
+    const fontReady = frameDocument.fonts?.ready
+      ? Promise.resolve(frameDocument.fonts.ready).catch(() => undefined)
+      : Promise.resolve();
+    Promise.all([fontReady, ...imageReady]).then(() => setPreviewReady(true));
+  };
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:1500}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 18px",background:C.sidebar,flexShrink:0}}>
             <div style={{color:"white",fontWeight:700,fontSize:13}}>📄 Dokumen {dp.docType.replace("TUG","TUG-")} — {dp.docNumbers?.[docKeyOf(dp)]||dp.draftLabel||dp.id}</div>
             <div style={{display:"flex",gap:8}}>
-              <button style={{...sty.btn("success"),padding:"7px 16px"}} onClick={()=>{
+              <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("success"),padding:"7px 16px"}} onClick={()=>{
                 if (dp.docType==="TUG10") downloadTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast, uptList);
                 else if (dp.docType==="TUG3") downloadTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, showToast, uptList);
                 else if (dp.docType==="TUG5") downloadTUG5HTML(dp, katalogList, uitList, users, showToast, ultgList, uptList);
                 else if (dp.docType==="TUG7") downloadTUG7HTML(dp, katalogList, uitList, uptList, users, showToast);
                 else downloadTUG9HTML(dp, enrichedStocks, users, satpamList, showToast, uptList, gudangList);
               }}>⬇️ Unduh File (untuk Print/PDF)</button>
-              <button style={{...sty.btn("primary"),padding:"7px 16px"}} onClick={()=>iframeRef.current?.contentWindow?.print()}>🖨️ Print / Save PDF</button>
+              <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("primary"),padding:"7px 16px"}} onClick={()=>iframeRef.current?.contentWindow?.print()}>🖨️ Print / Save PDF</button>
               <button style={sty.btn("danger","sm")} onClick={()=>setDocPreview(null)}>✕ Tutup</button>
             </div>
           </div>
@@ -163,14 +190,14 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
             <iframe
               ref={iframeRef}
               title="Document Preview"
-              srcDoc={(dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList, gudangList))
+              srcDoc={previewHtml}
                 /* print-bar (onclick window.print) diblok CSP di iframe app → buang dari PREVIEW; modal punya tombol Print React. File unduhan/window.open (tanpa CSP) tetap punya tombol yang jalan. */
-                .replace(/<div class="print-bar">[\s\S]*?<\/div>/, "")}
+              onLoad={handlePreviewLoad}
               style={{width:"100%",height:"100%",border:"none"}}
             />
           </div>
           <div tabIndex={0} className="info-note" style={{padding:"8px 18px",background:"#fef3c7",fontSize:12,color:"#92400e",flexShrink:0}}>
-            💡 Tips: klik "Unduh File", buka file-nya di browser HP/laptop, lalu pilih menu Print → Save as PDF untuk dapat file PDF asli.
+            {previewReady ? "✅ Dokumen siap dicetak." : "⏳ Menunggu font dan foto selesai dimuat..."} Tips: klik "Unduh File", buka file-nya di browser HP/laptop, lalu pilih menu Print → Save as PDF untuk dapat file PDF asli.
           </div>
         </div>
   );

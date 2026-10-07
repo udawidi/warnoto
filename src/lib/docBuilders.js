@@ -17,8 +17,23 @@ import { childOpnameMatches } from "./stockOpnameFlow.js";
 // Dipakai di seluruh kop/PIC/sig-role dokumen supaya UPT selain Surabaya
 // tidak lagi mencetak "UPT Surabaya" hardcoded.
 function resolveUptNama(uptId, uptList, fallback) {
-  return (uptList || []).find(u => u.id === uptId)?.nama || fallback || UPT;
+  return (uptList || []).find(u => u.id === uptId)?.nama || fallback || (uptId ? "UPT" : UPT);
 }
+
+// Keep the on-screen preview and browser-native print on the same physical A4 canvas.
+const A4_PAGE_LAYOUT_CSS = (padding = "20px") => `
+@page{size:210mm 297mm;margin:0}
+body{overflow-x:auto}
+.page{box-sizing:border-box;width:210mm;min-height:297mm;padding:${padding};break-after:page;page-break-after:always}
+.page:last-child{break-after:auto;page-break-after:auto}
+.page table thead{display:table-header-group}
+.page table tr,.page .sig-row,.page .sig-row-2,.page .sig-row-3,.page .photo-box-2col,.page .photo-box-full,.page img{break-inside:avoid;page-break-inside:avoid}
+@media print{
+  .print-bar{display:none!important}
+  body{background:#fff;overflow:visible}
+  .page{width:210mm;min-height:297mm;max-width:none;margin:0;padding:${padding};box-shadow:none}
+}
+`;
 
 // ─── TUG-9 DOCUMENT HTML BUILDER (Surat Jalan + Bon TUG-9 + Lampiran Foto) ────
 // Returns a full standalone HTML string. Used for both in-app preview
@@ -62,14 +77,17 @@ export function buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangLis
   const docNoSJ = docs.sj || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt, "LOG.00.02", uptKode).sj : `1.SJ/LOG.00.02/${uptKode}/VII/2026`);
   const docNoBA = docs.ba || docNoSJ.replace(".SJ/", ".BA/");
 
-  const materialRowsTable = itemRows.map(({stock,qty}) => `
+  const materialRowsTable = itemRows.map(({stock,qty}) => {
+    const statusMaterial = stockSapLabel(stock);
+    return `
     <tr>
       <td>${esc(stock.name || "-")}</td>
       <td style="text-align:center">${esc(stock.gudang || stock.lokasi || "GUDANG")}</td>
       <td style="text-align:center">${fmtNum(qty)}</td>
       <td style="text-align:center">${esc(stock.unit || "-")}</td>
-      <td>${stock.jenisBarang ? `(${esc(stock.jenisBarang)}) ` : ""}${esc(txn.keteranganBarang || "")}</td>
-    </tr>`).join("");
+      <td>${statusMaterial ? `(${esc(statusMaterial)}) ` : ""}${esc(txn.keteranganBarang || "")}</td>
+    </tr>`;
+  }).join("");
 
   const materialPhotoRowsTable = itemRows.map(({stock}) => {
     const photo = (txn.fotoMaterial||[]).find(fm => fm.stockId === stock.id);
@@ -141,6 +159,7 @@ table.photo-items-tbl th{background:#d1d5db;border:1px solid #000;padding:6px;fo
 table.photo-items-tbl td{border:1px solid #000;padding:6px}
 
 @media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
+${A4_PAGE_LAYOUT_CSS("20px")}
 </style></head><body>
 
 <div class="print-bar">📄 Dokumen TUG-9 / BAST-B siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
@@ -449,6 +468,7 @@ table.bottom-bar-tbl td{border:1px solid #000;padding:4px 6px}
 .photo-empty{color:#9ca3af;font-style:italic;font-size:10px;text-align:center}
 
 @media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
+${A4_PAGE_LAYOUT_CSS("20px")}
 </style></head><body>
 
 <div class="print-bar">📄 Dokumen TUG-10 siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
@@ -623,8 +643,10 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
 
   if (isUltg) return buildTUG5ULTGHTML(txn, katalogList, users, ultgList);
 
+  const upt = (uptList || []).find(u => u.id === txn.uptId) || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
-  const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
+  const uptKode = resolveDocumentUnitCode(txn.uptId, uptList) || "UPT";
+  const uptAlamat = upt.alamat || "-";
   const managerUser = users.find(u=>u.role==="MANAGER")||{};
   const asmanUser = users.find(u=>u.role==="ASMAN")||{};
   const uit = (uitList||[]).find(u=>u.id===txn.uitId)||{};
@@ -695,6 +717,7 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 .print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
 
 @media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
+${A4_PAGE_LAYOUT_CSS("20px")}
 </style></head><body>
 
 <div class="print-bar">📄 Dokumen TUG-5 siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
@@ -717,7 +740,7 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
       <table>
         <tr><td class="lbl">Kepada</td><td style="width:10px">:</td><td>${esc(uit.nama || "PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR DAN BALI")}</td></tr>
         <tr><td class="lbl">Harap dikirim ke</td><td>:</td><td>PT. PLN (PERSERO) UNIT INDUK TRANSMISI JAWA BAGIAN TIMUR &amp; BALI - ${esc(uptNama.toUpperCase())}</td></tr>
-        <tr><td class="lbl">Alamat</td><td>:</td><td>JL. KETINTANG BARU NO. 9 SURABAYA KODE POS 60231</td></tr>
+        <tr><td class="lbl">Alamat</td><td>:</td><td>${esc(uptAlamat)}</td></tr>
       </table>
     </div>
     <table class="meta-right-box">
@@ -803,7 +826,7 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Slip Reservasi ULTG ${esc(txn.id)}</title>
-<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.pln-kop{display:flex;align-items:center;border-bottom:2px solid #003087;padding:4px 0 7px;margin-bottom:10px;gap:10px}.pln-kop-logo{width:42px;height:42px;object-fit:contain}.pln-kop-text{line-height:1.18;flex:1}.pln-kop-company{font-size:13px;font-weight:800}.pln-kop-unit{font-size:9px;font-weight:700;letter-spacing:.25px}.pln-kop-ultg{font-size:11px;font-weight:800;text-transform:uppercase}.pln-kop-ultg span{font-size:9px;font-weight:600;text-transform:none}.pln-kop-doc{font-size:14px;font-weight:800;color:#003087}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto;box-shadow:none}}</style></head><body>
+<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10px;color:#111;background:#e5e7eb}.page{padding:24px;background:white;max-width:1000px;margin:0 auto 16px;min-height:100vh}.topbar{height:5px;background:linear-gradient(90deg,#00377a,#0098da);margin-bottom:4px}.pln-kop{display:flex;align-items:center;border-bottom:2px solid #003087;padding:4px 0 7px;margin-bottom:10px;gap:10px}.pln-kop-logo{width:42px;height:42px;object-fit:contain}.pln-kop-text{line-height:1.18;flex:1}.pln-kop-company{font-size:13px;font-weight:800}.pln-kop-unit{font-size:9px;font-weight:700;letter-spacing:.25px}.pln-kop-ultg{font-size:11px;font-weight:800;text-transform:uppercase}.pln-kop-ultg span{font-size:9px;font-weight:600;text-transform:none}.pln-kop-doc{font-size:14px;font-weight:800;color:#003087}.doctitle{text-align:center;margin-bottom:10px}.doctitle h2{font-size:13px;font-weight:800;text-decoration:underline}.doctitle .docno{font-size:10px;font-style:italic;color:#0098da}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10px}table.meta td.label{width:110px}table.meta td.colon{width:8px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:9.5px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:center;margin-top:24px;text-align:center}.sig-col{width:280px;font-size:10px}.sig-space{height:40px;display:flex;align-items:center;justify-content:center}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.digital-stamp{border:2px solid #16a34a;color:#16a34a;border-radius:6px;padding:6px 10px;font-size:9px;font-weight:700;display:inline-block;transform:rotate(-4deg)}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto;box-shadow:none}}</style><style>${A4_PAGE_LAYOUT_CSS("24px")}</style></head><body>
 <div class="print-bar">📄 Slip Reservasi siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div class="topbar"></div>
@@ -857,6 +880,8 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
   const mgrLogistikUser = users.find(u=>u.role==="MGR_LOGISTIK_UIT")||{};
   const uit = (uitList||[]).find(u=>u.id===txn.uitId)||{};
   const uptPengirim = (uptList||[]).find(u=>u.id===txn.uptPengirimId)||{};
+  const uptTujuan = (uptList||[]).find(u=>u.id===txn.uptTujuanId || u.id===txn.unitPenerimaId || u.id===txn.uptId)?.nama;
+  const unitPenerima = uptTujuan || txn.unitPenerima || txn.unitTujuan || txn.uptTujuan || "-";
   const tanggal = fmtDateOnly(txn.approvedAtMgrLogistik||txn.createdAt);
 
   const itemRows = (txn.stockItems||[]).map((si,idx)=>{
@@ -874,7 +899,7 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>TUG-7 ${esc(txn.id)}</title>
-<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10.5px}table.meta td.label{width:100px}table.meta td.colon{width:10px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:10px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:flex-end;margin-top:20px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:55px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto}}</style></head><body>
+<style>@page{size:A4 portrait;margin:0}*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;font-size:10.5px;color:#111;background:#e5e7eb}.page{padding:28px;background:white;max-width:850px;margin:0 auto 16px;min-height:100vh}table.meta{width:100%;margin-bottom:10px}table.meta td{padding:3px 4px;font-size:10.5px}table.meta td.label{width:100px}table.meta td.colon{width:10px}table.items{width:100%;border-collapse:collapse;margin-bottom:10px}table.items th{background:#003087;color:white;padding:6px 6px;font-size:10px;text-align:center;border:1px solid #ccc}table.items td{padding:6px 6px;border:1px solid #ccc;font-size:10px}.sig-row{display:flex;justify-content:flex-end;margin-top:20px;text-align:center}.sig-col{width:250px;font-size:10px}.sig-space{height:55px}.sig-name{font-weight:700;text-decoration:underline;margin-top:2px}.print-bar{position:sticky;top:0;background:#003087;color:white;padding:8px 14px;text-align:center;font-size:12px;font-weight:700;z-index:10}.print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:6px 16px;font-size:12px;cursor:pointer;margin-left:10px}@media print{.print-bar{display:none}body{background:white}.page{margin:0;max-width:none;width:auto;min-height:auto}}</style><style>${A4_PAGE_LAYOUT_CSS("28px")}</style></head><body>
 <div class="print-bar">📄 TUG-7 siap cetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
 <div style="display:flex;justify-content:space-between;margin-bottom:14px">
@@ -889,7 +914,7 @@ export function buildTUG7HTML(txn, katalogList, uitList, uptList, users) {
 </div>
 <table class="meta" style="border:1px solid #ccc;border-radius:4px;padding:8px;margin-bottom:14px">
   <tr><td class="label">Kepada</td><td class="colon">:</td><td>Gudang PLTD PT PLN (Persero) ${esc(uptPengirim.nama||"-")}</td></tr>
-  <tr><td class="label">Untuk</td><td class="colon">:</td><td>PT PLN (Persero) ${esc(uit.kode||"UIT-JBM")} UPT ${esc(txn.unitPenerima||"Surabaya")}</td></tr>
+  <tr><td class="label">Untuk</td><td class="colon">:</td><td>PT PLN (Persero) ${esc(uit.kode||"UIT-JBM")} ${esc(unitPenerima)}</td></tr>
   <tr><td class="label">Berdasarkan</td><td class="colon">:</td><td>${esc(txn.tug5DocNo||"-")}</td></tr>
   <tr><td class="label">Atas beban rekening</td><td class="colon">:</td><td>${esc(txn.atasBebanRekening||"-")}</td></tr>
 </table>
@@ -1307,6 +1332,7 @@ table.photo-items-tbl th{background:#d1d5db;border:1px solid #000;padding:6px;fo
 table.photo-items-tbl td{border:1px solid #000;padding:6px}
 
 @media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
+${A4_PAGE_LAYOUT_CSS("20px")}
 </style></head><body>
 
 <div class="print-bar">📄 Dokumen TUG-3 / TUG-4 / BAST-B siap dicetak &nbsp; <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>

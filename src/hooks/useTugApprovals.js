@@ -449,6 +449,7 @@ export function useTugApprovals({
 
     if (txn.jenisTransfer === "INTRACOMPANY") {
       // Auto-generate draft TUG-7 di level UIT. Parent + child commit atomik.
+      const penerimaUptNama = uptList.find(u => u.id === txn.uptTujuanId || u.id === txn.uptId)?.nama;
       const newTug7 = {
         id: `TUG7-` + uid().slice(-6),
         docType: "TUG7",
@@ -467,7 +468,7 @@ export function useTugApprovals({
         approvedByMgrLogistik: null, approvedAtMgrLogistik: null,
         rejectedBy: null, rejectedAt: null, rejectReason: null,
         createdAt: Date.now(),
-        unitPenerima: "UPT Surabaya",
+        unitPenerima: penerimaUptNama || txn.unitPenerima || txn.unitTujuan || txn.uptTujuan || "-",
       };
       const atomic = await transitionTugWorkflowWithChild({ action: "TUG5_MANAGER_APPROVE", parent: txn, child: newTug7 });
       if (!atomic.ok) { showToast(atomic.conflict ? "TUG-5 sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Persetujuan TUG-5 gagal disimpan atomik.", "error"); return; }
@@ -672,6 +673,7 @@ export function useTugApprovals({
     // Auto-generate local draft TUG-8 in the sending UPT. It intentionally has
     // no official number/sequence; the canonical RPC allocates those on submit.
     const uptPengirim = uptList.find(u=>u.id===txn.uptPengirimId);
+    const uptTujuanNama = uptList.find(u => u.id === txn.uptTujuanId || u.id === txn.uptId)?.nama;
     const tug5Ref = txns.find(t=>t.id===txn.tug5Id);
     const newTug8Draft = {
       id: `DRAFT-TUG8-` + uid().slice(-6),
@@ -681,7 +683,7 @@ export function useTugApprovals({
       tug5Id: txn.tug5Id,
       noReferensiTug7: txn.docNumbers.tug7,
       noReferensiTug5: tug5Ref?.docNumbers?.tug5 || "",
-      unitTujuan: txn.unitPenerima || "UPT Surabaya",
+      unitTujuan: uptTujuanNama || txn.unitPenerima || txn.unitTujuan || txn.uptTujuan || "-",
       uptPengirimId: txn.uptPengirimId,
       uptId: txn.uptPengirimId,
       namaPekerjaan: `Berdasarkan TUG-7 ${txn.docNumbers.tug7}`,

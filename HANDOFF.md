@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-05
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-07
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -43,6 +43,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Output resmi Stock Opname (2026-09-23, production aktif):** paket cetak adalah satu HTML A4 portrait berisi BA + TUG15 SAP + TUG15 Non-SAP hanya bila child selesai. `documentMeta` versi 1 disimpan melalui RPC `update_stock_opname_document_meta` pada JSON opname final; hanya ADMIN/TL/ASMAN/SUPERADMIN se-UPT, sesi `SELESAI`, dan scope `can_access_upt` yang boleh menulis. Dialog berada di luar container kerja/riwayat agar Cetak dari Riwayat tetap terlihat. UPT legacy diambil dari sesi/gudang/pembuat, konflik wajib dipilih eksplisit. Manager harus tepat satu profil role `MANAGER` pada UPT; nol/ganda memblokir cetak. Pemeriksa default = pembuat + satu TL + satu Asman, dengan picker profil dan fallback manual. Laporan akuntansi poin 1 dan parser PID Excel tetap di luar scope sampai contoh Excel tersedia.
 - **Saldo TUG-8/TUG-9 dibedakan per sumber/lot kontrak (2026-09-15).** Material berkatalog sama dari TUG-3/TUG-10 dan penyedia/kontrak berbeda tidak boleh saling menimpa. Pengeluaran memilih lot sumber dan mengurangi sisa lot tersebut; transaksi menyimpan snapshot sumber agar riwayat tetap terbaca. Data lama dialokasikan lewat wizard/RPC review-first. Migration `20260915_tug_source_lots.sql` **sudah diterapkan ke production self-host** secara atomic dan terverifikasi.
 - **Template PDF TUG-3/4/5/10 seragam gaya AppSheet TUG-9** (`docBuilders.js`). JANGAN ambil perubahan `App.jsx` dari PR Kevin (menghapus guard Mode Demo / tombol "Isi Data Contoh" ke form resmi).
+- **Preview dan Print/Save PDF seluruh TUG memakai kanvas A4 yang sama.** TUG-3/4/5/5-ULTG/7/8/9/10 tetap browser-native print; CSS print tidak boleh mengubah geometri halaman preview. Tombol cetak menunggu font dan gambar selesai dimuat. Identitas/alamat/fallback dokumen wajib berasal dari UPT transaksi atau master dan tidak boleh diam-diam kembali ke Surabaya untuk UPT lain.
 - **Maturity canonical self-host:** `maturity_assessments`, `maturity_audits`, `maturity_audit_history` (unik per upt/tahun/semester), `maturity_5s_assessments` (append-only, authenticated hanya SELECT+INSERT). Evidence audit = Google Drive binary + Supabase metadata; root folder `UPT Surabaya Apps` (`13FFto2pzVRLq4LBpRaJsIyGa2Bk5gaYD`), OAuth cred hanya di Edge Runtime MiniPC. Scope dari `maturity_audits.upt_id`; UIT hanya UPT se-`uit_id`; audit FINAL immutable. Mode Demo Maturity sengaja dimatikan.
 - **Maturity hardening (2026-09-19, production self-host aktif):** RLS memakai `can_access_maturity_upt`; UPT hanya unit sendiri, reviewer UIT hanya UPT dengan `uit_id` sama, Pusat/SUPERADMIN nasional, dan HAR_UIT tidak mendapat akses Maturity. Review wajib memiliki `upt_id` yang sama dengan audit. Evidence yang diakui aplikasi wajib berhasil tersimpan di Drive dan bucket self-host; kegagalan backup menggagalkan upload dan file Drive dipindah ke trash sebagai kompensasi. Foto Form 5S menyimpan `storagePath` di `sample_photos` JSONB. Satu asesmen legacy tanpa UPT tetap dipertahankan sebagai `PUSAT_LEGACY_UNSCOPED`, hanya dapat dibaca Pusat/SUPERADMIN dan tidak dihitung sebagai nilai UPT/UIT.
 - **Maturity AI (2026-09-17):** Analisis tetap metadata-only dan hanya berjalan saat tombol ditekan. Checklist slot evidence dihitung lokal; AI memberi level potensial, bukan nilai resmi. Hasil AI dan kegagalannya tidak masuk skor audit. Dashboard draft menandai proyeksi berbasis evidence; nilai FINAL tetap hasil penilaian manual Pusat.
@@ -72,6 +73,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Penomoran dan cetak TUG multi-UPT selesai (2026-10-07).** Commit `4f79d8e` memperbaiki counter enam UPT serta nomor historis TUG-3 Probolinggo dan TUG-10 Gresik. Perbaikan lanjutan menyamakan preview dengan Print/Save PDF untuk seluruh TUG cetak, mengganti Keterangan TUG-8/9 agar memakai Status Material (`Non-SAP`, `SAP — Persediaan`, atau `SAP — Cadang`), menunggu aset preview sebelum tombol cetak aktif, dan menghapus fallback Surabaya yang tersisa pada TUG-5/7. Tidak ada schema, API, atau dependency baru. Verifikasi: 516 unit test, build production, diff-check, serta render PDF enam jalur builder lulus.
 
 - **Kartu Gantung depan memiliki dua format cetak (2026-10-05).** Format existing A4 tetap memakai `window.print()` dan tidak memakai NIIMBOT. Format compact memakai kertas landscape 70×50 mm dengan QR katalog 32 mm di sisi kiri dan panel kanan berurutan Satuan, Material Description, lalu No. Catalog; preview compact tetap tersedia. Cetak langsung Web Bluetooth khusus NIIMBOT M2-H model `4608`, dengan dependency `niimbot-web-bluetooth@2.6.0`, raster `567×827`, density `3`. Commit `e81c059` dan `64d6b34` sudah pushed ke `origin/main`. 500 test, build, dan diff-check lulus; hardware smoke test belum dilakukan.
 
@@ -823,5 +826,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-03 Codex: **Role Perencanaan pulih; backup/recovery self-host terverifikasi; riwayat foto Stock Opname per UPT selesai lokal dan siap diuji di localhost.**
 - 2026-10-05 Codex: **Kartu Gantung compact NIIMBOT M2-H langsung via Web Bluetooth selesai dan pushed (`e81c059`, `64d6b34`); A4 tetap `window.print()`, verifikasi hardware belum dilakukan.**
+- 2026-10-07 Codex: **Penomoran TUG multi-UPT dan konsistensi preview/Print PDF seluruh TUG selesai; Keterangan TUG-8/9 kini memakai Status Material dan fallback Surabaya tersisa dihapus.**
