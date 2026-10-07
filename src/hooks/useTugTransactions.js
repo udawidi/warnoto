@@ -2,7 +2,7 @@ import { useState, useRef } from "react";
 import { hasRole, ROLES } from "../lib/roles.js";
 import { can } from "../lib/perms.js";
 import { logAudit } from "../lib/audit.js";
-import { generateDocNumbers, generateReservasiDocNo, uid } from "../lib/utils.js";
+import { generateDocNumbers, generateReservasiDocNo, resolveDocumentUnitCode, uid } from "../lib/utils.js";
 import { processTxnPhotos, _isDataUrl } from "../lib/supabaseSync.js";
 import { createAndSubmitCanonicalTug, amendCanonicalTug, newCanonicalActionKeys } from "../lib/tugCanonical.js";
 import { upsertTug3Transaction, deleteTug3Transaction } from "../lib/tug3Sync.js";
@@ -554,7 +554,9 @@ export function useTugTransactions({
     let seq = nextSafeDocSeq(docSeq, txns);
     const docCode = (docType === "TUG10" || docType === "TUG3") ? "LOG.00.01" : "LOG.00.02";
     const docKey = docType === "TUG9" ? "tug9" : docType === "TUG8" ? "tug8" : docType === "TUG10" ? "tug10" : docType === "TUG5" ? "tug5" : "tug3";
-    let docNumbers = generateDocNumbers(seq, Date.now(), docCode);
+    const transactionUptId = formData?.uptId || currentUser?.uptId || currentUserUptId;
+    const documentUnitCode = resolveDocumentUnitCode(transactionUptId, uptList);
+    let docNumbers = generateDocNumbers(seq, Date.now(), docCode, documentUnitCode);
     let canonicalSubmission = null;
     // TUG-8/TUG-9 uses the canonical server record when its reviewed migration
     // is available. A deployment before the migration retains the legacy path.

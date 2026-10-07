@@ -8,12 +8,35 @@ import { sanitizeRows } from "./xlsxImport.js";
 const MAX_XLSX_BYTES = 15 * 1024 * 1024; // 15MB, samakan dgn lib/xlsxImport.js
 
 // ─── DOC NUMBER GENERATOR ─────────────────────────────────────────────
-export function generateDocNumbers(seq, date, docCode) {
+const DEFAULT_DOCUMENT_UNIT_CODE = "UPT-SBYA";
+const DOCUMENT_UNIT_CODE_BY_ID = Object.freeze({
+  "UPT-SBY": "UPT-SBYA",
+  "UPT-PBG": "UPT-PBLG",
+  "UPT-MLG": "UPT-MLG",
+  "UPT-MDN": "UPT-MDN",
+  "UPT-BLI": "UPT-BLI",
+  "UPT-GRS": "UPT-GRS",
+});
+
+// Resolve the official document segment from the transaction UPT. Known IDs
+// override stale master codes; unknown non-empty IDs fail closed.
+export function resolveDocumentUnitCode(uptId, uptList = []) {
+  const id = String(uptId ?? "").trim();
+  if (!id) return DEFAULT_DOCUMENT_UNIT_CODE;
+  if (DOCUMENT_UNIT_CODE_BY_ID[id]) return DOCUMENT_UNIT_CODE_BY_ID[id];
+  const master = Array.isArray(uptList) ? uptList : [];
+  const match = master.find(u => u?.id === id || u?.kode === id);
+  return match?.kode || null;
+}
+
+export function generateDocNumbers(seq, date, docCode, documentUnitCode = DEFAULT_DOCUMENT_UNIT_CODE) {
   const d = new Date(date);
   const roman = ROMAN[d.getMonth()];
   const year = d.getFullYear();
   const code = docCode || "LOG.00.02";
-  const base = `${code}/UPT-SBYA/${roman}/${year}`;
+  const unitCode = DOCUMENT_UNIT_CODE_BY_ID[documentUnitCode] || documentUnitCode || null;
+  if (!unitCode) throw new Error("DOCUMENT_UNIT_CODE_REQUIRED");
+  const base = `${code}/${unitCode}/${roman}/${year}`;
   const baseUIT = `LOG/UIT-JBM/${roman}/${year}`;
   return {
     sj: `${seq}.SJ/${base}`,

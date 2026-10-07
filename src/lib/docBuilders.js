@@ -6,7 +6,7 @@ import QRCode from "qrcode";
 import { fmtNum } from "./ragShared.mjs";
 import { katalogSapLabel } from "./sap.js";
 import { canonicalKatalogCode } from "./normalizeKatalogCode.js";
-import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
+import { fmtDate, fmtDateOnly, fmtRp, generateDocNumbers, resolveDocumentUnitCode, terbilangHari, scanUrlFor, lokasiScanUrlFor } from "./utils.js";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE } from "../constants.js";
 import { getHeavyEquipmentBorrowerLabel, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt } from "./heavyEquipment.js";
 import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel, itemCounted } from "./sap.js";
@@ -58,8 +58,8 @@ export function buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangLis
     };
   })();
 
-  const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
-  const docNoSJ = docs.sj || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt).sj : `1.SJ/LOG.00.02/${uptKode}/VII/2026`);
+  const uptKode = resolveDocumentUnitCode(txn.uptId, uptList);
+  const docNoSJ = docs.sj || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt, "LOG.00.02", uptKode).sj : `1.SJ/LOG.00.02/${uptKode}/VII/2026`);
   const docNoBA = docs.ba || docNoSJ.replace(".SJ/", ".BA/");
 
   const materialRowsTable = itemRows.map(({stock,qty}) => `
@@ -371,13 +371,13 @@ export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, 
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn?.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
-  const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
+  const uptKode = resolveDocumentUnitCode(txn.uptId, uptList);
   const asmanUser = users.find(u => u.role === "ASMAN") || {};
   const actualApprover = users.find(u=>u.id===txn.approvedBy) || {};
   const penerimaUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u=>u.role==="TL")||{});
   const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
 
-  const docNoTUG10 = docs.tug10 || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt).tug10 : `TUG10-${(txn.id||"").slice(-6)}`);
+  const docNoTUG10 = docs.tug10 || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt, "LOG.00.01", uptKode).tug10 : `TUG10-${(txn.id||"").slice(-6)}`);
 
   const items = txn?.stockItems || [];
   const itemRows = items.map(si => {
@@ -1158,7 +1158,7 @@ export function buildTUG3HTML(txn, katalogList, lokasiList, timMutuList, users, 
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const docs = txn?.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
-  const uptKode = (uptList || []).find(u => u.id === txn.uptId)?.kode || "UPT-SBY";
+  const uptKode = resolveDocumentUnitCode(txn.uptId, uptList);
   const creator = users.find(u=>u.id===txn.createdBy) || {};
   const actualApprover = users.find(u=>u.id===txn.approvedBy) || {};
   const scopedTl = users.find(u => u.role === "TL" && (!txn.uptId || u.uptId === txn.uptId)) || {};

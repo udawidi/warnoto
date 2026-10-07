@@ -7,6 +7,8 @@ import { spawnSync } from "node:child_process";
 const root = path.resolve(import.meta.dirname, "../..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
 const migration = read("supabase/migrations/20260729_tug_canonical_approval.sql");
+const pbgMigration = read("supabase/migrations/20261007_tug_document_unit_pbg.sql");
+const pbgVerifier = read("supabase/verify_tug_document_unit_config.sql");
 const client = read("src/lib/tugCanonical.js");
 const overview = read("src/components/TugFinalReviewModal.jsx");
 const app = read("App.jsx");
@@ -224,6 +226,17 @@ test("TUG-15 report files remain outside canonical scope", () => {
   for (const file of forbidden) assert.ok(fs.existsSync(path.join(root, file)), `${file} must remain present`);
   const diff = spawnSync("git", ["diff", "--quiet", "--", ...forbidden], { cwd: root });
   assert.equal(diff.status, 0, "canonical work must not modify TUG > Laporan files");
+});
+
+test("Probolinggo document unit seed is idempotent and never rewrites a counter", () => {
+  assert.match(pbgMigration, /insert into public\.tug_global_document_counters/i);
+  assert.match(pbgMigration, /values\s*\('UPT-PBG',\s*'PBLG',\s*0\)/i);
+  assert.match(pbgMigration, /on conflict\s*\(upt_id\)\s*do nothing/i);
+  assert.doesNotMatch(pbgMigration, /do update/i);
+  assert.match(pbgVerifier, /\('UPT-PBG', 'PBLG'\)/i);
+  assert.match(pbgVerifier, /where upt_id = v_expected\.upt_id/i);
+  assert.match(pbgVerifier, /v_unit <> v_expected\.document_unit_code/i);
+  assert.match(pbgVerifier, /v_last < 0/i);
 });
 
 test("canonical final approval does not block on full stock refresh and prevents double click", () => {
