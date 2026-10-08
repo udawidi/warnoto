@@ -134,4 +134,8 @@ test("Form 5S history keeps the popup alive while photo bytes are prepared", () 
   assert.match(form5sBuilder, /width:210mm/);
   assert.match(form5sBuilder, /min-height:297mm/);
   assert.match(form5sBuilder, /page-break-after:always/);
+  assert.match(form5sBuilder, /class="page evidence-page"/);
+  assert.match(form5sBuilder, /\.evidence-page\{break-before:page;page-break-before:always\}/);
+  assert.match(form5sBuilder, /evidencePhotoGrid/);
+  assert.match(form5sBuilder, /data-form5s-photo="true"/);
 });

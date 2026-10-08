@@ -1975,6 +1975,31 @@ export function buildForm5SHTML(record, users, uptList) {
     }).join("");
     return `<div class="page photo-page"><div class="top-accent"></div><div class="doctitle">Lampiran Foto 5S — ${esc(label)}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px">${cells}</div><div class="bottom-accent"></div></div>`;
   }).join("") : "";
+  const evidencePhotoGrid = categorizedPhotos ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px">${Object.entries(categoryLabels).flatMap(([categoryId, label]) => photos.filter(photo => photo?.categoryId === categoryId).slice(0, 3).map((photo, index) => {
+    const src = photo.preview || "";
+    return `<div style="border:1px solid #000;padding:2px;text-align:center;height:52px;display:flex;align-items:center;justify-content:center;gap:3px">${src ? `<img data-form5s-photo="true" src="${esc(src)}" referrerpolicy="no-referrer" style="max-width:62px;max-height:46px;object-fit:contain" alt="${esc(`${label} foto ${index + 1}`)}"/>` : `<span class="photo-empty">${esc(photo.printError || "Foto tidak tersedia")}</span>`}<span style="font-size:6px">${esc(label)} ${index + 1}</span></div>`;
+  })).join("")}</div>` : "";
+  const evidencePage = `<div class="page evidence-page">
+  <div class="top-accent"></div>
+  <div class="doctitle">Eviden dan Tanda Tangan</div>
+  <div class="section-title">Sampling Foto</div>
+  ${categorizedPhotos ? evidencePhotoGrid : photoGrid}
+  <div class="sig-row-2">
+    <div class="sig-col">
+      <div><i>Diperiksa oleh,</i></div>
+      <div class="sig-role">Auditor Pelaksana</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">${esc(record.auditor || ".....................")}</div>
+    </div>
+    <div class="sig-col">
+      <div><i>Menyetujui,</i></div>
+      <div class="sig-role">ASMAN ${esc(uptNama.toUpperCase())}</div>
+      <div class="sig-space"></div>
+      <div class="sig-name">${esc(asmanUser.name || ".....................")}</div>
+    </div>
+  </div>
+  <div class="bottom-accent"></div>
+</div>`;
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan 5S ${esc(uptNama)} ${esc(bulanLabel)} ${esc(record.tahun)} ${esc(record.id || "")}</title>
 <style>
@@ -1983,6 +2008,7 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background
 @page{size:A4 portrait;margin:0}
 .page{padding:20px;min-height:297mm;width:210mm;background:white;max-width:210mm;margin:0 auto 16px;position:relative;break-after:page;page-break-after:always}
 .page:last-child{break-after:auto;page-break-after:auto}
+.evidence-page{break-before:page;page-break-before:always}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
 .bottom-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-top:16px}
 .header-kop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
@@ -2048,26 +2074,9 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
   <div class="section-title">Catatan / Temuan / Tindak Lanjut</div>
   <div class="note-box">${esc(record.catatan || "-")}</div>
 
-  <div class="section-title">Sampling Foto</div>
-  ${photoGrid}
-
-  <div class="sig-row-2">
-    <div class="sig-col">
-      <div><i>Diperiksa oleh,</i></div>
-      <div class="sig-role">Auditor Pelaksana</div>
-      <div class="sig-space"></div>
-      <div class="sig-name">${esc(record.auditor || ".....................")}</div>
-    </div>
-    <div class="sig-col">
-      <div><i>Menyetujui,</i></div>
-      <div class="sig-role">ASMAN ${esc(uptNama.toUpperCase())}</div>
-      <div class="sig-space"></div>
-      <div class="sig-name">${esc(asmanUser.name || ".....................")}</div>
-    </div>
-  </div>
-
   <div class="bottom-accent"></div>
 </div>
+${evidencePage}
 ${photoPages}
 </body></html>`;
 }
