@@ -1929,8 +1929,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const handlePrintRecord = async record => {
     const w = window.open("", "_blank");
     if (!w) { setSaveError("Popup cetak diblokir browser."); return; }
-    // Keep the popup alive while only signed URLs are resolved. The print
-    // document waits for image decode in its own small inline loader.
+    // Keep the popup alive while signed photo URLs are resolved.
     const popupObjectUrls = [];
     const releasePopupObjectUrls = () => popupObjectUrls.splice(0).forEach(url => URL.revokeObjectURL(url));
     w.addEventListener("beforeunload", releasePopupObjectUrls, { once: true });
@@ -1952,6 +1951,25 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       : { ...record, samplePhotos: samplePhotosWithUrls };
     const html = buildForm5SHTML(printRecord, users, uptList);
     w.document.open(); w.document.write(html); w.document.close();
+    // CSP-safe: the popup owns the print action, but no inline script/onclick.
+    const printButton = w.document.getElementById("form5s-print");
+    if (printButton) {
+      printButton.addEventListener("click", async () => {
+        printButton.disabled = true;
+        printButton.textContent = "Menyiapkan foto...";
+        const images = [...w.document.querySelectorAll("[data-form5s-photo]")];
+        const loaded = Promise.all(images.map(image => image.complete
+          ? Promise.resolve()
+          : new Promise(resolve => {
+              image.addEventListener("load", resolve, { once: true });
+              image.addEventListener("error", resolve, { once: true });
+            })));
+        await Promise.race([loaded, new Promise(resolve => setTimeout(resolve, 2000))]);
+        printButton.disabled = false;
+        printButton.textContent = "🖨️ Print / Save as PDF";
+        w.print();
+      });
+    }
   };
 
   const handlePrint = () => {

@@ -13,6 +13,7 @@ const migration = read("supabase/migrations/20261008_form5s_category_photo_guard
 const draftMigration = read("supabase/migrations/20260919_maturity_5s_drafts.sql");
 const schema = read("supabase/schema.sql");
 const builder = read("src/lib/docBuilders.js");
+const form5sBuilder = builder.slice(builder.indexOf("export function buildForm5SHTML"), builder.indexOf("// ─── FASE F:"));
 const sync = read("src/lib/maturitySync.js");
 
 test("Form 5S uses maturity permission alias and is top-level", () => {
@@ -49,7 +50,7 @@ test("Form 5S enforces 2 MiB compression, 2000px, fifteen slots, and print timeo
   assert.match(drive, /count > 15/);
   assert.match(edge, /MAX_FORM5S_UPLOAD_BYTES = 2 \* 1024 \* 1024/);
   assert.match(edge, /file\.size > MAX_FORM5S_UPLOAD_BYTES/);
-  assert.match(builder, /setTimeout\(\(\) => \{ markFailed\(image\); resolve\(\); \}, 8000\)/);
+  assert.doesNotMatch(form5sBuilder, /disabled onclick=\"window\.print\(\)\"/);
   assert.match(form, /samplePhotos\.length !== 15/);
   assert.match(form, /categoryId/);
 });
@@ -125,4 +126,12 @@ test("Form 5S history keeps the popup alive while photo bytes are prepared", () 
   assert.ok(finalRender > signedSource, "final print document must wait for photo URLs");
   assert.match(builder, /data-form5s-photo/);
   assert.match(builder, /form5s-print/);
+  assert.doesNotMatch(form5sBuilder, /onclick=\"window\.print\(\)\"/);
+  assert.match(printHandler, /getElementById\(\"form5s-print\"\)/);
+  assert.match(printHandler, /Promise\.race\(\[loaded, new Promise\(resolve => setTimeout\(resolve, 2000\)\)\]\)/);
+  assert.match(drive, /FORM5S_PHOTO_TIMEOUT = 3 \* 1000/);
+  assert.match(printHandler, /addEventListener\(\"click\", async \(\) =>/);
+  assert.match(form5sBuilder, /width:210mm/);
+  assert.match(form5sBuilder, /min-height:297mm/);
+  assert.match(form5sBuilder, /page-break-after:always/);
 });

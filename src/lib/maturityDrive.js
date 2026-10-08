@@ -162,7 +162,7 @@ const imageMime = value => String(value || "").toLowerCase().startsWith("image/"
 // round trip while keeping the bucket private and the URL short-lived.
 const form5SPhotoCache = new Map();
 const FORM5S_SIGNED_URL_TTL = 8 * 60 * 1000;
-const FORM5S_PHOTO_TIMEOUT = 8 * 1000;
+const FORM5S_PHOTO_TIMEOUT = 3 * 1000;
 const timeoutPromise = (message = "Foto eviden terlalu lama dimuat.") => new Promise((_, reject) => setTimeout(() => reject(new Error(message)), FORM5S_PHOTO_TIMEOUT));
 const publicSignedUrl = value => {
   const path = String(value || "").replace(/^https?:\/\/[^/]+/i, "");

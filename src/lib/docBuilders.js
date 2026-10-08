@@ -1981,7 +1981,8 @@ export function buildForm5SHTML(record, users, uptList) {
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
 @page{size:A4 portrait;margin:0}
-.page{padding:20px;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
+.page{padding:20px;min-height:297mm;width:210mm;background:white;max-width:210mm;margin:0 auto 16px;position:relative;break-after:page;page-break-after:always}
+.page:last-child{break-after:auto;page-break-after:auto}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
 .bottom-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-top:16px}
 .header-kop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
@@ -2007,10 +2008,10 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 .sig-name{font-weight:bold;text-transform:uppercase}
 .print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:100}
 .print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
-@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;max-width:none;width:auto;min-height:auto;padding:15px}body{background:white}}
+@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;width:210mm;max-width:210mm;min-height:297mm;padding:15mm}body{background:white}}
 </style></head><body>
 
-<div class="print-bar">📄 Laporan 5S <button id="form5s-print" disabled onclick="window.print()">Memuat foto eviden...</button></div>
+<div class="print-bar">📄 Laporan 5S <button id="form5s-print" type="button">🖨️ Print / Save as PDF</button></div>
 
 <div class="page">
   <div class="top-accent"></div>
@@ -2068,35 +2069,6 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
   <div class="bottom-accent"></div>
 </div>
 ${photoPages}
-<script>
-(() => {
-  const button = document.getElementById("form5s-print");
-  const images = [...document.querySelectorAll("img[data-form5s-photo]")];
-  const markFailed = image => {
-    const box = image.parentElement;
-    image.remove();
-    const message = document.createElement("div");
-    message.className = "photo-empty";
-    message.textContent = "Foto tidak tersedia";
-    box.appendChild(message);
-  };
-  const waitForImage = image => new Promise(resolve => {
-    const timeout = setTimeout(() => { markFailed(image); resolve(); }, 8000);
-    if (image.complete) {
-      clearTimeout(timeout);
-      if (!image.naturalWidth) markFailed(image);
-      resolve();
-      return;
-    }
-    image.addEventListener("load", () => { clearTimeout(timeout); resolve(); }, { once: true });
-    image.addEventListener("error", () => { clearTimeout(timeout); markFailed(image); resolve(); }, { once: true });
-  });
-  Promise.all(images.map(waitForImage)).then(() => {
-    button.disabled = false;
-    button.textContent = "🖨️ Print / Save as PDF";
-  });
-})();
-</script>
 </body></html>`;
 }
 
