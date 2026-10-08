@@ -13,6 +13,7 @@ const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_DRIVE_CLIENT_ID") ?? "";
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_DRIVE_CLIENT_SECRET") ?? "";
 const GOOGLE_REFRESH_TOKEN = Deno.env.get("GOOGLE_DRIVE_REFRESH_TOKEN") ?? "";
 const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
+const MAX_FORM5S_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_EXPORT_BYTES = 25 * 1024 * 1024;
 const FORBIDDEN_MIME = new Set([
   "application/zip", "application/x-zip-compressed", "multipart/x-zip",
@@ -542,7 +543,7 @@ Deno.serve(async (req) => {
     }
     if (action === "upload-5s") {
       const file = form?.get("file");
-      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau hasilnya melebihi 3 MB." }, 400);
+      if (!(file instanceof File) || !fileAllowed(file) || file.size > MAX_FORM5S_UPLOAD_BYTES || !fileMimeType(file).startsWith("image/")) return json({ ok: false, error: "Foto Form 5S harus berupa gambar maksimal 2 MiB." }, 400);
       const uptId = text(body.uptId, 120);
       if (!uptId) return json({ ok: false, error: "uptId canonical wajib diisi." }, 400);
       const upt = await findUptById(uptId);
@@ -568,7 +569,7 @@ Deno.serve(async (req) => {
     if (action === "sign-5s-photo") {
       const assessmentId = text(body.assessmentId, 120);
       const photoIndex = Number(body.photoIndex);
-      if (!assessmentId || !Number.isInteger(photoIndex) || photoIndex < 0 || photoIndex > 2) return json({ ok: false, error: "assessmentId dan photoIndex wajib valid." }, 400);
+      if (!assessmentId || !Number.isInteger(photoIndex) || photoIndex < 0 || photoIndex > 14) return json({ ok: false, error: "assessmentId dan photoIndex wajib valid." }, 400);
       const { data: assessment, error: assessmentError } = await admin.from("maturity_5s_assessments").select("id,upt_id,sample_photos").eq("id", assessmentId).maybeSingle();
       if (assessmentError) throw new Error(`Data Form 5S tidak dapat dibaca: ${assessmentError.message}`);
       if (!assessment) return json({ ok: false, error: "Riwayat Form 5S tidak ditemukan." }, 404);
@@ -595,7 +596,7 @@ Deno.serve(async (req) => {
       const upt = await findUptById(text(assessment.upt_id, 120));
       await assertUptAccess(ctx, upt, false);
       const photos = Array.isArray(assessment.sample_photos) ? assessment.sample_photos : [];
-      if (photos.length > 3) return json({ ok: false, error: "Jumlah foto Form 5S tidak valid." }, 409);
+      if (photos.length > 15) return json({ ok: false, error: "Jumlah foto Form 5S tidak valid." }, 409);
       const signedPhotos: any[] = await Promise.all(photos.map(async (photo: any, index: number) => {
         const storagePath = text(photo?.storagePath || photo?.storage_path, 500);
         const fileName = safeName(photo?.name || photo?.fileName, `form-5s-${assessmentId}-${index + 1}.jpg`);
@@ -612,7 +613,7 @@ Deno.serve(async (req) => {
     if (action === "download-5s-photo") {
       const assessmentId = text(body.assessmentId, 120);
       const photoIndex = Number(body.photoIndex);
-      if (!assessmentId || !Number.isInteger(photoIndex) || photoIndex < 0 || photoIndex > 2) return json({ ok: false, error: "assessmentId dan photoIndex wajib valid." }, 400);
+      if (!assessmentId || !Number.isInteger(photoIndex) || photoIndex < 0 || photoIndex > 14) return json({ ok: false, error: "assessmentId dan photoIndex wajib valid." }, 400);
       const { data: assessment, error: assessmentError } = await admin.from("maturity_5s_assessments").select("id,upt_id,sample_photos").eq("id", assessmentId).maybeSingle();
       if (assessmentError) throw new Error(`Data Form 5S tidak dapat dibaca: ${assessmentError.message}`);
       if (!assessment) return json({ ok: false, error: "Riwayat Form 5S tidak ditemukan." }, 404);

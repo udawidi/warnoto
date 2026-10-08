@@ -3,6 +3,7 @@ import { compressImage } from "./supabaseSync.js";
 
 const FUNCTION_PATH = "/functions/v1/maturity-drive";
 const MAX_EVIDENCE_BYTES = 3 * 1024 * 1024;
+const MAX_FORM5S_BYTES = 2 * 1024 * 1024;
 const SOURCE_MAX_BYTES = 25 * 1024 * 1024;
 const FORBIDDEN_MIME = new Set(["application/zip", "application/x-zip-compressed", "multipart/x-zip", "application/vnd.rar", "application/x-rar-compressed", "application/vnd.microsoft.portable-executable", "application/x-msdownload", "application/x-msdos-program"]);
 const ALLOWED_MIME = new Set(["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "text/plain", "text/csv"]);
@@ -139,7 +140,10 @@ export async function uploadMaturityDriveEvidence({ file, ...metadata }) {
 }
 
 export async function uploadForm5SPhoto({ file, uptId, bulan, tahun }) {
+  if (!isImageFile(file)) throw new Error("Foto Form 5S harus berupa gambar.");
   file = await prepareMaturityUpload(file);
+  file = imageFileFromDataUrl(await compressImage(file, { maxBytes: MAX_FORM5S_BYTES, maxDim: 2000 }), file);
+  if (file.size > MAX_FORM5S_BYTES) throw new Error("Foto Form 5S tetap lebih besar dari 2 MiB setelah kompresi.");
   const formData = new FormData();
   formData.set("file", file, file.name);
   const result = await request("upload-5s", { uptId, bulan, tahun }, { formData });
@@ -148,7 +152,7 @@ export async function uploadForm5SPhoto({ file, uptId, bulan, tahun }) {
 
 export async function downloadForm5SPhoto(assessmentId, photoIndex) {
   const index = Number(photoIndex);
-  if (!assessmentId || !Number.isInteger(index) || index < 0 || index > 2) throw new Error("Foto Form 5S tidak valid.");
+  if (!assessmentId || !Number.isInteger(index) || index < 0 || index > 14) throw new Error("Foto Form 5S tidak valid.");
   return request("download-5s-photo", { assessmentId, photoIndex: index }, { responseType: "blob" });
 }
 
@@ -158,6 +162,8 @@ const imageMime = value => String(value || "").toLowerCase().startsWith("image/"
 // round trip while keeping the bucket private and the URL short-lived.
 const form5SPhotoCache = new Map();
 const FORM5S_SIGNED_URL_TTL = 8 * 60 * 1000;
+const FORM5S_PHOTO_TIMEOUT = 8 * 1000;
+const timeoutPromise = (message = "Foto eviden terlalu lama dimuat.") => new Promise((_, reject) => setTimeout(() => reject(new Error(message)), FORM5S_PHOTO_TIMEOUT));
 const publicSignedUrl = value => {
   const path = String(value || "").replace(/^https?:\/\/[^/]+/i, "");
   if (!path) return "";
@@ -169,7 +175,7 @@ const publicSignedUrl = value => {
 
 export async function openForm5SPhoto(assessmentId, photoIndex) {
   const index = Number(photoIndex);
-  if (!assessmentId || !Number.isInteger(index) || index < 0 || index > 2) throw new Error("Foto Form 5S tidak valid.");
+  if (!assessmentId || !Number.isInteger(index) || index < 0 || index > 14) throw new Error("Foto Form 5S tidak valid.");
   const cacheKey = `${assessmentId}:${index}`;
   const cached = form5SPhotoCache.get(cacheKey);
   if (cached && (cached.expiresAt > Date.now() || cached.promise)) return cached.promise;
@@ -194,7 +200,7 @@ export async function openForm5SPhoto(assessmentId, photoIndex) {
 
 export async function openForm5SPhotos(assessmentId, photoCount) {
   const count = Number(photoCount);
-  if (!assessmentId || !Number.isInteger(count) || count < 0 || count > 3) throw new Error("Foto Form 5S tidak valid.");
+  if (!assessmentId || !Number.isInteger(count) || count < 0 || count > 15) throw new Error("Foto Form 5S tidak valid.");
   if (count === 0) return [];
   const results = Array(count).fill(null);
   const misses = [];
@@ -207,7 +213,7 @@ export async function openForm5SPhotos(assessmentId, photoCount) {
   }));
   if (misses.length) {
     try {
-      const batch = await request("sign-5s-photos", { assessmentId });
+      const batch = await Promise.race([request("sign-5s-photos", { assessmentId }), timeoutPromise("Signing foto eviden timeout.")]);
       for (const signed of Array.isArray(batch.photos) ? batch.photos : []) {
         const index = Number(signed?.index);
         if (!Number.isInteger(index) || index < 0 || index >= count || !signed.url) continue;
@@ -217,14 +223,14 @@ export async function openForm5SPhotos(assessmentId, photoCount) {
         results[index] = result;
       }
     } catch {
-      // Legacy rows or a temporarily unavailable batch endpoint use the scoped helper below.
+      // Print tetap berjalan dengan placeholder setelah batas waktu batch.
     }
   }
-  const fallbackIndexes = misses.filter(index => !results[index]);
-  await Promise.all(fallbackIndexes.map(async index => {
-    try { results[index] = await openForm5SPhoto(assessmentId, index); }
-    catch (error) { results[index] = { url: "", fileName: "", mime: "", isObjectUrl: false, error }; }
-  }));
+  // Batch signing is the only print source. Do not start one request per photo
+  // after a batch timeout; that would add another 8 seconds before decode.
+  misses.filter(index => !results[index]).forEach(index => {
+    results[index] = { url: "", fileName: "", mime: "", isObjectUrl: false, error: new Error("Foto eviden tidak tersedia.") };
+  });
   return results;
 }
 

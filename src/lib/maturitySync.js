@@ -5,6 +5,12 @@ import { supabase } from "../supabaseClient.js";
 const AUDIT_STATUS = new Set(["DRAFT", "SELF_ASSESSMENT", "REVIEW_UIT", "REVISION", "REVIEW_PUSAT", "FINAL"]);
 const HISTORY_STATUS = new Set(["ARSIP", "FINAL", "BERJALAN"]);
 const isBinaryUrl = value => typeof value === "string" && /^(?:data|blob):/i.test(value);
+const persisted5SPhoto = photo => {
+  const next = { ...(photo || {}) };
+  delete next.preview;
+  if (isBinaryUrl(next.url)) delete next.url;
+  return next;
+};
 
 // Nilai awal yang telah dikonfirmasi UPT Surabaya. Database tetap canonical;
 // daftar ini hanya dipakai sebagai fallback baca saat tabel/history belum dapat
@@ -191,7 +197,7 @@ function maturity5SItemToRow(item) {
     tahun: Math.min(2100, Math.max(2000, Number(item.tahun) || new Date().getFullYear())),
     auditor: item.auditor || "",
     checklist: Array.isArray(item.checklist) ? item.checklist : [],
-    sample_photos: Array.isArray(item.samplePhotos) ? item.samplePhotos.filter(photo => !isBinaryUrl(photo?.url)) : [],
+    sample_photos: Array.isArray(item.samplePhotos) ? item.samplePhotos.filter(photo => !isBinaryUrl(photo?.url)).map(persisted5SPhoto) : [],
     total_items: Math.max(0, Number(item.totalItems) || 0),
     total_checked: Math.max(0, Number(item.totalChecked) || 0),
     score_percent: Math.min(100, Math.max(0, Number(item.scorePercent) || 0)),
@@ -296,9 +302,7 @@ export async function upsertMaturity5SDraft(item = {}) {
   delete data.updatedAt;
   if (Array.isArray(data.samplePhotos)) {
     data.samplePhotos = data.samplePhotos.map(photo => {
-      const next = { ...(photo || {}) };
-      delete next.preview;
-      return next;
+      return persisted5SPhoto(photo);
     });
   }
   const row = {

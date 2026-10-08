@@ -1957,12 +1957,24 @@ export function buildForm5SHTML(record, users, uptList) {
     return headerRow + indicatorRows;
   }).join("");
 
-  const photoGrid = (record.samplePhotos || []).length > 0
-    ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">${(record.samplePhotos || []).map(photo => {
+  const photos = Array.isArray(record.samplePhotos) ? record.samplePhotos : [];
+  const categorizedPhotos = photos.some(photo => photo?.categoryId);
+  const photoGrid = !categorizedPhotos && photos.length > 0
+    ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:6px">${photos.map(photo => {
         const src = photo.preview || "";
         return `<div style="border:1px solid #000;padding:4px;text-align:center">${src ? `<img data-form5s-photo="true" src="${esc(src)}" referrerpolicy="no-referrer" style="max-width:100%;max-height:160px;object-fit:contain" alt="${esc(photo.name || "Foto sampling")}" title="${esc(photo.name || "")}"/>` : `<div class="photo-empty">${esc(photo.printError || "Foto tidak tersedia")}</div>`}</div>`;
       }).join("")}</div>`
-    : `<div class="photo-empty">&lt;&lt;[Belum ada foto sampling]&gt;&gt;</div>`;
+    : categorizedPhotos ? "" : `<div class="photo-empty">&lt;&lt;[Belum ada foto sampling]&gt;&gt;</div>`;
+  const categoryLabels = { sort: "Sort (Seiri)", set: "Set in Order (Seiton)", shine: "Shine (Seiso)", standardize: "Standardize (Seiketsu)", sustain: "Sustain (Shitsuke)" };
+  const photoPages = categorizedPhotos ? Object.entries(categoryLabels).map(([categoryId, label]) => {
+    const categoryPhotos = photos.filter(photo => photo?.categoryId === categoryId);
+    const cells = [0, 1, 2].map(index => {
+      const photo = categoryPhotos[index];
+      const src = photo?.preview || "";
+      return `<div style="border:1px solid #000;padding:8px;text-align:center;min-height:210px;display:flex;align-items:center;justify-content:center">${src ? `<img data-form5s-photo="true" src="${esc(src)}" referrerpolicy="no-referrer" style="max-width:100%;max-height:190px;object-fit:contain" alt="${esc(photo.name || `${label} foto ${index + 1}`)}"/>` : `<div class="photo-empty">${esc(photo?.printError || "Foto tidak tersedia")}</div>`}</div>`;
+    }).join("");
+    return `<div class="page photo-page"><div class="top-accent"></div><div class="doctitle">Lampiran Foto 5S — ${esc(label)}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px">${cells}</div><div class="bottom-accent"></div></div>`;
+  }).join("") : "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan 5S ${esc(uptNama)} ${esc(bulanLabel)} ${esc(record.tahun)} ${esc(record.id || "")}</title>
 <style>
@@ -2055,6 +2067,7 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
 
   <div class="bottom-accent"></div>
 </div>
+${photoPages}
 <script>
 (() => {
   const button = document.getElementById("form5s-print");
@@ -2068,13 +2081,15 @@ table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
     box.appendChild(message);
   };
   const waitForImage = image => new Promise(resolve => {
+    const timeout = setTimeout(() => { markFailed(image); resolve(); }, 8000);
     if (image.complete) {
+      clearTimeout(timeout);
       if (!image.naturalWidth) markFailed(image);
       resolve();
       return;
     }
-    image.addEventListener("load", resolve, { once: true });
-    image.addEventListener("error", () => { markFailed(image); resolve(); }, { once: true });
+    image.addEventListener("load", () => { clearTimeout(timeout); resolve(); }, { once: true });
+    image.addEventListener("error", () => { clearTimeout(timeout); markFailed(image); resolve(); }, { once: true });
   });
   Promise.all(images.map(waitForImage)).then(() => {
     button.disabled = false;

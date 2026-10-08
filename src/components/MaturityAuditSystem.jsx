@@ -1624,7 +1624,7 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUpt
     if (!selected) return undefined;
     const photos = selected.samplePhotos || [];
     setPhotoLoading(photos.length > 0);
-    openForm5SPhotos(selected.id, photos.length).then(results => {
+    openForm5SPhotos(selected.id, Math.min(15, photos.length)).then(results => {
       const entries = results.map((result, index) => {
         if (result?.isObjectUrl) objectUrls.push(result.url);
         return [index, { url: result?.url || "", name: result?.fileName || photos[index]?.name || `Foto ${index + 1}`, mime: result?.mime, error: result?.error }];
@@ -1701,14 +1701,21 @@ function Form5SHistory({ C, sty, isMobile, assessments, selectedUpt, selectedUpt
                 {onPrint && <button className="approval-btn--cancel" onClick={() => onPrint(selected)}>Cetak / PDF</button>}
               </div>
               {(selected.samplePhotos || []).length === 0 ? "Tidak ada foto sampling." : (
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8, marginTop: 9 }}>
-                  {(selected.samplePhotos || []).map((photo, index) => {
-                    const loaded = photoUrls[index];
-                    return <div key={`${selected.id}-${index}`} style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.bg }}>
-                      {loaded?.url ? <button type="button" aria-label={`Lihat ${loaded.name}`} onClick={() => setPreviewIndex(index)} style={{ display: "block", width: "100%", padding: 0, border: 0, background: "transparent", cursor: "zoom-in" }}><img src={loaded.url} referrerPolicy="no-referrer" alt={loaded.name} style={{ width: "100%", aspectRatio: "4/3", objectFit: "contain", display: "block" }} /></button> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", color: C.muted }}>{photoLoading ? "Memuat..." : "Foto tidak tersedia"}</div>}
-                      <div style={{ padding: "5px 7px", fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Foto {index + 1}</div>
-                    </div>;
-                  })}
+                <div style={{ display: "grid", gap: 12, marginTop: 9 }}>
+                  {Object.entries((selected.samplePhotos || []).reduce((groups, photo, index) => { const key = photo.categoryId || "legacy"; (groups[key] ||= []).push({ photo, index }); return groups; }, {})).map(([categoryId, photos]) => (
+                    <div key={categoryId}>
+                      <div style={{ fontWeight: 800, marginBottom: 6 }}>{categoryId === "legacy" ? "Sampling Foto Legacy" : ({ sort: "Sort", set: "Set in Order", shine: "Shine", standardize: "Standardize", sustain: "Sustain" }[categoryId] || categoryId)} — {photos.length} foto</div>
+                      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(3,1fr)", gap: 8 }}>
+                        {photos.map(({ photo, index }) => {
+                          const loaded = photoUrls[index];
+                          return <div key={`${selected.id}-${index}`} style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden", background: C.bg }}>
+                            {loaded?.url ? <button type="button" aria-label={`Lihat ${loaded.name}`} onClick={() => setPreviewIndex(index)} style={{ display: "block", width: "100%", padding: 0, border: 0, background: "transparent", cursor: "zoom-in" }}><img src={loaded.url} referrerPolicy="no-referrer" alt={loaded.name} style={{ width: "100%", aspectRatio: "4/3", objectFit: "contain", display: "block" }} /></button> : <div style={{ aspectRatio: "4/3", display: "grid", placeItems: "center", color: C.muted }}>{photoLoading ? "Memuat..." : "Foto tidak tersedia"}</div>}
+                            <div style={{ padding: "5px 7px", fontSize: 11, color: C.muted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Foto {index + 1}</div>
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1743,7 +1750,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const [form5SSubTab, setForm5SSubTab] = useState(defaultSubTab);
   const [uploading5S, setUploading5S] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState("");
-  const [photoPickerOpen, setPhotoPickerOpen] = useState(false);
+  const [photoPickerCategory, setPhotoPickerCategory] = useState("");
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
 
@@ -1762,13 +1769,13 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     if (typeof draft.auditor === "string") setAuditor(draft.auditor);
     if (typeof draft.catatan === "string") setCatatan(draft.catatan);
     if (draft.checks && typeof draft.checks === "object") setChecks({ ...initChecks(), ...draft.checks });
-    if (Array.isArray(draft.samplePhotos)) setSamplePhotos(draft.samplePhotos.map(photo => ({ ...photo, preview: "" })));
+    if (Array.isArray(draft.samplePhotos)) setSamplePhotos(draft.samplePhotos.map(photo => ({ ...photo, categoryId: photo.categoryId || "sort", preview: "" })));
     setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
   }, [maturity5SDraft, uptId]);
 
 
-  const addPhotos = async (files) => {
-    const remaining = 3 - samplePhotos.length;
+  const addPhotos = async (files, categoryId = photoPickerCategory) => {
+    const remaining = 3 - samplePhotos.filter(photo => photo.categoryId === categoryId).length;
     if (remaining <= 0) return;
     const taken = Array.from(files).slice(0, remaining);
     setPhotoUploadError("");
@@ -1791,6 +1798,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         storageStatus: res.storageStatus,
         isDrive: res.isDrive,
         syncedToDrive: res.syncedToDrive,
+        categoryId,
         // Foto Drive privat (webViewLink bukan bytes gambar) — pakai object URL File
         // lokal utk preview slot di sesi ini. History cuma link, tak perlu thumbnail.
         preview: URL.createObjectURL(taken[i]),
@@ -1856,8 +1864,9 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       setSaveError("Catatan / Temuan / Tindak Lanjut wajib diisi sebelum menyimpan.");
       return;
     }
-    if (samplePhotos.length === 0) {
-      setSaveError("Minimal 1 foto sampling wajib diunggah sebelum menyimpan.");
+    const photoCounts = Object.fromEntries(FORM_5S.map(category => [category.id, samplePhotos.filter(photo => photo.categoryId === category.id).length]));
+    if (samplePhotos.length !== 15 || Object.values(photoCounts).some(count => count !== 3)) {
+      setSaveError("Lengkapi tepat 3 foto untuk setiap kategori 5S (total 15 foto) sebelum menyimpan.");
       return;
     }
     const record = {
@@ -1899,17 +1908,16 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         meta: `Diisi oleh: ${user} | Skor: ${scorePct.toFixed(2)}% (${totalChecked}/${totalItems}) | Disimpan: ${ts}`,
         savedAt: savedRecord.createdAt,
       };
-      const fotoEntries = samplePhotos.map((photo, index) => ({
+      const fotoEntries = samplePhotos.length > 0 ? [{
         id: "k3_5s_foto",
-        name: `Foto Sampling 5S ${index + 1} — ${photo.name}`,
+        name: `Lampiran Foto 5S — ${samplePhotos.length} foto`,
         url: `#form-5s-history-${savedRecord.id}`,
-        photoIndex: index,
-        size: photo.size,
+        photoCount: samplePhotos.length,
         auto: true,
         source: "Form Pengisian 5S",
         assessment5SId: savedRecord.id,
         meta: `Upload oleh: ${user} | Disimpan: ${ts}`,
-      }));
+      }] : [];
       setMaturityAuditEvidence(previous => {
         const existing = (previous["4.5"] || []).filter(file => file.id !== "k3_5s_chk" && file.id !== "k3_5s_foto");
         return { ...previous, "4.5": [chkEntry, ...fotoEntries, ...existing] };
@@ -1930,7 +1938,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     w.document.write("<!doctype html><title>Menyiapkan cetak 5S</title><body style=\"font-family:Arial;padding:24px\">Menyiapkan foto eviden...</body>");
     w.document.close();
     let openedPhotos = [];
-    try { openedPhotos = await openForm5SPhotos(record.id, Math.min(3, (record.samplePhotos || []).length)); }
+    try { openedPhotos = await openForm5SPhotos(record.id, Math.min(15, (record.samplePhotos || []).length)); }
     catch { openedPhotos = []; }
     const samplePhotosWithUrls = (record.samplePhotos || []).map((photo, index) => {
       const opened = openedPhotos[index];
@@ -2242,129 +2250,45 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         />
       </div>
 
-      {/* ── Upload 3 Sampling Foto ── */}
+      {/* ── Upload 3 Foto per Kategori 5S ── */}
       <div style={{ ...sty.card, marginBottom: 20 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 3 }}>
-              📷 Sampling Foto Implementasi 5S di Gudang
-            </div>
-            <div style={{ fontSize: 13, color: C.muted }}>
-              Wajib minimal 1 foto sampling implementasi 5S.
-            </div>
-          </div>
-          {samplePhotos.length < 3 && (<>
-            <div style={{ position: "relative", flexShrink: 0, marginLeft: 12 }}>
-              <button type="button" aria-haspopup="dialog" aria-expanded={photoPickerOpen} disabled={uploading5S} onClick={() => setPhotoPickerOpen(open => !open)} style={{ minHeight: 44, padding: "8px 14px", borderRadius: 10, cursor: uploading5S ? "wait" : "pointer", background: "#1d4ed8", color: "white", fontSize: 13, fontWeight: 800, border: 0 }}>{uploading5S ? "Mengompres & Mengunggah..." : "Tambah Foto"}</button>
-              {photoPickerOpen && <div role="dialog" aria-label="Pilih sumber foto" style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 5, display: "grid", gap: 6, minWidth: 170, padding: 8, borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface, boxShadow: "0 10px 24px rgba(15,23,42,.14)" }}>
-                <button type="button" onClick={() => { setPhotoPickerOpen(false); cameraInputRef.current?.click(); }} style={{ minHeight: 44, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Kamera</button>
-                <button type="button" onClick={() => { setPhotoPickerOpen(false); galleryInputRef.current?.click(); }} style={{ minHeight: 44, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Galeri</button>
-              </div>}
-              <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" disabled={uploading5S} hidden onChange={e => { addPhotos(e.target.files); e.target.value = ""; }} />
-              <input ref={galleryInputRef} type="file" accept="image/*" multiple disabled={uploading5S} hidden onChange={e => { addPhotos(e.target.files); e.target.value = ""; }} />
-            </div>
-          </>)}
-        </div>
-
-        {photoUploadError && (
-          <div role="alert" style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 10, border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 700 }}>
-            {photoUploadError}
-          </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 16 }}>
-          {[0, 1, 2].map(slot => {
-            const photo = samplePhotos[slot];
-            return (
-              <div key={slot} style={{
-                position: "relative",
-                borderRadius: 14,
-                border: photo ? `1px solid #1e3a8a` : `2.5px dashed #cbd5e1`,
-                background: photo ? "transparent" : "#f8fafc",
-                overflow: "hidden",
-                aspectRatio: "4/3",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                transition: "background-color .2s ease, border-color .2s ease"
-              }}>
-                {photo ? (
-                  <>
-                    {photo.preview || photo.url ? <img
-                      src={photo.preview || photo.url}
-                      alt={`Sampling ${slot + 1}`}
-                      style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }}
-                    /> : <div style={{ padding: 18, textAlign: "center", color: C.muted, fontSize: 13, lineHeight: 1.45 }}>
-                      <div aria-hidden="true" style={{ fontSize: 24, marginBottom: 6 }}>📷</div>
-                      Foto tersimpan di server<br />{photo.name || `Sampling ${slot + 1}`}
-                    </div>}
-                    <div style={{
-                      position: "absolute", bottom: 0, left: 0, right: 0,
-                      background: "linear-gradient(to top, rgba(0,0,0,0.65), transparent)",
-                      padding: "20px 8px 7px 8px",
-                      display: "flex", justifyContent: "space-between", alignItems: "flex-end",
-                    }}>
-                      <div style={{ color: "white", fontSize: 13, fontWeight: 700, maxWidth: "80%", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                        Foto {slot + 1} — {photo.name}
-                      </div>
-                      <button
-                        onClick={() => removePhoto(slot)}
-                        title="Hapus foto"
-                        style={{
-                          width: 44, height: 44, borderRadius: "50%",
-                          background: "rgba(255,50,50,0.85)", color: "white",
-                          border: "none", cursor: "pointer", fontSize: 13, fontWeight: 900,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          flexShrink: 0,
-                        }}
-                      >×</button>
-                    </div>
-                    <div style={{
-                      position: "absolute", top: 7, left: 7,
-                      background: "#1e3a8a", color: "white",
-                      borderRadius: 10, padding: "2px 7px", fontSize: 13, fontWeight: 800,
-                    }}>
-                      {slot + 1}/3
-                    </div>
-                  </>
-                ) : (
-                  <label style={{ cursor: "not-allowed", textAlign: "center", padding: 16, display: "block", width: "100%" }}>
-                    <div style={{ fontSize: 32, marginBottom: 8 }}>📷</div>
-                    <div style={{ fontSize: 13, color: C.muted, fontWeight: 700 }}>Foto Sampling {slot + 1}</div>
-                    <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>
-                      {samplePhotos.length <= slot ? "Belum tersedia" : "—"}
-                    </div>
-                    {samplePhotos.length === slot && (
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        disabled
-                        hidden
-                        onChange={e => { addPhotos(e.target.files); e.target.value = ""; }}
-                      />
-                    )}
-                  </label>
-                )}
+        <div style={{ fontSize: 13, fontWeight: 800, color: C.text, marginBottom: 3 }}>📷 Lampiran Foto Implementasi 5S</div>
+        <div style={{ fontSize: 13, color: C.muted, marginBottom: 14 }}>Wajib tepat 3 foto untuk setiap kategori. Foto dikompres maksimal 2 MiB.</div>
+        {photoUploadError && <div role="alert" style={{ marginBottom: 14, padding: "9px 12px", borderRadius: 10, border: "1px solid #fecaca", background: "#fef2f2", color: "#991b1b", fontSize: 13, fontWeight: 700 }}>{photoUploadError}</div>}
+        <div style={{ display: "grid", gap: 16 }}>
+          {FORM_5S.map(category => {
+            const categoryPhotos = samplePhotos.filter(photo => photo.categoryId === category.id);
+            const openPicker = source => {
+              setPhotoPickerCategory(category.id);
+              (source === "camera" ? cameraInputRef : galleryInputRef).current?.click();
+            };
+            return <div key={category.id} style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 12 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <strong style={{ color: C.text }}>{category.label.replace("\n", " ")}</strong>
+                <span style={{ fontSize: 12, color: categoryPhotos.length === 3 ? C.green : C.muted }}>{categoryPhotos.length}/3 foto</span>
               </div>
-            );
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
+                {[0, 1, 2].map(slot => {
+                  const photo = categoryPhotos[slot];
+                  const globalIndex = photo ? samplePhotos.indexOf(photo) : -1;
+                  return <div key={slot} style={{ position: "relative", borderRadius: 10, border: photo ? `1px solid ${category.color}` : `2px dashed ${C.border}`, background: photo ? "transparent" : C.bg, overflow: "hidden", aspectRatio: "4/3", display: "grid", placeItems: "center" }}>
+                    {photo ? <>
+                      {photo.preview ? <img src={photo.preview} alt={`${category.label} foto ${slot + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <div style={{ padding: 8, textAlign: "center", color: C.muted, fontSize: 11 }}>Foto tersimpan<br />{photo.name}</div>}
+                      <button type="button" onClick={() => removePhoto(globalIndex)} aria-label={`Hapus ${category.label} foto ${slot + 1}`} style={{ position: "absolute", top: 4, right: 4, width: 30, height: 30, borderRadius: "50%", border: 0, background: "rgba(185,28,28,.88)", color: "white", fontWeight: 900, cursor: "pointer" }}>×</button>
+                    </> : <div style={{ textAlign: "center", color: C.muted, fontSize: 12 }}>Foto {slot + 1}<br />Belum tersedia</div>}
+                  </div>;
+                })}
+              </div>
+              {categoryPhotos.length < 3 && <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                <button type="button" disabled={uploading5S} onClick={() => openPicker("camera")} style={{ minHeight: 40, flex: 1, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>{uploading5S ? "Mengunggah..." : "Kamera"}</button>
+                <button type="button" disabled={uploading5S} onClick={() => openPicker("gallery")} style={{ minHeight: 40, flex: 1, border: `1px solid ${C.border}`, borderRadius: 8, background: C.surface, color: C.text, fontWeight: 700 }}>Galeri</button>
+              </div>}
+            </div>;
           })}
         </div>
-
-        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ height: 4, flex: 1, borderRadius: 14, background: "#e2e8f0", overflow: "hidden" }}>
-            <div style={{
-              width: `${(samplePhotos.length / 3) * 100}%`, height: "100%", borderRadius: 14,
-              background: samplePhotos.length === 3 ? "#10b981" : "#1e3a8a", transition: "width .3s",
-            }} />
-          </div>
-          <div style={{
-            fontSize: 13, fontWeight: 700,
-            color: samplePhotos.length === 3 ? "#059669" : C.muted,
-          }}>
-            {samplePhotos.length}/3 foto {samplePhotos.length === 3 ? "✓ Lengkap" : ""}
-          </div>
-        </div>
+        <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" disabled={uploading5S} hidden onChange={e => { addPhotos(e.target.files, photoPickerCategory); e.target.value = ""; }} />
+        <input ref={galleryInputRef} type="file" accept="image/*" multiple disabled={uploading5S} hidden onChange={e => { addPhotos(e.target.files, photoPickerCategory); e.target.value = ""; }} />
+        <div style={{ marginTop: 12, fontSize: 13, fontWeight: 700, color: samplePhotos.length === 15 ? C.green : C.muted }}>{samplePhotos.length}/15 foto {samplePhotos.length === 15 ? "✓ Lengkap" : ""}</div>
       </div>
 
       {/* ── Info ── */}
@@ -2380,9 +2304,9 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
             Setelah klik <em>Simpan Checklist</em>, <strong>2 evidence</strong> pada poin{" "}
             <strong>4.5 — Implementasi 5S di Gudang</strong> akan otomatis terisi:{" "}
             <em>(1) Hasil Checklist Form 5S</em> dan{" "}
-            <em>(2) {samplePhotos.length}/3 Sampling Foto</em>.
-            {samplePhotos.length < 3 && (
-              <span style={{ color: "#dc2626" }}> Upload {3 - samplePhotos.length} foto lagi agar evidence foto juga lengkap.</span>
+            <em>(2) {samplePhotos.length}/15 Lampiran Foto</em>.
+            {samplePhotos.length < 15 && (
+              <span style={{ color: "#dc2626" }}> Upload {15 - samplePhotos.length} foto lagi agar evidence foto juga lengkap.</span>
             )}
           </div>
         </div>

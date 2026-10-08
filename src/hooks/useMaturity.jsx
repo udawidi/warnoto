@@ -291,18 +291,18 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       meta: `Diisi oleh: ${user} | Skor: ${Number(latest.scorePercent || 0).toFixed(2)}% (${latest.totalChecked}/${latest.totalItems}) | Disimpan: ${timestamp}`,
       savedAt,
     };
-    const photos = (latest.samplePhotos || []).map((photo, index) => ({
+    const photos = Array.isArray(latest.samplePhotos) ? latest.samplePhotos : [];
+    const photoEvidence = photos.length > 0 ? [{
       id: "k3_5s_foto",
-      name: `Foto Sampling 5S ${index + 1} — ${photo.name || "Foto"}`,
+      name: `Lampiran Foto 5S — ${photos.length} foto`,
       url: `#form-5s-history-${latest.id}`,
-      photoIndex: index,
-      size: photo.size || 0,
+      photoCount: photos.length,
       auto: true,
       source: "Form Pengisian 5S",
       assessment5SId: latest.id,
-      meta: `Referensi Form 5S: ${latest.id} | Disimpan: ${timestamp}`,
-    }));
-    return [checklistEvidence, ...photos];
+      meta: `Lampiran foto Form 5S: ${latest.id} | ${photos.length} foto | Disimpan: ${timestamp}`,
+    }] : [];
+    return [checklistEvidence, ...photoEvidence];
   }
 
   function mergeCurrentMonth5SEvidence(evidence, uptId) {

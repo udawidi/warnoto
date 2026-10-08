@@ -9,7 +9,7 @@ const form = read("src/components/MaturityAuditSystem.jsx");
 const hook = read("src/hooks/useMaturity.jsx");
 const drive = read("src/lib/maturityDrive.js");
 const edge = read("supabase/functions/maturity-drive/index.ts");
-const migration = read("supabase/migrations/20260919_form5s_photo_storage_guard.sql");
+const migration = read("supabase/migrations/20261008_form5s_category_photo_guard.sql");
 const draftMigration = read("supabase/migrations/20260919_maturity_5s_drafts.sql");
 const schema = read("supabase/schema.sql");
 const builder = read("src/lib/docBuilders.js");
@@ -41,22 +41,39 @@ test("photo endpoint accepts assessment ID and index only", () => {
   assert.doesNotMatch(drive.match(/export async function downloadForm5SPhoto[\s\S]*?\n}/)?.[0] || "", /storagePath|driveFileId/);
 });
 
+test("Form 5S enforces 2 MiB compression, 2000px, fifteen slots, and print timeout", () => {
+  assert.match(drive, /MAX_FORM5S_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(drive, /maxBytes: MAX_FORM5S_BYTES, maxDim: 2000/);
+  assert.match(drive, /file = imageFileFromDataUrl\(await compressImage\(file, \{ maxBytes: MAX_FORM5S_BYTES, maxDim: 2000 \}\), file\)/);
+  assert.match(drive, /index > 14/);
+  assert.match(drive, /count > 15/);
+  assert.match(edge, /MAX_FORM5S_UPLOAD_BYTES = 2 \* 1024 \* 1024/);
+  assert.match(edge, /file\.size > MAX_FORM5S_UPLOAD_BYTES/);
+  assert.match(builder, /setTimeout\(\(\) => \{ markFailed\(image\); resolve\(\); \}, 8000\)/);
+  assert.match(form, /samplePhotos\.length !== 15/);
+  assert.match(form, /categoryId/);
+});
+
 test("Form 5S history signs all self-host photos in one scoped batch", () => {
   assert.match(drive, /openForm5SPhotos\(assessmentId, photoCount\)/);
   assert.match(drive, /request\("sign-5s-photos", \{ assessmentId \}\)/);
   assert.match(edge, /action === "sign-5s-photos"/);
   assert.match(edge, /select\("id,upt_id,sample_photos"\)/);
-  assert.match(edge, /photos\.length > 3/);
+  assert.match(edge, /photos\.length > 15/);
   assert.match(edge, /storagePath\.startsWith\(`form-5s\/\$\{upt\.id\}\//);
   assert.match(edge, /createSignedUrl\(storagePath, 600\)/);
-  assert.match(form, /openForm5SPhotos\(selected\.id, photos\.length\)/);
-  assert.match(form, /openForm5SPhotos\(record\.id, Math\.min\(3, \(record\.samplePhotos \|\| \[\]\)\.length\)\)/);
+  assert.match(form, /openForm5SPhotos\(selected\.id, Math\.min\(15, photos\.length\)\)/);
+  assert.match(form, /openForm5SPhotos\(record\.id, Math\.min\(15, \(record\.samplePhotos \|\| \[\]\)\.length\)\)/);
+  const batchSource = drive.slice(drive.indexOf("export async function openForm5SPhotos"), drive.indexOf("export const loadMaturityDriveEvidence"));
+  assert.doesNotMatch(batchSource, /openForm5SPhoto\(assessmentId/);
 });
 
 test("new Form 5S photos are guarded by storage trigger", () => {
   for (const source of [migration, schema]) {
     assert.match(source, /validate_maturity_5s_photo_storage/);
-    assert.match(source, /jsonb_array_length\(new\.sample_photos\) not between 1 and 3/);
+    assert.match(source, /photo_count (?:=|<>) 15/);
+    assert.doesNotMatch(source, /photo_count between 1 and 3/);
+    assert.match(source, /FORM5S_CATEGORY_COUNT_INVALID/);
     assert.match(source, /FORM5S_STORAGE_PATH_INVALID/);
     assert.match(source, /FORM5S_STORAGE_OBJECT_MISSING/);
     assert.match(source, /storage\.objects/);
@@ -67,7 +84,7 @@ test("Form 5S PDF prioritizes canonical UPT master and persisted history", () =>
   assert.match(builder, /const uptNama = \(uptList \|\| \[\]\)\.find\(u => u\.id === record\.uptId\)\?\.nama \|\| record\.upt/);
   assert.doesNotMatch(builder, /const src = photo\.preview \|\| photo\.url/);
   assert.match(form, /Simpan checklist terlebih dahulu sebelum mencetak/);
-  assert.match(form, /openForm5SPhotos\(record\.id, Math\.min\(3, \(record\.samplePhotos \|\| \[\]\)\.length\)\)/);
+  assert.match(form, /openForm5SPhotos\(record\.id, Math\.min\(15, \(record\.samplePhotos \|\| \[\]\)\.length\)\)/);
   assert.doesNotMatch(hook, /url: photo\.url/);
   assert.doesNotMatch(form, /url: photo\.url/);
 });
@@ -88,8 +105,8 @@ test("Form 5S draft is owner-and-UPT scoped and final save cleans it up", () => 
 
 test("Form 5S history stays compact and photo source is chosen after one trigger", () => {
   assert.match(form, /const selected = history\.find\(item => item\.id === selectedId\) \|\| null/);
-  assert.match(form, /Tambah Foto/);
-  assert.match(form, /Pilih sumber foto/);
+  assert.match(form, /Kamera/);
+  assert.match(form, /Lampiran Foto Implementasi 5S/);
   assert.match(form, /capture="environment"/);
   assert.match(form, /Detail Audit/);
   assert.match(form, /onPrint\(item\)[\s\S]{0,80}>Cetak \/ PDF/);
@@ -99,7 +116,7 @@ test("Form 5S history stays compact and photo source is chosen after one trigger
 test("Form 5S history keeps the popup alive while photo bytes are prepared", () => {
   const printHandler = form.slice(form.indexOf("const handlePrintRecord = async record =>"), form.indexOf("const handlePrint = () =>"));
   const preparationPage = printHandler.indexOf("Menyiapkan foto eviden...");
-  const signedSource = printHandler.indexOf("openForm5SPhotos(record.id, Math.min(3, (record.samplePhotos || []).length))");
+  const signedSource = printHandler.indexOf("openForm5SPhotos(record.id, Math.min(15, (record.samplePhotos || []).length))");
   const popupCleanup = printHandler.indexOf("beforeunload");
   const finalRender = printHandler.indexOf("buildForm5SHTML(printRecord, users, uptList)");
   assert.ok(preparationPage >= 0, "print handler must render a preparation page immediately");
