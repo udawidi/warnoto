@@ -320,11 +320,13 @@ export default function PLNWarehouse() {
   // Cached profile boleh dipakai untuk tampilan awal, tetapi tidak boleh melewati
   // bootstrap INITIAL_SESSION; data scoped baru boleh dimuat setelah sesi Supabase terpasang.
   const [authLoading, setAuthLoading] = useState(true);
+  const [authRecovery, setAuthRecovery] = useState(null);
   // Hanya completion auth terbaru yang boleh mengubah user/loading. Event Auth
   // dapat datang berurutan saat refresh sesi; request profil lama tidak boleh
   // membuka loader memakai cache user sebelumnya.
   const authGenerationRef = useRef(0);
   const authRecoveryRef = useRef(null);
+  const authRetryRef = useRef(null);
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
   const [loginErr, setLoginErr] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
@@ -2127,6 +2129,7 @@ export default function PLNWarehouse() {
   function clearLocalAuthState() {
     stocksBootstrapUserIdRef.current = null;
     authRecoveryRef.current = null;
+    setAuthRecovery(null);
     try { sessionStorage.removeItem("warnoto_tab"); } catch {}
     try { sessionStorage.removeItem("warnoto_tug_route"); } catch {}
     try { localStorage.removeItem(PROFILE_CACHE_KEY); localStorage.removeItem(LEGACY_PROFILE_CACHE_KEY); } catch {}
@@ -2138,22 +2141,21 @@ export default function PLNWarehouse() {
 
   async function handleLogout() {
     setLoggingOut(true);
-    // Putuskan akses UI/cache lebih dulu. Bila self-host sedang lambat, refresh
-    // setelah klik Logout tetap tidak dapat memulihkan token atau data pengguna lama.
+    // Putuskan akses UI/cache lebih dulu. Logout manual hanya boleh memutus sesi
+    // perangkat ini; perangkat lain yang memakai akun bersama tetap aktif.
     clearLocalAuthState();
     try {
       if (supabase) {
         await Promise.race([
-          supabase.auth.signOut(),
+          supabase.auth.signOut({ scope: "local" }),
           new Promise((_, reject) => setTimeout(() => reject(new Error("logout timeout")), 5000)),
         ]);
       }
     } catch (err) {
-      // Token sudah dibuang secara lokal; kegagalan revoke server tidak boleh
+      // Token sudah dibuang secara lokal; kegagalan cleanup server tidak boleh
       // membuat pengguna tampak masih login.
-      console.warn("Logout server tidak selesai, sesi lokal tetap dibersihkan.", err);
+      console.warn("Logout lokal tidak selesai, sesi lokal tetap dibersihkan.", err);
     } finally {
-      if (supabase) await supabase.auth.signOut({ scope:"local" }).catch(() => {});
       // Kalau logout sukses, currentUser=null me-render app ke form login (komponen ini
       // unmount, state tidak sempat balik). finally ini menjaga tombol tidak stuck "Keluar..."
       // kalau signOut gagal di tengah jalan.
@@ -2217,7 +2219,8 @@ export default function PLNWarehouse() {
   // supaya currentUser & users selalu konsisten dari satu sumber.
   // Cache profile tetap dipasang untuk menghindari layar kosong, tetapi authLoading
   // menahan loader/data effects sampai callback auth selesai dan sesi tervalidasi.
-  // Sesi tidak valid/tidak ada tetap menghapus current user dan cache.
+  // Sesi invalid/SIGNED_OUT/profil hilang menghapus current user dan cache;
+  // gangguan validasi sementara masuk recovery tanpa menghapus token/cache.
   useEffect(() => {
     if (!supabase) { setAuthLoading(false); return; }
     // Callback TIDAK async — supabase-js memperingatkan callback async di
@@ -2226,11 +2229,16 @@ export default function PLNWarehouse() {
     async function handleAuthSession(session, event) {
       const generation = ++authGenerationRef.current;
       const isCurrent = () => authGenerationRef.current === generation;
+      if (event === "SIGNED_OUT") {
+        if (isCurrent()) clearLocalAuthState();
+        if (isCurrent()) setAuthLoading(false);
+        return;
+      }
       if (session?.user) {
         let profile = null;
         let profErr = null;
         // Retry singkat untuk gangguan jaringan. Jika profil tetap gagal
-        // divalidasi, bootstrap ditutup fail-closed dan cache user dibersihkan.
+        // divalidasi, bootstrap ditutup fail-closed dan masuk recovery.
         for (let attempt = 0; attempt < 2; attempt++) {
           const result = await _withTimeout(
             supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
@@ -2244,16 +2252,27 @@ export default function PLNWarehouse() {
           if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 350));
         }
         if (profErr) {
-          const profStatus = Number(profErr?.status ?? profErr?.statusCode);
-          const isAuthFailure = profStatus === 401 || /jwt|token.*(?:expired|invalid)|unauthori[sz]ed/i.test(String(profErr?.message || ""));
+          const isInvalidSessionError = error => {
+            const status = Number(error?.status ?? error?.statusCode);
+            return status === 401 || /jwt|token.*(?:expired|invalid)|unauthori[sz]ed/i.test(String(error?.message || ""));
+          };
+          const isTransientAuthError = error => {
+            const rawStatus = error?.status ?? error?.statusCode;
+            const status = Number(rawStatus);
+            if (Number.isFinite(status) && status >= 500) return true;
+            if (Number.isFinite(status) && status >= 400) return false;
+            return /failed to fetch|fetch failed|network|timeout|connection|load fail(?:ed|ure)/i.test(String(error?.message || error || ""));
+          };
           // Token kadaluarsa kadang tiba sebelum TOKEN_REFRESHED. Pulihkan
           // sekali; event refresh berikutnya mendapat generation baru sehingga
           // request lama tidak dapat menimpa hasilnya atau membuat loop.
-          if (isAuthFailure && authRecoveryRef.current !== session.user.id) {
+          if (isInvalidSessionError(profErr) && authRecoveryRef.current !== session.user.id) {
             authRecoveryRef.current = session.user.id;
             const { error: refreshError } = await supabase.auth.refreshSession();
             if (!isCurrent()) return;
-            if (!refreshError) {
+            if (refreshError && isTransientAuthError(refreshError)) {
+              profErr = refreshError;
+            } else if (!refreshError) {
               const retry = await _withTimeout(
                 supabase.from("profiles").select("*").eq("id", session.user.id).maybeSingle(),
                 15000,
@@ -2266,9 +2285,21 @@ export default function PLNWarehouse() {
           }
         }
         if (profErr) {
-          // Fail closed: profil yang gagal divalidasi tidak boleh memakai
-          // currentUser dari localStorage untuk memulai bootstrap scoped.
-          console.warn("Profil sesi belum dapat divalidasi; sesi dibersihkan.", profErr);
+          const profStatus = Number(profErr?.status ?? profErr?.statusCode);
+          const isInvalidSession = profStatus === 401 || /jwt|token.*(?:expired|invalid)|unauthori[sz]ed/i.test(String(profErr?.message || ""));
+          if (!isInvalidSession) {
+            // Fail closed: jangan buka data scoped dari cache saat profil belum
+            // tervalidasi, tetapi pertahankan token/cache untuk pemulihan.
+            console.warn("Profil sesi belum dapat divalidasi; cache dipertahankan untuk retry.", profErr);
+            if (isCurrent()) {
+              setCurrentUser(null);
+              setMfaState(null);
+              setAuthRecovery({ message: "Sesi belum dapat diverifikasi. Periksa koneksi lalu coba lagi." });
+              setAuthLoading(false);
+            }
+            return;
+          }
+          console.warn("Token sesi tidak valid; sesi lokal dibersihkan.", profErr);
           if (isCurrent()) {
             setLoginErr("Sesi login belum dapat diverifikasi. Silakan masuk kembali.");
             clearLocalAuthState();
@@ -2277,7 +2308,7 @@ export default function PLNWarehouse() {
         } else if (!profile) {
           if (!isCurrent()) return;
           setLoginErr("Akun ini belum punya profil (hubungi Admin). Logout otomatis.");
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: "local" });
           if (!isCurrent()) return;
           clearLocalAuthState();
         } else {
@@ -2293,6 +2324,7 @@ export default function PLNWarehouse() {
             const uptMatch = (uptList.length ? uptList : DEFAULT_UPT_LIST).find(u => u.id === profile.upt_id);
             const userObj = { id: profile.id, name: profile.name, username: profile.username, role: profile.role, jabatan: profile.jabatan, avatar: profile.avatar, uptId: profile.upt_id, upt: uptMatch ? uptMatch.nama.replace(/^UPT\s+/i, "").trim() : undefined, ultgId: profile.ultg_id, uitId: profile.uit_id, gudangIds: profile.gudang_ids };
             setMfaState(null);
+            setAuthRecovery(null);
             authRecoveryRef.current = null;
             setCurrentUser(userObj);
             Sentry.setUser({ id: userObj.id, username: userObj.username });
@@ -2317,10 +2349,12 @@ export default function PLNWarehouse() {
             const { data: factorsData } = await supabase.auth.mfa.listFactors();
             const factorId = (factorsData?.totp || []).find(f => f.status === "verified")?.id;
             setCurrentUser(null);
+            setAuthRecovery(null);
             setMfaState({ mode: "challenge", factorId });
           } else {
             // Belum ada factor TOTP verified sama sekali — wajib enroll dulu.
             setCurrentUser(null);
+            setAuthRecovery(null);
             setMfaState({ mode: "enroll" });
           }
         }
@@ -2330,10 +2364,27 @@ export default function PLNWarehouse() {
       }
       if (isCurrent()) setAuthLoading(false);
     }
+    authRetryRef.current = async () => {
+      if (!supabase) return;
+      setAuthLoading(true);
+      setAuthRecovery(null);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        await handleAuthSession(data?.session, "AUTH_RECOVERY_RETRY");
+      } catch (error) {
+        setAuthLoading(false);
+        setAuthRecovery({ message: "Sesi belum dapat diverifikasi. Periksa koneksi lalu coba lagi." });
+        console.warn("Pemulihan sesi gagal; token/cache dipertahankan.", error);
+      }
+    };
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       handleAuthSession(session, _event);
     });
-    return () => sub.subscription.unsubscribe();
+    return () => {
+      authRetryRef.current = null;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   // 2FA TOTP enroll wajib — begitu gate handleAuthSession menetapkan mode
@@ -4367,6 +4418,17 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   if (authLoading) return (
     <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#001a57 0%,#003087 50%,#0052cc 100%)",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',system-ui,sans-serif",color:"white",fontSize:13}}>
       Memuat sesi...
+    </div>
+  );
+
+  if (authRecovery) return (
+    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#001a57 0%,#003087 50%,#0052cc 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:16,fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <div style={{background:"#fff",borderRadius:14,padding:isMobile?28:40,width:"100%",maxWidth:420,boxShadow:"0 25px 60px rgba(0,0,0,0.35)",textAlign:"center"}}>
+        <img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{height:56,marginBottom:18,objectFit:"contain"}}/>
+        <div style={{fontSize:20,fontWeight:800,color:C_LIGHT.text,marginBottom:8}}>Sesi belum bisa diverifikasi</div>
+        <div style={{fontSize:13,color:C_LIGHT.muted,lineHeight:1.5,marginBottom:22}}>{authRecovery.message}</div>
+        <button style={{...loginSty.btn("primary"),width:"100%",padding:"12px",fontSize:15}} onClick={()=>authRetryRef.current?.()}>Coba Lagi</button>
+      </div>
     </div>
   );
 

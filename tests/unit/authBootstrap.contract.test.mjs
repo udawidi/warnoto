@@ -22,6 +22,21 @@ test("profile validation failure cannot open the scoped data loader from cache",
   assert.match(app, /supabase\.auth\.refreshSession\(\)/);
 });
 
+test("transient profile validation failure preserves session recovery state", () => {
+  assert.match(app, /cache dipertahankan untuk retry/);
+  assert.match(app, /setAuthRecovery\(\{ message: "Sesi belum dapat diverifikasi/);
+  assert.match(app, /const authRetryRef = useRef\(null\);/);
+  assert.match(app, /supabase\.auth\.getSession\(\)/);
+  assert.match(app, />Coba Lagi<\/button>/);
+});
+
+test("manual and invalid-session logout stay local", () => {
+  assert.match(app, /supabase\.auth\.signOut\(\{ scope: "local" \}\)/);
+  assert.doesNotMatch(app, /supabase\.auth\.signOut\(\s*\)/);
+  assert.match(app, /event === "SIGNED_OUT"/);
+  assert.match(app, /Promise\.race\([\s\S]*?signOut\(\{ scope: "local" \}\)[\s\S]*?logout timeout/);
+});
+
 test("profile bootstrap cannot hang forever on a self-host request", () => {
   assert.match(app, /_withTimeout\(\s*supabase\.from\("profiles"\)[\s\S]*?15000,\s*"profile session"\s*\)\.catch\(error => \(\{ data: null, error \}\)\)/);
   assert.match(app, /_withTimeout\(\s*supabase\.from\("profiles"\)[\s\S]*?15000,\s*"profile session refresh"\s*\)\.catch\(error => \(\{ data: null, error \}\)\)/);
