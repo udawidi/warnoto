@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-07
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-08
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -20,6 +20,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Material Cadang durable per-UPT (2026-08-10):** tabel `material_cadang_state(upt_id PK, data/health/ai jsonb)`, RLS `can_access_upt(upt_id)` (pola `stocks`). Simpan 3 blob localStorage verbatim per-UPT. UI: server sumber utama (di-load lewat RLS scope, merge antar-row untuk nasional), localStorage fallback + seed sekali kalau server kosong (recovery data lama). Ganti jalur mati `syncMaterialCadangRows`→tabel per-row yang tak pernah ada (gagal senyap). AKAR bug "Material Cadang hilang": dulu localStorage-only → lenyap saat Clear site data / ganti device.
 
 ### Keamanan / role
+- **Sesi akun bersama tetap aman tanpa logout massal (2026-10-08):** TOTP tetap wajib untuk login baru. Gangguan network/timeout/5xx saat validasi profil tidak boleh menghapus token/cache; aplikasi masuk layar pemulihan fail-closed dan retry memakai sesi tersimpan. Token invalid, `SIGNED_OUT`, atau profil benar-benar hilang tetap membersihkan sesi lokal. Logout manual memakai `scope: "local"` agar hanya perangkat aktif yang keluar dan tidak memutus perangkat lain yang memakai akun Fajar.
 - **ADMIN = vendor security pihak-3 (user 2026-08-12, mengikat):** ADMIN diturunkan jadi minim otoritas untuk input awal. Dalam UPT sekarang **TL > ADMIN**. ADMIN HANYA boleh: ajukan transaksi TUG, upload foto Data Stok, pindah blok/lokasi gudang, cetak Kartu Gantung. TIDAK boleh: edit/hapus Data Stok, ATTB, master data, kelola akun, approval, import. Semua kemampuan edit/kelola dipegang TL. Diberlakukan lewat (a) matrix `role_permissions` DB (ADMIN cuma `aksi.buatTransaksi`+menu dasar, `menu.attb` OFF; TL full) dan (b) gate hardcode di `App.jsx` (Edit/Hapus Data Stok + usul-blok OCR → `hasRole("TL")`), plus `DEFAULT_PERMS` (`perms.js`) diselaraskan sbg fallback bila matrix di-Reset. `canUploadFoto`/Pindah Blok sengaja tetap ADMIN+TL. **SEMUA gate management Master Data yang dulu `hasRole("ADMIN")` sudah diflip ke `hasRole("TL")`** (MasterDataTab.jsx: Kelola Denah & Koordinat gudang/sub-gudang, tambah blok, edit/hapus katalog/satpam/tim-mutu/UIT/UPT/ULTG/gudang/lokasi, sub-tab Migrasi Data & Audit Log; App.jsx: edit/hapus Lokasi kartu + Hapus item ATTB). ADMIN tak bisa akses krn `menu.master`/`menu.attb` OFF; ini supaya TL yang punya kuasanya (bug 2026-08-12: TL tak bisa upload denah/blok krn gate masih ADMIN).
 - **HIRARKI PERAN RESMI (user 2026-08-02, mengikat, jangan ditafsir ulang):**
   - **UPT (lihat 1 UPT sendiri):** `ADMIN`, `TL`, `ASMAN`, `MANAGER`, `MGR_ULTG`, `ADMIN_ULTG`. Tiap UPT tepat SATU MANAGER. **MANAGER BUKAN Pusat.**
@@ -73,6 +74,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Logout mendadak akun Fajar diperbaiki dan sudah production (`d7ad92c`, 2026-10-08).** Akar: kegagalan sementara saat fetch profil menghapus token lokal, dan logout default Supabase mencabut sesi semua perangkat. Kini gangguan sementara masuk layar pemulihan tanpa membuang token/cache, sedangkan error sesi nyata tetap fail-closed; seluruh logout memakai scope lokal. TOTP tetap wajib. Test auth 8/8, build production, dan diff-check lulus; smoke dua perangkat akun Fajar masih perlu dilakukan.
 
 - **Penomoran dan cetak TUG multi-UPT selesai (2026-10-07).** Commit `4f79d8e` memperbaiki counter enam UPT serta nomor historis TUG-3 Probolinggo dan TUG-10 Gresik. Perbaikan lanjutan menyamakan preview dengan Print/Save PDF untuk seluruh TUG cetak, mengganti Keterangan TUG-8/9 agar memakai Status Material (`Non-SAP`, `SAP — Persediaan`, atau `SAP — Cadang`), menunggu aset preview sebelum tombol cetak aktif, dan menghapus fallback Surabaya yang tersisa pada TUG-5/7. Tidak ada schema, API, atau dependency baru. Verifikasi: 516 unit test, build production, diff-check, serta render PDF enam jalur builder lulus.
 
@@ -666,6 +669,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel selesai, uji akun Fajar pada dua browser/perangkat: logout perangkat A tidak boleh memutus perangkat B; lalu simulasi koneksi putus saat reload, pastikan layar pemulihan muncul, token tidak hilang, dan **Coba Lagi** kembali membuka aplikasi tanpa password/TOTP baru.
+
 - Smoke test fisik di Android Chrome melalui HTTPS atau `localhost` dengan NIIMBOT M2-H: cek pairing, orientasi/edge/QR, cetak kedua memakai koneksi yang sama, dan pastikan A4 tidak meminta Bluetooth.
 
 - Jalankan pengujian localhost untuk Data Stok > detail material > switch `Opname`: pastikan default tetap `Detail`, hanya sesi aktif memuat gambar, foto lama terlihat, dan katalog sama dari UPT lain tidak muncul. Setelah localhost disetujui pengguna, review dry-run production, lalu minta persetujuan terpisah sebelum migration/backfill, commit/push, dan verifikasi production.
@@ -826,5 +831,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-05 Codex: **Kartu Gantung compact NIIMBOT M2-H langsung via Web Bluetooth selesai dan pushed (`e81c059`, `64d6b34`); A4 tetap `window.print()`, verifikasi hardware belum dilakukan.**
 - 2026-10-07 Codex: **Penomoran TUG multi-UPT dan konsistensi preview/Print PDF seluruh TUG selesai; Keterangan TUG-8/9 kini memakai Status Material dan fallback Surabaya tersisa dihapus.**
+- 2026-10-08 Codex: **Pemulihan sesi auth tanpa auto-logout dan logout lokal per perangkat selesai serta pushed (`d7ad92c`); TOTP tetap wajib, smoke dua perangkat belum dilakukan.**
