@@ -76,6 +76,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **MTU KHS detail dan pencarian Code Catalog selesai lokal (2026-10-09, belum commit/push).** Drawer `Lihat Detail` sudah dirapikan menjadi lima tab responsif dengan konten yang tidak terpotong. Pada `Ringkasan > Edit katalog/status`, Code Catalog memakai `SearchableSelect` terhadap katalog aktif berbasis MARA dan dapat mencari nomor katalog, nama/material description terstruktur, kategori/material group, satuan, sinonim PLN, serta typo ringan. Pilihan tetap disimpan melalui RPC operasional MTU existing; tidak ada perubahan schema/API/dependency. Verifikasi: 16 test terkait lulus, build production dan `git diff --check` lulus. Langkah berikutnya: smoke test localhost memakai akun TL, lalu commit/push hanya setelah persetujuan pengguna.
+
 - **Form 5S kategori foto sudah production (`572ea8f`, 2026-10-08).** UI, draft, history, PDF, kompresi 2 MiB, Edge Function, trigger database, dan kompatibilitas record legacy sudah terpasang. Test Form 5S 10/10, seluruh test 520/520, build, serta diff-check lulus. Bundle produksi dan kesehatan Edge Function sudah diverifikasi; smoke pengisian nyata 15 foto dan hasil PDF masih perlu dilakukan.
 - **Logout mendadak akun Fajar diperbaiki dan sudah production (`d7ad92c`, 2026-10-08).** Akar: kegagalan sementara saat fetch profil menghapus token lokal, dan logout default Supabase mencabut sesi semua perangkat. Kini gangguan sementara masuk layar pemulihan tanpa membuang token/cache, sedangkan error sesi nyata tetap fail-closed; seluruh logout memakai scope lokal. TOTP tetap wajib. Test auth 8/8, build production, dan diff-check lulus; smoke dua perangkat akun Fajar masih perlu dilakukan.
 

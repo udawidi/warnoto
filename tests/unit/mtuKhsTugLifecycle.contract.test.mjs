@@ -106,14 +106,26 @@ test("2026 catalog change requests validate and persist the typed catalog id", (
 });
 
 test("MTU detail exposes the approved lifecycle controls with mobile-safe sizing", () => {
+  assert.match(detailUi, /import \{ SearchableSelect \} from "\.\.\/\.\.\/components\/SearchableSelect\.jsx"/);
+  assert.match(detailUi, /<SearchableSelect\s+options=\{katalogList\}/);
+  assert.match(detailUi, /getSearchText=\{item => `\$\{item\.data\?\.katalog.*item\.data\?\.nama.*item\.data\?\.deskripsi.*item\.data\?\.satuan/);
+  assert.match(detailUi, /item\.data\?\.name.*item\.name.*item\.materialName/);
+  assert.match(detailUi, /item\.data\?\.description.*item\.description.*item\.materialDescription/);
+  assert.match(detailUi, /item\.data\?\.category.*item\.category.*item\.data\?\.material_group_desc.*item\.material_group_desc/);
+  assert.match(detailUi, /placeholder="-- Cari & pilih dari Master Katalog --"/);
   assert.match(detailUi, /Pengeluaran TUG-8\/9/);
   assert.match(detailUi, /Rekonsiliasi TUG 2024/);
   assert.match(detailUi, /activeTab === "usage" && isPhysical && year === 2024/);
-  assert.match(detailUi, /activeTab === "summary" && <div className=\"mtu-khs-detail__section\"><h3><Clock size=\{17\} \/> Drawing tahun yang sama/);
+  assert.match(detailUi, /activeTab === "photos"/);
   assert.match(detailUi, /Penerimaan Material TUG-3\/4/);
+  assert.match(detailUi, /\[\["summary", "Ringkasan"\], \["location", "Lokasi & Transfer"\], \["photos", "Foto & Dokumen"\], \["usage", "TUG & Penerimaan"\], \["installation", "Pemasangan & Riwayat"\]\]/);
+  assert.doesNotMatch(detailUi, /activeTab === "history"/);
+  assert.doesNotMatch(detailUi, /Edit material/);
+  assert.match(detailUi, /target\.closest\("\[role=dialog\]"\)/);
   assert.match(tabUi, /canReconcile=\{currentUser\?\.role === "TL" \|\| currentUser\?\.role === "SUPERADMIN"\}/);
   assert.match(tabUi, /openNewTxn\("TUG3", draft\)/);
   assert.match(tabUi, /\["katalogId","Katalog Data Stok"\]/);
   assert.match(mtuCss, /\.mtu-khs-reconciliation select, \.mtu-khs-reconciliation input \{ width: 100%; min-width: 0; min-height: 44px/);
+  assert.match(mtuCss, /\.mtu-khs-detail__body \{ flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; \}/);
   assert.match(mtuCss, /@media \(max-width: 520px\)/);
 });
