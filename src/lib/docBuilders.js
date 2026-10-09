@@ -1971,9 +1971,9 @@ export function buildForm5SHTML(record, users, uptList) {
     const cells = [0, 1, 2].map(index => {
       const photo = categoryPhotos[index];
       const src = photo?.preview || "";
-      return `<div style="border:1px solid #000;padding:8px;text-align:center;min-height:210px;display:flex;align-items:center;justify-content:center">${src ? `<img data-form5s-photo="true" src="${esc(src)}" referrerpolicy="no-referrer" style="max-width:100%;max-height:190px;object-fit:contain" alt="${esc(photo.name || `${label} foto ${index + 1}`)}"/>` : `<div class="photo-empty">${esc(photo?.printError || "Foto tidak tersedia")}</div>`}</div>`;
+      return `<div class="photo-cell">${src ? `<img data-form5s-photo="true" src="${esc(src)}" referrerpolicy="no-referrer" alt="${esc(photo.name || `${label} foto ${index + 1}`)}"/>` : `<div class="photo-empty">${esc(photo?.printError || "Foto tidak tersedia")}</div>`}<div class="photo-caption">${esc(photo?.name || `${label} foto ${index + 1}`)}</div></div>`;
     }).join("");
-    return `<div class="page photo-page"><div class="top-accent"></div><div class="doctitle">Lampiran Foto 5S — ${esc(label)}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:24px">${cells}</div><div class="bottom-accent"></div></div>`;
+    return `<div class="page photo-page"><div class="top-accent"></div><div class="doctitle">Lampiran Foto 5S — ${esc(label)}</div><div class="photo-grid">${cells}</div><div class="bottom-accent"></div></div>`;
   }).join("") : "";
   const evidencePhotoGrid = categorizedPhotos ? `<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px">${Object.entries(categoryLabels).flatMap(([categoryId, label]) => photos.filter(photo => photo?.categoryId === categoryId).slice(0, 3).map((photo, index) => {
     const src = photo.preview || "";
@@ -2004,11 +2004,14 @@ export function buildForm5SHTML(record, users, uptList) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan 5S ${esc(uptNama)} ${esc(bulanLabel)} ${esc(record.tahun)} ${esc(record.id || "")}</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background:#e5e7eb}
+body{font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#000;background:#e5e7eb}
 @page{size:A4 portrait;margin:0}
-.page{padding:20px;min-height:297mm;width:210mm;background:white;max-width:210mm;margin:0 auto 16px;position:relative;break-after:page;page-break-after:always}
+.page{padding:11mm 12mm 10mm;min-height:297mm;width:210mm;background:white;max-width:210mm;margin:0 auto 16px;position:relative;break-after:page;page-break-after:always;overflow:hidden}
 .page:last-child{break-after:auto;page-break-after:auto}
 .evidence-page{break-before:page;page-break-before:always}
+.evidence-page{break-inside:avoid;page-break-inside:avoid}
+.photo-page{break-before:page;page-break-before:always}
+.photo-page{break-inside:avoid;page-break-inside:avoid}
 .top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
 .bottom-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-top:16px}
 .header-kop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px}
@@ -2016,25 +2019,29 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background
 .pln-logo{height:28px;width:auto;display:block;margin-left:auto;margin-bottom:2px}
 .kop-text{font-size:8.5px;font-weight:bold;line-height:1.2;color:#000}
 .kop-sub{font-size:8px;font-weight:bold;line-height:1.2;color:#333}
-.doctitle{text-align:center;font-size:13px;font-weight:bold;letter-spacing:0.5px;margin-bottom:10px;text-transform:uppercase}
-table.meta-tbl{width:100%;border-collapse:collapse;margin-bottom:10px;font-size:9.5px}
+ .doctitle{text-align:center;font-size:15px;font-weight:bold;letter-spacing:0.5px;margin-bottom:8px;text-transform:uppercase}
+table.meta-tbl{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:10.5px}
 table.meta-tbl td{padding:2px 4px;vertical-align:top}
 table.meta-tbl td.lbl{width:140px;color:#111}
 table.items-tbl{width:100%;border-collapse:collapse;margin-top:6px;margin-bottom:4px;border:1px solid #000}
-table.items-tbl th{background:#d1d5db;color:#000;border:1px solid #000;padding:5px 4px;font-size:9.5px;font-weight:bold;text-align:center}
-table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
+table.items-tbl th{background:#d1d5db;color:#000;border:1px solid #000;padding:4px 5px;font-size:10.5px;font-weight:bold;text-align:center}
+table.items-tbl td{border:1px solid #000;padding:3px 6px;font-size:10px;line-height:1.15}
 .total-row{display:flex;justify-content:flex-end;gap:10px;font-size:11px;font-weight:bold;margin-bottom:12px;padding:6px 4px}
-.section-title{font-size:10.5px;font-weight:bold;margin:10px 0 4px;text-transform:uppercase}
-.note-box{border:1px solid #000;padding:8px;font-size:9.5px;white-space:pre-wrap;min-height:40px;margin-bottom:10px}
+.section-title{font-size:11.5px;font-weight:bold;margin:8px 0 4px;text-transform:uppercase}
+.note-box{border:1px solid #000;padding:6px;font-size:10.5px;white-space:pre-wrap;min-height:34px;margin-bottom:8px}
 .photo-empty{color:#9ca3af;font-style:italic;font-size:10px;text-align:center;padding:16px}
 .sig-row-2{display:flex;justify-content:space-around;margin-top:16px;text-align:center}
 .sig-col{flex:1;font-size:9.5px;padding:0 8px}
 .sig-role{font-weight:bold;margin-top:2px;white-space:pre-line}
 .sig-space{height:45px}
 .sig-name{font-weight:bold;text-transform:uppercase}
+.photo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7mm;margin-top:8mm}
+.photo-cell{height:214mm;border:1px solid #000;padding:4mm 3mm 3mm;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;break-inside:avoid;page-break-inside:avoid}
+.photo-cell img{display:block;max-width:100%;max-height:184mm;width:auto;height:auto;object-fit:contain}
+.photo-caption{font-size:10px;font-weight:600;line-height:1.15;margin-top:3mm;overflow-wrap:anywhere}
 .print-bar{position:sticky;top:0;background:#003087;color:white;padding:10px 16px;text-align:center;font-size:13px;font-weight:700;z-index:100}
 .print-bar button{background:#16a34a;color:white;border:none;border-radius:6px;padding:8px 18px;font-size:13px;font-weight:700;cursor:pointer;margin-left:10px}
-@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;width:210mm;max-width:210mm;min-height:297mm;padding:15mm}body{background:white}}
+@media print{.print-bar{display:none}.page{box-shadow:none;margin:0;width:210mm;max-width:210mm;min-height:297mm;padding:11mm 12mm 10mm}body{background:white}}
 </style></head><body>
 
 <div class="print-bar">📄 Laporan 5S <button id="form5s-print" type="button">🖨️ Print / Save as PDF</button></div>
