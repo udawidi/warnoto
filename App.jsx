@@ -4723,6 +4723,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             uptList={uptList}
             ultgList={ultgList}
             gudangList={gudangList}
+            lokasiList={lokasiList}
             supplierList={supplierList}
             katalogList={katalogList}
             enrichedStocks={scopedEnrichedStocks}

@@ -16,6 +16,8 @@ export const MTU_KHS_RECONCILIATION_LABEL = {
   SUDAH_TUG: "Sudah proses TUG",
 };
 export const MTU_KHS_DOCUMENT_TYPES = ["DRAWING", "CATALOG", "TPG", "TYPE_TEST", "SCHEMATIC", "NAMEPLATE", "OTHER"];
+export const MTU_KHS_EVIDENCE_KINDS = ["ITEM", "NAMEPLATE"];
+export const MTU_KHS_TRANSFER_STATUSES = ["PENDING", "APPROVED", "REJECTED"];
 export const MTU_KHS_DRAWING_FOLDERS = {
   UNINDO: "https://drive.google.com/drive/folders/1ITLAMr8wipKTdWviLYRofmAK9b_97yw8",
   HITACHI: "https://drive.google.com/drive/folders/12rpCqQw0OLsMXk3diBempEAtqBdjmG8P",
@@ -116,6 +118,55 @@ export function normalizeMtuText(value) {
 
 export function normalizeMtuCode(value) {
   return normalizeMtuText(value).replace(/^S\s*-\s*/, "").replace(/\s+/g, "-");
+}
+
+export function normalizeMtuSearch(value) {
+  return String(value ?? "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function buildMtuSearchText(record = {}) {
+  return normalizeMtuSearch([
+    record.id, record.materialName, record.materialDescription, record.catalogNumber, record.katalogId,
+    record.mtuCode, record.vendor, record.noKontrak, record.contractDetailNumber, record.rfq,
+    record.uptName, record.ultgName, record.giName, record.bayName, record.location,
+  ].filter(Boolean).join(" "));
+}
+
+export function rankMtuSearch(record = {}, query = "") {
+  const needle = normalizeMtuSearch(query);
+  if (!needle) return 0;
+  const exactFields = [record.catalogNumber, record.mtuCode, record.noKontrak, record.contractDetailNumber, record.rfq].map(normalizeMtuSearch);
+  const haystack = buildMtuSearchText(record);
+  const tokens = needle.split(" ").filter(Boolean);
+  const exact = exactFields.some(field => field === needle) ? 100 : 0;
+  const prefix = exactFields.some(field => field.startsWith(needle)) ? 30 : 0;
+  const allTokens = tokens.every(token => haystack.includes(token)) ? 20 : 0;
+  const fuzzy = tokens.reduce((score, token) => score + (haystack.includes(token.slice(0, Math.max(3, token.length - 1))) ? 2 : 0), 0);
+  return exact + prefix + allTokens + fuzzy;
+}
+
+function editDistanceWithin(left, right, limit) {
+  if (Math.abs(left.length - right.length) > limit) return false;
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    let best = row;
+    for (let column = 1; column <= right.length; column += 1) {
+      const value = Math.min(current[column - 1] + 1, previous[column] + 1, previous[column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1));
+      current[column] = value;
+      best = Math.min(best, value);
+    }
+    if (best > limit) return false;
+    previous = current;
+  }
+  return previous[right.length] <= limit;
+}
+
+export function matchesMtuSearch(record = {}, query = "") {
+  const tokens = normalizeMtuSearch(query).split(" ").filter(Boolean);
+  const text = buildMtuSearchText(record);
+  const words = text.split(" ").filter(Boolean);
+  return !tokens.length || tokens.every(token => text.includes(token) || words.some(part => part.startsWith(token.slice(0, Math.max(3, token.length - 1))) || editDistanceWithin(token, part, token.length >= 6 ? 2 : 1)));
 }
 
 export function normalizeMtuYear(value) {

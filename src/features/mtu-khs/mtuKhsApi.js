@@ -1,11 +1,12 @@
 import { supabase } from "../../supabaseClient.js";
-import { normalizeMtuRecord, filterMtuRecords, isMtuNationalRole, buildMtuTug3Draft } from "./mtuKhsModel.js";
+import { normalizeMtuRecord, filterMtuRecords, isMtuNationalRole, buildMtuTug3Draft, buildMtuSearchText, rankMtuSearch, matchesMtuSearch } from "./mtuKhsModel.js";
+import { compressImage } from "../../lib/supabaseSync.js";
 
 const pageSize = 1000;
 const ACTIVE_MASTER_TABLES = new Set(["mtu_khs_gardu_induk", "mtu_khs_gardu_induk_bay"]);
 const mtuRecordsCache = new Map();
 const mtuSyncDrainSessions = new Set();
-const mtuRecordCacheKey = ({ user, uptList = [], year, status, vendor, upt, search, page = 1, pageSize = 20 } = {}) => JSON.stringify([user?.id, user?.role, user?.uptId, user?.uitId, uptList.map(item => item.id).join(","), year || "", status || "", vendor || "", upt || "", search || "", page, pageSize]);
+const mtuRecordCacheKey = ({ user, uptList = [], year, status, vendor, upt, search, rfq, contractKr, page = 1, pageSize = 20 } = {}) => JSON.stringify([user?.id, user?.role, user?.uptId, user?.uitId, uptList.map(item => item.id).join(","), year || "", status || "", vendor || "", upt || "", search || "", rfq || "", contractKr || "", page, pageSize]);
 export function mtuKhsMasterQuery(table) { return ACTIVE_MASTER_TABLES.has(table) ? { active: true } : {}; }
 export function clearMtuKhsCache() { mtuRecordsCache.clear(); }
 export function getCachedMtuKhsRecords(query) { return mtuRecordsCache.get(mtuRecordCacheKey(query)) || null; }
@@ -43,23 +44,23 @@ async function fetchPaged(table, query = {}) {
 }
 
 function unwrap(row) {
-  return normalizeMtuRecord({ ...(row?.data || {}), id: row?.id, uptId: row?.upt_id || row?.data?.uptId, ultgId: row?.ultg_id || row?.data?.ultgId, garduIndukId: row?.gardu_induk_id || row?.data?.garduIndukId, bayId: row?.bay_id || row?.data?.bayId, lifecycleStatus: row?.lifecycle_status || row?.data?.lifecycleStatus, status: row?.status || row?.data?.status, version: row?.version || row?.data?.version });
+  return normalizeMtuRecord({ ...(row?.data || {}), id: row?.id, uptId: row?.data?.uptId || row?.upt_id, ultgId: row?.data?.ultgId || row?.ultg_id, garduIndukId: row?.data?.garduIndukId || row?.gardu_induk_id, bayId: row?.data?.bayId || row?.bay_id, gudangId: row?.data?.gudangId || row?.gudang_id, lokasiId: row?.data?.lokasiId || row?.lokasi_id, qty: row?.data?.qty ?? row?.qty, physicalQty: row?.data?.physicalQty ?? row?.data?.qty ?? row?.qty, lifecycleStatus: row?.data?.lifecycleStatus || row?.lifecycle_status, status: row?.data?.status || row?.status, version: row?.data?.version || row?.version });
 }
 
-export async function loadMtuKhsRecords({ user, uptList = [], year, status, vendor, upt, search, page = 1, pageSize = 20 } = {}) {
-  const cacheKey = mtuRecordCacheKey({ user, uptList, year, status, vendor, upt, search, page, pageSize });
+export async function loadMtuKhsRecords({ user, uptList = [], year, status, vendor, upt, search, rfq, contractKr, page = 1, pageSize = 20 } = {}) {
+  const cacheKey = mtuRecordCacheKey({ user, uptList, year, status, vendor, upt, search, rfq, contractKr, page, pageSize });
   if (mtuRecordsCache.has(cacheKey)) return mtuRecordsCache.get(cacheKey);
   if (supabase?.rpc) {
-    const { data, error } = await supabase.rpc("mtu_khs_list_records", { p_year: year || null, p_lifecycle_status: status || null, p_vendor: vendor || null, p_upt_id: upt || null, p_search: search || null, p_limit: pageSize, p_offset: (page - 1) * pageSize });
+    const { data, error } = await supabase.rpc("mtu_khs_list_records", { p_year: year || null, p_lifecycle_status: status || null, p_vendor: vendor || null, p_upt_id: upt || null, p_search: search || null, p_rfq: rfq || null, p_contract_kr: contractKr || null, p_limit: pageSize, p_offset: (page - 1) * pageSize });
     if (!error && data && !Array.isArray(data)) {
-      const result = { data: (data.items || []).map(unwrap), total: data.total || 0, metrics: data.metrics || {}, vendors: data.vendors || [], error: null };
+      const result = { data: (data.items || []).map(unwrap), total: data.total || 0, metrics: data.metrics || {}, vendors: data.vendors || [], rfqs: data.facets?.rfqs || [], contractKrs: data.facets?.contractKrs || [], error: null };
       mtuRecordsCache.set(cacheKey, result);
       return result;
     }
   }
   const result = await fetchPaged("mtu_khs_records", year ? { procurement_year: year } : {});
-  const all = filterMtuRecords(result.data.map(unwrap), user, uptList).filter(record => (!status || record.lifecycleStatus === status) && (!vendor || record.vendor === vendor) && (!upt || record.uptId === upt) && (!search || [record.materialName, record.materialDescription, record.catalogNumber, record.mtuCode, record.vendor, record.giName, record.bayName, record.noKontrak, record.uptName].join(" ").toLowerCase().includes(search.toLowerCase())));
-  const fallback = { ...result, total: all.length, data: all.slice((page - 1) * pageSize, page * pageSize), metrics: { qty: all.reduce((sum, record) => sum + (record.physicalQty || 0), 0), onsite: all.filter(record => ["ON_SITE", "INSTALLED"].includes(record.lifecycleStatus)).length, installed: all.filter(record => record.lifecycleStatus === "INSTALLED").length }, vendors: [...new Set(all.map(record => record.vendor).filter(Boolean))].sort() };
+  const all = filterMtuRecords(result.data.map(unwrap), user, uptList).filter(record => (!status || record.lifecycleStatus === status) && (!vendor || record.vendor === vendor) && (!upt || record.uptId === upt) && (!rfq || String(record.mtuCode || "").toLowerCase() === String(rfq).toLowerCase()) && (!contractKr || String(record.contractDetailNumber || record.noKontrak || "").toLowerCase() === String(contractKr).toLowerCase()) && (!search || matchesMtuSearch(record, search))).sort((a, b) => rankMtuSearch(b, search) - rankMtuSearch(a, search));
+  const fallback = { ...result, total: all.length, data: all.slice((page - 1) * pageSize, page * pageSize), metrics: { qty: all.reduce((sum, record) => sum + (record.physicalQty || 0), 0), onsite: all.filter(record => ["ON_SITE", "INSTALLED"].includes(record.lifecycleStatus)).length, installed: all.filter(record => record.lifecycleStatus === "INSTALLED").length }, vendors: [...new Set(all.map(record => record.vendor).filter(Boolean))].sort(), rfqs: [...new Set(all.map(record => record.mtuCode).filter(Boolean))].sort(), contractKrs: [...new Set(all.map(record => record.contractDetailNumber || record.noKontrak).filter(Boolean))].sort() };
   mtuRecordsCache.set(cacheKey, fallback);
   return fallback;
 }
@@ -147,6 +148,68 @@ export async function loadMtuKhsLifecycle(recordId) {
 export async function submitMtuKhsChange({ recordId, expectedVersion = 1, patch, idempotencyKey = `mtu-${Date.now()}`, currentUser }) {
   if (!supabase || !recordId || !patch || !currentUser?.id) return { data: null, error: new Error("Data perubahan MTU tidak lengkap") };
   return supabase.rpc("mtu_khs_submit_change", { p_record_id: recordId, p_expected_version: expectedVersion, p_patch: patch, p_idempotency_key: idempotencyKey });
+}
+
+export async function updateMtuKhsOperational({ recordId, expectedVersion = 1, patch = {}, idempotencyKey = `mtu-op-${Date.now()}` } = {}) {
+  if (!supabase || !recordId) return { data: null, error: new Error("Record MTU tidak valid") };
+  const result = await supabase.rpc("mtu_khs_update_operational", { p_record_id: recordId, p_expected_version: expectedVersion, p_patch: patch, p_idempotency_key: idempotencyKey });
+  return { ...result, data: result.data ? unwrap(Array.isArray(result.data) ? result.data[0] : result.data) : null };
+}
+
+export async function requestMtuKhsTransfer({ recordId, expectedVersion = 1, qty, targetUptId, targetUltgId = null, targetGarduIndukId = null, targetBayId = null, targetGudangId = null, targetLokasiId = null, note = "", idempotencyKey = `mtu-transfer-${Date.now()}` } = {}) {
+  if (!supabase || !recordId || !targetUptId || !(Number(qty) > 0)) return { data: null, error: new Error("Data transfer MTU belum lengkap") };
+  return supabase.rpc("mtu_khs_request_transfer", { p_record_id: recordId, p_expected_version: expectedVersion, p_qty: Number(qty), p_target_upt_id: targetUptId, p_target_ultg_id: targetUltgId, p_target_gardu_induk_id: targetGarduIndukId, p_target_bay_id: targetBayId, p_target_gudang_id: targetGudangId, p_target_lokasi_id: targetLokasiId, p_note: note, p_idempotency_key: idempotencyKey });
+}
+
+export async function decideMtuKhsTransfer({ requestId, decision, note = "" } = {}) {
+  if (!supabase || !requestId || !["APPROVED", "REJECTED"].includes(decision)) return { data: null, error: new Error("Keputusan transfer MTU tidak valid") };
+  return supabase.rpc("mtu_khs_decide_transfer", { p_request_id: requestId, p_decision: decision, p_note: note });
+}
+
+export async function loadMtuKhsTransferRequests({ status = "PENDING" } = {}) {
+  if (!supabase) return { data: [], error: new Error("Supabase belum tersedia") };
+  const { data, error } = await supabase.from("mtu_khs_transfer_requests").select("*").eq("status", status).order("requested_at", { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function loadMtuKhsTransferDestinations(targetUptId) {
+  if (!supabase || !targetUptId) return { data: null, error: new Error("UPT tujuan transfer belum dipilih") };
+  return supabase.rpc("mtu_khs_transfer_destinations", { p_target_upt_id: targetUptId });
+}
+
+export async function loadMtuKhsEvidence(recordId) {
+  if (!supabase || !recordId) return { data: [], error: new Error("Record MTU tidak valid") };
+  const { data, error } = await supabase.from("mtu_khs_record_evidence").select("*").eq("record_id", recordId).order("created_at", { ascending: false });
+  if (error) return { data: [], error };
+  const rows = data || [];
+  const signed = await createMtuKhsEvidenceUrls(rows.map(item => item.object_path).filter(Boolean));
+  const byPath = new Map((signed.data || []).map(item => [item.path, item.signedUrl || item.signed_url || ""]));
+  return { data: rows.map(item => ({ ...item, signedUrl: byPath.get(item.object_path) || "" })), error: signed.error || null };
+}
+
+function evidenceBlob(dataUrl) {
+  const match = String(dataUrl || "").match(/^data:(.*?);base64,(.*)$/);
+  if (!match) throw new Error("Format foto tidak valid.");
+  const bytes = Uint8Array.from(atob(match[2]), char => char.charCodeAt(0));
+  return new Blob([bytes], { type: match[1] || "image/jpeg" });
+}
+
+export async function uploadMtuKhsEvidence({ file, recordId, uptId, kind } = {}) {
+  if (!supabase || !file || !recordId || !uptId || !["ITEM", "NAMEPLATE"].includes(kind)) throw new Error("Data foto MTU belum lengkap.");
+  const dataUrl = await compressImage(file, { maxBytes: 2 * 1024 * 1024, maxDim: 2000 });
+  const blob = evidenceBlob(dataUrl);
+  if (blob.size > 2 * 1024 * 1024 || !blob.type.startsWith("image/")) throw new Error("Foto harus berupa gambar maksimal 2 MiB.");
+  const path = `${uptId}/${recordId}/${kind.toLowerCase()}-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+  const uploaded = await supabase.storage.from("mtu-khs-evidence").upload(path, blob, { contentType: blob.type, upsert: false, cacheControl: "3600" });
+  if (uploaded.error) throw uploaded.error;
+  const registered = await supabase.rpc("mtu_khs_register_evidence", { p_record_id: recordId, p_kind: kind, p_object_path: path, p_mime_type: blob.type, p_size_bytes: blob.size, p_idempotency_key: `evidence-${path}` });
+  if (registered.error) { await supabase.storage.from("mtu-khs-evidence").remove([path]); throw registered.error; }
+  return registered;
+}
+
+export async function createMtuKhsEvidenceUrls(paths, expiresIn = 3600) {
+  if (!supabase || !paths?.length) return { data: [], error: null };
+  return supabase.storage.from("mtu-khs-evidence").createSignedUrls(paths, expiresIn);
 }
 
 export async function decideMtuKhsChange({ changeId, decision, note = "" }) {
