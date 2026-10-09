@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-08
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-09
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -47,7 +47,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Preview dan Print/Save PDF seluruh TUG memakai kanvas A4 yang sama.** TUG-3/4/5/5-ULTG/7/8/9/10 tetap browser-native print; CSS print tidak boleh mengubah geometri halaman preview. Tombol cetak menunggu font dan gambar selesai dimuat. Identitas/alamat/fallback dokumen wajib berasal dari UPT transaksi atau master dan tidak boleh diam-diam kembali ke Surabaya untuk UPT lain.
 - **Maturity canonical self-host:** `maturity_assessments`, `maturity_audits`, `maturity_audit_history` (unik per upt/tahun/semester), `maturity_5s_assessments` (append-only, authenticated hanya SELECT+INSERT). Evidence audit = Google Drive binary + Supabase metadata; root folder `UPT Surabaya Apps` (`13FFto2pzVRLq4LBpRaJsIyGa2Bk5gaYD`), OAuth cred hanya di Edge Runtime MiniPC. Scope dari `maturity_audits.upt_id`; UIT hanya UPT se-`uit_id`; audit FINAL immutable. Mode Demo Maturity sengaja dimatikan.
 - **Maturity hardening (2026-09-19, production self-host aktif):** RLS memakai `can_access_maturity_upt`; UPT hanya unit sendiri, reviewer UIT hanya UPT dengan `uit_id` sama, Pusat/SUPERADMIN nasional, dan HAR_UIT tidak mendapat akses Maturity. Review wajib memiliki `upt_id` yang sama dengan audit. Evidence yang diakui aplikasi wajib berhasil tersimpan di Drive dan bucket self-host; kegagalan backup menggagalkan upload dan file Drive dipindah ke trash sebagai kompensasi. Foto Form 5S menyimpan `storagePath` di `sample_photos` JSONB. Satu asesmen legacy tanpa UPT tetap dipertahankan sebagai `PUSAT_LEGACY_UNSCOPED`, hanya dapat dibaca Pusat/SUPERADMIN dan tidak dihitung sebagai nilai UPT/UIT.
-- **Foto Form 5S per kategori (2026-10-08, production aktif):** pengisian baru wajib tepat 15 foto, yaitu tiga foto untuk masing-masing kategori `sort`, `set`, `shine`, `standardize`, dan `sustain`. Foto selalu dikompres maksimal 2 MiB dan 2000 px sebelum upload; Edge Function menolak file di atas batas. `sample_photos` tetap array JSONB datar dengan `categoryId`, sedangkan record legacy tanpa kategori tetap dapat dibaca dan dicetak. PDF menampilkan satu halaman lampiran per kategori. Signing foto dan decode gambar masing-masing memiliki timeout delapan detik; foto gagal menjadi placeholder agar tombol cetak tidak terkunci. Migration `20261008_form5s_category_photo_guard.sql` sudah diterapkan dan `maturity-drive` sudah dideploy ke self-host.
+- **Foto Form 5S per kategori (2026-10-09, production aktif):** pengisian baru wajib tepat 15 foto, yaitu tiga foto untuk masing-masing kategori `sort`, `set`, `shine`, `standardize`, dan `sustain`. Foto dikompres maksimal 2 MiB dan 2000 px, lalu browser mengunggah langsung memakai signed-upload token ke bucket private self-host `maturity-evidence`; khusus foto Form 5S baru, Google Drive tidak lagi dipakai. Insert ditolak bila object self-host tidak ada, prefix UPT salah, MIME aktual bukan gambar, ukuran aktual melebihi 2 MiB, atau metadata masih membawa penanda Drive. `sample_photos` tetap array JSONB datar dengan `categoryId`; record legacy tetap dapat dibaca dan dicetak. PDF menampilkan satu halaman lampiran per kategori. Migration `20261009_form5s_selfhost_photo_guard.sql`, Edge Function `maturity-drive`, dan frontend commit `3b8a26c` sudah live production; smoke nyata 15 foto masih diperlukan.
 - **Maturity AI (2026-09-17):** Analisis tetap metadata-only dan hanya berjalan saat tombol ditekan. Checklist slot evidence dihitung lokal; AI memberi level potensial, bukan nilai resmi. Hasil AI dan kegagalannya tidak masuk skor audit. Dashboard draft menandai proyeksi berbasis evidence; nilai FINAL tetap hasil penilaian manual Pusat.
 - **Inspeksi Material Cadang:** self-host canonical + tenant boundary UPT/gudang ditegakkan di UI & DB, UPT/Manager dari profil login, runtime non-E2E menolak endpoint selain `warnoto.com`. Struktur: parent `material_inspection_batches` + `batch_id` pada `material_inspections`, nomor server `000001/BA-INSPEKSI/UPT-SBY/07/2026`, tepat 2 foto/material, satu BA satu gudang. Migration security `20260802_material_inspection_multi_upt_security.sql` **sudah applied**.
 - **Draft Inspeksi Material Cadang (2026-09-19, production self-host aktif):** migration `20260913c_material_inspection_drafts.sql` sudah diterapkan. Draft bersifat privat untuk ADMIN/TL pemilik dan dibatasi UPT/gudang melalui RLS; foto draft hanya dapat dibaca pemilik bila path tercatat di draft. RPC BA final tetap memvalidasi UPT, gudang, stok, checklist, dan dua foto.
@@ -671,7 +671,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-- Smoke test production Form 5S: buat draft parsial, refresh, lengkapi tiga foto pada masing-masing lima kategori, simpan, buka History, lalu cetak PDF. Pastikan 15 foto tampil pada lima lampiran dan simulasi foto lambat tetap mengaktifkan tombol cetak maksimal 16 detik.
+- Smoke test production Form 5S: buat draft parsial, refresh, lengkapi tiga foto pada masing-masing lima kategori, simpan, lalu refresh. Pastikan record memiliki 15 `storagePath`, seluruh object ada di bucket private self-host `maturity-evidence`, History menampilkan semua foto, PDF berisi lima lampiran, dan tidak ada upload Form 5S ke Google Drive.
 - Setelah deploy Vercel selesai, uji akun Fajar pada dua browser/perangkat: logout perangkat A tidak boleh memutus perangkat B; lalu simulasi koneksi putus saat reload, pastikan layar pemulihan muncul, token tidak hilang, dan **Coba Lagi** kembali membuka aplikasi tanpa password/TOTP baru.
 
 - Smoke test fisik di Android Chrome melalui HTTPS atau `localhost` dengan NIIMBOT M2-H: cek pairing, orientasi/edge/QR, cetak kedua memakai koneksi yang sama, dan pastikan A4 tidak meminta Bluetooth.
@@ -793,7 +793,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 **Verifikasi user (browser, belum lunas):**
 - Uji jenjang Maturity end-to-end akun sungguhan: TL buat audit → "Kirim Hasil ke UIT" (status `REVIEW_UIT`) → UIT review → Pusat/final. Cek negatif: MANAGER UPT tak boleh pindah UPT / simpan di jenjang atas.
 - Buat 2 akun baru lewat Kelola Akun: `ASMAN_LOG_UIT` (pilih unit UIT) + `ADMIN_LOG_PUSAT` (nasional).
-- Form 5S pasca-GELOMBANG B (`upt_id` NOT NULL): simpan pengisian nyata, refresh, cek muncul di History.
+- Form 5S self-host-only (`upt_id` NOT NULL): simpan pengisian nyata 15 foto, refresh, cek seluruh foto muncul di History dan object tercatat di bucket `maturity-evidence`.
 - Evidence Drive dengan akun Pusat/UIT (jalur nasional `maturity-drive` belum diuji end-to-end).
 - Upload foto pasca-fix `ff7fd49` (Data Stok, Inspeksi Material).
 - UI mobile Dashboard/Alat Berat/Data Stok pasca-deploy.
@@ -834,5 +834,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-08 Codex: **Pemulihan sesi auth tanpa auto-logout dan logout lokal per perangkat selesai serta pushed (`d7ad92c`); TOTP tetap wajib, smoke dua perangkat belum dilakukan.**
 - 2026-10-08 Codex: **Form 5S 5×3 foto, kompresi 2 MiB, lampiran PDF, timeout cetak, Edge Function, dan migration production selesai serta pushed (`572ea8f`); smoke nyata 15 foto masih diperlukan.**
+- 2026-10-09 Codex: **Foto Form 5S dialihkan menjadi self-host-only dengan signed upload, validasi object aktual di DB, migration dan Edge Function production aktif, serta frontend pushed (`3b8a26c`); smoke nyata 15 foto masih diperlukan.**
