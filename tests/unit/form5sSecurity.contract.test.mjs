@@ -55,6 +55,16 @@ test("Form 5S enforces 2 MiB compression, 2000px, fifteen slots, and print timeo
   assert.match(form, /categoryId/);
 });
 
+test("Form 5S warns before confirmation when required data is incomplete", () => {
+  assert.match(form, /const validateBeforePersist = \(\) =>/);
+  assert.match(form, /Data belum lengkap: pilih Gudang \/ Lokasi\./);
+  assert.match(form, /setCustomValidity\(invalid\.message\)/);
+  assert.match(form, /invalid\.ref\.current\.reportValidity\(\)/);
+  assert.match(form, /ref=\{gudangFieldRef\} required aria-invalid=\{invalidField === "gudang"\}/);
+  const saveClick = form.slice(form.indexOf('title: "Simpan Checklist 5S?"') - 300, form.indexOf('title: "Simpan Checklist 5S?"') + 300);
+  assert.ok(saveClick.indexOf("validateBeforePersist()") < saveClick.indexOf("askConfirmDelete"), "validation must run before confirmation");
+});
+
 test("Form 5S baru upload langsung ke self-host signed URL tanpa Drive", () => {
   const uploadBranch = edge.slice(edge.indexOf('if (action === "upload-5s")'), edge.indexOf('if (action === "sign-5s-photo")'));
   assert.match(uploadBranch, /if \(form\) return json\([\s\S]*?, 409\)/);

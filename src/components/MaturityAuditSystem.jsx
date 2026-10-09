@@ -1753,6 +1753,11 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const [photoPickerCategory, setPhotoPickerCategory] = useState("");
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const gudangFieldRef = useRef(null);
+  const tahunFieldRef = useRef(null);
+  const auditorFieldRef = useRef(null);
+  const catatanFieldRef = useRef(null);
+  const [invalidField, setInvalidField] = useState("");
 
   const initChecks = () =>
     Object.fromEntries(FORM_5S.map(cat => [cat.id, Array(cat.indicators.length).fill(false)]));
@@ -1853,14 +1858,6 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       return;
     }
     const selectedGudang = gudangList.find(item => item.id === gudang);
-    if (!gudang.trim() || !auditor.trim() || !Number.isInteger(tahun) || tahun < 2000 || tahun > 2100) {
-      setSaveError("Lengkapi gudang, nama auditor, dan tahun 2000–2100 sebelum menyimpan.");
-      return;
-    }
-    if (!catatan.trim()) {
-      setSaveError("Catatan / Temuan / Tindak Lanjut wajib diisi sebelum menyimpan.");
-      return;
-    }
     const photoCounts = Object.fromEntries(FORM_5S.map(category => [category.id, samplePhotos.filter(photo => photo.categoryId === category.id).length]));
     if (samplePhotos.length !== 15 || Object.values(photoCounts).some(count => count !== 3)) {
       setSaveError("Lengkapi tepat 3 foto untuk setiap kategori 5S (total 15 foto) sebelum menyimpan.");
@@ -1969,6 +1966,30 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     }
   };
 
+  const validateBeforePersist = () => {
+    const invalid = !gudang.trim()
+      ? { field: "gudang", message: "Data belum lengkap: pilih Gudang / Lokasi.", ref: gudangFieldRef }
+      : !auditor.trim()
+        ? { field: "auditor", message: "Data belum lengkap: isi Nama Auditor.", ref: auditorFieldRef }
+        : !Number.isInteger(tahun) || tahun < 2000 || tahun > 2100
+          ? { field: "tahun", message: "Data belum lengkap: isi Tahun 2000–2100.", ref: tahunFieldRef }
+          : !catatan.trim()
+            ? { field: "catatan", message: "Data belum lengkap: isi Catatan / Temuan / Tindak Lanjut.", ref: catatanFieldRef }
+            : samplePhotos.length !== 15 || Object.values(Object.fromEntries(FORM_5S.map(category => [category.id, samplePhotos.filter(photo => photo.categoryId === category.id).length]))).some(count => count !== 3)
+              ? { field: "foto", message: "Data belum lengkap: unggah tepat 3 foto untuk setiap kategori 5S (total 15 foto)." }
+              : null;
+    if (!invalid) return true;
+    setInvalidField(invalid.field);
+    setSaveError(invalid.message);
+    if (invalid.ref?.current) {
+      invalid.ref.current.scrollIntoView({ behavior: "smooth", block: "center" });
+      invalid.ref.current.setCustomValidity(invalid.message);
+      invalid.ref.current.focus();
+      invalid.ref.current.reportValidity();
+    }
+    return false;
+  };
+
   const handlePrint = () => {
     if (!lastSavedRecord) {
       setSaveError("Simpan checklist terlebih dahulu sebelum mencetak.");
@@ -1977,8 +1998,8 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
     handlePrintRecord(lastSavedRecord);
   };
 
-  const markDirtyNumber = setter => event => { setter(Number(event.target.value)); setSaved(false); setDraftSaved(false); setLastSavedRecord(null); };
-  const markDirtyText = setter => event => { setter(event.target.value); setSaved(false); setDraftSaved(false); setLastSavedRecord(null); };
+  const markDirtyNumber = setter => event => { event.currentTarget.setCustomValidity(""); setInvalidField(""); setSaveError(""); setter(Number(event.target.value)); setSaved(false); setDraftSaved(false); setLastSavedRecord(null); };
+  const markDirtyText = setter => event => { event.currentTarget.setCustomValidity(""); setInvalidField(""); setSaveError(""); setter(event.target.value); setSaved(false); setDraftSaved(false); setLastSavedRecord(null); };
   const viewTab = readOnly ? "history" : form5SSubTab;
 
   const tdBase = {
@@ -2033,13 +2054,13 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
           </div>
           <div>
             <label style={sty.label}>Tahun</label>
-            <input style={sty.input} type="number" min={2020} max={2099} value={tahun}
+            <input ref={tahunFieldRef} required aria-invalid={invalidField === "tahun"} style={sty.input} type="number" min={2020} max={2099} value={tahun}
               onChange={markDirtyNumber(setTahun)} />
           </div>
           <div>
             <label style={sty.label}>Gudang / Lokasi</label>
             {gudangList.length > 0 ? (
-              <select style={sty.select} value={gudang} onChange={markDirtyText(setGudang)}>
+              <select ref={gudangFieldRef} required aria-invalid={invalidField === "gudang"} style={sty.select} value={gudang} onChange={markDirtyText(setGudang)}>
                 <option value="">-- Pilih Gudang --</option>
                 {gudangList.map(g => (
                   <option key={g.id} value={g.id}>
@@ -2048,13 +2069,13 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
                 ))}
               </select>
             ) : (
-              <input style={sty.input} placeholder="Nama gudang..." value={gudang}
+              <input ref={gudangFieldRef} required aria-invalid={invalidField === "gudang"} style={sty.input} placeholder="Nama gudang..." value={gudang}
                 onChange={markDirtyText(setGudang)} />
             )}
           </div>
           <div>
             <label style={sty.label}>Nama Auditor</label>
-            <input style={sty.input} placeholder="Nama auditor..." value={auditor}
+            <input ref={auditorFieldRef} required aria-invalid={invalidField === "auditor"} style={sty.input} placeholder="Nama auditor..." value={auditor}
               onChange={markDirtyText(setAuditor)} />
           </div>
         </div>
@@ -2257,6 +2278,9 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
           Catatan / Temuan / Tindak Lanjut
         </label>
         <textarea
+          ref={catatanFieldRef}
+          required
+          aria-invalid={invalidField === "catatan"}
           value={catatan}
           onChange={markDirtyText(setCatatan)}
           rows={3}
@@ -2367,12 +2391,15 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
         </button>
         <button
           className="approval-btn--primary"
-          onClick={() => (askConfirmDelete ? askConfirmDelete({
+          onClick={() => {
+            if (!validateBeforePersist()) return;
+            return askConfirmDelete ? askConfirmDelete({
             title: "Simpan Checklist 5S?",
             message: `Skor checklist saat ini: ${scorePct.toFixed(1)}% (${totalChecked}/${totalItems} indikator). Yakin ingin menyimpan?`,
             confirmLabel: "Ya, Simpan",
             onConfirm: handlePersist,
-          }) : handlePersist())}
+            }) : handlePersist();
+          }}
           disabled={saved || saving}
           style={saved ? { background: C.green, borderColor: C.green, boxShadow: "none", cursor: "default" } : undefined}
         >
