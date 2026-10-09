@@ -1748,6 +1748,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [form5SSubTab, setForm5SSubTab] = useState(defaultSubTab);
+  const [formOpen, setFormOpen] = useState(readOnly || Boolean(maturity5SDraft?.uptId === uptId));
   const [uploading5S, setUploading5S] = useState(false);
   const [photoUploadError, setPhotoUploadError] = useState("");
   const [photoPickerCategory, setPhotoPickerCategory] = useState("");
@@ -1767,6 +1768,7 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
 
   useEffect(() => {
     if (!maturity5SDraft || maturity5SDraft.uptId !== uptId) return;
+    setFormOpen(true);
     const draft = maturity5SDraft.data || maturity5SDraft;
     if (Number.isInteger(draft.bulan)) setBulan(draft.bulan > 11 ? draft.bulan - 1 : draft.bulan);
     if (Number.isInteger(draft.tahun)) setTahun(draft.tahun);
@@ -1836,9 +1838,21 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
   const totalChecked = FORM_5S.reduce((s, c) => s + checks[c.id].filter(Boolean).length, 0);
   const scorePct = totalItems > 0 ? (totalChecked / totalItems) * 100 : 0;
 
-  const handleReset = () => {
+  const resetEntryState = () => {
     samplePhotos.forEach(photo => { if (photo?.preview) URL.revokeObjectURL(photo.preview); });
-    setChecks(initChecks()); setSamplePhotos([]); setSaved(false); setDraftSaved(false); setLastSavedRecord(null);
+    setChecks(initChecks()); setSamplePhotos([]); setGudang(""); setCatatan("");
+    setAuditor(currentUser?.name || ""); setBulan(new Date().getMonth()); setTahun(new Date().getFullYear());
+    setSaved(false); setDraftSaved(false); setSaveError(""); setInvalidField(""); setLastSavedRecord(null);
+  };
+
+  const startNewEntry = () => {
+    resetEntryState();
+    setFormOpen(true);
+    setForm5SSubTab("entry");
+  };
+
+  const handleReset = () => {
+    resetEntryState();
   };
 
   const handleSaveDraft = async () => {
@@ -1886,6 +1900,8 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       setSaveError("Checklist belum tersimpan. Periksa koneksi lalu coba lagi; isian form tetap dipertahankan.");
       return;
     }
+    resetEntryState();
+    setFormOpen(false);
     setLastSavedRecord(savedRecord);
     setSaved(true);
     if (setMaturityAuditEvidence) {
@@ -2040,6 +2056,14 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
 
       {viewTab === "history" ? (
         <Form5SHistory C={C} sty={sty} isMobile={isMobile} assessments={maturity5SAssessments} selectedUpt={selectedUpt} selectedUptId={uptId} gudangList={gudangList} onPrint={handlePrintRecord} />
+      ) : !formOpen ? (
+        <div style={{ ...sty.card, minHeight: 220, display: "grid", placeItems: "center", textAlign: "center", padding: 24 }}>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: saved ? C.green : C.text, marginBottom: 6 }}>{saved ? "Pengisian 5S berhasil disimpan" : "Tidak ada form aktif"}</div>
+            <div style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>{saved ? "Data masuk ke History Audit 5S." : "Klik tombol untuk mulai mengisi checklist baru."}</div>
+            <button type="button" className="approval-btn--primary" onClick={startNewEntry} style={{ minHeight: 44, padding: "10px 16px" }}>＋ Tambah Pengisian 5S</button>
+          </div>
+        </div>
       ) : <>
       <div style={{ ...sty.card, marginBottom: 20 }}>
         <div style={{ fontSize: 13, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 14 }}>
