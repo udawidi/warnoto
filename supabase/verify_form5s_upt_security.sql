@@ -28,18 +28,32 @@ begin
   from public.maturity_5s_assessments a
   cross join lateral jsonb_array_elements(coalesce(a.sample_photos, '[]'::jsonb)) p
   where coalesce(p->>'storagePath', p->>'storage_path', '') = ''
-     or not exists (select 1 from storage.objects o where o.bucket_id = 'maturity-evidence' and o.name = coalesce(p->>'storagePath', p->>'storage_path'));
+     or not exists (
+       select 1 from storage.objects o
+       where o.bucket_id = 'maturity-evidence'
+         and o.name = coalesce(p->>'storagePath', p->>'storage_path')
+         and lower(coalesce(o.metadata->>'mimetype', '')) like 'image/%'
+         and o.metadata->>'size' ~ '^[0-9]+$'
+         and (case when o.metadata->>'size' ~ '^[0-9]+$' then (o.metadata->>'size')::bigint else 2097153 end) <= 2097152
+     );
   raise notice 'form5s_storage_objects_missing=%', missing_count;
   if missing_count > 0 then raise exception 'FAIL % Form 5S photo objects missing from self-host.', missing_count; end if;
 
   select a.id, a.upt_id, a.sample_photos into valid_id, valid_upt_id, valid_photos
   from public.maturity_5s_assessments a
-  where jsonb_array_length(coalesce(a.sample_photos, '[]'::jsonb)) between 1 and 3
+  where jsonb_array_length(coalesce(a.sample_photos, '[]'::jsonb)) = 15
     and not exists (
       select 1 from jsonb_array_elements(a.sample_photos) p
-      where coalesce(p->>'storageStatus', p->>'storage_status', '') <> 'BACKUP_RECORDED'
+      where coalesce(p->>'storageStatus', p->>'storage_status', '') not in ('SELF_HOST_RECORDED', 'BACKUP_RECORDED')
          or coalesce(p->>'storagePath', p->>'storage_path', '') not like 'form-5s/' || a.upt_id || '/%'
-         or not exists (select 1 from storage.objects o where o.bucket_id = 'maturity-evidence' and o.name = coalesce(p->>'storagePath', p->>'storage_path'))
+         or not exists (
+           select 1 from storage.objects o
+           where o.bucket_id = 'maturity-evidence'
+             and o.name = coalesce(p->>'storagePath', p->>'storage_path')
+             and lower(coalesce(o.metadata->>'mimetype', '')) like 'image/%'
+             and o.metadata->>'size' ~ '^[0-9]+$'
+             and (case when o.metadata->>'size' ~ '^[0-9]+$' then (o.metadata->>'size')::bigint else 2097153 end) <= 2097152
+         )
     )
   limit 1;
 

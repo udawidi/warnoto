@@ -1,6 +1,6 @@
 // @ts-nocheck -- Supabase Edge Functions run on Deno, not the Vite runtime.
-// Binary evidence is kept in Google Drive.  This function is the only bridge
-// allowed to use Drive OAuth credentials; browser code receives no Drive secret.
+// Binary evidence Maturity umum tetap memakai Google Drive. Form 5S baru memakai
+// signed upload langsung ke bucket self-host agar tidak tergantung timeout Drive.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -542,29 +542,24 @@ Deno.serve(async (req) => {
       return json({ ok: true, evidence: evidenceDto(row), folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id });
     }
     if (action === "upload-5s") {
-      const file = form?.get("file");
-      if (!(file instanceof File) || !fileAllowed(file) || file.size > MAX_FORM5S_UPLOAD_BYTES || !fileMimeType(file).startsWith("image/")) return json({ ok: false, error: "Foto Form 5S harus berupa gambar maksimal 2 MiB." }, 400);
+      if (form) return json({ ok: false, error: "Versi aplikasi lama ditolak. Muat ulang aplikasi untuk upload foto Form 5S ke self-host." }, 409);
       const uptId = text(body.uptId, 120);
       if (!uptId) return json({ ok: false, error: "uptId canonical wajib diisi." }, 400);
+      const bulan = Number(body.bulan);
+      const tahun = Number(body.tahun);
+      const fileName = text(body.fileName, 120);
+      const mimeType = text(body.mimeType, 120).toLowerCase();
+      const size = Number(body.size);
+      if (!Number.isInteger(bulan) || bulan < 0 || bulan > 11) return json({ ok: false, error: "Bulan Form 5S harus berupa indeks 0 sampai 11." }, 400);
+      if (!Number.isInteger(tahun) || tahun < 2000 || tahun > 2100) return json({ ok: false, error: "Tahun Form 5S tidak valid." }, 400);
+      if (!fileName || !mimeType.startsWith("image/") || !Number.isInteger(size) || size <= 0 || size > MAX_FORM5S_UPLOAD_BYTES) return json({ ok: false, error: "Foto Form 5S harus berupa gambar maksimal 2 MiB." }, 400);
       const upt = await findUptById(uptId);
       await assertUptAccess(ctx, upt, true);
-      const period = periodFor(Date.UTC(Number(body.tahun), Number(body.bulan), 1));
-      await ensureRoot();
-      const base = `maturity-v1:${period.key}:${upt.name}`;
-      const periodFolder = await ensureFolder({ mappingKey: `${base}:period`, name: period.label, parentFolderId: DRIVE_ROOT_ID, periodKey: period.key, folderType: "PERIOD", parentMappingKey: "maturity-v1:root", metadata: { period } });
-      const uptFolder = await ensureFolder({ mappingKey: `${base}:upt`, name: safeName(upt.name, "UPT"), parentFolderId: periodFolder.drive_folder_id, periodKey: period.key, folderType: "UPT", parentMappingKey: periodFolder.mapping_key, metadata: { upt: upt.name } });
-      const form5sFolder = await ensureFolder({ mappingKey: `${base}:form5s`, name: "Form 5S", parentFolderId: uptFolder.drive_folder_id, periodKey: period.key, folderType: "FORM5S", parentMappingKey: uptFolder.mapping_key, metadata: { upt: upt.name } });
-      const driveFile = await uploadDriveFile(file, form5sFolder.drive_folder_id, form5sFolder.mapping_key);
-      const storagePath = storageKey("form-5s", upt.id, `${Number(body.tahun)}-${String(Number(body.bulan) + 1).padStart(2, "0")}`, driveFile.id, file.name);
-      try {
-        const contentType = fileMimeType(file);
-        const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType, upsert: true });
-        if (storageError) throw storageError;
-      } catch (storageError) {
-        await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive 5S gagal setelah backup self-host gagal:", cleanupError));
-        throw new Error(`Backup self-host foto 5S wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
-      }
-      return json({ ok: true, evidence: { name: driveFile.name, url: driveFile.webViewLink, size: Number(driveFile.size || 0), mimeType: contentType, driveFileId: driveFile.id, storagePath, storageSyncedAt: nowMs(), storageStatus: "BACKUP_RECORDED", isDrive: true, syncedToDrive: true, source: "Form Pengisian 5S" } });
+      const baseName = safeName(fileName.replace(/\.[^.]+$/, ""), "foto").replace(/\s+/g, "_");
+      const storagePath = storageKey("form-5s", upt.id, `${tahun}-${String(bulan + 1).padStart(2, "0")}`, ctx.user.id, crypto.randomUUID(), `${baseName}.jpg`);
+      const { data: signed, error: signedError } = await admin.storage.from("maturity-evidence").createSignedUploadUrl(storagePath);
+      if (signedError || !signed?.token) throw new Error(`Signed upload foto Form 5S gagal: ${signedError?.message || "Token upload tidak tersedia."}`);
+      return json({ ok: true, storagePath, token: signed.token, evidence: { name: `${baseName}.jpg`, size, mimeType, storagePath, storageStatus: "SELF_HOST_RECORDED", isDrive: false, syncedToDrive: false, source: "Form Pengisian 5S" } });
     }
     if (action === "sign-5s-photo") {
       const assessmentId = text(body.assessmentId, 120);

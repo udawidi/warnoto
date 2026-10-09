@@ -144,9 +144,17 @@ export async function uploadForm5SPhoto({ file, uptId, bulan, tahun }) {
   file = await prepareMaturityUpload(file);
   file = imageFileFromDataUrl(await compressImage(file, { maxBytes: MAX_FORM5S_BYTES, maxDim: 2000 }), file);
   if (file.size > MAX_FORM5S_BYTES) throw new Error("Foto Form 5S tetap lebih besar dari 2 MiB setelah kompresi.");
-  const formData = new FormData();
-  formData.set("file", file, file.name);
-  const result = await request("upload-5s", { uptId, bulan, tahun }, { formData });
+  const result = await request("upload-5s", {
+    uptId,
+    bulan,
+    tahun,
+    fileName: file.name,
+    mimeType: file.type,
+    size: file.size,
+  });
+  if (!result.storagePath || !result.token) throw new Error("Token upload foto Form 5S tidak tersedia.");
+  const { error } = await supabase.storage.from("maturity-evidence").uploadToSignedUrl(result.storagePath, result.token, file);
+  if (error) throw new Error(`Upload foto Form 5S ke self-host gagal: ${error.message}`);
   return result.evidence;
 }
 

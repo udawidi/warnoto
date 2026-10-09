@@ -1789,18 +1789,15 @@ export function Form5STab({ C, sty, currentUser, gudangList = [], maturity5SAsse
       })));
       const newEntries = uploaded.map((res, i) => ({
         name: res.name,
-        url: res.url,
         size: res.size,
         mimeType: res.mimeType || taken[i]?.type || "image/jpeg",
-        driveFileId: res.driveFileId,
         storagePath: res.storagePath,
-        storageSyncedAt: res.storageSyncedAt,
         storageStatus: res.storageStatus,
         isDrive: res.isDrive,
         syncedToDrive: res.syncedToDrive,
         categoryId,
-        // Foto Drive privat (webViewLink bukan bytes gambar) — pakai object URL File
-        // lokal utk preview slot di sesi ini. History cuma link, tak perlu thumbnail.
+        // Self-host object belum perlu di-fetch ulang selama sesi; preview memakai
+        // object URL lokal, History memakai signed URL dari storage.
         preview: URL.createObjectURL(taken[i]),
       }));
       setSamplePhotos(prev => [...prev, ...newEntries]);

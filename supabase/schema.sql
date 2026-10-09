@@ -2487,7 +2487,7 @@ grant select, insert, update on public.maturity_assessments to authenticated;
 -- BEFORE INSERT hanya memvalidasi insert baru; existing legacy rows tidak disentuh.
 create or replace function public.validate_maturity_5s_photo_storage()
 returns trigger language plpgsql security definer set search_path = public, storage as $$
-declare photo jsonb; storage_path text; category text; categories text[] := array['sort', 'set', 'shine', 'standardize', 'sustain']; photo_count integer;
+declare photo jsonb; storage_path text; category text; categories text[] := array['sort', 'set', 'shine', 'standardize', 'sustain']; photo_count integer; storage_status text; object_mime text; object_size text;
 begin
   if jsonb_typeof(new.sample_photos) <> 'array' then
     raise exception 'FORM5S_PHOTO_COUNT_INVALID: sample_photos harus berupa array.' using errcode = '23514';
@@ -2509,14 +2509,31 @@ begin
     if storage_path = '' or storage_path not like 'form-5s/' || new.upt_id || '/%' then
       raise exception 'FORM5S_STORAGE_PATH_INVALID: path foto harus memakai prefix form-5s/<upt_id>/. ' using errcode = '23514';
     end if;
-    if coalesce(photo->>'storageStatus', photo->>'storage_status', '') <> 'BACKUP_RECORDED' then
-      raise exception 'FORM5S_STORAGE_STATUS_INVALID: foto harus berstatus BACKUP_RECORDED.' using errcode = '23514';
+    storage_status := coalesce(photo->>'storageStatus', photo->>'storage_status', '');
+    if storage_status not in ('SELF_HOST_RECORDED', 'BACKUP_RECORDED') then
+      raise exception 'FORM5S_STORAGE_STATUS_INVALID: foto harus berstatus SELF_HOST_RECORDED atau BACKUP_RECORDED legacy.' using errcode = '23514';
     end if;
-    if photo_count = 15 and coalesce((photo->>'size')::bigint, 0) > 2097152 then
-      raise exception 'FORM5S_PHOTO_SIZE_INVALID: foto Form 5S maksimal 2 MiB.' using errcode = '23514';
+    if storage_status = 'SELF_HOST_RECORDED' and (
+      (photo->>'isDrive') is distinct from 'false'
+      or (photo->>'syncedToDrive') is distinct from 'false'
+      or photo ? 'driveFileId'
+      or photo ? 'drive_file_id'
+      or photo ? 'url'
+    ) then
+      raise exception 'FORM5S_STORAGE_METADATA_INVALID: foto self-host tidak boleh membawa metadata Drive.' using errcode = '23514';
     end if;
-    if not exists (select 1 from storage.objects where bucket_id = 'maturity-evidence' and name = storage_path) then
+    select o.metadata->>'mimetype', o.metadata->>'size'
+      into object_mime, object_size
+      from storage.objects o
+     where o.bucket_id = 'maturity-evidence' and o.name = storage_path;
+    if not found then
       raise exception 'FORM5S_STORAGE_OBJECT_MISSING: object foto tidak ditemukan di bucket maturity-evidence.' using errcode = '23514';
+    end if;
+    if lower(coalesce(object_mime, '')) not like 'image/%' then
+      raise exception 'FORM5S_STORAGE_MIME_INVALID: object foto harus memiliki MIME image/*.' using errcode = '23514';
+    end if;
+    if object_size is null or object_size !~ '^[0-9]+$' or (case when object_size ~ '^[0-9]+$' then object_size::bigint else 2097153 end) > 2097152 then
+      raise exception 'FORM5S_PHOTO_SIZE_INVALID: ukuran object foto maksimal 2 MiB.' using errcode = '23514';
     end if;
   end loop;
   return new;

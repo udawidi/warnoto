@@ -9,7 +9,7 @@ const form = read("src/components/MaturityAuditSystem.jsx");
 const hook = read("src/hooks/useMaturity.jsx");
 const drive = read("src/lib/maturityDrive.js");
 const edge = read("supabase/functions/maturity-drive/index.ts");
-const migration = read("supabase/migrations/20261008_form5s_category_photo_guard.sql");
+const selfHostMigration = read("supabase/migrations/20261009_form5s_selfhost_photo_guard.sql");
 const draftMigration = read("supabase/migrations/20260919_maturity_5s_drafts.sql");
 const schema = read("supabase/schema.sql");
 const builder = read("src/lib/docBuilders.js");
@@ -49,10 +49,25 @@ test("Form 5S enforces 2 MiB compression, 2000px, fifteen slots, and print timeo
   assert.match(drive, /index > 14/);
   assert.match(drive, /count > 15/);
   assert.match(edge, /MAX_FORM5S_UPLOAD_BYTES = 2 \* 1024 \* 1024/);
-  assert.match(edge, /file\.size > MAX_FORM5S_UPLOAD_BYTES/);
+  assert.match(edge, /size > MAX_FORM5S_UPLOAD_BYTES/);
   assert.doesNotMatch(form5sBuilder, /disabled onclick=\"window\.print\(\)\"/);
   assert.match(form, /samplePhotos\.length !== 15/);
   assert.match(form, /categoryId/);
+});
+
+test("Form 5S baru upload langsung ke self-host signed URL tanpa Drive", () => {
+  const uploadBranch = edge.slice(edge.indexOf('if (action === "upload-5s")'), edge.indexOf('if (action === "sign-5s-photo")'));
+  assert.match(uploadBranch, /if \(form\) return json\([\s\S]*?, 409\)/);
+  assert.match(uploadBranch, /createSignedUploadUrl\(storagePath\)/);
+  assert.match(uploadBranch, /storageStatus: "SELF_HOST_RECORDED"/);
+  assert.match(uploadBranch, /isDrive: false/);
+  assert.match(uploadBranch, /syncedToDrive: false/);
+  assert.doesNotMatch(uploadBranch, /uploadDriveFile|driveFetch|driveFileId/);
+  assert.match(drive, /uploadToSignedUrl\(result\.storagePath, result\.token, file\)/);
+  assert.match(selfHostMigration, /metadata->>'mimetype'/);
+  assert.match(selfHostMigration, /from storage\.objects/);
+  assert.match(selfHostMigration, /metadata->>'size'/);
+  assert.match(selfHostMigration, /SELF_HOST_RECORDED/);
 });
 
 test("Form 5S history signs all self-host photos in one scoped batch", () => {
@@ -70,7 +85,7 @@ test("Form 5S history signs all self-host photos in one scoped batch", () => {
 });
 
 test("new Form 5S photos are guarded by storage trigger", () => {
-  for (const source of [migration, schema]) {
+  for (const source of [selfHostMigration, schema]) {
     assert.match(source, /validate_maturity_5s_photo_storage/);
     assert.match(source, /photo_count (?:=|<>) 15/);
     assert.doesNotMatch(source, /photo_count between 1 and 3/);

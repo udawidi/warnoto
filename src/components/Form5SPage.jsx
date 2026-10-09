@@ -12,7 +12,7 @@ function photoStatus(assessments, uptId) {
   const rows = (assessments || []).filter(item => item.uptId === uptId);
   const photos = rows.flatMap(item => item.samplePhotos || []);
   if (!photos.length) return "Belum ada";
-  return photos.every(photo => photo.storagePath && photo.storageStatus === "BACKUP_RECORDED") ? "Self-host" : "Perlu sinkron";
+  return photos.every(photo => photo.storagePath && ["SELF_HOST_RECORDED", "BACKUP_RECORDED"].includes(photo.storageStatus)) ? "Self-host" : "Perlu sinkron";
 }
 
 export function Form5SPage({
