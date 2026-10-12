@@ -77,7 +77,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Guard posting MARA TUG-3/4 dan TUG-10 selesai dan aktif di production (2026-10-12).** Form material baru wajib memilih MARA dan tidak menyediakan input identitas manual. Database menolak posting tanpa satu kandidat MARA yang valid, mengembalikan identitas canonical, dan menjaga approval TUG-3 normal tetap atomik/idempoten. Tiga stok legacy tanpa nomor katalog telah dipetakan ke kandidat MARA terkuat: motorized cable reel `000000007021029` serta dua stringset ACSR Zebra `000000003090234`; qty, lokasi, foto, source lot, dan histori dokumen tidak diubah. Verifier production tidak menemukan lagi stok TUG legacy tanpa pasangan MARA. Verifikasi lokal: 540/540 test, build production, rehearsal PostgreSQL, dan E2E fokus lulus.
+- **Guard posting MARA TUG-3/4 dan TUG-10 selesai dan aktif di production (2026-10-12).** Form material baru wajib memilih MARA dan tidak menyediakan input identitas manual. Database menolak posting tanpa satu kandidat MARA yang valid, mengembalikan identitas canonical, dan menjaga approval TUG-3 normal tetap atomik/idempoten. Index expression resolver MARA aktif di production; sync login SUPERADMIN memakai request batch maksimal 100 item/ID. Benchmark 626 resolver selesai dalam 11.18 ms total. Orphan `KAT-1004160255`/`STK-SAP-3615-1004160255` dipetakan ke MARA `000000004160255` dengan qty, lokasi, foto, source lot, dan histori dokumen tetap. Mismatch aktif 0. Commit `7d4c1a0` dan `b36fe98` sudah pushed; versi `2.1.80`. Verifikasi: 545/545 test dan build lulus.
+- **Perbaikan sync login SUPERADMIN selesai dan production aktif (2026-10-12).** Jalur sinkronisasi stok/katalog kini fail-closed per batch untuk POST katalog FK, POST `stock_current`, GET katalog existing, dan POST katalog enriched; snapshot qty hanya diperbarui setelah seluruh request berhasil.
 
 - **MTU KHS detail dan pencarian Code Catalog selesai lokal (2026-10-09, belum commit/push).** Drawer `Lihat Detail` sudah dirapikan menjadi lima tab responsif dengan konten yang tidak terpotong. Pada `Ringkasan > Edit katalog/status`, Code Catalog memakai `SearchableSelect` terhadap katalog aktif berbasis MARA dan dapat mencari nomor katalog, nama/material description terstruktur, kategori/material group, satuan, sinonim PLN, serta typo ringan. Pilihan tetap disimpan melalui RPC operasional MTU existing; tidak ada perubahan schema/API/dependency. Verifikasi: 16 test terkait lulus, build production dan `git diff --check` lulus. Langkah berikutnya: smoke test localhost memakai akun TL, lalu commit/push hanya setelah persetujuan pengguna.
 
@@ -676,7 +677,9 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-- Setelah deploy Vercel, smoke production TUG-3/4 dan TUG-10: pastikan material baru hanya dapat dipilih dari MARA, identitas nama/katalog/satuan terkunci, posting tanpa MARA ditolak, dan approval valid menambah stok tepat sekali.
+- Setelah deploy Vercel versi `2.1.80`, smoke production TUG-3/4 dan TUG-10: pastikan material baru hanya dapat dipilih dari MARA, identitas nama/katalog/satuan terkunci, posting tanpa MARA ditolak, approval valid menambah stok tepat sekali, dan mismatch aktif tetap 0.
+
+- Smoke login SUPERADMIN: pastikan sync katalog/stock berjalan dengan request batch maksimal 100 item/ID, kegagalan satu batch tampil sebagai gagal, dan retry tidak menganggap snapshot qty sudah sukses.
 
 - Smoke test production Form 5S: buat draft parsial, refresh, lengkapi tiga foto pada masing-masing lima kategori, simpan, lalu refresh. Pastikan record memiliki 15 `storagePath`, seluruh object ada di bucket private self-host `maturity-evidence`, History menampilkan semua foto, PDF berisi lima lampiran, dan tidak ada upload Form 5S ke Google Drive.
 - Setelah deploy Vercel selesai, uji akun Fajar pada dua browser/perangkat: logout perangkat A tidak boleh memutus perangkat B; lalu simulasi koneksi putus saat reload, pastikan layar pemulihan muncul, token tidak hilang, dan **Coba Lagi** kembali membuka aplikasi tanpa password/TOTP baru.
@@ -817,7 +820,8 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
-- `npm test`
+- `npm test` → 545/545 lulus
+- `node --test tests/unit/maraOrphanRepair.contract.test.mjs tests/unit/supabaseSyncBatch.contract.test.mjs`
 - `node --test tests/unit/niimbotM2h.test.mjs tests/unit/kartuGantungCompact.test.mjs`
 - `node --test tests/unit/authBootstrap.contract.test.mjs tests/unit/stockOpnameRequiredPhoto.test.mjs`
 - `node --test tests/unit/stockOpnamePhotoHistory.test.mjs tests/unit/stockOpnamePhotoScoped.contract.test.mjs`
@@ -844,4 +848,4 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 
 ## Riwayat shift (maksimal 2)
 - 2026-10-09 Codex: **Foto Form 5S dialihkan menjadi self-host-only dengan signed upload, validasi object aktual di DB, migration dan Edge Function production aktif, serta frontend pushed (`3b8a26c`); smoke nyata 15 foto masih diperlukan.**
-- 2026-10-12 Codex: **Guard MARA TUG-3/4 dan TUG-10 aktif di production, tiga stok legacy sudah dipetakan ke MARA, dan seluruh 540 test serta build lulus; frontend siap dirilis ke `main`.**
+- 2026-10-12 Codex: **Sync login SUPERADMIN dibatch maksimal 100, index resolver MARA aktif, benchmark 626 resolver 11.18 ms, orphan `KAT-1004160255` dipetakan ke MARA `000000004160255`, mismatch aktif 0, dan 545/545 test + build lulus; commits `7d4c1a0` dan `b36fe98` sudah pushed, versi `2.1.80`.**
