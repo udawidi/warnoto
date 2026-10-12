@@ -5185,3 +5185,8 @@ revoke all on function public.approve_tug10_final(text, uuid) from public, anon;
 grant execute on function public.approve_tug10_final(text, uuid) to authenticated;
 commit;
 
+-- Mirror of 20261012b_mara_catalog_resolver_index.sql.
+-- schema.sql is applied transactionally, so this mirror uses regular CREATE INDEX.
+create index if not exists idx_mara_catalog_resolver_code
+  on public.mara_catalog ((nullif(ltrim(btrim(coalesce(kode_material, '')), '0'), '')));
+

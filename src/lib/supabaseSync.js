@@ -129,6 +129,24 @@ function buildLokasiPublik(katalogId, stocks, lokasiList, subGudangList, gudangL
 // memori (bukan localStorage) — reload = 1x full-push lagi, upgrade ke persisted kalau itu
 // juga jadi masalah.
 const lastSyncedStockQty = new Map(); // katalogId -> qty terakhir di-push
+const SYNC_BATCH_SIZE = 100;
+
+export function _syncBatches(rows) {
+  const batches = [];
+  for (let i = 0; i < rows.length; i += SYNC_BATCH_SIZE) batches.push(rows.slice(i, i + SYNC_BATCH_SIZE));
+  return batches;
+}
+
+async function postSyncBatches(url, payload, headers, prefer, label) {
+  for (const batch of _syncBatches(payload)) {
+    const response = await fetchSupabase(url, {
+      method: "POST",
+      headers: { ...headers, Prefer: prefer },
+      body: JSON.stringify(batch),
+    });
+    if (!response.ok) throw new Error(`${label}: ${await response.text()}`);
+  }
+}
 
 export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
@@ -153,41 +171,50 @@ export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
     const kat = katalogList.find(k=>k.id===kid);
     return { id: kid, data: { name: kat?.name||kid, katalog: kat?.katalog||null, satuan: kat?.satuan||null, jenisBarang: kat?.jenisBarang||null } };
   });
-  const katRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
-    method: "POST",
-    headers: { ...headers, "Prefer": "resolution=ignore-duplicates" },
-    body: JSON.stringify(katalogPayload),
-  });
-  if (!katRes.ok) throw new Error(`Gagal sync katalog: ${await katRes.text()}`);
+  await postSyncBatches(
+    `${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`,
+    katalogPayload,
+    headers,
+    "resolution=ignore-duplicates",
+    "Gagal sync katalog"
+  );
 
   const stockPayload = katalogIds.map(kid => ({ katalog_id: kid, qty: qtyMap[kid], updated_at: new Date().toISOString() }));
-  const stockRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/stock_current?on_conflict=katalog_id`, {
-    method: "POST",
-    headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
-    body: JSON.stringify(stockPayload),
-  });
-  if (!stockRes.ok) throw new Error(`Gagal sync stock_current: ${await stockRes.text()}`);
+  await postSyncBatches(
+    `${SUPABASE_URL}/rest/v1/stock_current?on_conflict=katalog_id`,
+    stockPayload,
+    headers,
+    "resolution=merge-duplicates",
+    "Gagal sync stock_current"
+  );
 
   // Titipkan rincian lokasi ke katalog.data supaya halaman scan QR (tanpa login)
   // bisa menyebut Gudang/Sub Gudang/Blok, bukan cuma kode rak dari riwayat.
   // Baris existing DIBACA DULU lalu di-merge — merge-duplicates mengganti kolom
   // data utuh, jadi tanpa ini fotoKeseluruhanUrl hasil upload foto ikut terhapus.
   if (master.lokasiList) {
-    const idFilter = katalogIds.map(encodeURIComponent).join(",");
-    const existRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?id=in.(${idFilter})&select=id,data`, { headers });
-    const existRows = existRes.ok ? await existRes.json() : [];
+    const existRows = [];
+    for (const ids of _syncBatches(katalogIds)) {
+      const idFilter = ids.map(encodeURIComponent).join(",");
+      const existRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?id=in.(${idFilter})&select=id,data`, { headers });
+      if (!existRes.ok) throw new Error(`Gagal baca katalog untuk sinkron lokasi: ${await existRes.text()}`);
+      const rows = await existRes.json();
+      if (!Array.isArray(rows)) throw new Error("Gagal baca katalog untuk sinkron lokasi: respons tidak valid");
+      existRows.push(...rows);
+    }
     const existMap = Object.fromEntries(existRows.map(r => [r.id, r.data || {}]));
     const enriched = katalogIds.map(kid => {
       const prev = existMap[kid] || {};
       const kat = katalogList.find(k => k.id === kid) || {};
       return { id: kid, data: { ...prev, ...kat, fotoKeseluruhanUrl: prev.fotoKeseluruhanUrl || kat.fotoKeseluruhanUrl || null, lokasiPublik: buildLokasiPublik(kid, stocks, master.lokasiList, master.subGudangList, master.gudangList) } };
     });
-    const enrichRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`, {
-      method: "POST",
-      headers: { ...headers, "Prefer": "resolution=merge-duplicates" },
-      body: JSON.stringify(enriched),
-    });
-    if (!enrichRes.ok) throw new Error(`Gagal sync lokasi katalog: ${await enrichRes.text()}`);
+    await postSyncBatches(
+      `${SUPABASE_URL}/rest/v1/katalog?on_conflict=id`,
+      enriched,
+      headers,
+      "resolution=merge-duplicates",
+      "Gagal sync lokasi katalog"
+    );
   }
 
   katalogIds.forEach(kid => lastSyncedStockQty.set(kid, qtyMap[kid]));
