@@ -86,7 +86,7 @@ test("TUG-10 approval remains retry-safe and fail-closed", async () => {
   const sync = await readFile(new URL("../src/lib/tug10Sync.js", import.meta.url), "utf8");
   assert.match(sync, /supabase\.rpc\("approve_tug10_final"/);
   assert.match(sync, /p_idempotency_key: idempotencyKey/);
-  assert.match(tug10, /tug10ApprovalKeysRef\.current\[txn\.id\] \|\|= crypto\.randomUUID\(\)/);
+  assert.match(tug10, /tug10ApprovalKeysRef\.current\[txn\.id\] \|\|= newTugIdempotencyKey\(\)/);
   assert.match(tug10, /approveTug10Final\(txn\.id, tug10ApprovalKeysRef\.current\[txn\.id\]\)/);
   assert.match(tug10, /delete tug10ApprovalKeysRef\.current\[txn\.id\]/);
   assert.match(tug10, /if \(!supabase\)/);

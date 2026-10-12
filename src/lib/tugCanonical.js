@@ -4,7 +4,7 @@ import { supabase } from "../supabaseClient.js";
 
 const RPC_MISSING = /could not find (the )?function|does not exist|relation .* does not exist|404/i;
 
-function uuid() {
+export function newTugIdempotencyKey() {
   if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3) | 8).toString(16);
@@ -49,7 +49,7 @@ export function canonicalDocument(docType, formData, currentUser) {
 }
 
 /** Create and submit the official record in one user action. */
-export function newCanonicalActionKeys() { return { create: uuid(), submit: uuid(), decide: uuid() }; }
+export function newCanonicalActionKeys() { return { create: newTugIdempotencyKey(), submit: newTugIdempotencyKey(), decide: newTugIdempotencyKey() }; }
 
 export async function createAndSubmitCanonicalTug({ docType, formData, currentUser, idempotencyKeys }) {
   const document = canonicalDocument(docType, formData, currentUser);
@@ -57,13 +57,13 @@ export async function createAndSubmitCanonicalTug({ docType, formData, currentUs
   const created = await rpc("tug_create_transaction", {
     p_document: document,
     p_items: items,
-    p_idempotency_key: idempotencyKeys?.create || uuid(),
+    p_idempotency_key: idempotencyKeys?.create || newTugIdempotencyKey(),
   });
   if (created.unavailable) return { unavailable: true };
   const submitted = await rpc("tug_submit_transaction", {
     p_transaction_id: created.data.id,
     p_expected_version: created.data.version,
-    p_idempotency_key: idempotencyKeys?.submit || uuid(),
+    p_idempotency_key: idempotencyKeys?.submit || newTugIdempotencyKey(),
   });
   if (submitted.unavailable) return { unavailable: true };
   return { unavailable: false, ...submitted.data, docSequence: created.data.docSequence, identitySnapshot: created.data.identitySnapshot, created: created.data };
@@ -78,7 +78,7 @@ export async function amendCanonicalTug({ txn, formData, currentUser, idempotenc
     p_expected_version: txn.canonicalVersion || txn.version,
     p_document: document,
     p_items: items,
-    p_idempotency_key: idempotencyKey || uuid(),
+    p_idempotency_key: idempotencyKey || newTugIdempotencyKey(),
   });
 }
 
@@ -96,7 +96,7 @@ export async function decideCanonicalTug({ txn, decision, reviewToken = null, re
     p_decision: decision,
     p_review_token: reviewToken,
     p_reason: reason || null,
-    p_idempotency_key: idempotencyKey || uuid(),
+    p_idempotency_key: idempotencyKey || newTugIdempotencyKey(),
     p_attestations: attestations,
   });
 }

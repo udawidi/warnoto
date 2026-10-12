@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-09
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-12
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -15,6 +15,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - **Realtime Data Stok self-host aktif** — publication `supabase_realtime` berisi hanya `public.stocks`.
 - Trigger `on_auth_user_created` (auth.users→stub profiles) sudah di-re-create di self-host (fix akun "setengah jadi", 2026-07-30).
 - **Triad katalog MENGIKAT (2026-08-14, keputusan user):** `no. katalog` — `nama material` — `satuan` adalah **1 kesatuan, tidak boleh terpisah**; sumber kebenaran = `mara_catalog` (master MARA SAP). Satuan (dan nama) katalog WAJIB ikut MARA berdasarkan `kode_material` (match dengan strip leading-zero: `ltrim(kode,'0')`). Saat isi/import/buat katalog, jangan biarkan satuan kosong atau beda dari MARA. **ENFORCEMENT = TRIGGER DB (2026-08-14, migration `20260814_katalog_satuan_from_mara_trigger.sql`).** GOTCHA yang bikin ini perlu: fill satuan via SQL langsung ke `katalog.data` SIA-SIA — `katalog` diklobber full-sync app (`saveToCloud`) dalam menit. Trigger `katalog_fill_satuan` (`BEFORE INSERT OR UPDATE`) isi `satuan` dari `mara_catalog` (`ltrim(kode,'0')`) saat kosong → menangkap tulisan app juga, non-destruktif. Uji clobber lolos (kosongkan → terisi ulang). Nama sudah dari MARA (match manual saat insert); trigger fokus satuan (kolom yang drift). Kalau mau nama ikut di-enforce trigger juga, itu keputusan terpisah.
+- **Posting material TUG-3/4 dan TUG-10 wajib MARA (2026-10-12, production aktif):** approval final gagal tertutup bila nomor katalog kosong, tidak ditemukan, ambigu, atau identitas MARA tidak lengkap. Nama, nomor katalog, satuan, dan kategori hasil posting selalu disalin dari `mara_catalog`; TUG-3 normal, MTU KHS, dan TUG-10 memakai batas database yang sama. TUG-3 normal diposting atomik dan idempoten melalui `approve_tug3_final`. Migration `20261012_tug_mara_post_guard.sql` sudah diterapkan ke self-host production.
 - **Paket katalog 5-tuple terkunci saat `_maraLocked` (2026-08-14, keputusan user):** Triad di atas diperluas jadi `no.katalog — nama — kategori — satuan — status` — saat katalog bersumber MARA, kelimanya terkunci sebagai satu paket, tidak bisa diubah satu-satu di form (UI-only via `_maraLocked`, sudah di-strip saat save). SATU exception: Status boleh di-set manual jadi "Non-SAP" lewat checkbox — material non-SAP = kandidat yang akan dipindahkan ke SAP, boleh pakai katalog Persediaan/Cadang MARA yang sudah ada.
 - **Material Cadang bisa UIT-scoped (2026-08-14, `8b37000`):** `material_cadang_state` +kolom `uit_id`; helper RLS `can_access_uit(uit_id)` (SUPERADMIN/PUSAT, uit cocok, atau UPT di bawah uit); policy `can_access_upt(upt_id) OR (uit_id AND can_access_uit(uit_id))`. Baris `uit_id` terisi = analisa level UIT, dibaca SEMUA UPT dalam UIT (spare transmisi dikelola UIT). Data existing SBY di-re-scope `uit_id=UIT-JBM`. Client 2-lapis: `mcMerge` (App.jsx) stamp `__uptId/__uitId` dari baris ke tiap record saat load; `inMcScope` (MaterialCadangTab) + cockpit ForecastStokPage kenal `__uitId===userUit` (`userUit`=`currentUser.uitId||uptList[user.uptId].uitId`); record baru default UIT-scoped. Per-UPT lama (`uit_id` null) tetap jalan.
 - **Material Cadang durable per-UPT (2026-08-10):** tabel `material_cadang_state(upt_id PK, data/health/ai jsonb)`, RLS `can_access_upt(upt_id)` (pola `stocks`). Simpan 3 blob localStorage verbatim per-UPT. UI: server sumber utama (di-load lewat RLS scope, merge antar-row untuk nasional), localStorage fallback + seed sekali kalau server kosong (recovery data lama). Ganti jalur mati `syncMaterialCadangRows`→tabel per-row yang tak pernah ada (gagal senyap). AKAR bug "Material Cadang hilang": dulu localStorage-only → lenyap saat Clear site data / ganti device.
@@ -75,6 +76,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Guard posting MARA TUG-3/4 dan TUG-10 selesai dan aktif di production (2026-10-12).** Form material baru wajib memilih MARA dan tidak menyediakan input identitas manual. Database menolak posting tanpa satu kandidat MARA yang valid, mengembalikan identitas canonical, dan menjaga approval TUG-3 normal tetap atomik/idempoten. Tiga stok legacy tanpa nomor katalog telah dipetakan ke kandidat MARA terkuat: motorized cable reel `000000007021029` serta dua stringset ACSR Zebra `000000003090234`; qty, lokasi, foto, source lot, dan histori dokumen tidak diubah. Verifier production tidak menemukan lagi stok TUG legacy tanpa pasangan MARA. Verifikasi lokal: 540/540 test, build production, rehearsal PostgreSQL, dan E2E fokus lulus.
 
 - **MTU KHS detail dan pencarian Code Catalog selesai lokal (2026-10-09, belum commit/push).** Drawer `Lihat Detail` sudah dirapikan menjadi lima tab responsif dengan konten yang tidak terpotong. Pada `Ringkasan > Edit katalog/status`, Code Catalog memakai `SearchableSelect` terhadap katalog aktif berbasis MARA dan dapat mencari nomor katalog, nama/material description terstruktur, kategori/material group, satuan, sinonim PLN, serta typo ringan. Pilihan tetap disimpan melalui RPC operasional MTU existing; tidak ada perubahan schema/API/dependency. Verifikasi: 16 test terkait lulus, build production dan `git diff --check` lulus. Langkah berikutnya: smoke test localhost memakai akun TL, lalu commit/push hanya setelah persetujuan pengguna.
 
@@ -673,6 +676,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel, smoke production TUG-3/4 dan TUG-10: pastikan material baru hanya dapat dipilih dari MARA, identitas nama/katalog/satuan terkunci, posting tanpa MARA ditolak, dan approval valid menambah stok tepat sekali.
+
 - Smoke test production Form 5S: buat draft parsial, refresh, lengkapi tiga foto pada masing-masing lima kategori, simpan, lalu refresh. Pastikan record memiliki 15 `storagePath`, seluruh object ada di bucket private self-host `maturity-evidence`, History menampilkan semua foto, PDF berisi lima lampiran, dan tidak ada upload Form 5S ke Google Drive.
 - Setelah deploy Vercel selesai, uji akun Fajar pada dua browser/perangkat: logout perangkat A tidak boleh memutus perangkat B; lalu simulasi koneksi putus saat reload, pastikan layar pemulihan muncul, token tidak hilang, dan **Coba Lagi** kembali membuka aplikasi tanpa password/TOTP baru.
 
@@ -829,6 +834,8 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - `node --test tests/unit/approvalTugFilter.contract.test.mjs tests/unit/tug10ApprovalFlow.contract.test.mjs`
 - `npx playwright test tests/e2e/tug15-legacy.spec.js --project=desktop-smoke --grep "docTypes filter is authoritative" --workers=1`
 - `node --test tests/unit/maturityDrive.security.contract.test.mjs`
+- `node scripts/rehearse_tug_mara_post_guard.mjs`
+- `npx playwright test tests/e2e/tug-mara-guard.spec.js --project=desktop-smoke --workers=1`
 - Deploy setelah persetujuan eksplisit user: `git push origin main`
 
 ## Keputusan mengikat (alur rilis)
@@ -836,5 +843,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-08 Codex: **Form 5S 5×3 foto, kompresi 2 MiB, lampiran PDF, timeout cetak, Edge Function, dan migration production selesai serta pushed (`572ea8f`); smoke nyata 15 foto masih diperlukan.**
 - 2026-10-09 Codex: **Foto Form 5S dialihkan menjadi self-host-only dengan signed upload, validasi object aktual di DB, migration dan Edge Function production aktif, serta frontend pushed (`3b8a26c`); smoke nyata 15 foto masih diperlukan.**
+- 2026-10-12 Codex: **Guard MARA TUG-3/4 dan TUG-10 aktif di production, tiga stok legacy sudah dipetakan ke MARA, dan seluruh 540 test serta build lulus; frontend siap dirilis ke `main`.**

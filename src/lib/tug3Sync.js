@@ -2,7 +2,7 @@
 // TETAP di App.jsx/useTugApprovals.js — file ini murni load/upsert/delete, gagal
 // selalu fail-safe (tak throw, tak sukses palsu). Pola ringkas dari tugCanonical.js.
 import { supabase } from "../supabaseClient.js";
-import { isCanonicalUnavailable } from "./tugCanonical.js";
+import { isCanonicalUnavailable, newTugIdempotencyKey } from "./tugCanonical.js";
 import { processTxnPhotos } from "./supabaseSync.js";
 
 function rowToTxn(row) {
@@ -70,6 +70,25 @@ export async function upsertTug3Transaction(txn) {
   const { data, error } = await supabase.from("tug3_transactions").upsert(row, { onConflict: "id" }).select("id");
   if (error) { console.warn("upsertTug3Transaction gagal:", error.message || error); return false; }
   return (data || []).length > 0;
+}
+
+export function formatTugMaraError(error, label = "TUG-3") {
+  const code = String(error?.code || error?.details || error?.message || "").toUpperCase();
+  if (code.includes("MARA_CATALOG_REQUIRED")) return `${label} ditolak: nomor katalog wajib dipilih dari data MARA.`;
+  if (code.includes("MARA_CATALOG_NOT_FOUND")) return `${label} ditolak: nomor katalog tidak ditemukan di data MARA. Perbaiki item lalu coba lagi.`;
+  if (code.includes("MARA_CATALOG_AMBIGUOUS")) return `${label} ditolak: nomor katalog memiliki lebih dari satu padanan MARA. Pilih katalog yang tepat.`;
+  if (code.includes("MARA_CATALOG_INVALID")) return `${label} ditolak: data MARA tidak lengkap (nama/satuan). Perbaiki master MARA lalu coba lagi.`;
+  if (code.includes("CATALOG_MARA_MISMATCH")) return `${label} ditolak: identitas katalog tidak sesuai data MARA. Petakan ulang material.`;
+  return error?.message || `${label} gagal diproses.`;
+}
+
+export async function approveTug3Final(txnId, idempotencyKey = newTugIdempotencyKey()) {
+  if (!supabase) throw new Error("Layanan database belum tersedia.");
+  if (!txnId || !idempotencyKey) throw new Error("Approval TUG-3 tidak memiliki kunci idempotensi.");
+  const { data, error } = await supabase.rpc("approve_tug3_final", { p_tug3_id: txnId, p_idempotency_key: idempotencyKey });
+  if (error) throw error;
+  if (!data?.transaction) throw new Error("Respons approval TUG-3 tidak lengkap.");
+  return data;
 }
 
 export async function deleteTug3Transaction(id) {

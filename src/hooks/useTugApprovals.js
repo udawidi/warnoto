@@ -2,7 +2,8 @@ import { hasRole } from "../lib/roles.js";
 import { logAudit } from "../lib/audit.js";
 import { generateDocNumbers, uid } from "../lib/utils.js";
 import { processTxnPhotos } from "../lib/supabaseSync.js";
-import { upsertTug3Transaction } from "../lib/tug3Sync.js";
+import { upsertTug3Transaction, approveTug3Final, formatTugMaraError } from "../lib/tug3Sync.js";
+import { newTugIdempotencyKey } from "../lib/tugCanonical.js";
 import { normalizeKatalogCode, canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { resolveSapLabel, sourceLotKey } from "../lib/sap.js";
 import { STATUS_SAP } from "../constants.js";
@@ -231,6 +232,65 @@ export function useTugApprovals({
       showToast(`✅ ${txn.docNumbers?.tug3 || txn.id} DISETUJUI FINAL! Penerimaan MTU masuk ke Data Stok.`);
       notify({ eventType: "COMPLETION", docType: "TUG3", docNumber: txn.docNumbers?.tug3 || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
       return true;
+    }
+
+    // Normal TUG-3 posting is atomic in the database. Do not mutate client
+    // stocks/catalog first; RPC validates MARA and handles idempotency.
+    try {
+      stateRef.current.tug3ApprovalKeys ||= {};
+      stateRef.current.tug3ApprovalKeys[txn.id] ||= newTugIdempotencyKey();
+      const result = await approveTug3Final(txn.id, stateRef.current.tug3ApprovalKeys[txn.id]);
+      const updatedTxn = { ...txn, ...(result.transaction || {}), stage: "APPROVED", status: "APPROVED", requiredApprover: null };
+      const resolvedKatalogs = new Map(katalogList.map(k => [k.id, k]));
+      (Array.isArray(result.katalogs) ? result.katalogs : []).forEach(k => resolvedKatalogs.set(k.id, k));
+      const arrivedKatalogIds = new Set((txn.stockItems || []).map(si => si.katalogId).filter(Boolean));
+      (result.katalogs || []).forEach(k => { if (k.id) arrivedKatalogIds.add(k.id); });
+      const uptIdForMatch = txn.uptId || currentUserUptId;
+      const siapDiambilNow = [];
+      const newTxns = txns.map(t => {
+        if (t.id === txn.id) return updatedTxn;
+        if (t.docType === "TUG5" && t.sourceType === "ULTG" && t.stage === "APPROVED_ULTG" && !t.siapDiambil) {
+          const ultg = ultgList.find(u => u.id === t.ultgId);
+          if (ultg?.parentUptId === uptIdForMatch && (t.stockItems || []).some(si => arrivedKatalogIds.has(si.katalogId))) {
+            siapDiambilNow.push(t);
+            return { ...t, siapDiambil: true, siapDiambilAt: Date.now() };
+          }
+        }
+        return t;
+      });
+      setTxns(newTxns);
+      if (Array.isArray(result.stocks)) setStocks(prev => {
+        const byId = new Map(prev.map(row => [row.id, row]));
+        result.stocks.forEach(row => byId.set(row.id, row));
+        return [...byId.values()];
+      });
+      if (Array.isArray(result.katalogs)) setKatalogList(prev => {
+        const byId = new Map(prev.map(row => [row.id, row]));
+        result.katalogs.forEach(row => byId.set(row.id, row));
+        return [...byId.values()];
+      });
+      const savedOk = await saveToCloud({ txns: newTxns });
+      delete stateRef.current.tug3ApprovalKeys[txn.id];
+      if (savedOk === false) showToast("TUG-3 final tersimpan di server, tetapi cache lokal belum tersinkron. Muat ulang.", "error");
+      logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.tug3 || txn.id, { stage: "APPROVED" });
+      showToast(`✅ ${txn.docNumbers?.tug3 || txn.id} DISETUJUI FINAL! Stok bertambah ke gudang.`);
+      notify({
+        eventType: "COMPLETION", docType: "TUG3", docNumber: txn.docNumbers?.tug3 || "", uptId: txn.uptId,
+        txnId: txn.id, arah: "MASUK",
+        items: (txn.stockItems || []).map(si => {
+          const k = si.katalogMode === "existing" ? resolvedKatalogs.get(si.katalogId) : (result.katalogs || []).find(x => x.katalog === si.katalogBaru);
+          return { kode: k?.katalog || si.katalogBaru || "", nama: k?.name || si.namaBaru || "", qty: si.qty, satuan: k?.satuan || si.satuanBaru || "" };
+        }),
+        kontrak: { nama: txn.judulKontrak || "", noSP: txn.suratPesananNo || "", pt: txn.dariSupplier || "" },
+      });
+      siapDiambilNow.forEach(t => {
+        logAudit(currentUser, "UPDATE", "txns", t.docNumbers?.tug5 || t.id, { siapDiambil: true });
+        showToast(`📦 Material reservasi ${t.docNumbers?.tug5 || t.id} sudah tiba, siap diambil.`);
+      });
+      return true;
+    } catch (error) {
+      showToast(formatTugMaraError(error, "TUG-3"), "error");
+      return false;
     }
 
     // Same incoming-material logic as TUG-10 approval: bump existing Data Stok

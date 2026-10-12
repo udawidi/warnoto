@@ -34,7 +34,7 @@ function tug3MissingForSubmit(tf, katalogList = []) {
     const n = idx+1;
     const barangOk = si.katalogMode==="existing"
       ? !!si.katalogId && katalogList.some(k => k.id === si.katalogId)
-      : !!(si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim());
+      : !!(si._maraLocked && si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim());
     if (!barangOk) missing.push(`Barang #${n}: katalog existing tidak ditemukan di Master Katalog atau isi barang baru`);
     if (!(si.qty > 0)) missing.push(`Barang #${n}: jumlah`);
     if (si.hargaSatuan===undefined || si.hargaSatuan===null || si.hargaSatuan==="") missing.push(`Barang #${n}: harga satuan`);
@@ -287,8 +287,10 @@ export function useTugTransactions({
     if (!tf.lokasiTujuanId) m.push({ scrollKey:"lokasiTujuanId", label:"Lokasi Penyimpanan (Blok)" });
     (tf.stockItems||[]).forEach((si,idx)=>{
       const n = idx+1;
-      const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
-      if (!barangOk) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih/nama barang` });
+      const barangOk = si.katalogMode==="existing"
+        ? !!si.katalogId
+        : !!(si._maraLocked && si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim());
+      if (!barangOk) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: pilih material dari MARA` });
       if (!(si.qty>0)) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: jumlah` });
       if (si.katalogMode === "existing" && si.katalogId && tf.lokasiTujuanId) {
         const candidates = stateRef.current.enrichedStocks.filter(s => s.katalogId === si.katalogId && s.lokasiId === tf.lokasiTujuanId && (!tf.uptId || !s.uptId || s.uptId === tf.uptId) && !isLegacySourceAllocation(s));
@@ -407,7 +409,7 @@ export function useTugTransactions({
         showToast(`Belum lengkap — ${missing[0].label}${missing.length>1?` (dan ${missing.length-1} lainnya)`:""}`,"error");
         return;
       }
-      const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+      const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : (si._maraLocked && si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim())));
       await commitNewTxn(docType, { ...txnForm, stockItems: validItems }, { replaceDraftId: editingDraftTxnId });
       return;
     }
@@ -421,7 +423,7 @@ export function useTugTransactions({
       }
       const missingTug3 = tug3MissingForSubmit(txnForm, katalogList);
       if (missingTug3.length) { showToast(`Belum lengkap — ${missingTug3.join(", ")}`,"error"); return; }
-      const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+      const validItems = txnForm.stockItems.filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : (si._maraLocked && si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim())));
       if (validItems.length === 0) { showToast("Minimal 1 barang harus diisi!","error"); return; }
       await commitNewTxn(docType, { ...txnForm, stockItems: attachTug3KatalogSnapshots(validItems, katalogList), namaPekerjaan: txnForm.namaPekerjaan || txnForm.dariSupplier, lokasiPekerjaan: txnForm.lokasiPekerjaan || "Gudang Ketintang" }, { targetStage: "PENDING_TL", replaceDraftId: editingDraftTxnId });
       return;
@@ -859,7 +861,7 @@ export function useTugTransactions({
   async function submitDraftTug3(txn) {
     const missingTug3 = tug3MissingForSubmit(txn, katalogList);
     if (missingTug3.length) { showToast(`Belum lengkap — ${missingTug3.join(", ")}`,"error"); return; }
-    const validItems = (txn.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+    const validItems = (txn.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : (si._maraLocked && si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim())));
     if (validItems.length === 0) { showToast("Minimal 1 barang harus diisi sebelum diajukan!","error"); return; }
     await commitNewTxn("TUG3", { ...txn, stockItems: attachTug3KatalogSnapshots(validItems, katalogList) }, { targetStage: "PENDING_TL", replaceDraftId: txn.id });
   }
@@ -890,7 +892,7 @@ export function useTugTransactions({
   async function submitDraftTug10(txn) {
     const missing = tug10Missing(txn);
     if (missing.length) { showToast(`Belum lengkap — ${missing[0].label}${missing.length>1?` (dan ${missing.length-1} lainnya)`:""}`,"error"); return; }
-    const validItems = (txn.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : si.namaBaru?.trim()));
+    const validItems = (txn.stockItems||[]).filter(si => si.qty > 0 && (si.katalogMode==="existing" ? si.katalogId : (si._maraLocked && si.namaBaru?.trim() && si.katalogBaru?.trim() && si.satuanBaru?.trim())));
     await commitNewTxn("TUG10", { ...txn, stockItems: validItems }, { replaceDraftId: txn.id });
   }
   async function deleteDraftTug10(txn) {

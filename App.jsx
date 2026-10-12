@@ -118,9 +118,9 @@ import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverN
 import { fmtNum, buildKatalogRagContent, getKritisAgg, splitChunksForEmbed } from "./src/lib/ragShared.mjs";
 import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoMaterialToSupabase, processTxnPhotos, resolveTxnPrivPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
 import { syncSignature } from "./src/lib/syncGuard.js";
-import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
+import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, newTugIdempotencyKey, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
-import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final } from "./src/lib/tug10Sync.js";
+import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final, formatTugMaraError } from "./src/lib/tug10Sync.js";
 import { loadTugWorkflowTransactions, mergeWorkflowServerWins, migrateLegacyWorkflowDrafts, isWorkflowDoc } from "./src/lib/tugWorkflowSync.js";
 import { readTugRoute, writeTugRoute, TUG_ROUTE_DEFAULTS, TUG_ROUTE_OPTIONS } from "./src/lib/tugRoute.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
@@ -3431,7 +3431,7 @@ export default function PLNWarehouse() {
 
         // Final approval is a single RPC. It reads the stored transaction and
         // mutates stock/catalog/ATTB/status atomically; no full-table fetch.
-        tug10ApprovalKeysRef.current[txn.id] ||= crypto.randomUUID();
+        tug10ApprovalKeysRef.current[txn.id] ||= newTugIdempotencyKey();
         const result = await approveTug10Final(txn.id, tug10ApprovalKeysRef.current[txn.id]);
         const approvedTxn = {
           ...txn,
@@ -3453,6 +3453,8 @@ export default function PLNWarehouse() {
         setStocks(prev => mergeRows(prev, result.stocks));
         setKatalogList(prev => mergeRows(prev, result.katalogs));
         setAttbList(prev => mergeRows(prev, result.attbDrafts));
+        const approvedKatalogs = new Map(katalogList.map(k => [k.id, k]));
+        (result.katalogs || []).forEach(k => approvedKatalogs.set(k.id, k));
 
         delete tug10ApprovalKeysRef.current[txn.id];
         showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} DISETUJUI! Stok bertambah.`);
@@ -3461,17 +3463,17 @@ export default function PLNWarehouse() {
           docNumber: txn.docNumbers?.tug10 || "",
           uptId: txn.uptId, txnId: txn.id, arah: "MASUK",
           items: (txn.stockItems || []).map(si => ({
-            kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
-            nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",
+            kode: ((si.katalogMode === "existing" ? approvedKatalogs.get(si.katalogId)?.katalog : (result.katalogs || []).find(k => k.katalog === si.katalogBaru)?.katalog) || si.katalogBaru) || "",
+            nama: ((si.katalogMode === "existing" ? approvedKatalogs.get(si.katalogId)?.name : (result.katalogs || []).find(k => k.katalog === si.katalogBaru)?.name) || si.namaBaru) || "",
             qty: si.qty,
-            satuan: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.satuan : si.satuanBaru) || "",
+            satuan: ((si.katalogMode === "existing" ? approvedKatalogs.get(si.katalogId)?.satuan : (result.katalogs || []).find(k => k.katalog === si.katalogBaru)?.satuan) || si.satuanBaru) || "",
           })),
           asal: { vendor: txn.menyerahkanUnit || "", pic: txn.menyerahkanNama || "" },
           pekerjaan: txn.namaPekerjaan || "",
         });
         return true;
       } catch (err) {
-        showToast(`Approval TUG-10 belum dijalankan: ${err?.message || err}`, "error");
+        showToast(formatTugMaraError(err, "TUG-10"), "error");
         return false;
       } finally {
         tug10ApprovalInFlightRef.current.delete(txn.id);

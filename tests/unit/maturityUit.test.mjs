@@ -146,7 +146,7 @@ test("Form 5S wajib punya backup self-host dan backfill idempoten", () => {
   assert.match(driveSource, /storageKey\("form-5s", upt\.id/);
   assert.match(driveSource, /storageSyncedAt/);
   assert.match(driveSource, /storageStatus: "BACKUP_RECORDED"/);
-  assert.match(driveSource, /Cleanup Drive 5S gagal/);
+  assert.match(driveSource, /Cleanup Drive gagal setelah backup self-host gagal/);
   assert.match(driveSource, /photo\?\.storagePath && photo\?\.storageSyncedAt/);
   assert.match(driveSource, /body: JSON\.stringify\(\{ trashed: true \}\)/);
   assert.doesNotMatch(driveSource, /method: "DELETE"/);

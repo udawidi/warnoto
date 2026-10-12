@@ -2,8 +2,9 @@
 // TETAP di App.jsx approveTxn — file ini murni load/upsert/delete, gagal selalu
 // fail-safe (tak throw, tak sukses palsu). Mirror persis src/lib/tug3Sync.js.
 import { supabase } from "../supabaseClient.js";
-import { isCanonicalUnavailable } from "./tugCanonical.js";
+import { isCanonicalUnavailable, newTugIdempotencyKey } from "./tugCanonical.js";
 import { processTxnPhotos } from "./supabaseSync.js";
+export { formatTugMaraError } from "./tug3Sync.js";
 
 function rowToTxn(row) {
   const data = row.data || {};
@@ -73,7 +74,7 @@ export async function upsertTug10Transaction(txn) {
 
 // Final approval is intentionally server-side: the RPC reads the stored
 // transaction and mutates stock, catalog, ATTB, and status in one transaction.
-export async function approveTug10Final(txnId, idempotencyKey = globalThis.crypto?.randomUUID?.()) {
+export async function approveTug10Final(txnId, idempotencyKey = newTugIdempotencyKey()) {
   if (!supabase) throw new Error("Layanan database belum tersedia.");
   if (!txnId || !idempotencyKey) throw new Error("Approval TUG-10 tidak memiliki kunci idempotensi.");
   const { data, error } = await supabase.rpc("approve_tug10_final", {

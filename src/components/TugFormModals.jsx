@@ -514,7 +514,6 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                   <div style={{marginBottom:8}}>
                     <div style={{marginBottom:8,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                       <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — {si.namaBaru} [{si.katalogBaru}] · {si.satuanBaru}</span>
-                      <button type="button" style={sty.btn("ghost","sm")} onClick={()=>updateItemRow(idx,"_maraLocked",false)}>Lepas kunci</button>
                     </div>
                   </div>
                 ) : (
@@ -537,12 +536,12 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                           ))}
                         </div>
                       )}
-                      {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}" — isi manual di bawah.</div>}
-                      {maraSearchResults.length>0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Klik item untuk auto-fill, atau isi manual di bawah.</div>}
+                      {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada padanan MARA. Pilih hasil MARA sebelum mengajukan.</div>}
+                      {maraSearchResults.length>0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Klik item untuk mengisi identitas dari MARA.</div>}
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
-                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru *</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: Relay CCP Bongkaran"/>{!barangOk && hint("Wajib: isi nama barang baru.")}</div>
-                      <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)}/></div>
+                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru *</label><input style={sty.input} value={si.namaBaru} readOnly placeholder="Pilih dari MARA"/>{!barangOk && hint("Wajib: pilih material dari MARA.")}</div>
+                      <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} readOnly placeholder="Dari MARA"/></div>
                       <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: BH, pcs, unit"/></div>
                       <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
                     </div>
@@ -636,12 +635,11 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
 }
 
 export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraftTxnId, editingDraftTxnId, savingTxn, docSeq, katalogList, lokasiList, visibleGudangList, supplierList, openAddSupplier, CATEGORIES, tug3ExpandedIdx, setTug3ExpandedIdx, addItemRow, removeItemRow, updateItemRow, handleImg, saveTxn, maraSearch, setMaraSearch, maraSearchResults, setMaraSearchResults, maraSearchLoading, maraSearchError, searchMaraCatalog, applyMaraToItemRow, isMobile, sty, C }) {
-  // Auto-pilih Gudang Tujuan kalau cuma ada 1 opsi (pola "adjust state saat render" React,
-  // aman krn kondisi jadi false setelah state ke-set, tidak infinite-loop).
-  if (!txnForm.gudangTujuanId) {
+  // Auto-pilih Gudang Tujuan kalau cuma ada 1 opsi setelah modal terpasang.
+  useEffect(() => {
     const def = (visibleGudangList||[]).length===1 ? visibleGudangList[0] : null;
     if (def) setTxnForm(tf=>tf.gudangTujuanId ? tf : ({...tf, gudangTujuanId: def.id}));
-  }
+  }, [visibleGudangList?.length, visibleGudangList?.[0]?.id]);
   const tug3Bloks = txnForm.gudangTujuanId ? sortBlokOptions(lokasiList.filter(l=>l.gudangId===txnForm.gudangTujuanId)) : [];
   // GI (Gardu Induk) = pseudo-gudang tanpa sub-blok — 1 pseudo-blok tunggal (lihat App.jsx).
   const selGudangTujuan = (visibleGudangList||[]).find(g=>g.id===txnForm.gudangTujuanId);
@@ -750,7 +748,6 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                   <div style={{marginBottom:8}}>
                     <div style={{marginBottom:8,background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"8px 10px",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                       <span style={{fontSize:12,color:"#166534"}}>🔒 Terkunci dari referensi MARA — {si.namaBaru} [{si.katalogBaru}] · {si.satuanBaru}</span>
-                      <button type="button" style={sty.btn("ghost","sm")} onClick={()=>updateItemRow(idx,"_maraLocked",false)}>Lepas kunci</button>
                     </div>
                   </div>
                 ) : (
@@ -773,12 +770,12 @@ export function Tug3FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDraf
                           ))}
                         </div>
                       )}
-                      {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada hasil untuk "{maraSearch}" — isi manual di bawah.</div>}
-                      {maraSearchResults.length>0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Klik item untuk auto-fill, atau isi manual di bawah.</div>}
+                      {maraSearch.length>=2 && !maraSearchLoading && maraSearchResults.length===0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Tidak ada padanan MARA. Pilih hasil MARA sebelum mengajukan.</div>}
+                      {maraSearchResults.length>0 && <div style={{fontSize:12,color:"#64748b",marginTop:6}}>Klik item untuk mengisi identitas dari MARA.</div>}
                     </div>
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
-                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru</label><input style={sty.input} value={si.namaBaru} onChange={e=>updateItemRow(idx,"namaBaru",e.target.value)} placeholder="cth: INSUL MEDIA;OIL;NAPHTHENIC"/></div>
-                      <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} onChange={e=>updateItemRow(idx,"katalogBaru",e.target.value)} placeholder="cth: 4180023"/></div>
+                      <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Nama Barang Baru</label><input style={sty.input} value={si.namaBaru} readOnly placeholder="Pilih dari MARA"/></div>
+                      <div><label style={sty.label}>Nomor Katalog</label><input style={sty.input} value={si.katalogBaru} readOnly placeholder="Dari MARA"/></div>
                       <div><label style={sty.label}>Satuan</label><input style={sty.input} value={si.satuanBaru} onChange={e=>updateItemRow(idx,"satuanBaru",e.target.value)} placeholder="cth: L, BH, pcs"/></div>
                       <div style={{gridColumn:"1/-1"}}><label style={sty.label}>Kategori</label><select style={sty.select} value={si.categoryBaru} onChange={e=>updateItemRow(idx,"categoryBaru",e.target.value)}>{CATEGORIES.map(c=><option key={c}>{c}</option>)}</select></div>
                     </div>
