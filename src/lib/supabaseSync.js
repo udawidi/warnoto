@@ -123,13 +123,29 @@ function buildLokasiPublik(katalogId, stocks, lokasiList, subGudangList, gudangL
     });
 }
 
-// A3 (fix perf reload): snapshot qty per katalog yang TERAKHIR di-push, di memori sesi ini —
-// dipakai supaya upsert stock_current/katalog cuma kirim baris yang qty-nya BENAR berubah,
-// bukan semua ~752 katalog tiap sync (itu sumber 503 di trace). ponytail: snapshot di
-// memori (bukan localStorage) — reload = 1x full-push lagi, upgrade ke persisted kalau itu
-// juga jadi masalah.
+// Snapshot qty per katalog yang TERAKHIR di-push atau di-prime dari bootstrap server.
+// Ini membuat upsert stock_current/katalog hanya mengirim baris yang benar berubah,
+// bukan seluruh katalog setiap reload.
 const lastSyncedStockQty = new Map(); // katalogId -> qty terakhir di-push
 const SYNC_BATCH_SIZE = 100;
+
+export function buildStockQtySnapshot(stocks) {
+  const qtyMap = {};
+  (stocks || []).forEach(s => {
+    if (!s?.katalogId) return;
+    qtyMap[s.katalogId] = (qtyMap[s.katalogId] || 0) + (s.qty || 0);
+  });
+  return qtyMap;
+}
+
+// Bootstrap server sudah merupakan baseline. Isi marker ini supaya mutasi
+// pertama setelah login hanya mengirim katalog yang benar-benar berubah.
+export function primeStockQtySyncSnapshot(stocks) {
+  const qtyMap = buildStockQtySnapshot(stocks);
+  lastSyncedStockQty.clear();
+  Object.entries(qtyMap).forEach(([katalogId, qty]) => lastSyncedStockQty.set(katalogId, qty));
+  return qtyMap;
+}
 
 export function _syncBatches(rows) {
   const batches = [];
@@ -155,11 +171,7 @@ export async function syncStockQtyToSupabase(stocks, katalogList, master = {}) {
   const headers = { ...(await authHeaders()), "Content-Type": "application/json" };
 
   // Jumlahkan qty per katalog (1 katalog bisa ada di banyak lokasi/baris stok)
-  const qtyMap = {};
-  (stocks||[]).forEach(s => {
-    if (!s.katalogId) return;
-    qtyMap[s.katalogId] = (qtyMap[s.katalogId]||0) + (s.qty||0);
-  });
+  const qtyMap = buildStockQtySnapshot(stocks);
   // Cuma push katalog yang qty-nya benar-benar berubah sejak sync terakhir — INTI fix 503
   // (dulu upsert SELURUH katalog tiap kali, walau cuma 1 baris yang berubah).
   const katalogIds = Object.keys(qtyMap).filter(kid => lastSyncedStockQty.get(kid) !== qtyMap[kid]);

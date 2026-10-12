@@ -116,7 +116,7 @@ import { useMasterDataCrud } from "./src/hooks/useMasterDataCrud.jsx";
 import { useWarehouseConfig } from "./src/hooks/useWarehouseConfig.jsx";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./src/lib/openLocationCode.js";
 import { fmtNum, buildKatalogRagContent, getKritisAgg, splitChunksForEmbed } from "./src/lib/ragShared.mjs";
-import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, syncFotoMaterialToSupabase, processTxnPhotos, resolveTxnPrivPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
+import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, primeStockQtySyncSnapshot, syncFotoMaterialToSupabase, processTxnPhotos, resolveTxnPrivPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
 import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, newTugIdempotencyKey, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
@@ -428,14 +428,22 @@ export default function PLNWarehouse() {
   const [maraUploadProgress, setMaraUploadProgress] = useState(null);
   const [maraSatuanOptions, setMaraSatuanOptions] = useState([]); // opsi dropdown "Satuan Default" katalog manual, dari distinct mara_catalog.satuan
   const MARA_SATUAN_FALLBACK = ["BH","U","SET","M","KG","BTG","L","ROL","LBR","PAC","CAN","BOX","TON","PSG","EA"];
-  useEffect(() => {
-    if (!supabase) return;
-    (async () => {
-      const { data, error } = await supabase.from("mara_catalog").select("satuan").not("satuan", "is", null).neq("satuan", "");
-      const distinct = error ? [] : [...new Set((data||[]).map(r=>r.satuan).filter(Boolean))].sort();
-      setMaraSatuanOptions(distinct.length ? distinct : MARA_SATUAN_FALLBACK);
-    })();
-  }, []);
+  const maraSatuanLoadedRef = useRef(false);
+  const ensureMaraSatuanOptions = useCallback(() => {
+    if (maraSatuanLoadedRef.current || !supabase) return;
+    maraSatuanLoadedRef.current = true;
+    setMaraSatuanOptions(MARA_SATUAN_FALLBACK);
+    void supabase.from("mara_catalog").select("satuan").not("satuan", "is", null).neq("satuan", "")
+      .then(({ data, error }) => {
+        if (error) {
+          maraSatuanLoadedRef.current = false;
+          return;
+        }
+        const distinct = [...new Set((data || []).map(row => row.satuan).filter(Boolean))].sort();
+        if (distinct.length) setMaraSatuanOptions(distinct);
+      })
+      .catch(() => { maraSatuanLoadedRef.current = false; });
+  }, [supabase]);
   const [catalogMasterRef, setCatalogMasterRef] = useState(null); // session-only hidden cataloger reference
   const [gudangCapacityList, setGudangCapacityList] = useState(() => readCachedList("pln_gudang_capacity_v1") ?? []);
   const [gudangCapacityImports, setGudangCapacityImports] = useState(() => readCachedList("pln_gudang_capacity_imports_v1") ?? []);
@@ -573,12 +581,19 @@ export default function PLNWarehouse() {
   // tidak nembak Supabase berkali-kali kalau banyak perubahan state beruntun.
   useEffect(() => {
     // VIEWER read-only — jangan push katalog/stok/foto (RLS opsi B menolak, lihat migration 20260818b).
-    if (!currentUser || loading || !supabase || !bolehTulisKatalog(currentUser.role)) return;
+    if (!currentUser || loading || dataRefreshing || !supabase || !bolehTulisKatalog(currentUser.role)) return;
     // FIX perf reload (A1): skip kalau data sync-relevan belum berubah sejak sync terakhir —
     // paling sering kena tepat setelah hydration reload (data itu-itu saja yang baru dibaca
-    // dari server, re-push-nya sia-sia & itu sumber utama 503 di trace). loadCloud men-set
-    // syncedSigRef begitu load selesai, jadi effect ini langsung skip di render pertama.
+    // dari server, re-push-nya sia-sia & itu sumber utama 503 di trace). Baseline
+    // diisi oleh effect ini setelah loadCloud menutup dataRefreshing.
     const sig = syncSignature(txns, stocks, katalogList);
+    if (bootstrapBaselinePendingRef.current) {
+      bootstrapBaselinePendingRef.current = false;
+      syncedSigRef.current = sig;
+      primeStockQtySyncSnapshot(stocks);
+      try { localStorage.setItem("warnoto_synced_sync_sig", sig); } catch {}
+      return;
+    }
     if (sig === syncedSigRef.current) return;
     const timer = setTimeout(async () => {
       try {
@@ -605,7 +620,7 @@ export default function PLNWarehouse() {
       }
     }, 2500);
     return () => clearTimeout(timer);
-  }, [txns, stocks, katalogList, currentUser, loading]);
+  }, [txns, stocks, katalogList, currentUser, loading, dataRefreshing]);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [docPreview, setDocPreview] = useState(null); // txn object when previewing TUG-9 document
   // One user action keeps the same RPC idempotency keys across retry after a timeout.
@@ -718,6 +733,7 @@ export default function PLNWarehouse() {
   // Hanya aktif setelah bootstrap untuk user ini selesai. Ref mencegah channel
   // sempat terbuka saat login ulang sebelum effect loadCloud sempat set state refresh.
   const stocksBootstrapUserIdRef = useRef(null);
+  const bootstrapBaselinePendingRef = useRef(false);
 
   useEffect(() => {
     // Tabel master memakai RLS authenticated. Tunggu sesi/profil selesai dipulihkan;
@@ -727,6 +743,7 @@ export default function PLNWarehouse() {
     async function loadCloud() {
       stocksBootstrapUserIdRef.current = null;
       setDataRefreshing(true);
+      bootstrapBaselinePendingRef.current = true;
       // Satu request cloud yang menggantung tidak boleh menahan seluruh bootstrap.
       // Timeout hanya mengubah hasil request yang macet menjadi null; request normal
       // dan alur fallback/cache tetap sama.
@@ -876,37 +893,31 @@ export default function PLNWarehouse() {
         bootstrapTask(() => loadMaturityAuditHistory(), "bootstrap maturity audit history"),
         bootstrapTask(() => loadMaturity5SAssessments(), "bootstrap maturity 5s"),
       ];
-      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks], { limit: 3, priority: [5, 8, 9] });
-      // FIX perf reload: dulu dua fetch ini menunggu masterLoads SELESAI dulu baru mulai
-      // (ekor serial) — di balik Cloudflare tunnel self-host tiap round-trip mahal. Keduanya
-      // tak butuh hasil masterLoads, jadi mulai SEKARANG supaya jalan konkuren; hasilnya
-      // baru dikonsumsi nanti di bawah (lihat `await canonicalLoadPromise`/`tug3LoadPromise`).
-      const canonicalLoadPromise = bootstrapLoad(loadCanonicalTugTransactions(), "bootstrap TUG canonical")
-        .then(value => value || { unavailable:true, rows:[] });
-      canonicalLoadPromise.catch(() => {}); // cegah warning unhandled-rejection; error asli tetap ditangani di try/catch bawah
-      const tug3LoadPromise = bootstrapLoad(loadTug3Transactions(), "bootstrap TUG3")
-        .then(value => value || { unavailable:true, rows:[] });
-      tug3LoadPromise.catch(() => {});
-      const tug10LoadPromise = bootstrapLoad(loadTug10Transactions(), "bootstrap TUG10")
-        .then(value => value || { unavailable:true, rows:[] });
-      tug10LoadPromise.catch(() => {});
-      const tugWorkflowLoadPromise = bootstrapLoad(loadTugWorkflowTransactions(), "bootstrap TUG workflow")
-        .then(value => value || { unavailable:true, rows:[] });
-      tugWorkflowLoadPromise.catch(() => {});
-      const materialCadangStateLoadPromise = bootstrapLoad(
-        supabase?.from("material_cadang_state").select("upt_id,uit_id,data,health,ai"),
-        "bootstrap material cadang",
-      );
+      const domainTasks = [
+        bootstrapTask(async () => (await loadCanonicalTugTransactions()) || { unavailable:true, rows:[] }, "bootstrap TUG canonical"),
+        bootstrapTask(async () => (await loadTug3Transactions()) || { unavailable:true, rows:[] }, "bootstrap TUG3"),
+        bootstrapTask(async () => (await loadTug10Transactions()) || { unavailable:true, rows:[] }, "bootstrap TUG10"),
+        bootstrapTask(async () => (await loadTugWorkflowTransactions()) || { unavailable:true, rows:[] }, "bootstrap TUG workflow"),
+        bootstrapTask(() => supabase?.from("material_cadang_state").select("upt_id,uit_id,data,health,ai"), "bootstrap material cadang"),
+      ];
+      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks, ...domainTasks], { limit: 3, priority: [5, 8, 9] });
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
-      // non-kritis tetap berjalan paralel dan diproses dengan invariant null/
-      // tidak-menulis yang ada di bawah.
+      // non-kritis berjalan bertahap di belakang scheduler.
       await Promise.all(initialLoads);
       setLoading(false);
 
       const allBootstrapLoads = await bootstrapLoadsPromise;
       const masterLoads = allBootstrapLoads.slice(0, masterTasks.length);
-      const maturityLoads = allBootstrapLoads.slice(masterTasks.length);
-      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, csup, cmaRemote, cmauRemote, cmahRemote, cm5sRemote] = await Promise.all([...masterLoads, ...maturityLoads]);
+      const maturityLoads = allBootstrapLoads.slice(masterTasks.length, masterTasks.length + maturityTasks.length);
+      const domainLoads = allBootstrapLoads.slice(masterTasks.length + maturityTasks.length);
+      const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, csup, cmaRemote, cmauRemote, cmahRemote, cm5sRemote] = masterLoads.concat(maturityLoads);
+      const normalizeDomainLoad = value => value && Array.isArray(value.rows)
+        ? value
+        : { unavailable:true, rows:[] };
+      const [canonicalLoad, tug3Load, tug10Load, workflowLoad, materialCadangStateLoad] = [
+        normalizeDomainLoad(domainLoads[0]), normalizeDomainLoad(domainLoads[1]),
+        normalizeDomainLoad(domainLoads[2]), normalizeDomainLoad(domainLoads[3]), domainLoads[4],
+      ];
       const clok = clokRemote || dropCachedGiRows(clokLocal); // cache virtual dibuang; shadow DB dipertahankan untuk history
       const cgdgRows = cgdg;
       // Seed DEFAULT (gudang/lokasi) hanya boleh oleh viewer NASIONAL (Pusat/SUPERADMIN).
@@ -1012,7 +1023,6 @@ export default function PLNWarehouse() {
       // Legacy cache remains only for non-canonical records and as a pre-migration fallback.
       const legacyTxns = ct || DEFAULT_TXNS;
       try {
-        const canonicalLoad = await canonicalLoadPromise;
         const withCanonical = canonicalLoad.unavailable ? legacyTxns : [
           ...legacyTxns.filter(t => !t.canonical && !canonicalLoad.rows.some(c => c.id === t.id)),
           ...canonicalLoad.rows,
@@ -1020,19 +1030,16 @@ export default function PLNWarehouse() {
         // TUG-3/4 (barang masuk) — sumber kebenaran tabel `tug3_transactions` sejak
         // migrasi persistensi ini. Buang blob legacy TUG-3 yang punya baris DB (dedupe
         // by id) + yang sudah ber-flag canonical3, lalu tambah baris DB.
-        const tug3Load = await tug3LoadPromise;
         const withTug3 = tug3Load.unavailable ? withCanonical : [
           ...withCanonical.filter(t => !t.canonical3 && !tug3Load.rows.some(r => r.id === t.id)),
           ...tug3Load.rows,
         ];
         // TUG-10 (barang kembali/retur) — sumber kebenaran tabel `tug10_transactions`
         // sejak migrasi persistensi ini. Pola sama persis lapisan tug3 di atas.
-        const tug10Load = await tug10LoadPromise;
         const withTug10 = tug10Load.unavailable ? withTug3 : [
           ...withTug3.filter(t => !t.canonical10 && !tug10Load.rows.some(r => r.id === t.id)),
           ...tug10Load.rows,
         ];
-        const workflowLoad = await tugWorkflowLoadPromise;
         if (workflowLoad.unavailable) {
           setTxns(withTug10);
         } else {
@@ -1320,7 +1327,7 @@ export default function PLNWarehouse() {
       };
       let mcServerRows = null;
       if (supabase) {
-        const { data: mcData_, error: mcErr_ } = (await materialCadangStateLoadPromise) || { error: true };
+        const { data: mcData_, error: mcErr_ } = materialCadangStateLoad || { error: true };
         if (!mcErr_) mcServerRows = mcData_ || [];
       }
       if (mcServerRows && mcServerRows.length) {
@@ -1427,7 +1434,7 @@ export default function PLNWarehouse() {
   } = useStockOpname({ currentUser, stockScopeUptIds: (uptList.length || currentUser?.uptId) ? getScopeUptIds(currentUser, uptList) : undefined, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient: supabase });
   const {
     katalogModal, setKatalogModal, katalogForm, setKatalogForm,
-    openAddKatalog, openEditKatalog, saveKatalog, deleteKatalog,
+    openAddKatalog: openAddKatalogRaw, openEditKatalog: openEditKatalogRaw, saveKatalog, deleteKatalog,
     satpamModal, setSatpamModal, satpamForm, setSatpamForm,
     openAddSatpam, openEditSatpam, saveSatpam, deleteSatpam,
     supplierModal, setSupplierModal, supplierForm, setSupplierForm,
@@ -1441,6 +1448,14 @@ export default function PLNWarehouse() {
     ultgModal, setUltgModal, ultgForm, setUltgForm,
     openAddULTG, openEditULTG, saveULTG, deleteULTG,
   } = useMasterDataCrud({ currentUser, showToast, stateRef, askConfirmDelete, katalogList, setKatalogList, stocks, satpamList, setSatpamList, timMutuList, setTimMutuList, uitList, setUitList, uptList, setUptList, ultgList, setUltgList, supplierList, setSupplierList });
+  const openAddKatalog = useCallback(() => {
+    ensureMaraSatuanOptions();
+    openAddKatalogRaw();
+  }, [ensureMaraSatuanOptions, openAddKatalogRaw]);
+  const openEditKatalog = useCallback((katalog) => {
+    ensureMaraSatuanOptions();
+    openEditKatalogRaw(katalog);
+  }, [ensureMaraSatuanOptions, openEditKatalogRaw]);
   const {
     approvalHistoryList, setApprovalHistoryList,
     approvalTypeFilter, setApprovalTypeFilter,
