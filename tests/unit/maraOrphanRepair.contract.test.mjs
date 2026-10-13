@@ -24,9 +24,8 @@ test("orphan repair is narrow, exact, fail-closed, and idempotent", () => {
   assert.doesNotMatch(migration, /update public\.(katalog|stocks)\s+set\s+(qty|lokasi_id|created_at)/i);
 });
 
-test("schema mirrors the orphan repair migration", () => {
-  assert.match(schema, /Mirror of 20261012c_mara_orphan_1004160255\.sql/);
-  assert.match(schema, /MARA_ORPHAN_REPAIR_CANDIDATE_INVALID/);
-  assert.match(schema, /KAT-1004160255/);
-  assert.match(schema, /STK-SAP-3615-1004160255/);
+test("schema excludes the production orphan repair", () => {
+  assert.doesNotMatch(schema, /20261012c_mara_orphan_1004160255/);
+  assert.doesNotMatch(schema, /MARA_ORPHAN_REPAIR_/);
+  assert.doesNotMatch(schema, /KAT-1004160255|STK-SAP-3615-1004160255/);
 });

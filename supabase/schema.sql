@@ -1,4 +1,6 @@
--- WARNOTO — Skema database Supabase
+-- WARNOTO — Bootstrap snapshot skema database Supabase
+-- File ini untuk bootstrap database kosong ke final state. Bukan runner upgrade/repair produksi.
+-- Untuk database existing, jalankan migration berurutan dari supabase/migrations/.
 -- Dipakai bersama oleh: (1) job ML forecasting (GitHub Actions, malam hari)
 --                       (2) fitur scan barcode HP (sinkron multi-device)
 --
@@ -1854,14 +1856,6 @@ create policy "Authenticated write maturity_audit_history" on maturity_audit_his
 grant select, insert, update, delete on maturity_audit_history to authenticated;
 grant all on maturity_audit_history to service_role;
 
-insert into maturity_audit_history (id, upt, tahun, semester, score, status, source) values
-  ('MAH-UPT-SBY-2024-S1', 'UPT Surabaya', 2024, 1, 3.58, 'ARSIP', 'HISTORIS_TERVERIFIKASI'),
-  ('MAH-UPT-SBY-2024-S2', 'UPT Surabaya', 2024, 2, 3.74, 'ARSIP', 'HISTORIS_TERVERIFIKASI'),
-  ('MAH-UPT-SBY-2025-S1', 'UPT Surabaya', 2025, 1, 3.86, 'FINAL', 'HISTORIS_TERVERIFIKASI'),
-  ('MAH-UPT-SBY-2025-S2', 'UPT Surabaya', 2025, 2, 4.12, 'FINAL', 'HISTORIS_TERVERIFIKASI'),
-  ('MAH-UPT-SBY-2026-S1', 'UPT Surabaya', 2026, 1, 4.26, 'BERJALAN', 'HISTORIS_TERVERIFIKASI')
-on conflict (upt, tahun, semester) do nothing;
-
 -- MATURITY_5S_ASSESSMENTS -- append-only checklist history. A period is not
 -- unique because repeated inspections in the same month must remain visible.
 create table if not exists maturity_5s_assessments (
@@ -2048,6 +2042,7 @@ create index if not exists idx_spe_embedding on stock_photo_embeddings using hns
 alter table stock_photo_embeddings enable row level security;
 drop policy if exists "Authenticated read spe" on stock_photo_embeddings;
 drop policy if exists "Authenticated write spe" on stock_photo_embeddings;
+drop policy if exists "Scoped read stock photo embeddings" on stock_photo_embeddings;
 create policy "Scoped read stock photo embeddings" on stock_photo_embeddings for select to authenticated
   using (public.can_access_upt(upt_id));
 revoke insert, update, delete on stock_photo_embeddings from anon, authenticated;
@@ -2690,377 +2685,7 @@ before insert or update on public.tug10_transactions
 for each row execute function public.tug10_guard_legacy_status_write();
 revoke all on function public.tug10_guard_legacy_status_write() from public, anon, authenticated;
 
-create or replace function public.approve_tug10_final(
-  p_tug10_id text,
-  p_idempotency_key uuid
-) returns jsonb
-language plpgsql
-security definer
-set search_path = public, pg_catalog
-as $$
-declare
-  v_actor public.profiles;
-  v_txn public.tug10_transactions;
-  v_item jsonb;
-  v_data jsonb;
-  v_items jsonb;
-  v_hash text;
-  v_response jsonb;
-  v_existing_idempotency public.tug_idempotency_keys;
-  v_now bigint := floor(extract(epoch from clock_timestamp()) * 1000)::bigint;
-  v_idx integer;
-  v_qty numeric;
-  v_already numeric;
-  v_apply numeric;
-  v_old_qty numeric;
-  v_code text;
-  v_catalog_key text;
-  v_katalog_id text;
-  v_katalog_data jsonb;
-  v_stock public.stocks;
-  v_stock_id text;
-  v_stock_data jsonb;
-  v_source_key text;
-  v_source_lot jsonb;
-  v_effect_key text;
-  v_item_mode text;
-  v_location_upt text;
-  v_attb public.attb_list;
-  v_attb_data jsonb;
-  v_attb_id text;
-  v_stocks jsonb := '[]'::jsonb;
-  v_katalogs jsonb := '[]'::jsonb;
-  v_attb_rows jsonb := '[]'::jsonb;
-  v_target_stock_id text;
-  v_candidate_count integer;
-  v_return_effects jsonb;
-  v_handling text;
-begin
-  if auth.uid() is null then
-    raise exception 'TUG_AUTH_REQUIRED' using errcode = '42501';
-  end if;
-  if p_tug10_id is null or btrim(p_tug10_id) = '' or p_idempotency_key is null then
-    raise exception 'TUG10_INPUT_INVALID' using errcode = '23514';
-  end if;
-
-  select * into v_actor from public.profiles where id = auth.uid();
-  if v_actor.id is null then
-    raise exception 'TUG_AUTH_REQUIRED' using errcode = '42501';
-  end if;
-  if v_actor.role not in ('ASMAN','SUPERADMIN') then
-    raise exception 'TUG10_APPROVAL_ROLE_DENIED' using errcode = '42501';
-  end if;
-
-  v_hash := md5('TUG10_FINAL_APPROVE|' || p_tug10_id);
-  perform pg_advisory_xact_lock(hashtextextended(p_idempotency_key::text, 0));
-  select * into v_existing_idempotency
-  from public.tug_idempotency_keys
-  where key = p_idempotency_key;
-  if v_existing_idempotency.key is not null then
-    if v_existing_idempotency.operation <> 'TUG10_FINAL_APPROVE'
-       or v_existing_idempotency.actor_id <> v_actor.id
-       or v_existing_idempotency.request_hash is distinct from v_hash then
-      raise exception 'TUG_IDEMPOTENCY_REUSE_FORBIDDEN' using errcode = '42501';
-    end if;
-    return v_existing_idempotency.response || jsonb_build_object('idempotent', true);
-  end if;
-
-  select * into v_txn
-  from public.tug10_transactions
-  where id = p_tug10_id
-  for update;
-  if v_txn.id is null then
-    raise exception 'TUG10_NOT_FOUND' using errcode = 'P0002';
-  end if;
-  if not public.can_access_upt(v_txn.upt_id) then
-    raise exception 'TUG10_SCOPE_DENIED' using errcode = '42501';
-  end if;
-  if v_txn.status = 'APPROVED' and v_txn.stage = 'APPROVED' then
-    raise exception 'TUG10_ALREADY_APPROVED' using errcode = 'P0001';
-  end if;
-  if v_txn.status <> 'PENDING' or v_txn.stage <> 'PENDING_ASMAN' then
-    raise exception 'TUG10_STAGE_INVALID' using errcode = 'P0001';
-  end if;
-
-  v_data := coalesce(v_txn.data, '{}'::jsonb);
-  v_items := v_data->'stockItems';
-  if coalesce(jsonb_typeof(v_items), '') <> 'array' or coalesce(jsonb_array_length(v_items), 0) = 0 then
-    raise exception 'TUG10_ITEMS_REQUIRED' using errcode = '23514';
-  end if;
-  if v_txn.upt_id is null or btrim(v_txn.upt_id) = '' then
-    raise exception 'TUG10_UPT_REQUIRED' using errcode = '23514';
-  end if;
-  select g.upt_id into v_location_upt
-  from public.lokasi l
-  join public.gudang g on g.id = l.gudang_id
-  where l.id = nullif(btrim(v_data->>'lokasiTujuanId'), '');
-  if v_location_upt is null then
-    raise exception 'TUG10_LOCATION_NOT_FOUND' using errcode = '23514';
-  end if;
-  if v_location_upt <> v_txn.upt_id then
-    raise exception 'TUG10_LOCATION_SCOPE_DENIED' using errcode = '42501';
-  end if;
-
-  perform set_config('app.tug10_final_rpc', 'on', true);
-
-  for v_item, v_idx in
-    select value, ordinality::integer - 1
-    from jsonb_array_elements(v_items) with ordinality
-  loop
-    v_qty := nullif(btrim(v_item->>'qty'), '')::numeric;
-    if v_qty is null or v_qty <= 0 then
-      raise exception 'TUG10_QTY_INVALID' using errcode = '23514';
-    end if;
-    if coalesce(v_item->>'statusMaterial', '') not in ('Material Sisa Baru','Bongkaran','Bongkaran ATTB (MTU)') then
-      raise exception 'TUG10_MATERIAL_STATUS_INVALID' using errcode = '23514';
-    end if;
-    if nullif(btrim(v_item->>'fotoBarangRetur'), '') is null
-       or left(btrim(v_item->>'fotoBarangRetur'), 5) = 'data:' then
-      raise exception 'TUG10_RECEIPT_PHOTO_INVALID' using errcode = '23514';
-    end if;
-    if v_item->>'statusMaterial' = 'Bongkaran ATTB (MTU)'
-       and (nullif(btrim(v_item->>'fotoNameplate'), '') is null
-         or left(btrim(v_item->>'fotoNameplate'), 5) = 'data:') then
-      raise exception 'TUG10_NAMEPLATE_REQUIRED' using errcode = '23514';
-    end if;
-
-    v_item_mode := coalesce(v_item->>'katalogMode', 'existing');
-    if v_item_mode = 'existing' then
-      v_katalog_id := nullif(btrim(v_item->>'katalogId'), '');
-      if v_katalog_id is null then
-        raise exception 'TUG10_CATALOG_REQUIRED' using errcode = '23514';
-      end if;
-      select data into v_katalog_data from public.katalog where id = v_katalog_id;
-      if v_katalog_data is null then
-        raise exception 'TUG10_CATALOG_NOT_FOUND' using errcode = 'P0002';
-      end if;
-    else
-      v_code := nullif(btrim(v_item->>'katalogBaru'), '');
-      if v_code is null or nullif(btrim(v_item->>'namaBaru'), '') is null then
-        raise exception 'TUG10_NEW_CATALOG_INVALID' using errcode = '23514';
-      end if;
-      v_catalog_key := case
-        when regexp_replace(v_code, '[^0-9]', '', 'g') = '' then lower(v_code)
-        else coalesce(nullif(ltrim(case when length(regexp_replace(v_code, '[^0-9]', '', 'g')) = 10 and left(regexp_replace(v_code, '[^0-9]', '', 'g'), 3) = '100' then substr(regexp_replace(v_code, '[^0-9]', '', 'g'), 4) else regexp_replace(v_code, '[^0-9]', '', 'g') end, '0'), ''), '0')
-      end;
-      select id, data into v_katalog_id, v_katalog_data
-      from public.katalog
-      where lower(coalesce(data->>'katalog', '')) = lower(v_code)
-         or (regexp_replace(coalesce(data->>'katalog',''), '[^0-9]', '', 'g') <> ''
-             and coalesce(nullif(ltrim(case when length(regexp_replace(data->>'katalog', '[^0-9]', '', 'g')) = 10 and left(regexp_replace(data->>'katalog', '[^0-9]', '', 'g'), 3) = '100' then substr(regexp_replace(data->>'katalog', '[^0-9]', '', 'g'), 4) else regexp_replace(data->>'katalog', '[^0-9]', '', 'g') end, '0'), ''), '0') = v_catalog_key)
-      order by id limit 1;
-      if v_katalog_id is null then
-        v_katalog_id := 'KAT-TUG10-' || md5(v_txn.id || ':' || v_idx || ':' || v_code);
-        v_katalog_data := jsonb_build_object(
-          'id', v_katalog_id,
-          'katalog', v_code,
-          'name', v_item->>'namaBaru',
-          'category', coalesce(nullif(v_item->>'categoryBaru',''), 'Lainnya'),
-          'satuan', coalesce(nullif(v_item->>'satuanBaru',''), 'unit'),
-          'sapStatus', 'Non-SAP',
-          'createdAt', v_now
-        );
-        insert into public.katalog(id, data, created_at)
-        values (v_katalog_id, v_katalog_data, v_now)
-        on conflict (id) do nothing;
-        select data into v_katalog_data from public.katalog where id = v_katalog_id;
-      end if;
-    end if;
-    v_katalogs := v_katalogs || jsonb_build_array(v_katalog_data || jsonb_build_object('id', v_katalog_id));
-
-    v_effect_key := v_txn.id || ':' || v_idx;
-    v_source_key := 'TUG10|' || v_txn.id || '|' || v_idx;
-    v_source_lot := jsonb_build_object(
-      'key', v_source_key, 'kind', 'TUG10_RETURN',
-      'supplier', coalesce(v_data->>'menyerahkanUnit',''),
-      'sourceDocumentNo', coalesce(v_data->'docNumbers'->>'tug10', v_txn.doc_number, v_txn.id),
-      'sourceDate', v_now, 'sourceTransactionId', v_txn.id,
-      'sourceItemIndex', v_idx, 'status', 'ACTIVE'
-    );
-
-    v_handling := upper(nullif(btrim(v_item->>'stockHandling'), ''));
-    if v_handling is not null and v_handling not in ('MERGE', 'SEPARATE') then
-      raise exception 'TUG10_STOCK_HANDLING_INVALID' using errcode = '23514';
-    end if;
-    v_target_stock_id := nullif(btrim(v_item->>'targetStockId'), '');
-    -- Backcompat: explicit target means MERGE; without a target, exactly one
-    -- eligible row means MERGE, zero means a separate deterministic lot, and
-    -- ambiguity fails closed.
-    if v_handling is null then
-      if v_target_stock_id is not null then
-        v_handling := 'MERGE';
-      else
-        select count(*) into v_candidate_count
-        from public.stocks
-        where katalog_id = v_katalog_id
-          and lokasi_id = (v_data->>'lokasiTujuanId')
-          and coalesce(upt_id, data->>'uptId') = v_txn.upt_id
-          and coalesce(data->'sourceLot'->>'status', '') <> 'NEEDS_SOURCE_ALLOCATION';
-        if v_candidate_count > 1 then
-          raise exception 'TUG10_TARGET_STOCK_AMBIGUOUS' using errcode = '23514';
-        elsif v_candidate_count = 1 then
-          select id into v_target_stock_id
-          from public.stocks
-          where katalog_id = v_katalog_id
-            and lokasi_id = (v_data->>'lokasiTujuanId')
-            and coalesce(upt_id, data->>'uptId') = v_txn.upt_id
-            and coalesce(data->'sourceLot'->>'status', '') <> 'NEEDS_SOURCE_ALLOCATION'
-          order by id limit 1;
-          v_handling := 'MERGE';
-        else
-          v_handling := 'SEPARATE';
-        end if;
-      end if;
-    end if;
-    if v_handling = 'SEPARATE' then
-      v_target_stock_id := null;
-    elsif v_target_stock_id is null then
-      raise exception 'TUG10_TARGET_STOCK_REQUIRED' using errcode = '23514';
-    end if;
-
-    if v_handling = 'MERGE' then
-      select * into v_stock
-      from public.stocks
-      where id = v_target_stock_id
-      for update;
-      if v_stock.id is null then
-        raise exception 'TUG10_TARGET_STOCK_NOT_FOUND' using errcode = 'P0002';
-      end if;
-      if v_stock.katalog_id is distinct from v_katalog_id
-         or v_stock.lokasi_id is distinct from (v_data->>'lokasiTujuanId')
-         or coalesce(v_stock.upt_id, v_stock.data->>'uptId') is distinct from v_txn.upt_id then
-        raise exception 'TUG10_TARGET_STOCK_MISMATCH' using errcode = '23514';
-      end if;
-      if coalesce(v_stock.data->'sourceLot'->>'status', '') = 'NEEDS_SOURCE_ALLOCATION' then
-        raise exception 'TUG10_TARGET_SOURCE_ALLOCATION_REQUIRED' using errcode = '23514';
-      end if;
-      v_stock_id := v_target_stock_id;
-    else
-      v_stock_id := 'STK-TUG10-' || md5(v_txn.id || ':' || v_idx);
-      select * into v_stock
-      from public.stocks
-      where id = v_stock_id
-      for update;
-    end if;
-
-    if v_stock.id is null then
-      v_stock_data := jsonb_build_object(
-        'id', v_stock_id, 'katalogId', v_katalog_id, 'lokasiId', v_data->>'lokasiTujuanId',
-        'uptId', v_txn.upt_id, 'qty', v_qty, 'minQty', 0, 'price', 0,
-        'jenisBarang', case v_item->>'statusMaterial' when 'Bongkaran ATTB (MTU)' then 'ATTB' when 'Bongkaran' then 'Bongkaran' else 'Persediaan' end,
-        'sapStatus', 'Non-SAP', 'name', coalesce(v_katalog_data->>'name',''),
-        'katalog', coalesce(v_katalog_data->>'katalog',''), 'unit', coalesce(v_katalog_data->>'satuan','unit'),
-        'keteranganBarang', coalesce(v_item->>'keteranganBaru', v_item->>'keterangan', ''),
-        'source', 'item', 'sourceLot', v_source_lot,
-        'returnStatus', v_item->>'statusMaterial', 'img', v_item->>'fotoBarangRetur',
-        'fotoKeseluruhan', v_item->>'fotoBarangRetur',
-        'tug10ReturnEffects', jsonb_build_object(v_effect_key, jsonb_build_object(
-          'qty', v_qty, 'at', v_now,
-          'sourceDocumentNo', coalesce(v_data->'docNumbers'->>'tug10', v_txn.doc_number, v_txn.id)
-        )), 'createdAt', v_now
-      );
-      insert into public.stocks(id, katalog_id, lokasi_id, upt_id, data, created_at)
-      values (v_stock_id, v_katalog_id, v_data->>'lokasiTujuanId', v_txn.upt_id, v_stock_data, v_now);
-      select * into v_stock from public.stocks where id = v_stock_id for update;
-    else
-      v_stock_data := coalesce(v_stock.data, '{}'::jsonb);
-      v_old_qty := coalesce(nullif(v_stock_data->>'qty','')::numeric, 0);
-      v_return_effects := coalesce(v_stock_data->'tug10ReturnEffects', '{}'::jsonb);
-      v_already := coalesce(
-        nullif(v_return_effects->v_effect_key->>'qty','')::numeric,
-        nullif(v_return_effects->>v_effect_key,'')::numeric,
-        nullif(v_stock_data->'_tug10Applied'->>v_effect_key,'')::numeric,
-        0
-      );
-      if v_already > v_qty then
-        raise exception 'TUG10_STOCK_MARKER_EXCEEDS_QTY' using errcode = '23514';
-      end if;
-      v_apply := v_qty - v_already;
-      v_return_effects := v_return_effects || jsonb_build_object(v_effect_key, jsonb_build_object(
-        'qty', v_qty, 'at', v_now,
-        'sourceDocumentNo', coalesce(v_data->'docNumbers'->>'tug10', v_txn.doc_number, v_txn.id)
-      ));
-      if v_handling = 'MERGE' then
-        v_stock_data := v_stock_data
-          || jsonb_build_object('qty', v_old_qty + v_apply, 'img', v_item->>'fotoBarangRetur',
-            'fotoKeseluruhan', v_item->>'fotoBarangRetur')
-          || jsonb_build_object('tug10ReturnEffects', v_return_effects);
-      else
-        v_stock_data := v_stock_data
-          || jsonb_build_object('qty', v_old_qty + v_apply, 'returnStatus', v_item->>'statusMaterial',
-            'img', v_item->>'fotoBarangRetur', 'fotoKeseluruhan', v_item->>'fotoBarangRetur')
-          || jsonb_build_object('tug10ReturnEffects', v_return_effects);
-      end if;
-      update public.stocks
-      set data = v_stock_data, upt_id = coalesce(upt_id, v_txn.upt_id)
-      where id = v_stock.id;
-    end if;
-
-    select data || jsonb_build_object('id', id, 'katalogId', katalog_id, 'lokasiId', lokasi_id) into v_stock_data from public.stocks where id = v_stock.id;
-    v_stocks := v_stocks || jsonb_build_array(v_stock_data);
-
-    if v_item->>'statusMaterial' = 'Bongkaran ATTB (MTU)' then
-      select * into v_attb from public.attb_list
-      where (data->>'sourceTxnId') = v_txn.id and (data->>'sourceItemIdx')::integer = v_idx
-      order by id limit 1 for update;
-      if v_attb.id is null then
-        v_attb_id := 'ATTB-TUG10-' || md5(v_txn.id || ':' || v_idx);
-        v_attb_data := jsonb_build_object(
-          'id', v_attb_id, 'jenisAset', 'MATERIAL',
-          'description', coalesce(v_katalog_data->>'name', v_item->>'namaBaru', '-'),
-          'kuantitas', v_qty, 'satuan', coalesce(v_katalog_data->>'satuan', v_item->>'satuanBaru', 'unit'),
-          'noEquipment', coalesce(v_item->>'noSeri',''), 'nomorAT', coalesce(v_item->>'noSeri',''),
-          'keterangan', 'Material Bongkaran TUG-10 ' || coalesce(v_data->'docNumbers'->>'tug10', v_txn.doc_number, v_txn.id),
-          'foto', coalesce(v_item->>'fotoNameplate', v_item->>'fotoBarangRetur'), 'upt', v_txn.upt_id,
-          'stage', 'USULAN_AE1', 'approvalStatus', 'DRAFT', 'lanjutBelumLanjut', false,
-          'stageHistory', jsonb_build_array(jsonb_build_object('stage','USULAN_AE1','tanggal',v_now,'oleh',v_actor.id,'catatan','Dari penerimaan TUG-10 (Bongkaran ATTB/MTU)')),
-          'source', 'TUG10', 'sourceTxnId', v_txn.id, 'sourceItemIdx', v_idx,
-          'createdAt', v_now, 'createdBy', v_actor.id, 'updatedAt', v_now, 'updatedBy', v_actor.id
-        );
-        insert into public.attb_list(id, data, created_at, upt, stage)
-        values (v_attb_id, v_attb_data, v_now, v_txn.upt_id, 'USULAN_AE1');
-        select * into v_attb from public.attb_list where id = v_attb_id;
-      end if;
-      select data || jsonb_build_object('id', id, 'upt', upt, 'stage', stage) into v_attb_data from public.attb_list where id = v_attb.id;
-      v_attb_rows := v_attb_rows || jsonb_build_array(v_attb_data);
-    end if;
-  end loop;
-
-  v_data := v_data || jsonb_build_object(
-    'status', 'APPROVED', 'stage', 'APPROVED', 'approvedBy', v_actor.id,
-    'approvedAt', v_now, 'requiredApprover', null
-  );
-  update public.tug10_transactions
-  set status = 'APPROVED', stage = 'APPROVED', data = v_data,
-      updated_at = v_now
-  where id = v_txn.id;
-  select * into v_txn from public.tug10_transactions where id = v_txn.id;
-
-  if to_regclass('public.audit_log') is not null then
-    execute 'insert into public.audit_log(user_id,user_name,role,action,entity,entity_id,detail) values ($1,$2,$3,$4,$5,$6,$7)'
-      using v_actor.id, v_actor.name, v_actor.role, 'APPROVE', 'TUG10',
-        coalesce(v_txn.doc_number, v_txn.id), jsonb_build_object('stage','APPROVED','atomic',true);
-  end if;
-
-  v_response := jsonb_build_object(
-    'transaction', v_txn.data || jsonb_build_object('id', v_txn.id, 'status', v_txn.status, 'stage', v_txn.stage, 'uptId', v_txn.upt_id),
-    'stocks', v_stocks, 'katalogs', v_katalogs, 'attbDrafts', v_attb_rows, 'idempotent', false
-  );
-  insert into public.tug_idempotency_keys(key, operation, actor_id, request_hash, response)
-  values (p_idempotency_key, 'TUG10_FINAL_APPROVE', v_actor.id, v_hash, v_response);
-  return v_response;
-end;
-$$;
-
-
-
-revoke all on function public.approve_tug10_final(text, uuid) from public, anon;
-grant execute on function public.approve_tug10_final(text, uuid) to authenticated;
-
-commit;
-
-
-
+-- Legacy overwritten approve_tug10_final was removed from the bootstrap snapshot.
 -- Snapshot the requester display name into each new heavy-equipment loan.
 -- The value is server-authoritative and remains readable when profile SELECT
 -- scope hides the requester profile from another UPT.
@@ -3131,7 +2756,7 @@ create policy "Heavy equipment evidence read" on storage.objects
       exists (select 1 from public.upt scoped_upt where scoped_upt.id = l.owner_upt_id and scoped_upt.uit_id = actor.uit_id)
       or exists (select 1 from public.upt scoped_upt where scoped_upt.id = l.requester_upt_id and scoped_upt.uit_id = actor.uit_id)
     )))
-  )));
+  ))));
 
 notify pgrst, 'reload schema';
 
@@ -4205,6 +3830,1194 @@ drop policy if exists "Heavy equipment evidence read" on storage.objects;
 create policy "Heavy equipment evidence read" on storage.objects for select to authenticated using (bucket_id = 'heavy-equipment-evidence' and exists (select 1 from public.profiles actor where actor.id = auth.uid() and (actor.role in ('SUPERADMIN','ADMIN_LOG_PUSAT') or actor.upt_id = (storage.foldername(name))[1] or exists (select 1 from public.heavy_equipment_loans l where (l.data->>'pickupEvidencePath' = name or l.data->>'returnEvidencePath' = name or exists (select 1 from jsonb_array_elements(coalesce(l.data->'returnEvents', '[]'::jsonb)) event where event->>'evidencePath' = name)) and (actor.upt_id = l.requester_upt_id or (actor.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and actor.uit_id is not null and (exists (select 1 from public.upt u where u.id = l.owner_upt_id and u.uit_id = actor.uit_id) or exists (select 1 from public.upt u where u.id = l.requester_upt_id and u.uit_id = actor.uit_id))))))));
 notify pgrst, 'reload schema';
 
+-- ────────────────────────────────────────────────────────────────────────────
+-- CANONICAL TUG-3 + MTU KHS FINAL STATE
+-- Bootstrap-only final DDL. Production upgrades remain immutable migrations.
+-- This section is intentionally topological: shared TUG dependencies, TUG-3,
+-- MTU masters/records, lifecycle, operations, then scoped access controls.
+-- ────────────────────────────────────────────────────────────────────────────
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+create extension if not exists pg_trgm;
+
+create table if not exists public.tug_global_document_counters (
+  upt_id text primary key,
+  document_unit_code text not null,
+  last_value bigint not null default 0 check (last_value >= 0),
+  updated_at timestamptz not null default now()
+);
+create index if not exists tug_global_document_counters_unit_idx
+  on public.tug_global_document_counters(document_unit_code);
+
+create table if not exists public.supplier (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint
+);
+
+create table if not exists public.tug_transactions (
+  id uuid primary key default gen_random_uuid(),
+  legacy_id text unique,
+  doc_type text not null check (doc_type in ('TUG3','TUG5','TUG7','TUG8','TUG9','TUG10')),
+  doc_number text not null unique,
+  doc_sequence bigint not null,
+  upt_id text not null,
+  status text not null default 'DRAFT' check (status in ('DRAFT','PENDING','FINAL_APPROVED','REJECTED','CANCELLED','BASELINE_ACCOUNTED','LEGACY_UNVERIFIED')),
+  stage text not null,
+  version integer not null default 1 check (version > 0),
+  document jsonb not null default '{}'::jsonb,
+  document_hash text not null,
+  identity_snapshot jsonb not null default '{}'::jsonb,
+  created_by uuid not null references public.profiles(id) on delete restrict,
+  created_at timestamptz not null default now(),
+  submitted_at timestamptz,
+  final_approved_at timestamptz,
+  rejected_at timestamptz,
+  baseline_accounted_at timestamptz,
+  updated_at timestamptz not null default now()
+);
+create index if not exists tug_transactions_queue_idx on public.tug_transactions(status, stage, upt_id, created_at desc);
+create index if not exists tug_transactions_legacy_idx on public.tug_transactions(legacy_id) where legacy_id is not null;
+
+create table if not exists public.tug_items (
+  id uuid primary key default gen_random_uuid(),
+  transaction_id uuid not null references public.tug_transactions(id) on delete restrict,
+  line_no integer not null check (line_no > 0),
+  stock_id text references public.stocks(id) on delete restrict,
+  katalog_id text references public.katalog(id) on delete restrict,
+  lokasi_id text,
+  qty numeric(18,4) not null check (qty > 0),
+  unit text,
+  snapshot jsonb not null default '{}'::jsonb,
+  source_snapshot jsonb not null default '{}'::jsonb,
+  unique (transaction_id, line_no)
+);
+create index if not exists tug_items_transaction_idx on public.tug_items(transaction_id);
+create index if not exists tug_items_stock_idx on public.tug_items(stock_id) where stock_id is not null;
+
+create table if not exists public.tug_approvals (
+  id uuid primary key default gen_random_uuid(),
+  transaction_id uuid not null references public.tug_transactions(id) on delete restrict,
+  event_type text not null check (event_type in ('CREATED','SUBMITTED','PREPARED','REVIEWED','APPROVED','REJECTED','DRAWN_ACK','AMENDED')),
+  decision text check (decision in ('APPROVE','REJECT')),
+  stage text,
+  actor_id uuid references public.profiles(id),
+  actor_snapshot jsonb not null default '{}'::jsonb,
+  document_hash text,
+  transaction_version integer,
+  review_token uuid,
+  reason text,
+  evidence jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create unique index if not exists tug_approvals_once_per_decision on public.tug_approvals(transaction_id, stage, actor_id, decision) where decision is not null;
+create unique index if not exists tug_approvals_review_token_idx on public.tug_approvals(review_token) where review_token is not null and event_type = 'REVIEWED';
+create index if not exists tug_approvals_transaction_idx on public.tug_approvals(transaction_id, created_at);
+
+create table if not exists public.tug_review_tokens (
+  token uuid primary key default gen_random_uuid(),
+  transaction_id uuid not null references public.tug_transactions(id) on delete restrict,
+  actor_id uuid not null references public.profiles(id),
+  transaction_version integer not null,
+  document_hash text not null,
+  stock_snapshot jsonb not null default '[]'::jsonb,
+  attestations jsonb,
+  expires_at timestamptz not null,
+  consumed_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists tug_review_tokens_transaction_idx on public.tug_review_tokens(transaction_id, actor_id, expires_at);
+
+create table if not exists public.stock_movements (
+  id uuid primary key default gen_random_uuid(),
+  transaction_id uuid not null references public.tug_transactions(id) on delete restrict,
+  tug_item_id uuid not null references public.tug_items(id) on delete restrict,
+  stock_id text not null references public.stocks(id) on delete restrict,
+  direction text not null check (direction = 'OUT'),
+  qty numeric(18,4) not null check (qty > 0),
+  before_qty numeric(18,4) not null,
+  after_qty numeric(18,4) not null,
+  actor_id uuid not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  unique (transaction_id, tug_item_id, direction)
+);
+create index if not exists stock_movements_stock_idx on public.stock_movements(stock_id, created_at desc);
+
+alter table public.tug_idempotency_keys drop constraint if exists tug_idempotency_keys_operation_check;
+alter table public.tug_idempotency_keys add constraint tug_idempotency_keys_operation_check
+  check (operation in ('CREATE','SUBMIT','DECIDE','AMEND','TUG10_FINAL_APPROVE','TUG3_FINAL_APPROVE'));
+
+create table if not exists public.tug3_transactions (
+  id text primary key,
+  upt_id text not null,
+  created_by uuid references auth.users(id) on delete restrict,
+  doc_number text,
+  stage text not null default 'DRAFT' check (stage in ('DRAFT','PENDING_TL','MENUNGGU_TUG4','PENDING_ASMAN','APPROVED','REJECTED')),
+  status text not null default 'DRAFT',
+  mtu_record_id text,
+  data jsonb not null default '{}'::jsonb,
+  created_at bigint,
+  updated_at bigint
+);
+create index if not exists idx_tug3_transactions_upt on public.tug3_transactions(upt_id);
+create index if not exists idx_tug3_transactions_mtu_record on public.tug3_transactions(mtu_record_id);
+
+create table if not exists public.mtu_khs_gardu_induk (
+  id text primary key,
+  upt_id text not null references public.upt(id) on delete restrict,
+  ultg_id text not null references public.ultg(id) on delete restrict,
+  normalized_name text not null,
+  data jsonb not null default '{}'::jsonb,
+  active boolean not null default true,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists uq_mtu_khs_gi_upt_name on public.mtu_khs_gardu_induk(upt_id, normalized_name);
+create index if not exists idx_mtu_khs_gi_ultg on public.mtu_khs_gardu_induk(ultg_id);
+create index if not exists idx_mtu_khs_gi_upt on public.mtu_khs_gardu_induk(upt_id);
+
+create table if not exists public.mtu_khs_gardu_induk_bay (
+  id text primary key,
+  gardu_induk_id text not null references public.mtu_khs_gardu_induk(id) on delete restrict,
+  normalized_name text not null,
+  data jsonb not null default '{}'::jsonb,
+  active boolean not null default true,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index if not exists uq_mtu_khs_bay_gi_name on public.mtu_khs_gardu_induk_bay(gardu_induk_id, normalized_name);
+create index if not exists idx_mtu_khs_bay_gi on public.mtu_khs_gardu_induk_bay(gardu_induk_id);
+
+create table if not exists public.mtu_khs_specs (
+  id text primary key,
+  procurement_year integer not null,
+  mtu_code text not null,
+  vendor text,
+  katalog_id text references public.katalog(id) on delete set null,
+  mapping_status text not null default 'CANDIDATE' check (mapping_status in ('CANDIDATE','APPROVED','REJECTED')),
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (procurement_year, mtu_code, vendor)
+);
+create index if not exists idx_mtu_khs_specs_code on public.mtu_khs_specs(mtu_code);
+
+create table if not exists public.mtu_khs_records (
+  id text primary key,
+  upt_id text not null references public.upt(id) on delete restrict,
+  ultg_id text references public.ultg(id) on delete restrict,
+  gardu_induk_id text references public.mtu_khs_gardu_induk(id) on delete restrict,
+  bay_id text references public.mtu_khs_gardu_induk_bay(id) on delete restrict,
+  gudang_id text references public.gudang(id) on delete restrict,
+  lokasi_id text references public.lokasi(id) on delete set null,
+  mtu_spec_id text references public.mtu_khs_specs(id) on delete set null,
+  katalog_id text references public.katalog(id) on delete set null,
+  supplier_id text references public.supplier(id) on delete set null,
+  procurement_year integer not null,
+  lifecycle_status text not null default 'VENDOR' check (lifecycle_status in ('VENDOR','IN_TRANSIT','WAREHOUSE','ON_SITE','INSTALLED','CANCELLED')),
+  sifat_pekerjaan text not null default 'MATERIAL' check (sifat_pekerjaan in ('MATERIAL','SUPERVISI')),
+  qty numeric not null default 0 check (qty >= 0),
+  search_text text not null default '',
+  data jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  version integer not null default 1
+);
+create index if not exists idx_mtu_khs_records_upt on public.mtu_khs_records(upt_id);
+create index if not exists idx_mtu_khs_records_year on public.mtu_khs_records(procurement_year);
+create index if not exists idx_mtu_khs_records_status on public.mtu_khs_records(lifecycle_status);
+create index if not exists idx_mtu_khs_records_lokasi on public.mtu_khs_records(lokasi_id);
+create index if not exists idx_mtu_khs_records_search_trgm on public.mtu_khs_records using gin(search_text gin_trgm_ops);
+
+create table if not exists public.mtu_khs_units (
+  id text primary key,
+  record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  serial_number text,
+  lifecycle_status text not null default 'VENDOR' check (lifecycle_status in ('VENDOR','IN_TRANSIT','WAREHOUSE','ON_SITE','INSTALLED','CANCELLED')),
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mtu_khs_units_record on public.mtu_khs_units(record_id);
+
+create table if not exists public.mtu_khs_documents (
+  id text primary key,
+  vendor text not null,
+  procurement_year integer not null,
+  mtu_code text not null,
+  document_type text not null check (document_type in ('DRAWING','CATALOG','TPG','TYPE_TEST','SCHEMATIC','NAMEPLATE','OTHER')),
+  revision text not null default '',
+  title text not null,
+  url text not null check (url ~* '^https://'),
+  data jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  unique (vendor, procurement_year, mtu_code, document_type, revision, url)
+);
+create index if not exists idx_mtu_khs_documents_match on public.mtu_khs_documents(vendor, procurement_year, mtu_code);
+
+create table if not exists public.mtu_khs_record_documents (
+  record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  document_id text not null references public.mtu_khs_documents(id) on delete restrict,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  primary key (record_id, document_id)
+);
+create table if not exists public.mtu_khs_usage_links (
+  id text primary key,
+  mtu_record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  tug_item_id text not null,
+  qty numeric not null check (qty > 0),
+  status text not null default 'PENDING' check (status in ('PENDING','APPROVED','REJECTED')),
+  data jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.mtu_khs_change_requests (
+  id text primary key,
+  record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  requested_by uuid not null references auth.users(id),
+  requester_role text not null,
+  approver_role text not null check (approver_role in ('ASMAN','ASMAN_LOG_UIT')),
+  approver_upt_id text references public.upt(id),
+  approver_uit_id text references public.uit(id),
+  patch jsonb not null default '{}'::jsonb,
+  status text not null default 'PENDING' check (status in ('PENDING','APPROVED','REJECTED')),
+  decision_note text,
+  decided_by uuid references auth.users(id),
+  decided_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mtu_khs_changes_status on public.mtu_khs_change_requests(status);
+
+create table if not exists public.mtu_khs_sheet_sync_jobs (
+  id text primary key,
+  change_request_id text not null references public.mtu_khs_change_requests(id) on delete restrict,
+  record_id text not null references public.mtu_khs_records(id) on delete restrict,
+  status text not null default 'PENDING' check (status in ('PENDING','SYNCING','SYNCED','CONFLICT','FAILED','SKIPPED')),
+  attempts integer not null default 0 check (attempts >= 0),
+  sheet_id text not null,
+  sheet_name text not null,
+  source_row integer,
+  source_row_sha256 text not null default '',
+  source_key jsonb not null default '{}'::jsonb,
+  patch jsonb not null default '{}'::jsonb,
+  before_data jsonb not null default '{}'::jsonb,
+  after_data jsonb not null default '{}'::jsonb,
+  before_sheet jsonb not null default '{}'::jsonb,
+  after_sheet jsonb not null default '{}'::jsonb,
+  last_error text,
+  started_at timestamptz,
+  synced_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (change_request_id)
+);
+create index if not exists idx_mtu_khs_sheet_jobs_status on public.mtu_khs_sheet_sync_jobs(status, updated_at);
+create index if not exists idx_mtu_khs_sheet_jobs_record on public.mtu_khs_sheet_sync_jobs(record_id);
+
+create table if not exists public.mtu_khs_import_batches (
+  id text primary key,
+  procurement_year integer not null,
+  uit_id text references public.uit(id),
+  source_file text not null,
+  status text not null default 'STAGED' check (status in ('STAGED','REVIEW','APPROVED','REJECTED')),
+  summary jsonb not null default '{}'::jsonb,
+  file_sha256 text not null default '',
+  sheet_name text not null default '',
+  committed_at timestamptz,
+  commit_idempotency_key text,
+  created_by uuid not null references auth.users(id),
+  created_at timestamptz not null default now()
+);
+create table if not exists public.mtu_khs_import_rows (
+  id text primary key,
+  batch_id text not null references public.mtu_khs_import_batches(id) on delete cascade,
+  source_row integer not null,
+  raw_data jsonb not null default '{}'::jsonb,
+  normalized_data jsonb not null default '{}'::jsonb,
+  validation_errors jsonb not null default '[]'::jsonb,
+  duplicate_candidate boolean not null default false,
+  raw_row_sha256 text not null default '',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_mtu_khs_import_rows_batch on public.mtu_khs_import_rows(batch_id);
+
+create table if not exists public.mtu_khs_reconciliations (
+  record_id text primary key references public.mtu_khs_records(id) on delete cascade,
+  status text not null check (status in ('BELUM_DICEK','BELUM_TUG','SEBAGIAN','SUDAH_TUG')),
+  note text not null default '',
+  updated_by uuid not null references auth.users(id),
+  updated_at timestamptz not null default now()
+);
+create table if not exists public.mtu_khs_stock_links (
+  id uuid primary key default gen_random_uuid(),
+  mtu_record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  stock_id text not null references public.stocks(id) on delete restrict,
+  qty numeric(18,4) not null check (qty > 0),
+  created_by uuid not null references auth.users(id),
+  updated_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (mtu_record_id, stock_id)
+);
+create table if not exists public.mtu_khs_receipts (
+  id uuid primary key default gen_random_uuid(),
+  mtu_record_id text not null references public.mtu_khs_records(id) on delete restrict,
+  tug3_transaction_id text not null references public.tug3_transactions(id) on delete restrict,
+  qty numeric(18,4) not null check (qty > 0),
+  items jsonb not null default '[]'::jsonb,
+  applied_by uuid not null references auth.users(id),
+  applied_at timestamptz not null default now(),
+  idempotency_key text not null,
+  unique (tug3_transaction_id),
+  unique (idempotency_key)
+);
+create index if not exists idx_mtu_khs_receipts_record on public.mtu_khs_receipts(mtu_record_id, applied_at);
+
+create table if not exists public.mtu_khs_record_events (
+  id uuid primary key default gen_random_uuid(),
+  record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  event_type text not null,
+  actor_id uuid references auth.users(id),
+  source_upt_id text references public.upt(id),
+  target_upt_id text references public.upt(id),
+  before_data jsonb not null default '{}'::jsonb,
+  after_data jsonb not null default '{}'::jsonb,
+  metadata jsonb not null default '{}'::jsonb,
+  idempotency_key text,
+  created_at timestamptz not null default now(),
+  unique (record_id, idempotency_key)
+);
+create index if not exists idx_mtu_khs_record_events_record on public.mtu_khs_record_events(record_id, created_at desc);
+create table if not exists public.mtu_khs_record_evidence (
+  id uuid primary key default gen_random_uuid(),
+  record_id text not null references public.mtu_khs_records(id) on delete cascade,
+  kind text not null check (kind in ('ITEM','NAMEPLATE')),
+  object_path text not null,
+  mime_type text not null,
+  size_bytes bigint not null,
+  uploaded_by uuid not null references auth.users(id),
+  created_at timestamptz not null default now(),
+  superseded_at timestamptz,
+  inherited_from uuid references public.mtu_khs_record_evidence(id)
+);
+create unique index if not exists uq_mtu_khs_evidence_active on public.mtu_khs_record_evidence(record_id, kind) where superseded_at is null;
+create index if not exists idx_mtu_khs_evidence_record on public.mtu_khs_record_evidence(record_id, kind, created_at desc);
+create table if not exists public.mtu_khs_transfer_requests (
+  id uuid primary key default gen_random_uuid(),
+  source_record_id text not null references public.mtu_khs_records(id) on delete restrict,
+  source_version integer not null,
+  idempotency_key text not null,
+  source_upt_id text not null references public.upt(id),
+  target_upt_id text not null references public.upt(id),
+  target_ultg_id text,
+  target_gardu_induk_id text,
+  target_bay_id text,
+  target_gudang_id text,
+  target_lokasi_id text,
+  qty numeric not null check (qty > 0),
+  note text not null default '',
+  status text not null default 'PENDING' check (status in ('PENDING','APPROVED','REJECTED')),
+  requested_by uuid not null references auth.users(id),
+  requested_at timestamptz not null default now(),
+  decided_by uuid references auth.users(id),
+  decided_at timestamptz,
+  decision_note text not null default '',
+  target_record_id text,
+  before_snapshot jsonb not null default '{}'::jsonb,
+  after_snapshot jsonb not null default '{}'::jsonb
+);
+create unique index if not exists uq_mtu_khs_transfer_idempotency on public.mtu_khs_transfer_requests(source_record_id, idempotency_key);
+create index if not exists idx_mtu_khs_transfer_scope on public.mtu_khs_transfer_requests(source_upt_id, target_upt_id, status);
+
+create or replace function public.mtu_khs_can_access_upt(p_upt_id text)
+returns boolean language sql stable security definer set search_path = public as $$
+  select exists (select 1 from public.profiles p where p.id = auth.uid() and (
+    p.role in ('SUPERADMIN','ADMIN_LOG_PUSAT','PENGADAAN') or public.can_access_upt(p_upt_id)
+    or (p.role in ('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT') and exists (select 1 from public.upt u where u.id = p_upt_id and u.uit_id = p.uit_id))
+  ));
+$$;
+create or replace function public.mtu_khs_search_text(p_data jsonb)
+returns text language sql immutable as $$
+  select lower(regexp_replace(regexp_replace(coalesce(p_data::text,''), '[^[:alnum:]]+', ' ', 'g'), '\s+', ' ', 'g'));
+$$;
+create or replace function public.mtu_khs_refresh_search_text()
+returns trigger language plpgsql as $$
+begin
+  new.search_text := public.mtu_khs_search_text(coalesce(new.data,'{}'::jsonb) || jsonb_build_object('id',new.id,'uptId',new.upt_id,'katalogId',new.katalog_id));
+  return new;
+end;
+$$;
+drop trigger if exists trg_mtu_khs_refresh_search_text on public.mtu_khs_records;
+create trigger trg_mtu_khs_refresh_search_text before insert or update of data, katalog_id, upt_id on public.mtu_khs_records for each row execute function public.mtu_khs_refresh_search_text();
+
+alter table public.supplier enable row level security;
+drop policy if exists "Authenticated read supplier" on public.supplier;
+drop policy if exists "Authenticated write supplier" on public.supplier;
+create policy "Authenticated read supplier" on public.supplier for select to authenticated using (auth.role() = 'authenticated');
+create policy "Authenticated write supplier" on public.supplier for all to authenticated using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+grant select, insert, update, delete on public.supplier to authenticated, service_role;
+
+alter table public.tug_global_document_counters enable row level security;
+drop policy if exists "Scoped read tug_global_document_counters" on public.tug_global_document_counters;
+create policy "Scoped read tug_global_document_counters" on public.tug_global_document_counters
+  for select to authenticated using (public.can_access_upt(upt_id));
+
+alter table public.tug_transactions enable row level security;
+alter table public.tug_items enable row level security;
+alter table public.tug_approvals enable row level security;
+alter table public.tug_review_tokens enable row level security;
+alter table public.stock_movements enable row level security;
+alter table public.tug3_transactions enable row level security;
+alter table public.mtu_khs_gardu_induk enable row level security;
+alter table public.mtu_khs_gardu_induk_bay enable row level security;
+alter table public.mtu_khs_specs enable row level security;
+alter table public.mtu_khs_records enable row level security;
+alter table public.mtu_khs_units enable row level security;
+alter table public.mtu_khs_documents enable row level security;
+alter table public.mtu_khs_record_documents enable row level security;
+alter table public.mtu_khs_usage_links enable row level security;
+alter table public.mtu_khs_change_requests enable row level security;
+alter table public.mtu_khs_sheet_sync_jobs enable row level security;
+alter table public.mtu_khs_import_batches enable row level security;
+alter table public.mtu_khs_import_rows enable row level security;
+alter table public.mtu_khs_reconciliations enable row level security;
+alter table public.mtu_khs_stock_links enable row level security;
+alter table public.mtu_khs_receipts enable row level security;
+alter table public.mtu_khs_record_events enable row level security;
+alter table public.mtu_khs_record_evidence enable row level security;
+alter table public.mtu_khs_transfer_requests enable row level security;
+
+drop policy if exists "Scoped read tug3_transactions" on public.tug3_transactions;
+create policy "Scoped read tug3_transactions" on public.tug3_transactions for select to authenticated using (public.can_access_upt(upt_id));
+drop policy if exists "Scoped read tug_transactions" on public.tug_transactions;
+create policy "Scoped read tug_transactions" on public.tug_transactions for select to authenticated using (public.can_access_upt(upt_id));
+drop policy if exists "Scoped read tug_items" on public.tug_items;
+create policy "Scoped read tug_items" on public.tug_items for select to authenticated using (exists (select 1 from public.tug_transactions t where t.id = transaction_id and public.can_access_upt(t.upt_id)));
+drop policy if exists "Scoped read tug_approvals" on public.tug_approvals;
+create policy "Scoped read tug_approvals" on public.tug_approvals for select to authenticated using (exists (select 1 from public.tug_transactions t where t.id = transaction_id and public.can_access_upt(t.upt_id)));
+drop policy if exists "Scoped read tug_review_tokens" on public.tug_review_tokens;
+create policy "Scoped read tug_review_tokens" on public.tug_review_tokens for select to authenticated using (actor_id = auth.uid());
+drop policy if exists "Scoped read stock_movements" on public.stock_movements;
+create policy "Scoped read stock_movements" on public.stock_movements for select to authenticated using (exists (select 1 from public.tug_transactions t where t.id = transaction_id and public.can_access_upt(t.upt_id)));
+drop policy if exists "MTU KHS GI scoped" on public.mtu_khs_gardu_induk;
+create policy "MTU KHS GI scoped" on public.mtu_khs_gardu_induk for select to authenticated using (public.mtu_khs_can_access_upt(upt_id));
+drop policy if exists "MTU KHS Bay scoped" on public.mtu_khs_gardu_induk_bay;
+create policy "MTU KHS Bay scoped" on public.mtu_khs_gardu_induk_bay for select to authenticated using (exists (select 1 from public.mtu_khs_gardu_induk gi where gi.id = gardu_induk_id and public.mtu_khs_can_access_upt(gi.upt_id)));
+drop policy if exists "MTU KHS specs read" on public.mtu_khs_specs;
+create policy "MTU KHS specs read" on public.mtu_khs_specs for select to authenticated using (auth.uid() is not null);
+drop policy if exists "MTU KHS records scoped" on public.mtu_khs_records;
+create policy "MTU KHS records scoped" on public.mtu_khs_records for select to authenticated using (public.mtu_khs_can_access_upt(upt_id));
+drop policy if exists "MTU KHS records controlled write" on public.mtu_khs_records;
+create policy "MTU KHS records controlled write" on public.mtu_khs_records for insert to authenticated with check (false);
+drop policy if exists "MTU KHS records no direct update" on public.mtu_khs_records;
+create policy "MTU KHS records no direct update" on public.mtu_khs_records for update to authenticated using (false) with check (false);
+drop policy if exists "MTU KHS records no direct delete" on public.mtu_khs_records;
+create policy "MTU KHS records no direct delete" on public.mtu_khs_records for delete to authenticated using (false);
+drop policy if exists "MTU KHS units scoped" on public.mtu_khs_units;
+create policy "MTU KHS units scoped" on public.mtu_khs_units for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS documents read" on public.mtu_khs_documents;
+create policy "MTU KHS documents read" on public.mtu_khs_documents for select to authenticated using (auth.uid() is not null);
+drop policy if exists "MTU KHS record documents scoped" on public.mtu_khs_record_documents;
+create policy "MTU KHS record documents scoped" on public.mtu_khs_record_documents for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS usage scoped" on public.mtu_khs_usage_links;
+create policy "MTU KHS usage scoped" on public.mtu_khs_usage_links for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = mtu_record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS changes scoped" on public.mtu_khs_change_requests;
+create policy "MTU KHS changes scoped" on public.mtu_khs_change_requests for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS import batches" on public.mtu_khs_import_batches;
+create policy "MTU KHS import batches" on public.mtu_khs_import_batches for select to authenticated using (auth.uid() is not null and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.role in ('SUPERADMIN', 'PENGADAAN', 'ADMIN_LOG_PUSAT') or (p.role = 'ASMAN_LOG_UIT' and p.uit_id = mtu_khs_import_batches.uit_id))));
+drop policy if exists "MTU KHS import rows" on public.mtu_khs_import_rows;
+create policy "MTU KHS import rows" on public.mtu_khs_import_rows for select to authenticated using (exists (select 1 from public.mtu_khs_import_batches b where b.id = batch_id and exists (select 1 from public.profiles p where p.id = auth.uid() and (p.role in ('SUPERADMIN', 'PENGADAAN', 'ADMIN_LOG_PUSAT') or (p.role = 'ASMAN_LOG_UIT' and p.uit_id = b.uit_id)))));
+drop policy if exists "MTU KHS sheet sync scoped" on public.mtu_khs_sheet_sync_jobs;
+create policy "MTU KHS sheet sync scoped" on public.mtu_khs_sheet_sync_jobs for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS reconciliation scoped" on public.mtu_khs_reconciliations;
+create policy "MTU KHS reconciliation scoped" on public.mtu_khs_reconciliations for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS stock links scoped" on public.mtu_khs_stock_links;
+create policy "MTU KHS stock links scoped" on public.mtu_khs_stock_links for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = mtu_record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS receipts scoped" on public.mtu_khs_receipts;
+create policy "MTU KHS receipts scoped" on public.mtu_khs_receipts for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = mtu_record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS events scoped" on public.mtu_khs_record_events;
+create policy "MTU KHS events scoped" on public.mtu_khs_record_events for select to authenticated using (public.mtu_khs_can_access_upt(source_upt_id) or (event_type = 'TRANSFER_APPROVED' and public.mtu_khs_can_access_upt(target_upt_id)));
+drop policy if exists "MTU KHS evidence scoped" on public.mtu_khs_record_evidence;
+create policy "MTU KHS evidence scoped" on public.mtu_khs_record_evidence for select to authenticated using (exists (select 1 from public.mtu_khs_records r where r.id = record_id and public.mtu_khs_can_access_upt(r.upt_id)));
+drop policy if exists "MTU KHS transfers scoped" on public.mtu_khs_transfer_requests;
+create policy "MTU KHS transfers scoped" on public.mtu_khs_transfer_requests for select to authenticated using (public.mtu_khs_can_access_upt(source_upt_id) or (status = 'APPROVED' and public.mtu_khs_can_access_upt(target_upt_id)));
+
+revoke all on public.tug_global_document_counters, public.tug_transactions, public.tug_items, public.tug_approvals, public.tug_review_tokens, public.stock_movements from anon, authenticated;
+grant select on public.tug_global_document_counters, public.tug_transactions, public.tug_items, public.tug_approvals, public.stock_movements to authenticated;
+grant select, insert, update, delete on public.tug3_transactions to authenticated, service_role;
+grant select on public.mtu_khs_gardu_induk, public.mtu_khs_gardu_induk_bay, public.mtu_khs_specs, public.mtu_khs_records, public.mtu_khs_units, public.mtu_khs_documents, public.mtu_khs_record_documents, public.mtu_khs_usage_links, public.mtu_khs_change_requests, public.mtu_khs_sheet_sync_jobs, public.mtu_khs_import_batches, public.mtu_khs_import_rows, public.mtu_khs_reconciliations, public.mtu_khs_stock_links, public.mtu_khs_receipts, public.mtu_khs_record_events, public.mtu_khs_record_evidence, public.mtu_khs_transfer_requests to authenticated;
+revoke insert, update, delete on public.mtu_khs_gardu_induk, public.mtu_khs_gardu_induk_bay, public.mtu_khs_specs, public.mtu_khs_records, public.mtu_khs_units, public.mtu_khs_documents, public.mtu_khs_record_documents, public.mtu_khs_usage_links, public.mtu_khs_change_requests, public.mtu_khs_sheet_sync_jobs, public.mtu_khs_import_batches, public.mtu_khs_import_rows, public.mtu_khs_reconciliations, public.mtu_khs_stock_links, public.mtu_khs_receipts, public.mtu_khs_record_events, public.mtu_khs_record_evidence, public.mtu_khs_transfer_requests from authenticated;
+
+-- Canonical TUG helper functions used by the application RPCs.
+create or replace function public.tug_actor()
+returns public.profiles language plpgsql stable security definer set search_path = public
+as $$
+declare p public.profiles;
+begin
+  select * into p from public.profiles where id = auth.uid();
+  if p.id is null then raise exception 'TUG_AUTH_REQUIRED' using errcode = '42501'; end if;
+  return p;
+end $$;
+
+create or replace function public.tug_assert_upt_scope(p_actor public.profiles, p_upt_id text)
+returns void language plpgsql stable security definer set search_path = public as $$
+begin
+  if p_actor.role <> 'SUPERADMIN' and (p_actor.upt_id is null or p_actor.upt_id <> p_upt_id) then
+    raise exception 'TUG_UPT_SCOPE_FORBIDDEN' using errcode = '42501';
+  end if;
+end $$;
+
+create or replace function public.tug_hash(p_document jsonb, p_items jsonb, p_doc_number text, p_identity_snapshot jsonb)
+returns text language sql immutable as $$
+  select encode(extensions.digest(coalesce(p_document, '{}'::jsonb)::text || '|' || coalesce(p_items, '[]'::jsonb)::text || '|' || coalesce(p_doc_number,'') || '|' || coalesce(p_identity_snapshot,'{}'::jsonb)::text, 'sha256'), 'hex')
+$$;
+
+create or replace function public.tug_doc_code(p_doc_type text)
+returns text language sql immutable as $$
+  select case when p_doc_type in ('TUG3','TUG10') then 'LOG.00.01' else 'LOG.00.02' end
+$$;
+
+create or replace function public.tug_doc_number(p_seq bigint, p_doc_type text, p_upt_id text, p_at timestamptz default now())
+returns text language plpgsql stable as $$
+declare suffix text; u text := nullif(p_upt_id,'');
+begin
+  if u is null then raise exception 'TUG_UPT_REQUIRED'; end if;
+  suffix := to_char(p_at at time zone 'Asia/Jakarta', 'FMRM/YYYY');
+  if p_doc_type = 'TUG5' then return p_seq::text || '.TUG-5/LOG-' || u || '/' || suffix; end if;
+  if p_doc_type = 'TUG7' then return lpad(p_seq::text, 3, '0') || '.TUG7/LOG/UIT-JBM/' || suffix; end if;
+  return p_seq::text || '.' || replace(p_doc_type, 'TUG', 'TUG-') || '/' || public.tug_doc_code(p_doc_type) || '/' || u || '/' || suffix;
+end $$;
+
+create or replace function public.tug_initial_stage(p_doc_type text, p_actor_role text)
+returns text language plpgsql immutable as $$
+begin
+  if p_doc_type = 'TUG3' then return 'PENDING_TL'; end if;
+  if p_doc_type = 'TUG5' then return 'PENDING_ASMAN'; end if;
+  if p_doc_type = 'TUG7' then return 'PENDING_MGR_LOGISTIK'; end if;
+  if p_doc_type in ('TUG8','TUG9') then return case when p_actor_role='TL' then 'PENDING_ASMAN' else 'PENDING_TL' end; end if;
+  return case when p_actor_role = 'ADMIN' then 'PENDING_TL' else 'PENDING_ASMAN' end;
+end $$;
+
+create or replace function public.tug_required_role(p_stage text)
+returns text language sql immutable as $$
+  select case p_stage
+    when 'PENDING_TL' then 'TL'
+    when 'PENDING_ASMAN' then 'ASMAN'
+    when 'PENDING_MANAGER' then 'MANAGER'
+    when 'PENDING_MGR_LOGISTIK' then 'MGR_LOGISTIK_UIT'
+    when 'PENDING_MGR_ULTG' then 'MGR_ULTG'
+    else null end
+$$;
+
+create or replace function public.tug_next_stage(p_doc_type text, p_stage text)
+returns text language plpgsql immutable as $$
+begin
+  if p_doc_type = 'TUG3' and p_stage = 'PENDING_TL' then return 'PENDING_MANAGER'; end if;
+  if p_doc_type = 'TUG3' and p_stage = 'PENDING_MANAGER' then return 'PENDING_ASMAN'; end if;
+  if p_doc_type = 'TUG5' and p_stage = 'PENDING_ASMAN' then return 'PENDING_MANAGER'; end if;
+  if p_doc_type in ('TUG8','TUG9') and p_stage = 'PENDING_TL' then return 'PENDING_ASMAN'; end if;
+  return 'FINAL_APPROVED';
+end $$;
+
+create or replace function public.tug_stock_direction(p_doc_type text)
+returns text language sql immutable as $$
+  select case when p_doc_type in ('TUG8','TUG9') then 'OUT' else 'NONE' end
+$$;
+
+create or replace function public.tug_assert_items(p_items jsonb, p_require_stock boolean default false)
+returns void language plpgsql immutable as $$
+begin
+  if p_items is null or jsonb_typeof(p_items) <> 'array' or jsonb_array_length(p_items) = 0 then
+    raise exception 'TUG_ITEMS_REQUIRED';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_items) x(value)
+    where jsonb_typeof(x.value) <> 'object'
+       or nullif(btrim(x.value->>'qty'),'') is null
+       or btrim(x.value->>'qty') !~ '^[0-9]+([.][0-9]{1,4})?$'
+       or case when btrim(x.value->>'qty') ~ '^[0-9]+([.][0-9]{1,4})?$'
+               then (btrim(x.value->>'qty'))::numeric <= 0 else false end
+       or (p_require_stock and nullif(btrim(x.value->>'stockId'),'') is null)
+  ) then raise exception 'TUG_ITEMS_INVALID'; end if;
+end $$;
+
+create or replace function public.tug_assert_canonical_item_refs(p_items jsonb)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from jsonb_array_elements(p_items) x(value) left join public.stocks st on st.id=nullif(btrim(x.value->>'stockId'),'') where st.id is null) then
+    raise exception 'TUG_STOCK_NOT_FOUND';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(p_items) x(value)
+    join public.stocks st on st.id=nullif(btrim(x.value->>'stockId'),'')
+    where (nullif(btrim(x.value->>'katalogId'),'') is not null and nullif(btrim(x.value->>'katalogId'),'') is distinct from st.katalog_id)
+       or (nullif(btrim(x.value->>'lokasiId'),'') is not null and nullif(btrim(x.value->>'lokasiId'),'') is distinct from st.lokasi_id)
+  ) then raise exception 'TUG_ITEM_REFERENCE_MISMATCH'; end if;
+end $$;
+
+create or replace function public.tug_stock_snapshot(p_transaction_id uuid)
+returns jsonb language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('stock_id',s.id,'katalog_id',s.katalog_id,'lokasi_id',s.lokasi_id,'qty',coalesce((s.data->>'qty')::numeric,0)) order by s.id),'[]'::jsonb)
+  from public.stocks s where exists (select 1 from public.tug_items i where i.transaction_id=p_transaction_id and i.stock_id=s.id)
+$$;
+
+create or replace function public.tug_request_hash(p_operation text, p_payload jsonb)
+returns text language sql immutable as $$
+  select encode(extensions.digest(p_operation || '|' || coalesce(p_payload, 'null'::jsonb)::text, 'sha256'), 'hex')
+$$;
+
+create or replace function public.tug_idempotency_response(p_key uuid, p_operation text, p_actor_id uuid, p_request_hash text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare existing public.tug_idempotency_keys;
+begin
+  if p_key is null then raise exception 'TUG_IDEMPOTENCY_REQUIRED'; end if;
+  perform pg_advisory_xact_lock(hashtextextended(p_key::text, 0));
+  select * into existing from public.tug_idempotency_keys where key=p_key;
+  if existing.key is null then return null; end if;
+  if existing.operation <> p_operation or existing.actor_id <> p_actor_id or existing.request_hash is distinct from p_request_hash then
+    raise exception 'TUG_IDEMPOTENCY_REUSE_FORBIDDEN' using errcode='42501';
+  end if;
+  return existing.response;
+end $$;
+
+create or replace function public.tug_assert_outgoing_stock_scope(p_transaction_id uuid, p_upt_id text)
+returns void language plpgsql security definer set search_path = public as $$
+declare v_item record;
+begin
+  for v_item in select stock_id from public.tug_items where transaction_id=p_transaction_id loop
+    if v_item.stock_id is null then raise exception 'TUG_LOCATION_REQUIRED'; end if;
+    if exists (select 1 from public.stocks st where st.id=v_item.stock_id and st.lokasi_id is null) then raise exception 'TUG_LOCATION_REQUIRED'; end if;
+    if not exists (
+      select 1 from public.stocks st join public.lokasi loc on loc.id=st.lokasi_id join public.gudang gd on gd.id=loc.gudang_id
+      where st.id=v_item.stock_id and gd.upt_id=p_upt_id
+    ) then raise exception 'TUG_STOCK_UPT_MISMATCH'; end if;
+  end loop;
+end $$;
+
+revoke all on function public.tug_actor(), public.tug_assert_upt_scope(public.profiles,text), public.tug_hash(jsonb,jsonb,text,jsonb), public.tug_doc_code(text), public.tug_doc_number(bigint,text,text,timestamptz), public.tug_initial_stage(text,text), public.tug_required_role(text), public.tug_next_stage(text,text), public.tug_stock_direction(text), public.tug_assert_items(jsonb,boolean), public.tug_assert_canonical_item_refs(jsonb), public.tug_stock_snapshot(uuid), public.tug_request_hash(text,jsonb), public.tug_idempotency_response(uuid,text,uuid,text), public.tug_assert_outgoing_stock_scope(uuid,text) from public, anon, authenticated;
+grant execute on function public.tug_actor(), public.tug_assert_upt_scope(public.profiles,text), public.tug_hash(jsonb,jsonb,text,jsonb), public.tug_doc_code(text), public.tug_doc_number(bigint,text,text,timestamptz), public.tug_initial_stage(text,text), public.tug_required_role(text), public.tug_next_stage(text,text), public.tug_stock_direction(text), public.tug_assert_items(jsonb,boolean), public.tug_assert_canonical_item_refs(jsonb), public.tug_stock_snapshot(uuid), public.tug_request_hash(text,jsonb), public.tug_idempotency_response(uuid,text,uuid,text), public.tug_assert_outgoing_stock_scope(uuid,text) to authenticated;
+
+-- The final MTU RPC implementations follow the same signatures as the
+-- immutable migrations; their definitions are installed below this section.
+
+
+-- Final MTU KHS RPCs: same public signatures and server-side invariants as the
+-- ordered production migrations, composed into the bootstrap section.
+create or replace function public.mtu_khs_submit_change(p_record_id text, p_expected_version integer, p_patch jsonb, p_idempotency_key text)
+returns public.mtu_khs_change_requests
+language plpgsql security definer set search_path = public
+as $$
+declare r public.mtu_khs_records; requester public.profiles; result public.mtu_khs_change_requests; target_role text; target_upt text; target_uit text; effective_gi text; effective_bay text;
+begin
+  select * into r from public.mtu_khs_records where id = p_record_id for update;
+  if not found or not public.mtu_khs_can_access_upt(r.upt_id) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if p_expected_version is null or p_expected_version <> r.version then raise exception 'MTU_VERSION_CONFLICT'; end if;
+  effective_gi := case when p_patch ? 'garduIndukId' then nullif(p_patch->>'garduIndukId','') else r.gardu_induk_id end;
+  effective_bay := case when p_patch ? 'bayId' then nullif(p_patch->>'bayId','') else r.bay_id end;
+  if effective_gi is not null and not exists (select 1 from public.mtu_khs_gardu_induk gi where gi.id = effective_gi and gi.upt_id = r.upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if effective_bay is not null and not exists (select 1 from public.mtu_khs_gardu_induk_bay bay join public.mtu_khs_gardu_induk gi on gi.id = bay.gardu_induk_id where bay.id = effective_bay and gi.upt_id = r.upt_id and gi.id = effective_gi) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if p_patch ? 'gudangId' and not exists (select 1 from public.gudang g where g.id = p_patch->>'gudangId' and g.upt_id = r.upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if coalesce(p_patch, '{}'::jsonb) ? 'katalogId'
+     and not exists (select 1 from public.katalog k where k.id = nullif(btrim(p_patch->>'katalogId'), '')) then
+    raise exception 'MTU_MAPPING_REQUIRED';
+  end if;
+  if exists (select 1 from public.mtu_khs_change_requests where record_id = r.id and patch->>'_idempotency_key' = p_idempotency_key) then select * into result from public.mtu_khs_change_requests where record_id = r.id and patch->>'_idempotency_key' = p_idempotency_key limit 1; return result; end if;
+  select * into requester from public.profiles where id = auth.uid();
+  if requester.role not in ('TL', 'PENGADAAN', 'SUPERADMIN') then raise exception 'Role tidak boleh mengajukan perubahan MTU'; end if;
+  if requester.role = 'TL' and exists (select 1 from jsonb_object_keys(coalesce(p_patch,'{}'::jsonb)) key where key not in ('location','onsiteDate','garduIndukId','bayId','gudangId','serialNumber','installationStatus','installationPlanDate','installationDate','reason')) then raise exception 'MTU_FIELD_FORBIDDEN'; end if;
+  if requester.role = 'PENGADAAN' and exists (select 1 from jsonb_object_keys(coalesce(p_patch,'{}'::jsonb)) key where key not in ('vendor','noKontrak','tanggalKontrak','noSpmk','tanggalSerahTerima','price','documentId','mtuCode','katalogId','reason')) then raise exception 'MTU_FIELD_FORBIDDEN'; end if;
+  select u.uit_id into target_uit from public.upt u where u.id = r.upt_id;
+  if requester.role = 'PENGADAAN' then target_role := 'ASMAN_LOG_UIT'; target_upt := null; else target_role := 'ASMAN'; target_upt := r.upt_id; end if;
+  insert into public.mtu_khs_change_requests(id, record_id, requested_by, requester_role, approver_role, approver_upt_id, approver_uit_id, patch)
+  values ('MTU-CHG-' || gen_random_uuid()::text, r.id, auth.uid(), requester.role, target_role, target_upt, target_uit, coalesce(p_patch, '{}'::jsonb) || jsonb_build_object('_idempotency_key', p_idempotency_key))
+  returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_decide_change(p_change_id text, p_decision text, p_note text default '')
+returns public.mtu_khs_change_requests
+language plpgsql security definer set search_path = public
+as $$
+declare c public.mtu_khs_change_requests; r public.mtu_khs_records; p public.profiles; result public.mtu_khs_change_requests;
+  new_data jsonb; source_row integer; source_hash text; source_key jsonb; sheet_name text;
+begin
+  if p_decision not in ('APPROVED', 'REJECTED') then raise exception 'Keputusan approval tidak valid'; end if;
+  select * into c from public.mtu_khs_change_requests where id = p_change_id and status = 'PENDING' for update;
+  if not found then raise exception 'Perubahan MTU tidak ditemukan atau sudah diputus'; end if;
+  select * into r from public.mtu_khs_records where id = c.record_id for update;
+  select * into p from public.profiles where id = auth.uid();
+  if p.role <> 'SUPERADMIN' and c.approver_role = 'ASMAN' and not (p.role = 'ASMAN' and p.upt_id = c.approver_upt_id) then raise exception 'Bukan ASMAN UPT tujuan'; end if;
+  if p.role <> 'SUPERADMIN' and c.approver_role = 'ASMAN_LOG_UIT' and not (p.role = 'ASMAN_LOG_UIT' and p.uit_id = c.approver_uit_id) then raise exception 'Bukan ASMAN_LOG_UIT tujuan'; end if;
+  update public.mtu_khs_change_requests set status = p_decision, decision_note = p_note, decided_by = auth.uid(), decided_at = now() where id = c.id returning * into result;
+  if p_decision = 'APPROVED' then
+    new_data := r.data || (c.patch - '_idempotency_key');
+    update public.mtu_khs_records set data = new_data, updated_at = now(), version = version + 1,
+      katalog_id = case when c.patch ? 'katalogId' then nullif(btrim(c.patch->>'katalogId'), '') else katalog_id end,
+      lifecycle_status = case when c.patch ? 'lifecycleStatus' then nullif(c.patch->>'lifecycleStatus','') else lifecycle_status end,
+      gardu_induk_id = case when c.patch ? 'garduIndukId' then nullif(c.patch->>'garduIndukId','') else gardu_induk_id end,
+      bay_id = case when c.patch ? 'bayId' then nullif(c.patch->>'bayId','') else bay_id end,
+      gudang_id = case when c.patch ? 'gudangId' then nullif(c.patch->>'gudangId','') else gudang_id end
+    where id = r.id and version = r.version;
+    if not found then raise exception 'MTU_VERSION_CONFLICT'; end if;
+    source_row := nullif(r.data->'_migration'->>'sourceRow','')::integer;
+    source_hash := coalesce(r.data->'_migration'->>'rawRowSha256','');
+    source_key := jsonb_build_object(
+      'procurementYear', r.procurement_year,
+      'provider', coalesce(r.data->>'vendor',r.data->>'provider',''),
+      'uptName', coalesce(r.data->>'uptName',''), 'ultgName', coalesce(r.data->>'ultgName',''),
+      'giName', coalesce(r.data->>'giName',''), 'bayName', coalesce(r.data->>'bayName',''),
+      'mtuCode', coalesce(r.data->>'mtuCode',''), 'sifatPekerjaan', r.sifat_pekerjaan
+    );
+    sheet_name := case when r.procurement_year = 2024 then 'Input KHS 2024' when r.procurement_year = 2026 then 'Input KHS 2026' else '' end;
+    insert into public.mtu_khs_sheet_sync_jobs(id, change_request_id, record_id, sheet_id, sheet_name, source_row, source_row_sha256, source_key, patch, before_data, after_data)
+    values ('MTU-SHEET-' || gen_random_uuid()::text, c.id, r.id, '1Fd978ThcVpCmGEbADILLbjpsGfpWtdKlJdnNdvnzOiw', sheet_name, source_row, source_hash, source_key, c.patch - '_idempotency_key', to_jsonb(r.data), new_data)
+    on conflict (change_request_id) do nothing;
+  end if;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_commit_import(p_batch_id text, p_idempotency_key text)
+returns integer language plpgsql security definer set search_path = public
+as $$
+declare b public.mtu_khs_import_batches; row_item record; inserted_count integer := 0;
+begin
+  select * into b from public.mtu_khs_import_batches where id = p_batch_id for update;
+  if not found then raise exception 'MTU_IMPORT_NOT_FOUND'; end if;
+  if b.committed_at is not null then
+    if b.commit_idempotency_key = p_idempotency_key then return coalesce((b.summary->>'committedCount')::integer, 0); end if;
+    raise exception 'MTU_IMPORT_ALREADY_COMMITTED';
+  end if;
+  if b.status <> 'APPROVED' then raise exception 'MTU_APPROVER_INVALID'; end if;
+  if not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','PENGADAAN','ADMIN_LOG_PUSAT')) then raise exception 'MTU_APPROVER_INVALID'; end if;
+  if exists (select 1 from public.mtu_khs_import_rows where batch_id = b.id and jsonb_array_length(validation_errors) > 0) then raise exception 'MTU_MAPPING_REQUIRED'; end if;
+  for row_item in select * from public.mtu_khs_import_rows where batch_id = b.id order by source_row loop
+    if nullif(row_item.normalized_data->>'uptId', '') is null or not exists (select 1 from public.upt where id = row_item.normalized_data->>'uptId' and (b.uit_id is null or uit_id = b.uit_id)) then raise exception 'MTU_MAPPING_REQUIRED'; end if;
+    if coalesce((row_item.normalized_data->>'qty')::numeric,0) < 0 then raise exception 'MTU_QTY_INVALID'; end if;
+    if nullif(row_item.normalized_data->>'ultgId','') is not null and not exists (select 1 from public.ultg where id = row_item.normalized_data->>'ultgId' and upt_id = row_item.normalized_data->>'uptId') then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+    if nullif(row_item.normalized_data->>'garduIndukId','') is not null and not exists (select 1 from public.mtu_khs_gardu_induk gi where gi.id = row_item.normalized_data->>'garduIndukId' and gi.upt_id = row_item.normalized_data->>'uptId') then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+    if nullif(row_item.normalized_data->>'bayId','') is not null and not exists (select 1 from public.mtu_khs_gardu_induk_bay bay join public.mtu_khs_gardu_induk gi on gi.id = bay.gardu_induk_id where bay.id = row_item.normalized_data->>'bayId' and gi.upt_id = row_item.normalized_data->>'uptId' and (row_item.normalized_data->>'garduIndukId') = gi.id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+    if nullif(row_item.normalized_data->>'gudangId','') is not null and not exists (select 1 from public.gudang where id = row_item.normalized_data->>'gudangId' and upt_id = row_item.normalized_data->>'uptId') then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+    if nullif(row_item.normalized_data->>'mtuSpecId','') is not null and not exists (select 1 from public.mtu_khs_specs where id = row_item.normalized_data->>'mtuSpecId') then raise exception 'MTU_MAPPING_REQUIRED'; end if;
+    if nullif(row_item.normalized_data->>'katalogId','') is not null and not exists (select 1 from public.katalog where id = row_item.normalized_data->>'katalogId') then raise exception 'MTU_MAPPING_REQUIRED'; end if;
+    if nullif(row_item.normalized_data->>'supplierId','') is not null and not exists (select 1 from public.supplier where id = row_item.normalized_data->>'supplierId') then raise exception 'MTU_MAPPING_REQUIRED'; end if;
+    insert into public.mtu_khs_records(id, upt_id, ultg_id, gardu_induk_id, bay_id, gudang_id, mtu_spec_id, katalog_id, supplier_id, procurement_year, sifat_pekerjaan, qty, data, created_by)
+    values ('MTU-' || gen_random_uuid()::text, row_item.normalized_data->>'uptId', nullif(row_item.normalized_data->>'ultgId',''), nullif(row_item.normalized_data->>'garduIndukId',''), nullif(row_item.normalized_data->>'bayId',''), nullif(row_item.normalized_data->>'gudangId',''), nullif(row_item.normalized_data->>'mtuSpecId',''), nullif(row_item.normalized_data->>'katalogId',''), nullif(row_item.normalized_data->>'supplierId',''), b.procurement_year, coalesce(row_item.normalized_data->>'sifatPekerjaan','MATERIAL'), case when coalesce(row_item.normalized_data->>'sifatPekerjaan','MATERIAL') = 'SUPERVISI' then 0 else coalesce((row_item.normalized_data->>'qty')::numeric,0) end, row_item.normalized_data, auth.uid());
+    inserted_count := inserted_count + 1;
+  end loop;
+  update public.mtu_khs_import_batches set status = 'APPROVED', committed_at = now(), commit_idempotency_key = p_idempotency_key, summary = summary || jsonb_build_object('committedCount', inserted_count) where id = b.id;
+  return inserted_count;
+end;
+$$;
+create or replace function public.mtu_khs_decide_import(p_batch_id text, p_decision text, p_note text default '')
+returns public.mtu_khs_import_batches language plpgsql security definer set search_path = public
+as $$
+declare b public.mtu_khs_import_batches; p public.profiles; result public.mtu_khs_import_batches;
+begin
+  select * into b from public.mtu_khs_import_batches where id = p_batch_id for update;
+  if not found then raise exception 'MTU_IMPORT_NOT_FOUND'; end if;
+  select * into p from public.profiles where id = auth.uid();
+  if not found or p_decision not in ('APPROVED','REJECTED') then raise exception 'MTU_APPROVER_INVALID'; end if;
+  -- SUPERADMIN is the project-wide emergency approver; normal approvals stay UIT-scoped.
+  if p.role <> 'SUPERADMIN' and (p.role <> 'ASMAN_LOG_UIT' or p.uit_id is distinct from b.uit_id) then raise exception 'MTU_APPROVER_INVALID'; end if;
+  update public.mtu_khs_import_batches set status = p_decision, summary = summary || jsonb_build_object('approvalNote', p_note), committed_at = case when p_decision = 'REJECTED' then null else committed_at end where id = b.id returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_attach_document(p_record_id text, p_document_id text)
+returns boolean language plpgsql security definer set search_path = public
+as $$
+declare r public.mtu_khs_records; d public.mtu_khs_documents;
+begin
+  select * into r from public.mtu_khs_records where id = p_record_id for update;
+  select * into d from public.mtu_khs_documents where id = p_document_id;
+  if not found or not public.mtu_khs_can_access_upt(r.upt_id) or not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','PENGADAAN')) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if d.procurement_year <> r.procurement_year or upper(d.vendor) <> upper(coalesce(r.data->>'vendor','')) or d.mtu_code <> coalesce(r.data->>'mtuCode','') then raise exception 'MTU_DRAWING_YEAR_MISMATCH'; end if;
+  insert into public.mtu_khs_record_documents(record_id, document_id, created_by) values (r.id, d.id, auth.uid()) on conflict do nothing;
+  return true;
+end;
+$$;
+create or replace function public.mtu_khs_register_document(p_id text, p_record_id text, p_document_type text, p_title text, p_url text, p_revision text default '')
+returns public.mtu_khs_documents language plpgsql security definer set search_path = public
+as $$
+declare r public.mtu_khs_records; result public.mtu_khs_documents; vendor_name text; code text;
+begin
+  select * into r from public.mtu_khs_records where id = p_record_id;
+  if not found or not public.mtu_khs_can_access_upt(r.upt_id) or p_url !~* '^https://' or not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','PENGADAAN')) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  vendor_name := coalesce(r.data->>'vendor',''); code := coalesce(r.data->>'mtuCode','');
+  insert into public.mtu_khs_documents(id, vendor, procurement_year, mtu_code, document_type, revision, title, url, data) values (p_id, vendor_name, r.procurement_year, code, p_document_type, coalesce(p_revision,''), p_title, p_url, jsonb_build_object('recordId', r.id)) on conflict (id) do update set title = excluded.title, url = excluded.url, revision = excluded.revision returning * into result;
+  insert into public.mtu_khs_record_documents(record_id, document_id, created_by) values (r.id, result.id, auth.uid()) on conflict do nothing;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_link_approved_tug(p_record_id text, p_tug_item_id uuid, p_qty numeric)
+returns public.mtu_khs_usage_links language plpgsql security definer set search_path = public
+as $$
+declare r public.mtu_khs_records; i public.tug_items; t public.tug_transactions; result public.mtu_khs_usage_links;
+begin
+  select * into r from public.mtu_khs_records where id = p_record_id for update;
+  select * into i from public.tug_items where id = p_tug_item_id;
+  select * into t from public.tug_transactions where id = i.transaction_id;
+  if r.id is null or i.id is null or t.id is null or r.sifat_pekerjaan = 'SUPERVISI' or not public.mtu_khs_can_access_upt(r.upt_id)
+     or t.upt_id <> r.upt_id or t.doc_type not in ('TUG8','TUG9') or t.status <> 'FINAL_APPROVED'
+     or i.katalog_id is distinct from r.katalog_id
+     or not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','PENGADAAN','TL')) then
+    raise exception 'MTU_TUG_NOT_APPROVED';
+  end if;
+  if p_qty is null or p_qty <= 0 or p_qty > i.qty then raise exception 'MTU_TUG_NOT_APPROVED'; end if;
+  if exists (select 1 from public.mtu_khs_usage_links where mtu_record_id = r.id and tug_item_id = p_tug_item_id::text) then raise exception 'MTU_TUG_NOT_APPROVED'; end if;
+  if coalesce((select sum(qty) from public.mtu_khs_usage_links where mtu_record_id = r.id and status = 'APPROVED'),0) + p_qty > r.qty then raise exception 'MTU_TUG_NOT_APPROVED'; end if;
+  insert into public.mtu_khs_usage_links(id, mtu_record_id, tug_item_id, qty, status, created_by, data)
+  values ('MTU-USE-' || gen_random_uuid()::text, r.id, p_tug_item_id::text, p_qty, 'APPROVED', auth.uid(),
+    jsonb_build_object('docNumber', t.doc_number, 'docType', t.doc_type, 'finalApprovedAt', t.final_approved_at,
+      'katalogId', i.katalog_id, 'uptId', t.upt_id)) returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_upsert_gardu_induk(p_id text, p_ultg_id text, p_data jsonb)
+returns public.mtu_khs_gardu_induk language plpgsql security definer set search_path = public
+as $$
+declare result public.mtu_khs_gardu_induk; target_upt text; target_name text;
+begin
+  select u.upt_id into target_upt from public.ultg u where u.id = p_ultg_id;
+  target_name := upper(regexp_replace(btrim(coalesce(p_data->>'normalizedName', p_data->>'nama', p_data->>'name', p_id)), '\s+', ' ', 'g'));
+  if target_upt is null or target_name = '' then raise exception 'MTU_MASTER_INVALID'; end if;
+  if not public.mtu_khs_can_access_upt(target_upt) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','ADMIN_LOG_PUSAT','ADMIN_UIT','TL')) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  insert into public.mtu_khs_gardu_induk(id, upt_id, ultg_id, normalized_name, data, created_by) values (p_id, target_upt, p_ultg_id, target_name, coalesce(p_data,'{}'::jsonb) || jsonb_build_object('normalizedName', target_name), auth.uid()) on conflict (id) do update set upt_id = excluded.upt_id, ultg_id = excluded.ultg_id, normalized_name = excluded.normalized_name, data = excluded.data, updated_at = now() returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_upsert_bay(p_id text, p_gardu_induk_id text, p_data jsonb)
+returns public.mtu_khs_gardu_induk_bay language plpgsql security definer set search_path = public
+as $$
+declare result public.mtu_khs_gardu_induk_bay; target_upt text; target_name text;
+begin
+  select gi.upt_id into target_upt from public.mtu_khs_gardu_induk gi where gi.id = p_gardu_induk_id;
+  target_name := upper(regexp_replace(btrim(coalesce(p_data->>'normalizedName', p_data->>'nama', p_data->>'name', p_id)), '\s+', ' ', 'g'));
+  if target_upt is null or target_name = '' then raise exception 'MTU_MASTER_INVALID'; end if;
+  if not public.mtu_khs_can_access_upt(target_upt) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','ADMIN_LOG_PUSAT','ADMIN_UIT','TL')) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  insert into public.mtu_khs_gardu_induk_bay(id, gardu_induk_id, normalized_name, data, created_by) values (p_id, p_gardu_induk_id, target_name, coalesce(p_data,'{}'::jsonb) || jsonb_build_object('normalizedName', target_name), auth.uid()) on conflict (id) do update set gardu_induk_id = excluded.gardu_induk_id, normalized_name = excluded.normalized_name, data = excluded.data, updated_at = now() returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_deactivate_site_master(p_table_name text, p_id text)
+returns boolean language plpgsql security definer set search_path = public
+as $$
+declare target_upt text; in_use boolean := false;
+begin
+  if not exists (select 1 from public.profiles p where p.id = auth.uid() and p.role in ('SUPERADMIN','ADMIN_LOG_PUSAT','ADMIN_UIT','TL')) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if p_table_name = 'mtu_khs_gardu_induk' then
+    select gi.upt_id into target_upt from public.mtu_khs_gardu_induk gi where gi.id = p_id;
+    if not public.mtu_khs_can_access_upt(target_upt) then raise exception 'MTU_SCOPE_DENIED'; end if;
+    select exists (select 1 from public.mtu_khs_records where gardu_induk_id = p_id) into in_use;
+    if in_use then raise exception 'MTU_MASTER_IN_USE'; end if;
+    update public.mtu_khs_gardu_induk set active = false, updated_at = now() where id = p_id;
+  elsif p_table_name = 'mtu_khs_gardu_induk_bay' then
+    select gi.upt_id into target_upt from public.mtu_khs_gardu_induk_bay bay join public.mtu_khs_gardu_induk gi on gi.id = bay.gardu_induk_id where bay.id = p_id;
+    if not public.mtu_khs_can_access_upt(target_upt) then raise exception 'MTU_SCOPE_DENIED'; end if;
+    select exists (select 1 from public.mtu_khs_records where bay_id = p_id) into in_use;
+    if in_use then raise exception 'MTU_MASTER_IN_USE'; end if;
+    update public.mtu_khs_gardu_induk_bay set active = false, updated_at = now() where id = p_id;
+  else raise exception 'MTU_MASTER_INVALID'; end if;
+  return true;
+end;
+$$;
+create or replace function public.mtu_khs_stage_import(p_batch_id text, p_procurement_year integer, p_uit_id text, p_source_file text, p_file_sha256 text, p_sheet_name text, p_rows jsonb)
+returns integer language plpgsql security definer set search_path = public
+as $$
+declare actor public.profiles; row_item jsonb; n integer := 0;
+begin
+  select * into actor from public.profiles where id = auth.uid();
+  if actor.role not in ('SUPERADMIN','PENGADAAN','ADMIN_LOG_PUSAT') then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if exists (select 1 from public.mtu_khs_import_batches where file_sha256 = coalesce(p_file_sha256,'') and sheet_name = coalesce(p_sheet_name,'')) then raise exception 'MTU_IMPORT_ALREADY_STAGED'; end if;
+  insert into public.mtu_khs_import_batches(id, procurement_year, uit_id, source_file, file_sha256, sheet_name, status, created_by) values (p_batch_id, p_procurement_year, p_uit_id, p_source_file, coalesce(p_file_sha256,''), coalesce(p_sheet_name,''), 'REVIEW', auth.uid());
+  for row_item in select * from jsonb_array_elements(coalesce(p_rows,'[]'::jsonb)) loop
+    insert into public.mtu_khs_import_rows(id, batch_id, source_row, raw_data, normalized_data, validation_errors, duplicate_candidate, raw_row_sha256) values (p_batch_id || '-' || n::text, p_batch_id, coalesce((row_item->>'rowNumber')::integer,n), coalesce(row_item->'rawData','{}'::jsonb), coalesce(row_item->'source','{}'::jsonb), coalesce(row_item->'validation'->'errors','[]'::jsonb), coalesce((row_item->>'duplicateCandidate')::boolean,false), coalesce(row_item->>'rawRowSha256',''));
+    n := n + 1;
+  end loop;
+  return n;
+end;
+$$;
+create or replace function public.mtu_khs_update_import_row_mapping(p_row_id text, p_mapping jsonb)
+returns public.mtu_khs_import_rows language plpgsql security definer set search_path = public
+as $$
+declare row_item public.mtu_khs_import_rows; batch_item public.mtu_khs_import_batches; actor public.profiles; merged jsonb; errors text[] := ARRAY[]::text[]; target_upt text; target_ultg text; target_gi text; target_bay text; target_gudang text;
+begin
+  select * into row_item from public.mtu_khs_import_rows where id = p_row_id for update;
+  if not found then raise exception 'MTU_IMPORT_ROW_NOT_FOUND'; end if;
+  select * into batch_item from public.mtu_khs_import_batches where id = row_item.batch_id;
+  select * into actor from public.profiles where id = auth.uid();
+  if actor.role not in ('SUPERADMIN','PENGADAAN','ADMIN_LOG_PUSAT','ASMAN_LOG_UIT') then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if actor.role = 'ASMAN_LOG_UIT' and actor.uit_id is distinct from batch_item.uit_id then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if batch_item.status not in ('STAGED','REVIEW') then raise exception 'MTU_IMPORT_ALREADY_COMMITTED'; end if;
+  merged := row_item.normalized_data || coalesce(p_mapping, '{}'::jsonb);
+  target_upt := nullif(merged->>'uptId',''); target_ultg := nullif(merged->>'ultgId',''); target_gi := nullif(merged->>'garduIndukId',''); target_bay := nullif(merged->>'bayId',''); target_gudang := nullif(merged->>'gudangId','');
+  if target_upt is null or not exists (select 1 from public.upt where id = target_upt) then errors := errors || 'MTU_MAPPING_REQUIRED:UPT'; end if;
+  if batch_item.uit_id is not null and target_upt is not null and not exists (select 1 from public.upt where id = target_upt and uit_id = batch_item.uit_id) then errors := errors || 'MTU_HIERARCHY_INVALID:UPT_UIT'; end if;
+  if target_ultg is not null and not exists (select 1 from public.ultg where id = target_ultg and upt_id = target_upt) then errors := errors || 'MTU_HIERARCHY_INVALID:ULTG'; end if;
+  if nullif(merged->>'giName','') is not null and target_gi is null and target_bay is null and target_gudang is null then errors := errors || 'MTU_MAPPING_REQUIRED:SITE'; end if;
+  if target_gi is not null and not exists (select 1 from public.mtu_khs_gardu_induk gi where gi.id = target_gi and gi.upt_id = target_upt) then errors := errors || 'MTU_HIERARCHY_INVALID:GI'; end if;
+  if target_bay is not null and not exists (select 1 from public.mtu_khs_gardu_induk_bay bay join public.mtu_khs_gardu_induk gi on gi.id = bay.gardu_induk_id where bay.id = target_bay and gi.upt_id = target_upt and (target_gi is null or gi.id = target_gi)) then errors := errors || 'MTU_HIERARCHY_INVALID:BAY'; end if;
+  if target_gudang is not null and not exists (select 1 from public.gudang where id = target_gudang and upt_id = target_upt) then errors := errors || 'MTU_HIERARCHY_INVALID:GUDANG'; end if;
+  if nullif(merged->>'provider','') is not null and nullif(merged->>'supplierId','') is null then errors := errors || 'MTU_MAPPING_REQUIRED:SUPPLIER'; end if;
+  if nullif(merged->>'supplierId','') is not null and not exists (select 1 from public.supplier where id = merged->>'supplierId') then errors := errors || 'MTU_MAPPING_INVALID:SUPPLIER'; end if;
+  if nullif(merged->>'mtuCode','') is not null and nullif(merged->>'mtuSpecId','') is null and nullif(merged->>'katalogId','') is null then errors := errors || 'MTU_MAPPING_REQUIRED:SPEC'; end if;
+  if nullif(merged->>'mtuSpecId','') is not null and not exists (select 1 from public.mtu_khs_specs where id = merged->>'mtuSpecId') then errors := errors || 'MTU_MAPPING_INVALID:SPEC'; end if;
+  if nullif(merged->>'katalogId','') is not null and not exists (select 1 from public.katalog where id = merged->>'katalogId') then errors := errors || 'MTU_MAPPING_INVALID:KATALOG'; end if;
+  update public.mtu_khs_import_rows set normalized_data = merged, validation_errors = to_jsonb(errors) where id = row_item.id returning * into row_item;
+  return row_item;
+end;
+$$;
+create or replace function public.mtu_khs_set_reconciliation(
+  p_record_id text,
+  p_status text,
+  p_note text default ''
+) returns public.mtu_khs_reconciliations
+language plpgsql security definer set search_path = public
+as $$
+declare r public.mtu_khs_records; a public.profiles; result public.mtu_khs_reconciliations;
+begin
+  select * into r from public.mtu_khs_records where id = p_record_id for update;
+  select * into a from public.profiles where id = auth.uid();
+  if not found or r.id is null or r.procurement_year <> 2024 or r.sifat_pekerjaan = 'SUPERVISI'
+     or p_status not in ('BELUM_DICEK', 'BELUM_TUG', 'SEBAGIAN', 'SUDAH_TUG')
+     or not public.mtu_khs_can_access_upt(r.upt_id)
+     or not (a.role = 'SUPERADMIN' or (a.role = 'TL' and a.upt_id = r.upt_id)) then
+    raise exception 'MTU_RECONCILIATION_FORBIDDEN' using errcode = '42501';
+  end if;
+  insert into public.mtu_khs_reconciliations(record_id, status, note, updated_by, updated_at)
+  values (r.id, p_status, left(coalesce(p_note, ''), 2000), a.id, now())
+  on conflict (record_id) do update set status = excluded.status, note = excluded.note,
+    updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_link_stock(
+  p_record_id text,
+  p_stock_id text,
+  p_qty numeric
+) returns public.mtu_khs_stock_links
+language plpgsql security definer set search_path = public
+as $$
+declare r public.mtu_khs_records; s public.stocks; a public.profiles; result public.mtu_khs_stock_links;
+  max_qty numeric; linked_qty numeric;
+begin
+  select * into r from public.mtu_khs_records where id = p_record_id for update;
+  select * into s from public.stocks where id = p_stock_id;
+  select * into a from public.profiles where id = auth.uid();
+  if r.id is null or s.id is null or p_qty is null or p_qty <= 0
+     or r.procurement_year <> 2024 or r.sifat_pekerjaan = 'SUPERVISI'
+     or r.katalog_id is null or s.katalog_id is distinct from r.katalog_id
+     or coalesce(s.upt_id, (select g.upt_id from public.lokasi l join public.gudang g on g.id = l.gudang_id where l.id = s.lokasi_id)) <> r.upt_id
+     or not exists (
+       select 1 from public.lokasi l join public.gudang g on g.id = l.gudang_id
+       where l.id = s.lokasi_id and g.upt_id = r.upt_id
+     )
+     or not public.mtu_khs_can_access_upt(r.upt_id)
+     or not (a.role = 'SUPERADMIN' or (a.role = 'TL' and a.upt_id = r.upt_id)) then
+    raise exception 'MTU_STOCK_REFERENCE_INVALID';
+  end if;
+  max_qty := greatest(0, coalesce(nullif(r.data->>'remainingQty','')::numeric,
+    r.qty - coalesce(nullif(r.data->>'installedQty','')::numeric, 0)));
+  select coalesce(sum(qty), 0) into linked_qty from public.mtu_khs_stock_links where mtu_record_id = r.id and stock_id <> s.id;
+  if linked_qty + p_qty > max_qty then raise exception 'MTU_STOCK_REFERENCE_QTY_EXCEEDED'; end if;
+  insert into public.mtu_khs_stock_links(mtu_record_id, stock_id, qty, created_by, updated_by)
+  values (r.id, s.id, p_qty, a.id, a.id)
+  on conflict (mtu_record_id, stock_id) do update set qty = excluded.qty, updated_by = excluded.updated_by, updated_at = now()
+  returning * into result;
+  return result;
+end;
+$$;
+create or replace function public.mtu_khs_update_operational(p_record_id text, p_expected_version integer, p_patch jsonb, p_idempotency_key text)
+returns public.mtu_khs_records language plpgsql security definer set search_path = public as $$
+declare r public.mtu_khs_records; actor public.profiles; result public.mtu_khs_records; patch jsonb := coalesce(p_patch, '{}'::jsonb); effective_ultg text; effective_gi text; effective_bay text; effective_gudang text; effective_lokasi text; selected_katalog text; katalog_snapshot jsonb;
+begin
+  select * into actor from public.profiles where id = auth.uid();
+  if actor.role not in ('TL','SUPERADMIN') then raise exception 'MTU_ROLE_DENIED'; end if;
+  select * into r from public.mtu_khs_records where id = p_record_id for update;
+  if not found or not public.mtu_khs_can_access_upt(r.upt_id) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if exists (select 1 from public.mtu_khs_record_events where record_id = r.id and idempotency_key = p_idempotency_key and event_type = 'OPERATIONAL_UPDATE') then select * into result from public.mtu_khs_records where id = r.id; return result; end if;
+  if p_expected_version is distinct from r.version then raise exception 'MTU_VERSION_CONFLICT'; end if;
+  if exists (select 1 from jsonb_object_keys(patch) k where k not in ('katalogId','lifecycleStatus','gudangId','lokasiId','ultgId','garduIndukId','bayId')) then raise exception 'MTU_FIELD_FORBIDDEN'; end if;
+  if patch ? 'katalogId' and nullif(patch->>'katalogId','') is null then raise exception 'MTU_CATALOG_REQUIRED'; end if;
+  if patch ? 'katalogId' and nullif(patch->>'katalogId','') is not null and not exists (select 1 from public.katalog where id = patch->>'katalogId') then raise exception 'MTU_CATALOG_INVALID'; end if;
+  if patch ? 'katalogId' and nullif(patch->>'katalogId','') is distinct from r.katalog_id and (exists (select 1 from public.mtu_khs_receipts where mtu_record_id=r.id) or exists (select 1 from public.mtu_khs_usage_links where mtu_record_id=r.id and status='APPROVED') or exists (select 1 from public.mtu_khs_stock_links where mtu_record_id=r.id)) then raise exception 'MTU_CATALOG_LOCKED'; end if;
+  if patch ? 'lifecycleStatus' and (patch->>'lifecycleStatus') not in ('VENDOR','IN_TRANSIT','WAREHOUSE','ON_SITE','INSTALLED','PLANNED_ARRIVAL','CANCELLED') then raise exception 'MTU_STATUS_INVALID'; end if;
+  effective_ultg := case when patch ? 'ultgId' then nullif(patch->>'ultgId','') else r.ultg_id end;
+  effective_gi := case when patch ? 'garduIndukId' then nullif(patch->>'garduIndukId','') else r.gardu_induk_id end;
+  effective_bay := case when patch ? 'bayId' then nullif(patch->>'bayId','') else r.bay_id end;
+  effective_gudang := case when patch ? 'gudangId' then nullif(patch->>'gudangId','') else r.gudang_id end;
+  effective_lokasi := case when patch ? 'lokasiId' then nullif(patch->>'lokasiId','') else r.lokasi_id end;
+  if effective_ultg is not null and not exists (select 1 from public.ultg where id = effective_ultg and upt_id = r.upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if effective_gi is not null and not exists (select 1 from public.mtu_khs_gardu_induk where id = effective_gi and upt_id = r.upt_id and (effective_ultg is null or ultg_id = effective_ultg)) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if effective_bay is not null and not exists (select 1 from public.mtu_khs_gardu_induk_bay b join public.mtu_khs_gardu_induk g on g.id=b.gardu_induk_id where b.id=effective_bay and g.upt_id=r.upt_id and g.id=effective_gi) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if effective_gudang is not null and not exists (select 1 from public.gudang where id=effective_gudang and upt_id=r.upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if effective_lokasi is not null and not exists (select 1 from public.lokasi l join public.gudang g on g.id=l.gudang_id where l.id=effective_lokasi and g.upt_id=r.upt_id and (effective_gudang is null or g.id=effective_gudang)) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  selected_katalog := case when patch ? 'katalogId' then nullif(patch->>'katalogId','') else r.katalog_id end;
+  select coalesce(data,'{}'::jsonb) into katalog_snapshot from public.katalog where id=selected_katalog;
+  if selected_katalog is not null and (
+    nullif(coalesce(katalog_snapshot->>'katalog',katalog_snapshot->>'kode',katalog_snapshot->>'kode_material',katalog_snapshot->>'code',katalog_snapshot->'mara'->>'katalog',katalog_snapshot->'mara'->>'kode_material'),'') is null or
+    nullif(coalesce(katalog_snapshot->>'name',katalog_snapshot->>'nama',katalog_snapshot->>'nama_material',katalog_snapshot->>'materialDescription',katalog_snapshot->'mara'->>'name',katalog_snapshot->'mara'->>'nama'),'') is null or
+    nullif(coalesce(katalog_snapshot->>'description',katalog_snapshot->>'deskripsi',katalog_snapshot->>'materialDescription',katalog_snapshot->>'name',katalog_snapshot->>'nama',katalog_snapshot->'mara'->>'description',katalog_snapshot->'mara'->>'deskripsi',katalog_snapshot->'mara'->>'name',katalog_snapshot->'mara'->>'nama'),'') is null or
+    nullif(coalesce(katalog_snapshot->>'satuan',katalog_snapshot->>'unit',katalog_snapshot->'mara'->>'satuan',katalog_snapshot->'mara'->>'unit'),'') is null
+  ) then raise exception 'MTU_CATALOG_SNAPSHOT_INVALID'; end if;
+  update public.mtu_khs_records set katalog_id = selected_katalog, lifecycle_status = case when patch ? 'lifecycleStatus' then patch->>'lifecycleStatus' else lifecycle_status end, ultg_id = effective_ultg, gudang_id = effective_gudang, lokasi_id = effective_lokasi, gardu_induk_id = effective_gi, bay_id = effective_bay, data = data || patch || jsonb_strip_nulls(jsonb_build_object('katalogId',selected_katalog,'catalogNumber',coalesce(katalog_snapshot->>'katalog',katalog_snapshot->>'kode',katalog_snapshot->>'kode_material',katalog_snapshot->>'code',katalog_snapshot->'mara'->>'katalog',katalog_snapshot->'mara'->>'kode_material'), 'materialName',coalesce(katalog_snapshot->>'name',katalog_snapshot->>'nama',katalog_snapshot->>'nama_material',katalog_snapshot->>'materialDescription',katalog_snapshot->'mara'->>'name',katalog_snapshot->'mara'->>'nama'), 'materialDescription',coalesce(katalog_snapshot->>'description',katalog_snapshot->>'deskripsi',katalog_snapshot->>'materialDescription',katalog_snapshot->>'name',katalog_snapshot->>'nama',katalog_snapshot->'mara'->>'description',katalog_snapshot->'mara'->>'deskripsi',katalog_snapshot->'mara'->>'name',katalog_snapshot->'mara'->>'nama'), 'unit',coalesce(katalog_snapshot->>'satuan',katalog_snapshot->>'unit',katalog_snapshot->'mara'->>'satuan',katalog_snapshot->'mara'->>'unit'), 'satuan',coalesce(katalog_snapshot->>'satuan',katalog_snapshot->>'unit',katalog_snapshot->'mara'->>'satuan',katalog_snapshot->'mara'->>'unit'), 'qty',qty,'physicalQty',qty)), version = version + 1, updated_at = now() where id=r.id returning * into result;
+  insert into public.mtu_khs_record_events(record_id,event_type,actor_id,source_upt_id,before_data,after_data,metadata,idempotency_key) values (r.id,'OPERATIONAL_UPDATE',auth.uid(),r.upt_id,to_jsonb(r),to_jsonb(result),jsonb_build_object('patch',patch),p_idempotency_key);
+  return result;
+end; $$;
+create or replace function public.mtu_khs_request_transfer(p_record_id text, p_expected_version integer, p_qty numeric, p_target_upt_id text, p_target_ultg_id text, p_target_gardu_induk_id text, p_target_bay_id text, p_target_gudang_id text, p_target_lokasi_id text, p_note text, p_idempotency_key text)
+returns public.mtu_khs_transfer_requests language plpgsql security definer set search_path = public as $$
+declare r public.mtu_khs_records; actor public.profiles; result public.mtu_khs_transfer_requests; available numeric;
+begin
+  select * into actor from public.profiles where id=auth.uid(); if actor.role not in ('TL','SUPERADMIN') then raise exception 'MTU_ROLE_DENIED'; end if;
+  select * into r from public.mtu_khs_records where id=p_record_id for update; if not found or not public.mtu_khs_can_access_upt(r.upt_id) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  select * into result from public.mtu_khs_transfer_requests where source_record_id=r.id and idempotency_key=p_idempotency_key; if found then return result; end if;
+  if r.version is distinct from p_expected_version then raise exception 'MTU_VERSION_CONFLICT'; end if;
+  if r.sifat_pekerjaan = 'SUPERVISI' or p_qty is null or p_qty <= 0 then raise exception 'MTU_QTY_INVALID'; end if;
+  if r.upt_id = p_target_upt_id then raise exception 'MTU_TRANSFER_SAME_UPT'; end if;
+  if not exists (select 1 from public.upt a join public.upt b on b.id=p_target_upt_id where a.id=r.upt_id and a.uit_id is not null and a.uit_id=b.uit_id) then raise exception 'MTU_TRANSFER_CROSS_UIT'; end if;
+  if (p_target_gudang_id is null) <> (p_target_lokasi_id is null) then raise exception 'MTU_TARGET_LOCATION_REQUIRED'; end if;
+  if (p_target_ultg_id is not null or p_target_gardu_induk_id is not null or p_target_bay_id is not null) and (p_target_ultg_id is null or p_target_gardu_induk_id is null or p_target_bay_id is null) then raise exception 'MTU_TARGET_HIERARCHY_REQUIRED'; end if;
+  if (p_target_gardu_induk_id is null or p_target_bay_id is null) and p_target_gudang_id is null then raise exception 'MTU_TARGET_LOCATION_REQUIRED'; end if;
+  if p_target_gudang_id is not null and not exists (select 1 from public.gudang where id=p_target_gudang_id and upt_id=p_target_upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if p_target_lokasi_id is not null and not exists (select 1 from public.lokasi l join public.gudang g on g.id=l.gudang_id where l.id=p_target_lokasi_id and g.upt_id=p_target_upt_id and g.id=p_target_gudang_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if p_target_ultg_id is not null and not exists (select 1 from public.ultg where id=p_target_ultg_id and upt_id=p_target_upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if p_target_gardu_induk_id is not null and not exists (select 1 from public.mtu_khs_gardu_induk where id=p_target_gardu_induk_id and upt_id=p_target_upt_id and (p_target_ultg_id is null or ultg_id=p_target_ultg_id)) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if p_target_bay_id is not null and not exists (select 1 from public.mtu_khs_gardu_induk_bay where id=p_target_bay_id and gardu_induk_id=p_target_gardu_induk_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  available := r.qty - greatest(coalesce((select sum(qty) from public.mtu_khs_receipts where mtu_record_id=r.id),0), coalesce((select sum(qty) from public.mtu_khs_usage_links where mtu_record_id=r.id and status='APPROVED'),0), coalesce((select sum(qty) from public.mtu_khs_stock_links where mtu_record_id=r.id),0));
+  if p_qty > available then raise exception 'MTU_QTY_BOUND'; end if;
+  insert into public.mtu_khs_record_events(record_id,event_type,actor_id,source_upt_id,target_upt_id,metadata,idempotency_key) values (r.id,'TRANSFER_REQUESTED',auth.uid(),r.upt_id,p_target_upt_id,jsonb_build_object('qty',p_qty,'targetGudangId',p_target_gudang_id,'targetLokasiId',p_target_lokasi_id),p_idempotency_key);
+  insert into public.mtu_khs_transfer_requests(source_record_id,source_version,idempotency_key,source_upt_id,target_upt_id,target_ultg_id,target_gardu_induk_id,target_bay_id,target_gudang_id,target_lokasi_id,qty,note,requested_by,before_snapshot) values (r.id,r.version,p_idempotency_key,r.upt_id,p_target_upt_id,p_target_ultg_id,p_target_gardu_induk_id,p_target_bay_id,p_target_gudang_id,p_target_lokasi_id,p_qty,coalesce(p_note,''),auth.uid(),to_jsonb(r)) returning * into result;
+  return result;
+end; $$;
+create or replace function public.mtu_khs_decide_transfer(p_request_id uuid, p_decision text, p_note text default '')
+returns public.mtu_khs_transfer_requests language plpgsql security definer set search_path = public as $$
+declare t public.mtu_khs_transfer_requests; r public.mtu_khs_records; actor public.profiles; result public.mtu_khs_transfer_requests; available numeric; new_id text; target_data jsonb;
+begin
+  if p_decision not in ('APPROVED','REJECTED') then raise exception 'MTU_TRANSFER_DECISION_INVALID'; end if;
+  select * into t from public.mtu_khs_transfer_requests where id=p_request_id for update; if not found then raise exception 'MTU_TRANSFER_NOT_FOUND'; end if;
+  select * into actor from public.profiles where id=auth.uid(); if actor.role <> 'SUPERADMIN' and not (actor.role='ASMAN' and actor.upt_id=t.source_upt_id) then raise exception 'MTU_TRANSFER_APPROVER_INVALID'; end if;
+  if t.status <> 'PENDING' then return t; end if;
+  if p_decision = 'REJECTED' then update public.mtu_khs_transfer_requests set status='REJECTED',decision_note=coalesce(p_note,''),decided_by=auth.uid(),decided_at=now() where id=t.id returning * into result; insert into public.mtu_khs_record_events(record_id,event_type,actor_id,source_upt_id,target_upt_id,metadata,idempotency_key) values (t.source_record_id,'TRANSFER_REJECTED',auth.uid(),t.source_upt_id,t.target_upt_id,jsonb_build_object('transferId',t.id,'note',p_note),t.id::text); return result; end if;
+  select * into r from public.mtu_khs_records where id=t.source_record_id for update; if not found or r.version is distinct from t.source_version then raise exception 'MTU_VERSION_CONFLICT'; end if;
+  if not exists (select 1 from public.upt a join public.upt b on b.id=t.target_upt_id where a.id=r.upt_id and a.uit_id is not null and a.uit_id=b.uit_id) then raise exception 'MTU_TRANSFER_CROSS_UIT'; end if;
+  if (t.target_gudang_id is null) <> (t.target_lokasi_id is null) then raise exception 'MTU_TARGET_LOCATION_REQUIRED'; end if;
+  if (t.target_ultg_id is not null or t.target_gardu_induk_id is not null or t.target_bay_id is not null) and (t.target_ultg_id is null or t.target_gardu_induk_id is null or t.target_bay_id is null) then raise exception 'MTU_TARGET_HIERARCHY_REQUIRED'; end if;
+  if (t.target_gardu_induk_id is null or t.target_bay_id is null) and t.target_gudang_id is null then raise exception 'MTU_TARGET_LOCATION_REQUIRED'; end if;
+  if t.target_gudang_id is not null and not exists (select 1 from public.gudang where id=t.target_gudang_id and upt_id=t.target_upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if t.target_lokasi_id is not null and not exists (select 1 from public.lokasi l join public.gudang g on g.id=l.gudang_id where l.id=t.target_lokasi_id and g.upt_id=t.target_upt_id and g.id=t.target_gudang_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if t.target_ultg_id is not null and not exists (select 1 from public.ultg where id=t.target_ultg_id and upt_id=t.target_upt_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if t.target_gardu_induk_id is not null and not exists (select 1 from public.mtu_khs_gardu_induk where id=t.target_gardu_induk_id and upt_id=t.target_upt_id and ultg_id=t.target_ultg_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  if t.target_bay_id is not null and not exists (select 1 from public.mtu_khs_gardu_induk_bay where id=t.target_bay_id and gardu_induk_id=t.target_gardu_induk_id) then raise exception 'MTU_HIERARCHY_INVALID'; end if;
+  select r.data || jsonb_strip_nulls(jsonb_build_object(
+    'uptId',t.target_upt_id,
+    'uptName',coalesce(u.data->>'nama',u.data->>'name',u.id),
+    'ultgId',t.target_ultg_id,
+    'ultgName',(select coalesce(x.data->>'nama',x.data->>'name',x.id) from public.ultg x where x.id=t.target_ultg_id),
+    'garduIndukId',t.target_gardu_induk_id,
+    'giName',(select coalesce(x.data->>'nama',x.data->>'name',x.id) from public.mtu_khs_gardu_induk x where x.id=t.target_gardu_induk_id),
+    'bayId',t.target_bay_id,
+    'bayName',(select coalesce(x.data->>'nama',x.data->>'name',x.id) from public.mtu_khs_gardu_induk_bay x where x.id=t.target_bay_id),
+    'gudangId',t.target_gudang_id,
+    'gudangName',(select coalesce(x.data->>'nama',x.data->>'name',x.id) from public.gudang x where x.id=t.target_gudang_id),
+    'lokasiId',t.target_lokasi_id,
+    'lokasiName',(select coalesce(x.data->>'nama',x.data->>'name',x.data->>'kode',x.id) from public.lokasi x where x.id=t.target_lokasi_id),
+    'qty',t.qty,'physicalQty',t.qty,'remainingQty',t.qty,'transferId',t.id,'transferredFrom',r.id
+  )) into target_data from public.upt u where u.id=t.target_upt_id;
+  available := r.qty - greatest(coalesce((select sum(qty) from public.mtu_khs_receipts where mtu_record_id=r.id),0), coalesce((select sum(qty) from public.mtu_khs_usage_links where mtu_record_id=r.id and status='APPROVED'),0), coalesce((select sum(qty) from public.mtu_khs_stock_links where mtu_record_id=r.id),0)); if t.qty > available then raise exception 'MTU_QTY_BOUND'; end if;
+  if t.qty = r.qty then
+    update public.mtu_khs_records set upt_id=t.target_upt_id,ultg_id=t.target_ultg_id,gardu_induk_id=t.target_gardu_induk_id,bay_id=t.target_bay_id,gudang_id=t.target_gudang_id,lokasi_id=t.target_lokasi_id,version=version+1,updated_at=now(),data=target_data where id=r.id returning id into new_id;
+    update public.mtu_khs_transfer_requests set target_record_id=new_id,after_snapshot=(select to_jsonb(x) from public.mtu_khs_records x where x.id=new_id) where id=t.id;
+  else
+    new_id := 'MTU-KHS-TRANSFER-' || gen_random_uuid()::text;
+    insert into public.mtu_khs_records(id,upt_id,ultg_id,gardu_induk_id,bay_id,gudang_id,lokasi_id,mtu_spec_id,katalog_id,supplier_id,procurement_year,lifecycle_status,sifat_pekerjaan,qty,data,created_by) select new_id,t.target_upt_id,t.target_ultg_id,t.target_gardu_induk_id,t.target_bay_id,t.target_gudang_id,t.target_lokasi_id,r.mtu_spec_id,r.katalog_id,r.supplier_id,r.procurement_year,r.lifecycle_status,r.sifat_pekerjaan,t.qty,target_data,auth.uid();
+    insert into public.mtu_khs_record_evidence(record_id,kind,object_path,mime_type,size_bytes,uploaded_by,inherited_from) select new_id,kind,object_path,mime_type,size_bytes,auth.uid(),id from public.mtu_khs_record_evidence where record_id=r.id and superseded_at is null;
+    update public.mtu_khs_records set qty=qty-t.qty,version=version+1,updated_at=now(),data=coalesce(data,'{}'::jsonb)||jsonb_build_object('qty',qty-t.qty,'physicalQty',qty-t.qty,'remainingQty',qty-t.qty) where id=r.id;
+    update public.mtu_khs_transfer_requests set target_record_id=new_id,after_snapshot=(select to_jsonb(x) from public.mtu_khs_records x where x.id=new_id) where id=t.id;
+    insert into public.mtu_khs_record_events(record_id,event_type,actor_id,source_upt_id,target_upt_id,before_data,after_data,metadata,idempotency_key) values (r.id,'TRANSFER_SPLIT',auth.uid(),t.source_upt_id,t.target_upt_id,to_jsonb(r),(select to_jsonb(x) from public.mtu_khs_records x where x.id=r.id),jsonb_build_object('transferId',t.id,'targetRecordId',new_id,'qty',t.qty),t.id::text || ':split');
+  end if;
+  update public.mtu_khs_transfer_requests set status='APPROVED',decision_note=coalesce(p_note,''),decided_by=auth.uid(),decided_at=now() where id=t.id returning * into result;
+  insert into public.mtu_khs_record_events(record_id,event_type,actor_id,source_upt_id,target_upt_id,before_data,after_data,metadata,idempotency_key) values (r.id,'TRANSFER_APPROVED',auth.uid(),t.source_upt_id,t.target_upt_id,to_jsonb(r),(select to_jsonb(x) from public.mtu_khs_records x where x.id=r.id),jsonb_build_object('transferId',t.id,'targetRecordId',new_id),t.id::text);
+  return result;
+end; $$;
+create or replace function public.mtu_khs_transfer_destinations(p_target_upt_id text)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare actor public.profiles; target_uit text; result jsonb;
+begin
+  select * into actor from public.profiles where id=auth.uid();
+  select uit_id into target_uit from public.upt where id=p_target_upt_id;
+  if target_uit is null then raise exception 'MTU_TARGET_UPT_INVALID'; end if;
+  if actor.role not in ('SUPERADMIN','ADMIN_LOG_PUSAT','PENGADAAN') and not exists (select 1 from public.upt own where own.id=actor.upt_id and own.uit_id=target_uit) and actor.uit_id is distinct from target_uit then raise exception 'MTU_SCOPE_DENIED'; end if;
+  select jsonb_build_object(
+    'ultg', coalesce((select jsonb_agg(jsonb_build_object('id',u.id,'name',coalesce(u.data->>'nama',u.data->>'name',u.id),'uptId',u.upt_id) order by u.id) from public.ultg u where u.upt_id=p_target_upt_id and lower(coalesce(u.data->>'active','true')) <> 'false'),'[]'::jsonb),
+    'gis', coalesce((select jsonb_agg(jsonb_build_object('id',g.id,'name',coalesce(g.data->>'nama',g.data->>'name',g.id),'uptId',g.upt_id,'ultgId',g.ultg_id) order by g.id) from public.mtu_khs_gardu_induk g where g.upt_id=p_target_upt_id and g.active),'[]'::jsonb),
+    'bays', coalesce((select jsonb_agg(jsonb_build_object('id',b.id,'name',coalesce(b.data->>'nama',b.data->>'name',b.id),'garduIndukId',b.gardu_induk_id) order by b.id) from public.mtu_khs_gardu_induk_bay b join public.mtu_khs_gardu_induk g on g.id=b.gardu_induk_id where g.upt_id=p_target_upt_id and b.active),'[]'::jsonb),
+    'gudangs', coalesce((select jsonb_agg(jsonb_build_object('id',g.id,'name',coalesce(g.data->>'nama',g.data->>'name',g.id),'uptId',g.upt_id) order by g.id) from public.gudang g where g.upt_id=p_target_upt_id and lower(coalesce(g.data->>'active','true')) <> 'false'),'[]'::jsonb),
+    'lokasis', coalesce((select jsonb_agg(jsonb_build_object('id',l.id,'name',coalesce(l.data->>'nama',l.data->>'name',l.data->>'kode',l.id),'gudangId',l.gudang_id) order by l.id) from public.lokasi l join public.gudang g on g.id=l.gudang_id where g.upt_id=p_target_upt_id and lower(coalesce(l.data->>'active','true')) <> 'false' and lower(coalesce(g.data->>'active','true')) <> 'false'),'[]'::jsonb)
+  ) into result;
+  return result;
+end; $$;
+create or replace function public.mtu_khs_register_evidence(p_record_id text, p_kind text, p_object_path text, p_mime_type text, p_size_bytes bigint, p_idempotency_key text)
+returns public.mtu_khs_record_evidence language plpgsql security definer set search_path = public, storage as $$
+declare r public.mtu_khs_records; result public.mtu_khs_record_evidence; old public.mtu_khs_record_evidence;
+begin
+  select * into r from public.mtu_khs_records where id=p_record_id; if not found or not public.mtu_khs_can_access_upt(r.upt_id) then raise exception 'MTU_SCOPE_DENIED'; end if;
+  if not exists (select 1 from public.profiles where id=auth.uid() and role in ('TL','SUPERADMIN')) then raise exception 'MTU_ROLE_DENIED'; end if;
+  if p_kind not in ('ITEM','NAMEPLATE') or p_mime_type not like 'image/%' or p_size_bytes <= 0 or p_size_bytes > 2097152 or p_object_path not like r.upt_id || '/' || r.id || '/%' then raise exception 'MTU_EVIDENCE_INVALID'; end if;
+  if not exists (select 1 from storage.objects where bucket_id='mtu-khs-evidence' and name=p_object_path and lower(coalesce(metadata->>'mimetype','')) = lower(p_mime_type) and (metadata->>'size') ~ '^[0-9]+$' and case when (metadata->>'size') ~ '^[0-9]+$' then (metadata->>'size')::bigint else 0 end = p_size_bytes and case when (metadata->>'size') ~ '^[0-9]+$' then (metadata->>'size')::bigint else 0 end <= 2097152) then raise exception 'MTU_EVIDENCE_OBJECT_MISSING'; end if;
+  select * into result from public.mtu_khs_record_evidence where record_id=r.id and kind=p_kind and superseded_at is null order by created_at desc limit 1;
+  if found and result.object_path = p_object_path then return result; end if;
+  update public.mtu_khs_record_evidence set superseded_at=now() where record_id=r.id and kind=p_kind and superseded_at is null returning * into old;
+  insert into public.mtu_khs_record_evidence(record_id,kind,object_path,mime_type,size_bytes,uploaded_by,inherited_from) values (r.id,p_kind,p_object_path,p_mime_type,p_size_bytes,auth.uid(),old.id) returning * into result;
+  insert into public.mtu_khs_record_events(record_id,event_type,actor_id,source_upt_id,after_data,metadata,idempotency_key) values (r.id,'EVIDENCE_REGISTERED',auth.uid(),r.upt_id,to_jsonb(result),jsonb_build_object('kind',p_kind),p_idempotency_key);
+  return result;
+end; $$;
+create or replace function public.mtu_khs_list_records(p_year integer default null, p_lifecycle_status text default null, p_vendor text default null, p_upt_id text default null, p_search text default null, p_rfq text default null, p_contract_kr text default null, p_limit integer default 20, p_offset integer default 0)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare q text := public.mtu_khs_search_text(to_jsonb(coalesce(p_search,''))); result jsonb;
+begin
+  with filtered as (
+    select r.*, case when q='' then 0 else (case when lower(coalesce(r.data->>'mtuCode',''))=q or lower(coalesce(r.data->>'noKontrak',''))=q or lower(coalesce(r.data->>'contractDetailNumber',''))=q then 100 else 0 end) + (case when r.search_text like q||'%' then 20 else 0 end) + similarity(r.search_text,q)*10 end score
+    from public.mtu_khs_records r where public.mtu_khs_can_access_upt(r.upt_id) and (p_year is null or r.procurement_year=p_year) and (p_lifecycle_status is null or r.lifecycle_status=p_lifecycle_status) and (p_vendor is null or lower(coalesce(r.data->>'vendor',''))=lower(p_vendor)) and (p_upt_id is null or r.upt_id=p_upt_id) and (p_rfq is null or lower(coalesce(r.data->>'mtuCode',''))=lower(p_rfq)) and (p_contract_kr is null or lower(coalesce(r.data->>'contractDetailNumber',r.data->>'noKontrak',''))=lower(p_contract_kr)) and (q='' or not exists (select 1 from regexp_split_to_table(q, '\s+') token where token <> '' and r.search_text not like '%' || token || '%' and word_similarity(token, r.search_text) < 0.45))
+  ), items as (select coalesce(jsonb_agg(to_jsonb(page_rows) order by score desc, updated_at desc), '[]'::jsonb) value from (select * from filtered order by score desc,updated_at desc limit greatest(1,least(p_limit,1000)) offset greatest(0,p_offset)) page_rows), facets as (select coalesce(jsonb_agg(distinct data->>'mtuCode') filter (where data->>'mtuCode' is not null),'[]'::jsonb) rfqs, coalesce(jsonb_agg(distinct coalesce(data->>'contractDetailNumber',data->>'noKontrak')) filter (where coalesce(data->>'contractDetailNumber',data->>'noKontrak') is not null),'[]'::jsonb) contract_krs from filtered)
+  select jsonb_build_object('items',items.value,'total',(select count(*) from filtered),'facets',jsonb_build_object('rfqs',facets.rfqs,'contractKrs',facets.contract_krs),'vendors',(select coalesce(jsonb_agg(distinct data->>'vendor'),'[]'::jsonb) from filtered)) into result from items,facets;
+  return result;
+end; $$;
+revoke all on function public.mtu_khs_can_access_upt(text) from public;
+grant execute on function public.mtu_khs_can_access_upt(text) to authenticated;
+revoke all on function public.mtu_khs_submit_change(text, integer, jsonb, text) from public;
+revoke all on function public.mtu_khs_decide_change(text, text, text) from public;
+grant execute on function public.mtu_khs_submit_change(text, integer, jsonb, text) to authenticated;
+grant execute on function public.mtu_khs_decide_change(text, text, text) to authenticated;
+revoke all on function public.mtu_khs_commit_import(text, text) from public;
+grant execute on function public.mtu_khs_commit_import(text, text) to authenticated;
+revoke all on function public.mtu_khs_decide_import(text,text,text) from public;
+grant execute on function public.mtu_khs_decide_import(text,text,text) to authenticated;
+revoke all on function public.mtu_khs_attach_document(text,text) from public;
+grant execute on function public.mtu_khs_attach_document(text,text) to authenticated;
+revoke all on function public.mtu_khs_register_document(text,text,text,text,text,text) from public;
+grant execute on function public.mtu_khs_register_document(text,text,text,text,text,text) to authenticated;
+revoke all on function public.mtu_khs_link_approved_tug(text,uuid,numeric) from public;
+grant execute on function public.mtu_khs_link_approved_tug(text,uuid,numeric) to authenticated;
+revoke all on function public.mtu_khs_upsert_gardu_induk(text,text,jsonb), public.mtu_khs_upsert_bay(text,text,jsonb) from public;
+grant execute on function public.mtu_khs_upsert_gardu_induk(text,text,jsonb), public.mtu_khs_upsert_bay(text,text,jsonb) to authenticated;
+revoke all on function public.mtu_khs_deactivate_site_master(text,text) from public;
+grant execute on function public.mtu_khs_deactivate_site_master(text,text) to authenticated;
+revoke all on function public.mtu_khs_stage_import(text,integer,text,text,text,text,jsonb) from public;
+grant execute on function public.mtu_khs_stage_import(text,integer,text,text,text,text,jsonb) to authenticated;
+revoke all on function public.mtu_khs_update_import_row_mapping(text,jsonb) from public;
+grant execute on function public.mtu_khs_update_import_row_mapping(text,jsonb) to authenticated;
+grant execute on function public.mtu_khs_set_reconciliation(text,text,text), public.mtu_khs_link_stock(text,text,numeric), public.mtu_khs_link_approved_tug(text,uuid,numeric) to authenticated;
+revoke all on function public.mtu_khs_submit_change(text, integer, jsonb, text) from public, anon, authenticated;
+revoke all on function public.mtu_khs_decide_change(text, text, text) from public, anon, authenticated;
+grant execute on function public.mtu_khs_submit_change(text, integer, jsonb, text), public.mtu_khs_decide_change(text, text, text) to authenticated;
+revoke all on function public.mtu_khs_update_operational(text,integer,jsonb,text), public.mtu_khs_request_transfer(text,integer,numeric,text,text,text,text,text,text,text,text), public.mtu_khs_decide_transfer(uuid,text,text), public.mtu_khs_transfer_destinations(text), public.mtu_khs_register_evidence(text,text,text,text,bigint,text), public.mtu_khs_list_records(integer,text,text,text,text,text,text,integer,integer) from public;
+grant execute on function public.mtu_khs_update_operational(text,integer,jsonb,text), public.mtu_khs_request_transfer(text,integer,numeric,text,text,text,text,text,text,text,text), public.mtu_khs_decide_transfer(uuid,text,text), public.mtu_khs_transfer_destinations(text), public.mtu_khs_register_evidence(text,text,text,text,bigint,text), public.mtu_khs_list_records(integer,text,text,text,text,text,text,integer,integer) to authenticated;
+
 -- Canonical mirror of migration 20261012_tug_mara_post_guard.sql.
 -- TUG MARA posting guard. Apply after 20261001_tug10_target_stock.sql.
 -- Applied to self-host production on 2026-10-12 after explicit approval.
@@ -4362,6 +5175,10 @@ begin
   return new;
 end;
 $$;
+drop trigger if exists katalog_fill_satuan on public.katalog;
+create trigger katalog_fill_satuan
+before insert or update of data on public.katalog
+for each row execute function public.katalog_fill_satuan_from_mara();
 revoke all on function public.katalog_fill_satuan_from_mara() from public, anon, authenticated;
 
 create or replace function public.tug_mara_catalog_write_guard()
@@ -4795,12 +5612,6 @@ $$;
 revoke all on function public.mtu_khs_apply_tug3_receipt(text,text) from public, anon, authenticated;
 grant execute on function public.mtu_khs_apply_tug3_receipt(text,text) to authenticated;
 
--- TUG-10 keeps its existing signature and atomic implementation. The posting
--- context makes its catalog/stock writes pass through the MARA resolver above;
--- invalid, missing, or ambiguous codes abort the whole transaction.
-revoke all on function public.approve_tug10_final(text, uuid) from public, anon;
-grant execute on function public.approve_tug10_final(text, uuid) to authenticated;
-
 commit;
 begin;
 create or replace function public.approve_tug10_final(
@@ -5189,43 +6000,4 @@ commit;
 -- schema.sql is applied transactionally, so this mirror uses regular CREATE INDEX.
 create index if not exists idx_mara_catalog_resolver_code
   on public.mara_catalog ((nullif(ltrim(btrim(coalesce(kode_material, '')), '0'), '')));
-
--- Mirror of 20261012c_mara_orphan_1004160255.sql.
-do $migration$
-declare
-  v_mara public.mara_catalog;
-  v_candidate_count integer;
-  v_catalog_count integer;
-  v_stock_count integer;
-  v_category text;
-begin
-  select count(*) into v_candidate_count
-  from public.mara_catalog
-  where nullif(ltrim(btrim(coalesce(kode_material, '')), '0'), '') = '4160255';
-  if v_candidate_count <> 1 then
-    raise exception 'MARA_ORPHAN_REPAIR_CANDIDATE_INVALID: expected one MARA key 4160255, found %', v_candidate_count;
-  end if;
-  select * into v_mara from public.mara_catalog
-  where nullif(ltrim(btrim(coalesce(kode_material, '')), '0'), '') = '4160255';
-  if btrim(coalesce(v_mara.kode_material, '')) <> '000000004160255'
-     or btrim(coalesce(v_mara.nama, '')) <> 'CABLE CTRL;NYY;1X50mm2;0.6/1kV;UG'
-     or btrim(coalesce(v_mara.satuan, '')) <> 'M'
-     or btrim(coalesce(v_mara.material_group_desc, '')) <> 'CABLE CONTROL(<10MM)' then
-    raise exception 'MARA_ORPHAN_REPAIR_CANDIDATE_CHANGED';
-  end if;
-  v_category := btrim(v_mara.material_group_desc);
-  select count(*) into v_catalog_count from public.katalog where id = 'KAT-1004160255';
-  if v_catalog_count <> 1 then raise exception 'MARA_ORPHAN_REPAIR_CATALOG_INVALID: expected KAT-1004160255'; end if;
-  select count(*) into v_stock_count from public.stocks where id = 'STK-SAP-3615-1004160255';
-  if v_stock_count <> 1 then raise exception 'MARA_ORPHAN_REPAIR_STOCK_INVALID: expected STK-SAP-3615-1004160255'; end if;
-  update public.katalog set data = coalesce(data, '{}'::jsonb) || jsonb_build_object(
-    'katalog', btrim(v_mara.kode_material), 'name', btrim(v_mara.nama), 'satuan', btrim(v_mara.satuan), 'unit', btrim(v_mara.satuan),
-    'category', v_category, 'maraCode', btrim(v_mara.kode_material), '_maraLocked', true)
-  where id = 'KAT-1004160255';
-  update public.stocks set data = coalesce(data, '{}'::jsonb) || jsonb_build_object(
-    'katalog', btrim(v_mara.kode_material), 'name', btrim(v_mara.nama), 'satuan', btrim(v_mara.satuan),
-    'unit', btrim(v_mara.satuan), 'category', v_category, 'maraCode', btrim(v_mara.kode_material), '_maraLocked', true)
-  where id = 'STK-SAP-3615-1004160255';
-end;
-$migration$;
 
