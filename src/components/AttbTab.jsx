@@ -8,10 +8,14 @@ import * as XLSX from "xlsx";
 import { readXlsxArrayBufferSafe, sanitizeRows } from "../lib/xlsxImport.js";
 import { ArrowsClockwise, Camera, CaretRight, Check, CheckCircle, FileText, FloppyDisk, Info, MapPin, Package, PencilSimple, Plus, Trash, UploadSimple, Warning, X } from "@phosphor-icons/react";
 import { OperationsHero } from "./OperationsHero.jsx";
+import QRCode from "qrcode";
+import { SUPABASE_URL } from "../supabaseClient.js";
+import { attbPublicUrl } from "../lib/attbTrace.js";
+import { PUBLIC_APP_ORIGIN } from "../lib/utils.js";
 
 // AttbTab — pipeline monitoring penghapusan aset material ATTB, lihat docs/ATTB_SPEC.md.
 // Pola konsisten HeavyEquipmentTabV2: chip filter + kartu, scoping UPT via effectiveUptFilter.
-export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createItem, saveEdit, submitToKI, approveToKI, rejectToKI, advanceStage, markBelumLanjut, bulkImport, showToast, gudangList=[], subGudangList=[], lokasiList=[], setPetaMiniDetail, deleteItem, askConfirmDelete, bongkaranPool=[], handleImg }) {
+export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createItem, saveEdit, submitToKI, approveToKI, rejectToKI, advanceStage, markBelumLanjut, bulkImport, showToast, gudangList=[], subGudangList=[], lokasiList=[], setPetaMiniDetail, deleteItem, askConfirmDelete, bongkaranPool=[], handleImg, supabase }) {
   const canDelete = hasRole(currentUser, "ADMIN");
   // Key TUG-10 yang sudah "diusulkan" jadi item ATTB (untuk tandai pool yg sudah dipakai).
   const promotedKeys = new Set(attbList.map(a=>a.sourceTug10Key).filter(Boolean));
@@ -97,6 +101,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
   const [rejectReason, setRejectReason] = useState("");
   const [belumLanjutId, setBelumLanjutId] = useState(null);
   const [belumLanjutNote, setBelumLanjutNote] = useState("");
+  const [trace, setTrace] = useState({ loading:false, link:null, history:[] });
 
   // Import Excel (jenis MATERIAL) — lihat docs/ATTB_SPEC.md bagian 7a/7b.
   // UPT tidak dipilih manual — otomatis ikut UPT login admin (effectiveUptFilter/myUpt).
@@ -350,6 +355,29 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
   }, [previewId]);
 
   const previewItem = previewId ? attbList.find(a=>a.id===previewId) : null;
+  useEffect(() => {
+    if (!previewItem || !supabase || !previewItem.sourceTug10Key) { setTrace({ loading:false, link:null, history:[] }); return; }
+    let alive = true; setTrace({ loading:true, link:null, history:[] });
+    Promise.all([
+      supabase.from("attb_public_links").select("attb_id,public_token,source_tug10_key,created_at,rotated_at").eq("attb_id", previewItem.id).maybeSingle(),
+      supabase.from("attb_item_history").select("event_type,stage,occurred_at,snapshot").eq("attb_id", previewItem.id).order("occurred_at", { ascending:true }),
+    ]).then(([linkRes, historyRes]) => { if (alive) setTrace({ loading:false, link:linkRes.data || null, history:historyRes.data || [] }); }).catch(() => alive && setTrace({ loading:false, link:null, history:[] }));
+    return () => { alive = false; };
+  }, [previewItem?.id, previewItem?.sourceTug10Key, supabase]);
+  async function printAttbLabel() {
+    if (!trace.link || !previewItem) return;
+    const url = attbPublicUrl(previewItem.id, trace.link.public_token, PUBLIC_APP_ORIGIN);
+    const qr = await QRCode.toDataURL(url, { margin:1, width:220 });
+    const w = window.open("", "_blank", "noopener,noreferrer"); if (!w) return;
+    w.document.write(`<style>@page{size:70mm 50mm;margin:0}*{box-sizing:border-box}body{width:70mm;height:50mm;margin:0;padding:3mm;font:8pt Arial}.qr{width:25mm;height:25mm;float:right}h1{font-size:11pt;margin:0 0 2mm}p{margin:1mm 0;overflow-wrap:anywhere}</style><h1>ATTB UNIT</h1><img class="qr" src="${qr}"/><p><b>${previewItem.nomorATTB||previewItem.id}</b></p><p>${previewItem.description||"-"}</p><p>Katalog: ${previewItem.katalog||previewItem.nomorAT||"-"}</p><p>Seri/Aset: ${previewItem.noSeri||previewItem.noEquipment||previewItem.nomorAT||"-"}</p><p>Sumber: ${previewItem.sourceTug10Key}</p>`); w.document.close(); w.focus(); w.print();
+  }
+  async function rotateAttbToken() {
+    if (!trace.link || !supabase || !hasRole(currentUser, "TL", "SUPERADMIN")) return;
+    if (!window.confirm("Ganti token QR ATTB? QR lama langsung tidak berlaku.")) return;
+    const { data, error } = await supabase.rpc("rotate_attb_public_token", { p_attb_id: previewItem.id });
+    if (error) { showToast(error.message || "Token QR gagal diganti.", "error"); return; }
+    setTrace(t => ({ ...t, link: { ...t.link, public_token: data?.public_token || data } })); showToast("Token QR ATTB diganti.");
+  }
   // Older promoted records only persisted `foto`.  Rehydrate missing photo
   // fields from the live TUG-10 pool when the source key is still available.
   const previewSource = previewItem?.sourceTug10Key
@@ -990,6 +1018,7 @@ export function AttbTab({ attbList, currentUser, uptList, users, sty, C, createI
                 <div className="attb-preview-details">
                   {previewFieldGroups(previewItem).map(group=><div className="attb-preview-group" key={group.title}><h4>{group.title}</h4><dl>{group.fields.map(f=><Fragment key={f.key}><dt>{f.label}</dt><dd>{formatPreviewValue(f,previewItem[f.key])}</dd></Fragment>)}</dl></div>)}
                   <div className="attb-preview-group"><h4>Lokasi Penyimpanan</h4><dl><dt>Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.gdg?.nama||"-"}</dd><dt>Sub Gudang</dt><dd>{resolveLokasiMaster(previewItem)?.sg?.nama||"-"}</dd><dt>Blok</dt><dd>{resolveLokasiMaster(previewItem)?.lok?.kode||resolveLokasiMaster(previewItem)?.lok?.nama||"-"}</dd></dl></div>
+                  <div className="attb-preview-group"><h4>Jejak unit ATTB</h4>{previewItem.sourceTug10Key ? <><p style={{fontSize:12}}>Sumber: <b>{previewItem.sourceTug10Key}</b></p>{trace.loading ? <p>Memuat histori…</p> : <ul className="attb-preview-history">{(trace.history.length ? trace.history : (previewItem.stageHistory||[]).map(h=>({event_type:h.stage,stage:h.stage,occurred_at:h.tanggal,snapshot:{}}))).map((h,i)=><li key={i}><b>{attbStageLabel(h.stage||h.event_type)}</b> — {h.occurred_at?new Date(h.occurred_at).toLocaleString("id-ID"):"-"}</li>)}</ul>}{trace.link ? <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}><button type="button" style={sty.btn("primary","sm")} onClick={printAttbLabel}>Cetak QR 70×50</button>{hasRole(currentUser,"TL","SUPERADMIN")&&<button type="button" style={sty.btn("ghost","sm")} onClick={rotateAttbToken}>Ganti Token QR</button>}</div> : <p style={{fontSize:12,color:C.muted}}>QR belum tersedia.</p>}</> : <p style={{fontSize:12,color:C.muted}}>Record legacy — histori/QR unit baru tidak tersedia.</p>}</div>
                   {previewItem.stageHistory?.length>0 && <div className="attb-preview-group"><h4>Riwayat Tahap</h4><ul className="attb-preview-history">{[...previewItem.stageHistory].reverse().map((h,i)=><li key={i}><b>{attbStageLabel(h.stage)}</b> — {h.tanggal?new Date(h.tanggal).toLocaleDateString("id-ID"):"-"}{h.catatan?` · ${h.catatan}`:""}</li>)}</ul></div>}
                 </div>
               </>}

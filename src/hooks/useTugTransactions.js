@@ -301,7 +301,8 @@ export function useTugTransactions({
       }
       if (!si.fotoBarangRetur && !si.fotoBarang) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto barang` });
       if (si.statusMaterial==="Bongkaran ATTB (MTU)") {
-        if (!si.noSeri?.trim()) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: nomor seri (ATTB)` });
+        if (Number(si.qty) !== 1) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: qty ATTB harus 1` });
+        if (!si.noSeri?.trim() && !si.noAsset?.trim()) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: nomor seri atau nomor aset (ATTB)` });
         if (!si.fotoNameplate) m.push({ scrollKey:`item-${idx}`, label:`Barang #${n}: foto nameplate (ATTB)` });
       }
     });

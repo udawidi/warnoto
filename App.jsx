@@ -36,6 +36,8 @@ import { AIFaqPanel } from "./src/components/AIFaqPanel.jsx";
 import { TelegramWhitelistPanel } from "./src/components/TelegramWhitelistPanel.jsx";
 import { ScanPublicView } from "./src/components/ScanPublicView.jsx";
 import { ScanBlockPublicView } from "./src/components/ScanBlockPublicView.jsx";
+import { ScanAttbPublicView } from "./src/components/ScanAttbPublicView.jsx";
+import { attbSourceKey } from "./src/lib/attbTrace.js";
 import { KPISaldoCards } from "./src/components/KPISaldoCards.jsx";
 import { PendingWidget } from "./src/components/PendingWidget.jsx";
 import { RencanaWidget } from "./src/components/RencanaWidget.jsx";
@@ -4284,7 +4286,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           ? (katalogList.find(k=>k.id===si.katalogId)?.name || si.namaBaru || "-")
           : (si.namaBaru || "-");
         items.push({
-          key: `${t.id}::${si.noSeri||idx}`,
+          key: attbSourceKey(t.id, idx),
           nama, qty: si.qty, satuan: si.satuanBaru || "",
           noSeri: si.noSeri || "", noAsset: si.noAsset || "",
           tug10No: t.docNumbers?.tug10 || t.id,
@@ -4440,6 +4442,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   if (scanKatalogId) return <ScanPublicView katalogId={scanKatalogId} />;
   const scanLokasiId = new URLSearchParams(window.location.search).get("loc");
   if (scanLokasiId) return <ScanBlockPublicView lokasiId={scanLokasiId} />;
+  const scanAttbId = new URLSearchParams(window.location.search).get("attb");
+  if (scanAttbId) return <ScanAttbPublicView attbId={scanAttbId} />;
 
   // ══════════════════════ LOGIN ══════════════════════
   // Selama authLoading, jangan tampilkan form login dulu — supaya tidak kedip
@@ -4894,6 +4898,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             askConfirmDelete={askConfirmDelete}
             bongkaranPool={attbBongkaranPool}
             handleImg={handleImg}
+            supabase={supabase}
           />
         )}
 

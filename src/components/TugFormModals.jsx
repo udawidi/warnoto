@@ -450,10 +450,11 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
               const barangOk = si.katalogMode==="existing" ? !!si.katalogId : !!si.namaBaru?.trim();
               const qtyOk = si.qty>0;
               const fotoOk = !!si.fotoBarangRetur || !!si.fotoBarang;
-              const seriOk = !isAttb || !!si.noSeri?.trim();
+              const seriOk = !isAttb || (!!si.noSeri?.trim() || !!si.noAsset?.trim());
+              const attbQtyOk = !isAttb || Number(si.qty) === 1;
               const nameplateOk = !isAttb || !!si.fotoNameplate;
               const stockHandlingOk = si.katalogMode!=="existing" || !si.katalogId || !txnForm.lokasiTujuanId || (candidates.length===0 ? handling==="SEPARATE" : !!handling && (handling!=="MERGE" || !!si.targetStockId));
-              const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk && stockHandlingOk;
+              const complete = barangOk && qtyOk && fotoOk && seriOk && nameplateOk && stockHandlingOk && attbQtyOk;
               // Auto-ringkas begitu item lengkap (tiru UX tug3ExpandedIdx) — default collapsed
               // saat complete kecuali user eksplisit buka lagi (tug10Collapsed[idx]===false).
               const collapsed = complete && tug10Collapsed[idx] !== false;
@@ -549,7 +550,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                 )}
 
                 <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8,marginBottom:8}}>
-                  <div><label style={sty.label}>Jumlah *</label><input style={sty.input} type="number" inputMode="decimal" min="1" value={si.qty===0||si.qty===""?"":si.qty} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/>{!qtyOk && hint("Wajib: jumlah harus lebih dari 0.")}</div>
+                  <div><label style={sty.label}>Jumlah *</label><input style={sty.input} type="number" inputMode="decimal" min="1" max={isAttb?1:undefined} value={si.qty===0||si.qty===""?"":si.qty} disabled={isAttb} onChange={e=>{ const v=e.target.value.replace(/^0+(?=\d)/,""); updateItemRow(idx,"qty", v===""?"":Number(v)); }}/>{!qtyOk && hint("Wajib: jumlah harus lebih dari 0.")}{isAttb && !attbQtyOk && hint("ATTB wajib qty 1.")}</div>
                   <div><label style={sty.label}>Nomor Asset</label><input style={sty.input} value={si.noAsset} onChange={e=>updateItemRow(idx,"noAsset",e.target.value)}/></div>
                 </div>
 
@@ -581,7 +582,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                 {isAttb && (
                   <div style={{background:"#fffbeb",border:`1px solid #fde68a`,borderRadius: 10,padding:10}}>
                     <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>📋 Data Tambahan Wajib — Bongkaran ATTB (MTU)</div>
-                    <div style={{marginBottom:8}}><label style={sty.label}>Nomor Seri Material *</label><input style={sty.input} value={si.noSeri} onChange={e=>updateItemRow(idx,"noSeri",e.target.value)} placeholder="cth: SN-2024-001"/>{!seriOk && hint("Wajib: isi nomor seri material.")}</div>
+                    <div style={{marginBottom:8}}><label style={sty.label}>Nomor Seri Material / Nomor Asset *</label><input style={sty.input} value={si.noSeri} onChange={e=>updateItemRow(idx,"noSeri",e.target.value)} placeholder="Isi nomor seri atau nomor asset"/>{!seriOk && hint("Wajib: isi nomor seri atau nomor asset.")}</div>
                     <div>
                       <label style={sty.label}>Foto Nameplate *</label>
                       <div style={{display:"flex",gap:10,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
