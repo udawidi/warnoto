@@ -37,6 +37,14 @@ test("manual and invalid-session logout stay local", () => {
   assert.match(app, /Promise\.race\([\s\S]*?signOut\(\{ scope: "local" \}\)[\s\S]*?logout timeout/);
 });
 
+test("identical auth callbacks are deduplicated by user and access token", () => {
+  assert.match(app, /const authSessionKeyRef = useRef\(null\);/);
+  assert.match(app, /const sessionKey = `\$\{session\.user\.id\}:\$\{session\.access_token \|\| ""\}`;/);
+  assert.match(app, /event !== "AUTH_RECOVERY_RETRY" && authSessionKeyRef\.current === sessionKey/);
+  assert.match(app, /function clearLocalAuthState\(\) \{\s*authSessionKeyRef\.current = null;/);
+  assert.match(app, /if \(event === "SIGNED_OUT"\) authSessionKeyRef\.current = null;/);
+});
+
 test("profile bootstrap cannot hang forever on a self-host request", () => {
   assert.match(app, /_withTimeout\(\s*supabase\.from\("profiles"\)[\s\S]*?15000,\s*"profile session"\s*\)\.catch\(error => \(\{ data: null, error \}\)\)/);
   assert.match(app, /_withTimeout\(\s*supabase\.from\("profiles"\)[\s\S]*?15000,\s*"profile session refresh"\s*\)\.catch\(error => \(\{ data: null, error \}\)\)/);

@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-12
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-13
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -79,7 +79,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 - **Guard posting MARA TUG-3/4 dan TUG-10 selesai dan aktif di production (2026-10-12).** Form material baru wajib memilih MARA dan tidak menyediakan input identitas manual. Database menolak posting tanpa satu kandidat MARA yang valid, mengembalikan identitas canonical, dan menjaga approval TUG-3 normal tetap atomik/idempoten. Index expression resolver MARA aktif di production; sync login SUPERADMIN memakai request batch maksimal 100 item/ID. Benchmark 626 resolver selesai dalam 11.18 ms total. Orphan `KAT-1004160255`/`STK-SAP-3615-1004160255` dipetakan ke MARA `000000004160255` dengan qty, lokasi, foto, source lot, dan histori dokumen tetap. Mismatch aktif 0. Commit `7d4c1a0` dan `b36fe98` sudah pushed; versi `2.1.80`. Verifikasi: 545/545 test dan build lulus.
 - **Perbaikan sync login SUPERADMIN selesai dan production aktif (2026-10-12).** Jalur sinkronisasi stok/katalog kini fail-closed per batch untuk POST katalog FK, POST `stock_current`, GET katalog existing, dan POST katalog enriched; snapshot qty hanya diperbarui setelah seluruh request berhasil.
-- **Stabilisasi lanjutan bootstrap SUPERADMIN selesai lokal, belum push/deploy (2026-10-12).** Auto-sync ditahan selama bootstrap, baseline signature dan snapshot qty diprime setelah bootstrap, seluruh loader domain memakai scheduler limit tiga, dan daftar satuan MARA dimuat saat modal katalog dibuka. Diagnosis produksi read-only menemukan payload `stocks` sekitar 10,6 MB; 9,89 MB berasal dari 349 referensi `data.img` base64 dengan 191 gambar unik. Script migrasi Storage tersedia dengan dry-run sebagai default; production belum disentuh. Verifikasi: 558/558 test, build, dan diff-check lulus. Smoke browser tertunda karena Playwright `page.goto` timeout walau server lokal merespons HTTP 200.
+- **Stabilisasi bootstrap SUPERADMIN selesai dan siap deploy (2026-10-13).** Auto-sync ditahan selama bootstrap, baseline signature dan snapshot qty diprime setelah bootstrap, scheduler dinaikkan ke empat berdasarkan uji A/B, serta loader profil/izin, inspeksi, dan draft 5S ditunda sampai refresh inti selesai. Callback auth identik dideduplikasi berdasarkan user+token; realtime Stock Opname baru aktif setelah bootstrap dan resync dibatasi in-flight + cooldown 10 detik. Smoke localhost akun SUPERADMIN dan log Kong via `ssh minipc-gudang` menunjukkan request storm hilang, bootstrap inti sekitar 7–10 detik, tanpa POST/PATCH massal dari localhost; jumlah katalog tetap 1.093 dan `stock_current` tetap 626. Migrasi gambar legacy production selesai: 36 gambar dipindah ke Storage, referensi base64 tersisa 0, dan backup tervalidasi. Verifikasi: 560/560 test, build, dan diff-check lulus.
 
 - **MTU KHS detail dan pencarian Code Catalog selesai lokal (2026-10-09, belum commit/push).** Drawer `Lihat Detail` sudah dirapikan menjadi lima tab responsif dengan konten yang tidak terpotong. Pada `Ringkasan > Edit katalog/status`, Code Catalog memakai `SearchableSelect` terhadap katalog aktif berbasis MARA dan dapat mencari nomor katalog, nama/material description terstruktur, kategori/material group, satuan, sinonim PLN, serta typo ringan. Pilihan tetap disimpan melalui RPC operasional MTU existing; tidak ada perubahan schema/API/dependency. Verifikasi: 16 test terkait lulus, build production dan `git diff --check` lulus. Langkah berikutnya: smoke test localhost memakai akun TL, lalu commit/push hanya setelah persetujuan pengguna.
 
@@ -680,7 +680,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 - Setelah deploy Vercel versi `2.1.80`, smoke production TUG-3/4 dan TUG-10: pastikan material baru hanya dapat dipilih dari MARA, identitas nama/katalog/satuan terkunci, posting tanpa MARA ditolak, approval valid menambah stok tepat sekali, dan mismatch aktif tetap 0.
 
-- Lanjutkan smoke localhost login SUPERADMIN: jalankan server lokal lebih dulu, pastikan login awal tidak memicu POST/PATCH massal ke katalog atau stok, request bootstrap maksimal tiga berjalan bersamaan, dan modal katalog baru memuat satuan MARA saat dibuka. Setelah itu review dry-run migrasi 349 referensi gambar legacy; minta persetujuan terpisah sebelum apply production atau push.
+- Setelah deploy, smoke production login SUPERADMIN: pastikan layar awal selesai tanpa request storm/statement timeout, loader admin muncul setelah data inti, realtime Stock Opname aktif sekali, dan tidak ada POST/PATCH massal ke katalog atau stok.
 
 - Smoke test production Form 5S: buat draft parsial, refresh, lengkapi tiga foto pada masing-masing lima kategori, simpan, lalu refresh. Pastikan record memiliki 15 `storagePath`, seluruh object ada di bucket private self-host `maturity-evidence`, History menampilkan semua foto, PDF berisi lima lampiran, dan tidak ada upload Form 5S ke Google Drive.
 - Setelah deploy Vercel selesai, uji akun Fajar pada dua browser/perangkat: logout perangkat A tidak boleh memutus perangkat B; lalu simulasi koneksi putus saat reload, pastikan layar pemulihan muncul, token tidak hilang, dan **Coba Lagi** kembali membuka aplikasi tanpa password/TOTP baru.
@@ -821,7 +821,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
-- `npm test` → 545/545 lulus
+- `npm test` → 560/560 lulus
 - `node --test tests/unit/maraOrphanRepair.contract.test.mjs tests/unit/supabaseSyncBatch.contract.test.mjs`
 - `node --test tests/unit/niimbotM2h.test.mjs tests/unit/kartuGantungCompact.test.mjs`
 - `node --test tests/unit/authBootstrap.contract.test.mjs tests/unit/stockOpnameRequiredPhoto.test.mjs`
@@ -848,5 +848,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-12 Codex: **Sync login SUPERADMIN dibatch maksimal 100, index resolver MARA aktif, benchmark 626 resolver 11.18 ms, orphan `KAT-1004160255` dipetakan ke MARA `000000004160255`, mismatch aktif 0, dan 545/545 test + build lulus; commits `7d4c1a0` dan `b36fe98` sudah pushed, versi `2.1.80`.**
 - 2026-10-12 Codex: **Checkpoint lokal stabilisasi bootstrap SUPERADMIN dan migrator gambar legacy dibuat; 558/558 test, build, dan diff-check lulus, sedangkan smoke browser serta seluruh aksi production/push ditunda untuk sesi berikutnya.**
+- 2026-10-13 Codex: **Smoke SUPERADMIN dan log Kong membuktikan request storm hilang; bootstrap inti sekitar 7–10 detik, realtime/auth dideduplikasi, migrasi 36 gambar legacy production tuntas, dan 560/560 test + build lulus.**

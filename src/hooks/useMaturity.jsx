@@ -33,7 +33,7 @@ function readCachedList(key) {
 // Domain "Penilaian Maturity" (audit berjenjang UPT → UIT → Pusat + Form 5S) —
 // diekstrak murni dari PLNWarehouse() (App.jsx), TANPA perubahan logic.
 // deps: cross-dependency dari luar domain maturity (dioper dari komponen pemanggil).
-export function useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL }) {
+export function useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, dataRefreshing }) {
   const maturityUptListKey = (uptList || []).map(u => `${u.id}:${u.nama}:${u.uitId || ""}`).join("|");
   const maturityUptOptions = useMemo(
     () => getMaturityUptOptions(currentUser, uptList),
@@ -62,7 +62,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // Master UPT bisa berbeda ejaan dengan nama yang tersimpan di baris audit.
   const selectedMaturityUptId = uptIdByNama(selectedMaturityUpt);
   useEffect(() => {
-    if (!currentUser?.id || !selectedMaturityUptId || !hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN")) {
+    if (!currentUser?.id || dataRefreshing || !selectedMaturityUptId || !hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN")) {
       setMaturity5SDraft(null);
       return undefined;
     }
@@ -71,7 +71,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       if (active) setMaturity5SDraft(draft);
     });
     return () => { active = false; };
-  }, [currentUser?.id, currentUser?.role, selectedMaturityUptId]);
+  }, [currentUser?.id, currentUser?.role, selectedMaturityUptId, dataRefreshing]);
   // Resync: init useState di atas jalan sekali saat mount, sebelum currentUser/uptList
   // tentu sudah siap (auth async) → bisa nyangkut fallback "UPT Surabaya" selamanya.
   // User UPT biasa (tanpa switcher): selalu paksa ke UPT-nya sendiri kalau beda.

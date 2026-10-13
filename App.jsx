@@ -325,6 +325,7 @@ export default function PLNWarehouse() {
   // dapat datang berurutan saat refresh sesi; request profil lama tidak boleh
   // membuka loader memakai cache user sebelumnya.
   const authGenerationRef = useRef(0);
+  const authSessionKeyRef = useRef(null);
   const authRecoveryRef = useRef(null);
   const authRetryRef = useRef(null);
   const [loginForm, setLoginForm] = useState({ username:"", password:"" });
@@ -368,6 +369,7 @@ export default function PLNWarehouse() {
   const currentUserUptId = currentUser?.uptId
     || (ultgList.find(u => u.id === currentUser?.ultgId)?.parentUptId)
     || (uptList.find(u => String(u.nama || "").toUpperCase().includes(appUptShortForAdopt.toUpperCase()))?.id);
+  const [dataRefreshing, setDataRefreshing] = useState(true); // true selama loadCloud() menyinkronkan data di latar belakang
   const {
     maturityAssessments, setMaturityAssessments,
     maturityAudits, setMaturityAudits,
@@ -411,7 +413,7 @@ export default function PLNWarehouse() {
     deleteMaturityAudit,
     exportMaturityAuditExcel,
     exportMaturityGoogleSheet,
-  } = useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL });
+  } = useMaturity({ currentUser, showToast, uptList, currentUserUptId, askConfirmDelete, MATURITY_LEVELS, MATURITY_WORKFLOW_LABEL, dataRefreshing });
   const [attbList, setAttbList] = useState(() => readCachedList("pln_attb_v1") ?? []);
   const [materialCadangData, setMaterialCadangData] = useState({ imports:[], analyses:[], applyHistory:[] });
   const [materialCadangHealthData, setMaterialCadangHealthData] = useState({ imports:[], analysisRuns:[], healthResults:[], applyAudit:[] });
@@ -459,7 +461,6 @@ export default function PLNWarehouse() {
   // ada, app langsung render dari cache & loadCloud refresh di latar belakang.
   // HAR_UIT tetap menunggu bootstrap scoped agar cache akun sebelumnya tidak sempat tampil.
   const [loading, setLoading] = useState(() => currentUser?.role === "HAR_UIT" || (readCachedList("pln_stocks_v4") == null && readCachedList("pln_katalog_v4") == null));
-  const [dataRefreshing, setDataRefreshing] = useState(true); // true selama loadCloud() menyinkronkan data di latar belakang
   const [cloudSaving, setCloudSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
 
@@ -900,7 +901,7 @@ export default function PLNWarehouse() {
         bootstrapTask(async () => (await loadTugWorkflowTransactions()) || { unavailable:true, rows:[] }, "bootstrap TUG workflow"),
         bootstrapTask(() => supabase?.from("material_cadang_state").select("upt_id,uit_id,data,health,ai"), "bootstrap material cadang"),
       ];
-      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks, ...domainTasks], { limit: 3, priority: [5, 8, 9] });
+      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks, ...domainTasks], { limit: 4, priority: [5, 8, 9] });
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis berjalan bertahap di belakang scheduler.
       await Promise.all(initialLoads);
@@ -1397,7 +1398,7 @@ export default function PLNWarehouse() {
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
   // sengaja tidak memakai cache/saveToCloud agar tidak ikut full sync state lama.
   useEffect(() => {
-    if (authLoading || !currentUser || currentUser?.role === "HAR_UIT") return;
+    if (authLoading || !currentUser || dataRefreshing || currentUser?.role === "HAR_UIT") return;
     let active = true;
     loadMaterialInspections().then(items => {
       if (active && items !== null) setMaterialInspections(items);
@@ -1406,7 +1407,7 @@ export default function PLNWarehouse() {
       if (active && batches !== null) setMaterialInspectionBatches(batches);
     });
     return () => { active = false; };
-  }, [authLoading, currentUser?.id]);
+  }, [authLoading, currentUser?.id, dataRefreshing]);
 
   // saveToCloud now takes an overrides object. Any field not passed falls back
   // to the latest React state via stateRef (always up to date, avoids stale
@@ -1431,7 +1432,7 @@ export default function PLNWarehouse() {
     addNonStockFoundItem,
     computeStockCountItems, previewStockCount, saveStockCountSession,
     approveStockCountItem, approveStockCountItems, rejectStockCountItem, deleteStockCountSession,
-  } = useStockOpname({ currentUser, stockScopeUptIds: (uptList.length || currentUser?.uptId) ? getScopeUptIds(currentUser, uptList) : undefined, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient: supabase });
+  } = useStockOpname({ currentUser, stockScopeUptIds: (uptList.length || currentUser?.uptId) ? getScopeUptIds(currentUser, uptList) : undefined, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient: supabase, dataRefreshing });
   const {
     katalogModal, setKatalogModal, katalogForm, setKatalogForm,
     openAddKatalog: openAddKatalogRaw, openEditKatalog: openEditKatalogRaw, saveKatalog, deleteKatalog,
@@ -2142,6 +2143,7 @@ export default function PLNWarehouse() {
   }
 
   function clearLocalAuthState() {
+    authSessionKeyRef.current = null;
     stocksBootstrapUserIdRef.current = null;
     authRecoveryRef.current = null;
     setAuthRecovery(null);
@@ -2242,6 +2244,12 @@ export default function PLNWarehouse() {
     // onAuthStateChange bisa deadlock lock auth internal. Kerjaan async
     // dilempar ke handleAuthSession (fire-and-forget).
     async function handleAuthSession(session, event) {
+      if (event === "SIGNED_OUT") authSessionKeyRef.current = null;
+      else if (session?.user) {
+        const sessionKey = `${session.user.id}:${session.access_token || ""}`;
+        if (event !== "AUTH_RECOVERY_RETRY" && authSessionKeyRef.current === sessionKey) return;
+        authSessionKeyRef.current = sessionKey;
+      }
       const generation = ++authGenerationRef.current;
       const isCurrent = () => authGenerationRef.current === generation;
       if (event === "SIGNED_OUT") {
@@ -2353,10 +2361,6 @@ export default function PLNWarehouse() {
             if (event === "SIGNED_IN" || event === "MFA_CHALLENGE_VERIFIED") logAudit(userObj, "LOGIN", "auth");
             // Daftar SEMUA user (hanya dipakai layar Admin/Master Data) TIDAK memblokir
             // layar "Memuat sesi..." — dimuat di latar belakang supaya app langsung tampil.
-            supabase.from("profiles").select("*").then(({ data: allProfiles }) => {
-              if (isCurrent()) setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, officialPhone: p.official_phone, notifEvents: p.notif_events || [], avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
-            });
-            reloadRolePerms();
           } else if (aal?.nextLevel === "aal2" && aal?.currentLevel === "aal1") {
             // Punya factor TOTP verified, tinggal challenge — override cache-first
             // (currentUser bisa sudah terisi dari cache localStorage sebelum effect
@@ -2408,6 +2412,14 @@ export default function PLNWarehouse() {
   useEffect(() => {
     if (mfaState?.mode === "enroll" && !mfaState.qr && !mfaBusy) mfaStartEnroll();
   }, [mfaState?.mode]);
+
+  // Auxiliary admin data is loaded after bootstrap; DEFAULT_PERMS remains the safe fallback.
+  useEffect(() => {
+    if (authLoading || !currentUser || dataRefreshing || !supabase) return;
+    Promise.all([reloadUsers(), reloadRolePerms()]).catch(error => {
+      console.warn("Data admin latar belakang gagal dimuat.", error);
+    });
+  }, [authLoading, currentUser?.id, dataRefreshing]);
 
   // RBAC guard render: kalau role tidak (lagi) punya izin menu untuk tab aktif
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama

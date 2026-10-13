@@ -20,7 +20,7 @@ function readCachedList(key) {
 // read-only, approval temuan selisih per item). saveToCloud/uploadStockFoto diakses lewat
 // stateRef.current / param langsung (hoisted function) — sama pola dgn hook lain, lihat
 // useHeavyEquipment.js untuk penjelasan lengkap TDZ.
-export function useStockOpname({ currentUser, stockScopeUptIds, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient }) {
+export function useStockOpname({ currentUser, stockScopeUptIds, showToast, stateRef, logApprovalHistory, katalogList, setKatalogList, stocks, setStocks, uploadStockFoto, supabaseClient, dataRefreshing }) {
   const canEditPhysicalQty = hasRole(currentUser, "ADMIN", "TL", "SUPERADMIN");
   const [opnameList, setOpnameList] = useState(() => readCachedList("pln_opname_v1") ?? []);
   const opnameListRef = useRef(opnameList);
@@ -30,6 +30,7 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   const [opnameExpanded, setOpnameExpanded] = useState(false); // sidebar accordion state for Stock Opname & Stock Count (digabung 1 menu)
   const [opnameSubTab, setOpnameSubTab] = useState("opname"); // "opname" | "stockCount"
   const pendingSaveIdsRef = useRef(new Set());
+  const realtimeResyncRef = useRef({ inFlight: false, lastAt: 0 });
 
   // Supabase Realtime is RLS-scoped. Keep only newer rows so reconnect/focus
   // resync cannot roll back a newer local/server session.
@@ -53,11 +54,19 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
   };
 
   useEffect(() => {
-    if (!supabaseClient || !currentUser?.id) return undefined;
+    if (!supabaseClient || !currentUser?.id || dataRefreshing) return undefined;
     let disposed = false;
-    const resync = async () => {
-      const rows = await loadMasterTable("stock_opname", { uptIds: stockScopeUptIds });
-      if (!disposed && Array.isArray(rows)) mergeIncomingRows(rows);
+    const resync = async (force = false) => {
+      const state = realtimeResyncRef.current;
+      if (state.inFlight || (!force && Date.now() - state.lastAt < 10000)) return;
+      state.inFlight = true;
+      try {
+        const rows = await loadMasterTable("stock_opname", { uptIds: stockScopeUptIds });
+        if (!disposed && Array.isArray(rows)) mergeIncomingRows(rows);
+        state.lastAt = Date.now();
+      } finally {
+        state.inFlight = false;
+      }
     };
     const config = { event: "*", schema: "public", table: "stock_opname" };
     if (Array.isArray(stockScopeUptIds) && stockScopeUptIds.length === 1) {
@@ -80,17 +89,16 @@ export function useStockOpname({ currentUser, stockScopeUptIds, showToast, state
         if (incoming) mergeIncomingRows([incoming]);
       })
       .subscribe(status => {
-        if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") resync();
+        if (status === "SUBSCRIBED") resync();
       });
     const onVisibility = () => { if (document.visibilityState === "visible") resync(); };
     document.addEventListener("visibilitychange", onVisibility);
-    resync();
     return () => {
       disposed = true;
       document.removeEventListener("visibilitychange", onVisibility);
       supabaseClient.removeChannel(channel);
     };
-  }, [supabaseClient, currentUser?.id, Array.isArray(stockScopeUptIds) ? stockScopeUptIds.join(",") : "*"]);
+  }, [supabaseClient, currentUser?.id, dataRefreshing, Array.isArray(stockScopeUptIds) ? stockScopeUptIds.join(",") : "*"]);
   // Fase 1d: sesi bisa diedit dari >1 perangkat/tab sekaligus (per blok/lokasi berbeda) — dulu
   // saveOpname menimpa SELURUH sesi (last-write-wins), blok yang barusan disimpan perangkat lain
   // bisa hilang. Kalau caller kasih touchedLokasiIds (blok yang BENAR disentuh perangkat ini),
