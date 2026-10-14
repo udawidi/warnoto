@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-13
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-14
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -79,6 +79,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Cari Foto Data Stok hanya menampilkan stok nyata (`57f543d`, versi `2.1.90`, 2026-10-14).** Hasil Bentuk Barang dan Nameplate kini mencocokkan UPT melalui lokasi/gudang untuk stok legacy, menyaring embedding yatim, serta menghitung dan merender hanya baris Data Stok yang valid. Verifikasi: 567/567 test, focused test 6/6, build, dan diff-check lulus. Mobile smoke 768 px lulus; 360/390/412 px terhalang toast error Supabase fixture existing.
 - **Barcode dan histori per unit ATTB TUG-10 aktif di production (2026-10-13, `d1f8261`, versi `2.1.87`).** Migration `20261013_attb_unit_trace.sql` diterapkan ke self-host production: 2 tabel, 5 trigger, RPC publik allowlist, RLS scoped, dan rotasi token non-anon terverifikasi. Data legacy tetap tanpa link/histori (`0/0`). Frontend, label QR 70×50 mm, detail internal, dan halaman scan publik selesai. Verifikasi: 566/566 test, build, contract test 6/6, rehearsal migration, dan bootstrap schema dua kali lulus.
 - **Stabilisasi SQL bootstrap selesai dan sudah di-push (`1bbde09`, versi `2.1.85`, 2026-10-13).** `supabase/schema.sql` kini hanya memuat final-state schema untuk database kosong; data-repair production-specific dan definisi fungsi lama yang tertimpa sudah dikeluarkan tanpa mengubah migration historis atau production. Contract test, rehearsal PostgreSQL scratch dua kali, 560/560 test, build production, dan diff-check lulus. Worktree bersih; push `main` memicu auto-deploy Vercel.
 - **Guard posting MARA TUG-3/4 dan TUG-10 selesai dan aktif di production (2026-10-12).** Form material baru wajib memilih MARA dan tidak menyediakan input identitas manual. Database menolak posting tanpa satu kandidat MARA yang valid, mengembalikan identitas canonical, dan menjaga approval TUG-3 normal tetap atomik/idempoten. Index expression resolver MARA aktif di production; sync login SUPERADMIN memakai request batch maksimal 100 item/ID. Benchmark 626 resolver selesai dalam 11.18 ms total. Orphan `KAT-1004160255`/`STK-SAP-3615-1004160255` dipetakan ke MARA `000000004160255` dengan qty, lokasi, foto, source lot, dan histori dokumen tetap. Mismatch aktif 0. Commit `7d4c1a0` dan `b36fe98` sudah pushed; versi `2.1.80`. Verifikasi: 545/545 test dan build lulus.
@@ -857,5 +858,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-13 Codex: **Snapshot SQL bootstrap distabilkan, rehearsal PostgreSQL kosong dua kali dan 560/560 test lulus, lalu commit `1bbde09` versi `2.1.85` di-push ke `main`; production database tidak dimutasi.**
 - 2026-10-13 Codex: **Identitas, barcode, dan histori per unit ATTB TUG-10 selesai; migration aktif di production, commit fitur `d1f8261` versi `2.1.87`, 566/566 test dan build lulus.**
+- 2026-10-14 Codex: **Cari Foto Data Stok diperbaiki agar hanya menampilkan stok nyata; commit fitur `57f543d` versi `2.1.90`, 567/567 test dan build lulus, tanpa perubahan database.**
