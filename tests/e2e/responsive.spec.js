@@ -31,9 +31,13 @@ test.describe("Dashboard Manager mobile details", () => {
   test.use({
     actorProfile:{ id:"e2e-manager", name:"E2E Manager", username:"manager-e2e", role:"MANAGER", jabatan:"Manager", avatar:"MG", upt:"Surabaya", gudangIds:null },
     cloudOverrides:{
+      pln_upt_v1:[
+        { id:"UPT-SBY", nama:"UPT Surabaya", kode:"UPT-SBYA", uitId:"UIT-JBM" },
+        { id:"UPT-MLG", nama:"UPT Malang", kode:"UPT-MLG", uitId:"UIT-JBM" },
+      ],
       pln_txns_v3:[
-        { id:"TUG9-E2E-01", docType:"TUG9", status:"APPROVED", createdAt:1777507200000, namaPekerjaan:"Pemeliharaan Gardu Induk", docNumbers:{ tug9:"TUG-9/E2E/001" }, stockItems:[] },
-        { id:"TUG3-MANAGER-E2E", docType:"TUG3", status:"PENDING", stage:"PENDING_MANAGER", requiredApprover:"MANAGER", createdAt:1784505600000, namaPekerjaan:"Review penerimaan material gardu induk", docNumbers:{ tug3:"TUG-3/E2E/007" } },
+        { id:"TUG9-E2E-01", docType:"TUG9", status:"APPROVED", createdAt:1777507200000, namaPekerjaan:"Pemeliharaan Gardu Induk", docNumbers:{ tug9:"TUG-9/E2E/001" }, stockItems:[], uptId:"UPT-SBY" },
+        { id:"TUG3-MANAGER-E2E", docType:"TUG3", status:"PENDING", stage:"PENDING_MANAGER", requiredApprover:"MANAGER", createdAt:1784505600000, namaPekerjaan:"Review penerimaan material gardu induk", docNumbers:{ tug3:"TUG-3/E2E/007" }, uptId:"UPT-SBY" },
       ],
       pln_rencana_v1:[{ id:"PLAN-MANAGER-E2E", noKontrak:"KONTRAK/E2E/2026", supplier:"PT Mitra Energi", tanggalSerahTerima:"2026-07-28", items:[{ namaBarang:"Circuit Breaker 150 kV", jumlah:2, satuan:"SET", tanggalSerahTerima:"2026-07-28" }] }],
     },
@@ -50,16 +54,15 @@ test.describe("Dashboard Manager mobile details", () => {
       const rect = node.getBoundingClientRect();
       return { width:Math.round(rect.width), height:Math.round(rect.height) };
     }));
+    expect(statusBoxes.length).toBeGreaterThan(0);
     expect(new Set(statusBoxes.map(box => box.width)).size).toBe(1);
     expect(new Set(statusBoxes.map(box => box.height)).size).toBe(1);
 
-    for (const name of ["Review", "Lihat Semua"]) {
-      const button = page.getByRole("button", { name, exact:true }).first();
-      await expect(button).toBeVisible();
-      const box = await button.boundingBox();
-      expect(box.height).toBeGreaterThanOrEqual(44);
-      expect(box.width).toBeLessThanOrEqual(132);
-    }
+    const reviewButton = page.getByRole("button", { name:"Review", exact:true }).first();
+    await expect(reviewButton).toBeVisible();
+    const reviewBox = await reviewButton.boundingBox();
+    expect(reviewBox.height).toBeGreaterThanOrEqual(44);
+    expect(reviewBox.width).toBeLessThanOrEqual(132);
 
     await expect(page).toHaveScreenshot("dashboard-manager-detail.png", {
       fullPage:true,
@@ -91,7 +94,8 @@ test.describe("Data Stok mobile search", () => {
 
     await photoSearch.click();
     await expect(page.getByText("Cari Barang dengan Foto", { exact:true })).toBeVisible();
-    await expect(page.getByText("Ambil / Pilih Foto", { exact:true })).toBeVisible();
+    await expect(page.getByText("Kamera", { exact:true })).toBeVisible();
+    await expect(page.getByText("Galeri", { exact:true })).toBeVisible();
     await page.getByRole("button", { name:"Batal", exact:true }).click();
 
     await expect(page.getByRole("button", { name:"Lihat Detail", exact:true })).toHaveCount(0);

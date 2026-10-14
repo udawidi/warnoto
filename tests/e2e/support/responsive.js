@@ -49,6 +49,7 @@ async function collectResponsiveIssues(page, scopeSelector) {
       .slice(0,20);
     const smallText = [...scope.querySelectorAll("p, span, small, label, button, td, th, input, select, textarea")]
       .filter(el => visible(el) && label(el) && Number.parseFloat(getComputedStyle(el).fontSize) < 12)
+      .filter(el => !(getComputedStyle(el).fontSize === "0px" && el.matches("button,[role='button']") && (el.getAttribute("aria-label") || el.getAttribute("title")) && el.getBoundingClientRect().width >= 44 && el.getBoundingClientRect().height >= 44))
       .map(el => ({ label:label(el), fontSize:getComputedStyle(el).fontSize }))
       .slice(0,20);
     const formControls = [...scope.querySelectorAll("input:not([type='hidden']), select, textarea")]

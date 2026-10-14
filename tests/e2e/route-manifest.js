@@ -40,20 +40,20 @@ const SURFACES = [
   surface("attb-source", "attb", ["MRWI"], ".attb-page", [{ selector:".attb-stage-card.is-source" }]),
   surface("stock-opname", "opname", ["Stock Opname & Count", "Stock Opname"], ".app-content"),
   surface("stock-count", "opname", ["Stock Opname & Count", "Stock Count"], ".app-content"),
-  surface("arrival-plan", "rencana", ["Rencana Kedatangan"], ".app-content"),
+  surface("arrival-plan", "rencana", ["MTU KHS"], ".app-content"),
 
   surface("forecast-list", "forecastStok", ["Forecast Stok"], ".forecast-page"),
   ...[
-    ["material-dashboard", null], ["material-health", "Health Index"],
+    ["material-dashboard", null], ["material-health", /Analisis/],
     ["material-ai", "AI Insight"], ["material-import", /Import & Hitung/],
-    ["material-results", /Hasil Analisis/], ["material-apply", /Apply Min Qty/],
+    ["material-results", /Analisis/], ["material-apply", "Apply Min Qty"],
   ].map(([slug, name]) => surface(slug, "forecastStok", ["Forecast Stok"], ".forecast-page", [
     { role:"tab", name:"Material Cadang" },
     ...(name ? [{ role:"button", name }] : []),
   ])),
   surface("material-detail", "forecastStok", ["Forecast Stok"], ".forecast-page", [
     { role:"tab", name:"Material Cadang" },
-    { role:"button", name:"Health Index" },
+    { role:"button", name:/Analisis/ },
     { selector:"tbody tr", index:0 },
   ]),
 

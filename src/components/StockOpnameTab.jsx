@@ -1585,7 +1585,7 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                     <div style={{fontSize:12,color:C.muted,marginTop:3}}>{opn.gudangKode || "Gudang belum dipilih"} • {progress.filled}/{progress.total} item terhitung • {fmtDate(opn.dibuatAt)}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flex:"0 0 auto"}}>
-                    <span style={{fontSize:11,fontWeight:800,color:"#92400e",background:"#fef3c7",padding:"4px 8px",borderRadius:999}}>Draft</span>
+                    <span style={{fontSize:12,fontWeight:800,color:"#92400e",background:"#fef3c7",padding:"4px 8px",borderRadius:999}}>Draft</span>
                     <button type="button" aria-label={`Lanjutkan opname ${opn.semester||""}`} style={{...sty.btn("primary","sm"),whiteSpace:"nowrap"}} onClick={()=>{setActiveOpname(opn);setPage(0);}}>Lanjutkan opname <ArrowRight size={14} aria-hidden="true" /></button>
                   </div>
                 </div>;
