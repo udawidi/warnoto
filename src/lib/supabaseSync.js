@@ -246,7 +246,13 @@ export function _withTimeout(promise, ms, label) {
 // Upload satu foto base64 ke Storage → kembalikan URL publik (atau penanda "priv:"
 // untuk bucket privat). Dipakai foto transaksi TUG maupun foto Data Stok.
 export async function uploadPhotoToStorage(dataUrl, bucket, path, { upsert = true } = {}) {
-  const blob = dataUrlToBlob(dataUrl);
+  let blob = dataUrlToBlob(dataUrl);
+  if (blob.type.startsWith("image/") && blob.size > 4 * 1024 * 1024) {
+    blob = dataUrlToBlob(await compressImage(dataUrl, { maxBytes: 4 * 1024 * 1024 }));
+  }
+  if (blob.type.startsWith("image/") && blob.size > 4 * 1024 * 1024) {
+    throw new Error("Foto terlalu besar setelah kompresi (maksimal 4 MB).");
+  }
   const { error } = await supabase.storage.from(bucket).upload(path, blob, { upsert, contentType: blob.type });
   if (error) throw error;
   return ["tug-docs-private", "heavy-equipment-evidence"].includes(bucket)
@@ -428,6 +434,9 @@ export async function compressImage(input, { maxBytes = 1_000_000, maxDim = 1600
     // Masih kegedean di kualitas minimum → kecilkan dimensi lalu ulang.
     if (bytesOf(dataUrl) > maxBytes && Math.max(width, height) > 800) {
       return compressImage(dataUrl, { maxBytes, maxDim: Math.round(Math.max(width, height) * 0.75) });
+    }
+    if (bytesOf(dataUrl) > maxBytes) {
+      throw new Error(`Foto terlalu besar setelah kompresi (maksimal ${Math.round(maxBytes / 1_000_000)} MB).`);
     }
     return dataUrl;
   } finally {

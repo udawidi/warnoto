@@ -38,6 +38,25 @@ function tokenSim(aTokens, bTokens) {
 
 export const NAMEPLATE_MIN = 0.4;
 
+export async function servicesProxyError(error) {
+  const response = error?.context;
+  if (response) {
+    try {
+      const payload = await response.clone().json();
+      const message = payload?.error?.message || payload?.message;
+      if (message) return new Error(String(message));
+    } catch {
+      try {
+        const text = await response.clone().text();
+        if (text.trim()) return new Error(text.trim());
+      } catch {
+        // Fall back to the SDK error below.
+      }
+    }
+  }
+  return error instanceof Error ? error : new Error(String(error?.message || error));
+}
+
 // Embedding pakai Cohere (embed-multilingual-v3.0, 1024 dim) — model
 // terpisah dari Groq (dipakai untuk chat), karena Groq tidak punya endpoint
 // embedding. Vector disimpan di Supabase (pgvector, tabel rag_chunks, lihat
@@ -47,7 +66,7 @@ export async function cohereEmbed(texts, inputType) {
   const { data, error } = await supabase.functions.invoke("services-proxy", {
     body: { service: "cohere-embed", model: "embed-multilingual-v3.0", texts, input_type: inputType },
   });
-  if (error) throw error;
+  if (error) throw await servicesProxyError(error);
   return data.embeddings; // array of vectors, sejajar urutan dengan `texts`
 }
 
@@ -61,7 +80,7 @@ export async function cohereEmbedImage(dataUri) {
   const { data, error } = await supabase.functions.invoke("services-proxy", {
     body: { service: "cohere-embed", model: "embed-multilingual-v3.0", input_type: "image", images: [compact] },
   });
-  if (error) throw error;
+  if (error) throw await servicesProxyError(error);
   const v = data.embeddings?.[0] || data.embeddings?.float?.[0];
   if (!v) throw new Error("Cohere tidak mengembalikan embedding gambar");
   return v;
@@ -76,7 +95,7 @@ export async function ocrSpaceOCR(dataUri) {
   const { data, error } = await supabase.functions.invoke("services-proxy", {
     body: { service: "ocr", base64Image: compact },
   });
-  if (error) throw error;
+  if (error) throw await servicesProxyError(error);
   if (data.IsErroredOnProcessing) {
     const msg = Array.isArray(data.ErrorMessage) ? data.ErrorMessage.join("; ") : (data.ErrorMessage || "OCR.space gagal memproses gambar");
     throw new Error(msg);

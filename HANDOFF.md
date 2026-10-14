@@ -79,6 +79,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Cari Foto dan rutin AI foto dipulihkan (2026-10-14, siap commit/push).** Detail error `services-proxy` kini diteruskan aman ke UI. Cohere production key sudah disinkronkan ke GitHub Actions; Knowledge Base Sync manual berhasil. Job embedding foto sekarang menyelesaikan UPT stok legacy melalui `lokasi -> gudang`, membaca embedding existing dalam chunk 50 agar tidak terpotong limit PostgREST 1.000 baris, dan fail-fast pada quota `429` permanen. Backfill production membuat 805 embedding baru; total 2.136/2.136 baris memiliki vektor. Katalog `000000004020014` UPT-SBY sudah terindeks. Satu foto legacy 5,31 MB masih gagal karena batas Cohere 5 MB; upload foto baru di atas 4 MB kini otomatis dikompres dan tetap fail-closed bila hasilnya masih terlalu besar. Verifikasi: 577/577 test, build, dry-run embedding 1.296/1.297 selesai, dan diff-check lulus; tanpa perubahan schema/dependensi.
 - **Cari Foto Data Stok hanya menampilkan stok nyata (`57f543d`, versi `2.1.90`, 2026-10-14).** Hasil Bentuk Barang dan Nameplate kini mencocokkan UPT melalui lokasi/gudang untuk stok legacy, menyaring embedding yatim, serta menghitung dan merender hanya baris Data Stok yang valid. Verifikasi: 567/567 test, focused test 6/6, build, dan diff-check lulus. Mobile smoke 768 px lulus; 360/390/412 px terhalang toast error Supabase fixture existing.
 - **Barcode dan histori per unit ATTB TUG-10 aktif di production (2026-10-13, `d1f8261`, versi `2.1.87`).** Migration `20261013_attb_unit_trace.sql` diterapkan ke self-host production: 2 tabel, 5 trigger, RPC publik allowlist, RLS scoped, dan rotasi token non-anon terverifikasi. Data legacy tetap tanpa link/histori (`0/0`). Frontend, label QR 70×50 mm, detail internal, dan halaman scan publik selesai. Verifikasi: 566/566 test, build, contract test 6/6, rehearsal migration, dan bootstrap schema dua kali lulus.
 - **Stabilisasi SQL bootstrap selesai dan sudah di-push (`1bbde09`, versi `2.1.85`, 2026-10-13).** `supabase/schema.sql` kini hanya memuat final-state schema untuk database kosong; data-repair production-specific dan definisi fungsi lama yang tertimpa sudah dikeluarkan tanpa mengubah migration historis atau production. Contract test, rehearsal PostgreSQL scratch dua kali, 560/560 test, build production, dan diff-check lulus. Worktree bersih; push `main` memicu auto-deploy Vercel.
@@ -683,6 +684,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy, uji Data Stok > Cari Foto > Bentuk Barang memakai foto katalog `000000004020014` UPT Surabaya; barang yang sama harus muncul sebagai hasil teratas. Unggah ulang satu foto legacy `spe_upt-sby_1002020226_utama` yang berukuran 5,31 MB agar melewati kompresi upload maksimum 4 MB, lalu jalankan ulang job embedding foto.
 - Pantau deploy Vercel versi `2.1.86`; perubahan SQL bootstrap tidak perlu dan tidak boleh diterapkan ke production. Gunakan `supabase/migrations/` untuk perubahan database existing.
 
 - Setelah deploy Vercel versi `2.1.86`, smoke production TUG-3/4 dan TUG-10: pastikan material baru hanya dapat dipilih dari MARA, identitas nama/katalog/satuan terkunci, posting tanpa MARA ditolak, approval valid menambah stok tepat sekali, dan mismatch aktif tetap 0.
@@ -828,7 +830,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
-- `npm test` → 566/566 lulus
+- `npm test` → 577/577 lulus
 - `node --test tests/unit/attbTrace.test.mjs tests/unit/attbUnitTrace.contract.test.mjs`
 - `node scripts/rehearse_attb_unit_trace.mjs`
 - `node scripts/rehearse_schema_bootstrap.mjs`
@@ -858,5 +860,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-13 Codex: **Identitas, barcode, dan histori per unit ATTB TUG-10 selesai; migration aktif di production, commit fitur `d1f8261` versi `2.1.87`, 566/566 test dan build lulus.**
 - 2026-10-14 Codex: **Cari Foto Data Stok diperbaiki agar hanya menampilkan stok nyata; commit fitur `57f543d` versi `2.1.90`, 567/567 test dan build lulus, tanpa perubahan database.**
+- 2026-10-14 Codex: **Rutin embedding foto dipulihkan, Cohere GitHub Secret disinkronkan, backfill 805 foto selesai, upload gambar dibatasi 4 MB, serta 577/577 test dan build lulus.**

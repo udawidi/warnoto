@@ -26,6 +26,7 @@ import fs from "fs";
 import path from "path";
 import { cohereEmbedImage } from "./lib/cohere.mjs";
 import { DEFAULT_UPT_LIST } from "../src/data/masterUpt.js";
+import { chunkValues, isPermanentCohere429, resolveEffectiveUptId } from "./lib/imageEmbedding.mjs";
 
 // ── env (pola sama seperti migrate_material_photos.mjs — .env CRLF-safe) ──────
 function loadDotEnv() {
@@ -87,6 +88,7 @@ async function embedImageWithRetry(dataUri, attempt = 0) {
     return await cohereEmbedImage(dataUri, COHERE_API_KEY);
   } catch (e) {
     if (e.status !== 429) throw e;
+    if (isPermanentCohere429(e)) throw new Error(`Cohere 429 permanen: ${e.message}`);
     if (attempt >= 15) throw new Error("Cohere 429 berulang — limit trial sangat ketat.");
     const waitMs = 65000;
     console.log(`    ⏳ rate limit Cohere, tunggu ${waitMs / 1000}s lalu ulang (percobaan ${attempt + 1}) ...`);
@@ -100,17 +102,23 @@ async function main() {
 
   const jobs = []; // {id, uptId, upt, katalog, source, photoUrl, ocr}
   const stockRowsForOpname = [];
+  const { data: lokasiRows, error: lokasiErr } = await supabase.from("lokasi").select("id,gudang_id,data");
+  if (lokasiErr) { console.error("❌ Gagal baca lokasi:", lokasiErr.message); process.exit(1); }
+  const { data: gudangRows, error: gudangErr } = await supabase.from("gudang").select("id,upt_id,data");
+  if (gudangErr) { console.error("❌ Gagal baca gudang:", gudangErr.message); process.exit(1); }
+  const lokasiById = new Map((lokasiRows || []).map((row) => [String(row.id), row]));
+  const gudangById = new Map((gudangRows || []).map((row) => [String(row.id), row]));
 
   if (ALL) {
     // Ambil semua identity stok supaya opname dapat dipetakan walau stok belum
     // punya foto utama; job embedding tetap hanya dibuat bila ada URL foto.
     const { data: rows, error: allErr } = await supabase
-      .from("stocks").select("id,upt_id,data");
+      .from("stocks").select("id,upt_id,lokasi_id,data");
     if (allErr) { console.error("❌ Gagal baca stocks (--all):", allErr.message); process.exit(1); }
     let unknownUpt = 0;
     for (const s of rows || []) {
       stockRowsForOpname.push(s);
-      const uptId = s.upt_id || s.data?.uptId;
+      const uptId = resolveEffectiveUptId(s, lokasiById, gudangById);
       const nama = UPTID_TO_NAMA.get(uptId) || uptId;
       if (!uptId || !nama) { unknownUpt++; continue; }
       pushJobs(jobs, s, uptId, nama);
@@ -119,10 +127,10 @@ async function main() {
   } else {
     // 1. Ambil stok target: 4 UPT baru (id STK-SAP-361%) + Gresik (data.uptId='UPT-GRS').
     const { data: sap, error: sapErr } = await supabase
-      .from("stocks").select("id,upt_id,data").like("id", "STK-SAP-361%");
+      .from("stocks").select("id,upt_id,lokasi_id,data").like("id", "STK-SAP-361%");
     if (sapErr) { console.error("❌ Gagal baca stocks (SAP):", sapErr.message); process.exit(1); }
     const { data: grs, error: grsErr } = await supabase
-      .from("stocks").select("id,upt_id,data").filter("data->>uptId", "eq", "UPT-GRS");
+      .from("stocks").select("id,upt_id,lokasi_id,data").filter("data->>uptId", "eq", "UPT-GRS");
     if (grsErr) { console.error("❌ Gagal baca stocks (Gresik):", grsErr.message); process.exit(1); }
 
     // 2. Bangun daftar foto (katalog, upt, source, url) dari kedua kelompok.
@@ -131,9 +139,9 @@ async function main() {
       const plant = (s.id.match(/^STK-SAP-(\d{4})-/) || [])[1];
       const upt = PLANT_TO_UPT[plant];
       if (!upt) continue; // plant lain di luar daftar — jangan sentuh (termasuk Surabaya)
-      pushJobs(jobs, s, UPT_NAMA_TO_ID.get(upt) || s.upt_id || s.data?.uptId, upt);
+      pushJobs(jobs, s, UPT_NAMA_TO_ID.get(upt) || resolveEffectiveUptId(s, lokasiById, gudangById), upt);
     }
-    for (const s of grs || []) { stockRowsForOpname.push(s); pushJobs(jobs, s, s.upt_id || s.data?.uptId || "UPT-GRS", GRESIK_UPT); }
+    for (const s of grs || []) { stockRowsForOpname.push(s); pushJobs(jobs, s, resolveEffectiveUptId(s, lokasiById, gudangById) || "UPT-GRS", GRESIK_UPT); }
   }
 
   // Foto historis hanya ikut AI setelah sesi benar-benar SELESAI.
@@ -150,10 +158,13 @@ async function main() {
   if (!uniqJobs.length) { console.log("Tidak ada foto ditemukan untuk UPT target."); return; }
 
   // 3. Skip yang sudah ada embedding-nya (resume), kecuali --force.
-  const { data: existing, error: exErr } = await supabase
-    .from("stock_photo_embeddings").select("id,photo_url,ocr_text");
-  if (exErr) { console.error("❌ Gagal baca stock_photo_embeddings:", exErr.message); process.exit(1); }
-  const existingById = new Map((existing || []).map((r) => [r.id, r]));
+  const existingById = new Map();
+  for (const ids of chunkValues(uniqJobs.map((j) => j.id))) {
+    const { data: existing, error: exErr } = await supabase
+      .from("stock_photo_embeddings").select("id,photo_url,ocr_text").in("id", ids);
+    if (exErr) { console.error("❌ Gagal baca stock_photo_embeddings:", exErr.message); process.exit(1); }
+    for (const row of existing || []) existingById.set(row.id, row);
+  }
 
   const perUpt = {};
   const todo = [];
