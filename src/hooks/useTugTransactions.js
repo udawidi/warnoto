@@ -147,6 +147,8 @@ export function useTugTransactions({
         uptId: canonicalUptId,
         stockItems: [{ katalogMode:"existing", katalogId:"", targetStockId:"", stockHandling:"", namaBaru:"", katalogBaru:"", categoryBaru:"Lainnya", satuanBaru:"unit", qty:1, statusMaterial:"Material Sisa Baru", noAsset:"", noSeri:"", fotoNameplate:null, fotoBarangRetur:null, receiptPhotoSlot:0 }],
         noBAPenggantian: "",
+        tanggalPenggantianTerakhirBeroperasi: "",
+        tanggalPenerimaan: "",
         // For TUG10 the flow is reversed: external party hands back to PLN
         menyerahkanUnit: "", menyerahkanNama: "",
         gudangTujuanId: "", subGudangTujuanId: "", // cascade Gudang → Sub Gudang → Blok
@@ -282,6 +284,8 @@ export function useTugTransactions({
     const m = [];
     if (!tf.namaPekerjaan?.trim()) m.push({ scrollKey:"namaPekerjaan", label:"Nama Pekerjaan" });
     if (!tf.lokasiPekerjaan?.trim()) m.push({ scrollKey:"lokasiPekerjaan", label:"Lokasi Pekerjaan" });
+    if (!tf.tanggalPenggantianTerakhirBeroperasi) m.push({ scrollKey:"tanggalPenggantianTerakhirBeroperasi", label:"Tanggal Penggantian / Terakhir Beroperasi" });
+    if (!tf.tanggalPenerimaan) m.push({ scrollKey:"tanggalPenerimaan", label:"Tanggal Penerimaan" });
     if (!tf.menyerahkanUnit?.trim()) m.push({ scrollKey:"menyerahkanUnit", label:"PT / Perusahaan Pengirim" });
     if (!tf.menyerahkanNama?.trim()) m.push({ scrollKey:"menyerahkanNama", label:"Nama Penyerah" });
     if (!tf.lokasiTujuanId) m.push({ scrollKey:"lokasiTujuanId", label:"Lokasi Penyimpanan (Blok)" });

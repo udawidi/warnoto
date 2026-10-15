@@ -12,6 +12,7 @@ import { getHeavyEquipmentBorrowerLabel, getHeavyEquipmentLoanOwnerUpt, getHeavy
 import { buildKartuGantungHistory, resolveLokasiLengkap, stockSapLabel, itemCounted } from "./sap.js";
 import { resolveStockPhotoUrl } from "./stockCache.js";
 import { childOpnameMatches } from "./stockOpnameFlow.js";
+import { subGudangKodeMap } from "./masterSync.js";
 
 // Resolver id->nama UPT penerbit dokumen (mis. "UPT-SBY" -> "UPT Surabaya").
 // Dipakai di seluruh kop/PIC/sig-role dokumen supaya UPT selain Surabaya
@@ -391,19 +392,34 @@ export function buildTUG10HTML(txn, katalogList, lokasiList, users, satpamList, 
   const docs = txn?.docNumbers || {};
   const uptNama = resolveUptNama(txn.uptId, uptList);
   const uptKode = resolveDocumentUnitCode(txn.uptId, uptList);
-  const asmanUser = users.find(u => u.role === "ASMAN") || {};
-  const actualApprover = users.find(u=>u.id===txn.approvedBy) || {};
-  const penerimaUser = txn.requiredApprover === "TL" ? actualApprover : (users.find(u=>u.role==="TL")||{});
+  const scopedSigner = (id, role) => {
+    const user = id ? users.find(u => u.id === id) : null;
+    return user && user.role === role && txn.uptId && user.uptId === txn.uptId ? user : null;
+  };
+  const scopedRoleSigner = role => txn.uptId ? (users.find(u => u.role === role && u.uptId === txn.uptId) || null) : null;
+  const tlSnapshot = txn.identitySnapshot?.tl_name ? { name: txn.identitySnapshot.tl_name } : null;
+  const penerimaUser = scopedSigner(txn.approvedByTL, "TL") || tlSnapshot || scopedRoleSigner("TL") || { name: "....................." };
+  const asmanUser = scopedSigner(txn.approvedByAsman, "ASMAN") || scopedSigner(txn.approvedBy, "ASMAN") || scopedRoleSigner("ASMAN") || { name: "....................." };
   const satpamUser = (satpamList||[]).find(sp => sp.id === txn.satpamId) || {};
+  const lokasiTujuan = (lokasiList||[]).find(l => l.id === txn.lokasiTujuanId) || {};
+  const gudangId = txn.gudangTujuanId || lokasiTujuan.gudangId;
+  const gudangTujuan = (gudangList||[]).find(g => g.id === gudangId) || {};
+  const subGudangTujuan = (subGudangList||[]).find(s => s.id === txn.subGudangTujuanId) || (lokasiTujuan.subGudangId ? (subGudangList||[]).find(s => s.id === lokasiTujuan.subGudangId) : {});
+  const siblingSubs = (subGudangList||[]).filter(s => !gudangId || s.gudangId === gudangId);
+  const subKode = subGudangTujuan.id ? subGudangKodeMap(siblingSubs)[subGudangTujuan.id] : "";
+  const lokasiGudang = [gudangTujuan.nama, subKode, lokasiTujuan.kode || lokasiTujuan.nama].filter(Boolean).join(" / ") || "-";
 
   const docNoTUG10 = docs.tug10 || (txn.docSeq ? generateDocNumbers(txn.docSeq, txn.createdAt, "LOG.00.01", uptKode).tug10 : `TUG10-${(txn.id||"").slice(-6)}`);
 
   const items = txn?.stockItems || [];
   const itemRows = items.map(si => {
-    const namaBarang = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.name||"-") : (si.namaBaru||"-");
-    const satuan = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId)?.satuan||"-") : (si.satuanBaru||"-");
+    const masterKatalog = si.katalogMode==="existing" ? ((katalogList||[]).find(k=>k.id===si.katalogId) || null) : null;
+    const snapshotKatalog = si.snapshot || si.katalogSnapshot || si.katalogSnapshotData || {};
+    const namaBarang = masterKatalog?.name || snapshotKatalog.name || (si.namaBaru||"-");
+    const satuan = masterKatalog?.satuan || snapshotKatalog.satuan || si.satuanBaru || "-";
+    const noKatalog = canonicalKatalogCode(masterKatalog?.katalog || snapshotKatalog.katalog || snapshotKatalog.noKatalog || si.katalogBaru || "-") || "-";
     const ketStatus = si.statusMaterial==="Bongkaran ATTB (MTU)" ? `EKS BONGKARAN ATTB/MTU${si.noSeri?` — SN: ${si.noSeri}`:""}` : si.statusMaterial==="Bongkaran" ? "EKS BONGKARAN" : "MATERIAL SISA BARU";
-    return `<tr><td>${esc(namaBarang)}</td><td style="text-align:center">${fmtNum(si.qty)}</td><td style="text-align:center">${esc(satuan)}</td><td style="text-align:center">${esc(si.noAsset||"-")}</td><td>${esc(ketStatus)}</td></tr>`;
+    return `<tr><td>${esc(namaBarang)}</td><td>${esc(noKatalog)}</td><td style="text-align:center">${fmtNum(si.qty)}</td><td style="text-align:center">${esc(satuan)}</td><td style="text-align:center">${esc(si.noAsset||"-")}</td><td>${esc(ketStatus)}</td></tr>`;
   }).join("");
 
   const materialPhotoCells = items.map(si => {
@@ -425,26 +441,26 @@ body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#000;background
 @page{size:A4 portrait;margin:0}
 .page{padding:20px;page-break-after:always;min-height:100vh;background:white;max-width:794px;margin:0 auto 16px;position:relative}
 .page:last-child{page-break-after:auto;margin-bottom:0}
-.top-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-bottom:6px}
-.bottom-accent{height:6px;background:linear-gradient(90deg,#007d9c 0%,#0098da 70%,#facc15 100%);margin-top:16px}
 .header-kop{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px}
 .pln-logo{height:28px;width:auto;display:block;margin-left:auto;margin-bottom:2px}
 .kop-right{text-align:right}
 .doc-tag-right{font-size:12px;font-weight:bold}
 .doc-sub-right{font-size:8px;color:#555}
 
-.section-box{border:1.5px solid #000;padding:12px;margin-bottom:14px;background:#fff}
+.top-accent{height:4px;background:#007d9c;margin-bottom:8px;border-bottom:2px solid #facc15}
+.bottom-accent{height:4px;background:#007d9c;margin-top:16px;border-top:2px solid #facc15}
+.section-box{border:1px solid #94a3b8;padding:14px;margin-bottom:14px;background:#fff}
 .doctitle{text-align:center;font-size:14px;font-weight:bold;letter-spacing:0.5px;margin-bottom:2px}
 .docno{text-align:center;font-size:10px;font-style:italic;font-weight:bold;margin-bottom:2px}
 .company-subtitle{text-align:center;font-size:8.5px;font-weight:bold;margin-bottom:10px}
 
 table.meta-tbl{width:100%;border-collapse:collapse;margin-bottom:8px;font-size:9.5px;border:1px solid #000}
-table.meta-tbl td{padding:3px 6px;vertical-align:top;border:1px solid #000}
+table.meta-tbl td{padding:5px 7px;vertical-align:top;border:1px solid #cbd5e1}
 table.meta-tbl td.lbl{width:120px;font-weight:bold}
 
 table.items-tbl{width:100%;border-collapse:collapse;margin-top:6px;margin-bottom:8px;border:1.5px solid #000}
-table.items-tbl th{background:#d1d5db;color:#000;border:1px solid #000;padding:5px 4px;font-size:9.5px;font-weight:bold;text-align:center}
-table.items-tbl td{border:1px solid #000;padding:5px 6px;font-size:9px}
+table.items-tbl th{background:#1e3a5f;color:#fff;border:1px solid #64748b;padding:6px 5px;font-size:9.5px;font-weight:bold;text-align:center}
+table.items-tbl td{border:1px solid #cbd5e1;padding:6px 7px;font-size:9px}
 
 table.bottom-bar-tbl{width:100%;border-collapse:collapse;border:1px solid #000;margin-bottom:12px;font-size:9.5px}
 table.bottom-bar-tbl th{background:#d1d5db;border:1px solid #000;padding:4px 6px;text-align:left;font-weight:bold}
@@ -497,21 +513,23 @@ ${A4_PAGE_LAYOUT_CSS("20px")}
       </tr>
       <tr>
         <td class="lbl">NAMA PEKERJAAN</td><td>:</td><td>${esc(txn.namaPekerjaan || "-")}</td>
-        <td class="lbl">NO BA PENGGANTIAN</td><td>:</td><td>${esc(txn.noBAPenggantian || "-")}</td>
+        <td class="lbl">LOKASI GUDANG</td><td>:</td><td>${esc(lokasiGudang)}</td>
       </tr>
       <tr>
         <td class="lbl">LOKASI PEKERJAAN</td><td>:</td><td>${esc(txn.lokasiPekerjaan || "-")}</td>
-        <td class="lbl">TANGGAL</td><td>:</td><td>${fmtDateOnly(txn.createdAt)}</td>
+        <td class="lbl">NO BA PENGGANTIAN</td><td>:</td><td>${esc(txn.noBAPenggantian || "-")}</td>
       </tr>
+      <tr><td></td><td></td><td></td><td class="lbl">TANGGAL PENGGANTIAN / TERAKHIR BEROPERASI</td><td>:</td><td>${fmtDateOnly(txn.tanggalPenggantianTerakhirBeroperasi)}</td></tr>
     </table>
 
     <table class="items-tbl">
       <thead>
         <tr>
-          <th style="width:40%">Nama barang / Spare Parts</th>
-          <th style="width:12%">Jumlah</th>
-          <th style="width:10%">Satuan</th>
-          <th style="width:18%">Nomor Asset</th>
+          <th style="width:32%">Nama barang / Spare Parts</th>
+          <th style="width:15%">No. Catalog</th>
+          <th style="width:10%">Jumlah</th>
+          <th style="width:9%">Satuan</th>
+          <th style="width:14%">Nomor Asset</th>
           <th style="width:20%">Keterangan</th>
         </tr>
       </thead>
@@ -523,14 +541,14 @@ ${A4_PAGE_LAYOUT_CSS("20px")}
         <tr>
           <th style="width:25%">Perkiraan Pembebanan</th>
           <th style="width:50%">Kode perkiraan</th>
-          <th style="width:25%;text-align:center">Tanggal</th>
+          <th style="width:25%;text-align:center">Tanggal Penerimaan</th>
         </tr>
       </thead>
       <tbody>
         <tr>
           <td>${esc(txn.perkiraanPembebanan || "-")}</td>
           <td>${esc(txn.kodePerkiraan || "-")}</td>
-          <td style="text-align:center">${fmtDateOnly(txn.createdAt)}</td>
+          <td style="text-align:center">${fmtDateOnly(txn.tanggalPenerimaan)}</td>
         </tr>
       </tbody>
     </table>
@@ -540,13 +558,13 @@ ${A4_PAGE_LAYOUT_CSS("20px")}
         <div><i>Mengetahui,</i></div>
         <div class="sig-role">MAN II KONS ${esc(uptNama.toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(asmanUser.name || "ASEP MOCH. YUSUP")}</div>
+        <div class="sig-name">${esc(asmanUser.name || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang Menerima,</i></div>
         <div class="sig-role">SPV LOG ${esc(uptNama.toUpperCase())}</div>
         <div class="sig-space"></div>
-        <div class="sig-name">${esc(penerimaUser.name || "WIDI FERDIAN R")}</div>
+        <div class="sig-name">${esc(penerimaUser.name || ".....................")}</div>
       </div>
       <div class="sig-col">
         <div><i>Yang Menyerahkan,</i></div>
@@ -1605,6 +1623,28 @@ export function downloadTUG9HTML(txn, stocks, users, satpamList, showToast, uptL
   const w = window.open("", "_blank");
   const html = buildTUG9HTML(txn, stocks, users, satpamList, uptList, gudangList);
   if (w) { w.document.write(html); w.document.close(); }
+  showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
+}
+
+// BA pengeluaran manual: sengaja terpisah dari builder TUG agar tidak pernah
+// membaca stockItems/source lot. Foto disimpan sebagai URL Storage oleh caller.
+export function buildBaNonStockHTML(ba = {}) {
+  const esc = (s) => String(s ?? "").replace(/[&<>\"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'\"':"&quot;", "'":"&#39;"}[c]));
+  const approved = String(ba.status || ba.stage || "").toUpperCase() === "APPROVED";
+  const items = Array.isArray(ba.items) ? ba.items : (Array.isArray(ba.materials) ? ba.materials : []);
+  const photos = [ba.fotoLabel || ba.photoLabel || ba.photoLabelUrl || ba.foto1 || ba.photo1, ba.fotoMuat || ba.photoLoaded || ba.photoLoadedUrl || ba.foto2 || ba.photo2].filter(Boolean);
+  const sig = ba.signatures || {};
+  const name = (key, fallback) => sig[key]?.name || ba[`${key}Nama`] || ba[`${key}Name`] || fallback;
+  const row = items.length ? items.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.nama || x.name || x.material)}</td><td class="num">${esc(x.qty)}</td><td>${esc(x.satuan || x.unit)}</td><td>${esc(x.keterangan || x.description)}</td></tr>`).join("") : '<tr><td colspan="5">Belum ada material</td></tr>';
+  const photoPage = photos.map((src, i) => `<figure><img src="${esc(src)}" alt="${i === 0 ? "Label atau packing list" : "Material sudah dimuat"}"><figcaption>${i === 0 ? "Foto label / packing list" : "Foto material sudah dimuat"}</figcaption></figure>`).join("");
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(ba.docNumber || ba.id || "BA Non Stock")}</title><style>
+@page{size:A4 portrait;margin:12mm}*{box-sizing:border-box}body{font:11px Arial;color:#111;margin:0}.page{min-height:273mm;position:relative}.bar{background:#003087;color:#fff;padding:9px;text-align:center;font-weight:700;margin:-12mm -12mm 10mm}.bar button{margin-left:12px;padding:5px 12px}.watermark{position:fixed;inset:105mm 0 auto;text-align:center;font-size:48px;color:rgba(180,0,0,.15);font-weight:800;transform:rotate(-24deg);z-index:-1}.head{text-align:center;border-bottom:2px solid #111;padding-bottom:8px}.head h1{font-size:16px;margin:0 0 4px}.meta{width:100%;margin:12px 0;border-collapse:collapse}.meta td{padding:3px 5px;border:1px solid #555}.meta td:first-child{width:28%;font-weight:700}.items{width:100%;border-collapse:collapse;margin-top:12px}.items th,.items td{border:1px solid #333;padding:6px;vertical-align:top}.items th{background:#e5e7eb}.num{text-align:right}.signatures{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:35px;text-align:center}.sigspace{height:42px}.sig strong{display:block;text-decoration:underline}.appendix{break-before:page;page-break-before:always}.photos{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}.photos figure{border:1px solid #333;margin:0;padding:5mm;text-align:center}.photos img{display:block;width:100%;height:205mm;object-fit:contain}.photos figcaption{font-weight:700;margin-top:4mm}@media print{.bar{display:none}.page{min-height:273mm}}
+</style></head><body><div class="bar">${approved ? "BA Non Stock / Pinjam siap dicetak" : "PRATINJAU — BELUM DISETUJUI"}<button type="button" onclick="window.print()">🖨️ Print / Save PDF</button></div>${approved ? "" : '<div class="watermark">DRAFT / BELUM DISETUJUI</div>'}<section class="page"><header class="head"><h1>BERITA ACARA PENGELUARAN MATERIAL</h1><div>NON STOCK / PINJAM</div></header><table class="meta"><tr><td>Nomor BA</td><td>${esc(ba.docNumber || ba.nomor || "-")}</td></tr><tr><td>Tanggal</td><td>${esc(ba.tanggal || ba.issueDate || ba.date || "-")}</td></tr><tr><td>Sumber / Pengirim</td><td>${esc(ba.sumber || ba.sender || ba.pengirim || "-")}</td></tr><tr><td>Unit Tujuan</td><td>${esc(ba.tujuan || ba.destinationUnit || "-")}</td></tr><tr><td>Dokumen Referensi</td><td>${esc(ba.referensi || ba.referenceDocument || "-")}</td></tr><tr><td>Keperluan</td><td>${esc(ba.keperluan || ba.purpose || ba.keterangan || "-")}</td></tr><tr><td>Penerima Material</td><td>${esc(ba.penerimaNama || ba.recipientName || "-")} — ${esc(ba.penerimaJabatan || ba.recipientTitle || ba.recipientRole || "-")}</td></tr><tr><td>Satpam</td><td>${esc(ba.satpamNama || ba.guardName || "-")}</td></tr></table><table class="items"><thead><tr><th>No</th><th>Nama Material</th><th>Qty</th><th>Satuan</th><th>Keterangan</th></tr></thead><tbody>${row}</tbody></table><div class="signatures"><div class="sig">Penerima Material<div class="sigspace"></div><strong>${esc(name("penerima", ba.penerimaNama || "-"))}</strong></div><div class="sig">Satpam<div class="sigspace"></div><strong>${esc(name("satpam", ba.satpamNama || "-"))}</strong></div><div class="sig">Team Leader<div class="sigspace"></div><strong>${esc(name("tl", ba.tlNama || ba.teamLeaderNama || "-"))}</strong></div></div></section>${photos.length ? `<section class="page appendix"><header class="head"><h1>LAMPIRAN EVIDEN FOTO</h1><div>${esc(ba.docNumber || ba.id || "BA Non Stock")}</div></header><div class="photos">${photoPage}</div></section>` : ""}</body></html>`;
+}
+
+export function downloadBaNonStockHTML(ba, showToast) {
+  const w = window.open("", "_blank");
+  if (w) { w.document.write(buildBaNonStockHTML(ba)); w.document.close(); }
   showToast && showToast("📄 Dokumen dibuka — klik Print untuk simpan PDF", "success");
 }
 

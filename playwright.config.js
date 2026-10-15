@@ -42,7 +42,7 @@ module.exports = defineConfig({
   projects: [
     ...phoneProjects.map(([name, width, height]) => ({
     name,
-    testMatch: name === "phone-360" ? ["responsive.spec.js", "mobile-minimal.spec.js", "opname-lapangan.spec.js", "stock-opname-sap-first.spec.js"] : "responsive.spec.js",
+    testMatch: name === "phone-360" ? ["responsive.spec.js", "mobile-minimal.spec.js", "opname-lapangan.spec.js", "stock-opname-sap-first.spec.js", "ba-non-stock.spec.js"] : "responsive.spec.js",
     use: {
       viewport: { width, height },
       screen: { width, height },
@@ -53,7 +53,7 @@ module.exports = defineConfig({
     })),
     {
       name: "desktop-smoke",
-      testMatch: ["desktop.spec.js", "heavy-equipment.spec.js", "tug15-legacy.spec.js", "gi-tug-selection.spec.js", "tug-mara-guard.spec.js"],
+      testMatch: ["desktop.spec.js", "heavy-equipment.spec.js", "tug15-legacy.spec.js", "gi-tug-selection.spec.js", "tug-mara-guard.spec.js", "ba-non-stock.spec.js"],
       use: { viewport:{ width:1366, height:768 }, screen:{ width:1366, height:768 } },
     },
     {

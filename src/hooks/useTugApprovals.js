@@ -35,7 +35,11 @@ function toWaNumber(raw) {
 // per upt_id. COMPLETION masih + akuntansi manual dari notif_recipients (pola
 // lama). Dedup by nomor/target final supaya 1 orang 2 sumber tidak dobel kirim.
 // try/catch — notif gagal TIDAK BOLEH menggagalkan approval.
-async function enqueueTugNotif({ eventType, docType, docNumber, uptId, txnId, items, arah, users, uptList }) {
+async function enqueueTugNotif({
+  eventType, docType, docNumber, uptId, txnId, items, arah,
+  pekerjaan, lokasi, kontrak, penerima, asal, kendaraan, pengemudi,
+  users, uptList,
+}) {
   try {
     const targets = []; // {channel, target}
     const pushWa = (u) => { const n = toWaNumber(u?.official_phone); if (n) targets.push({ channel: "WA", target: n }); };
@@ -70,7 +74,12 @@ async function enqueueTugNotif({ eventType, docType, docNumber, uptId, txnId, it
       doc_type: docType,
       channel: t.channel,
       recipient: t.target,
-      payload: { docNumber, docType, uptId, txnId, items, arah, eventType },
+      // Snapshot header ikut disimpan supaya pesan tetap lengkap bila record
+      // legacy tidak tersedia saat dispatcher berjalan.
+      payload: {
+        docNumber, docType, uptId, txnId, items, arah, eventType,
+        pekerjaan, lokasi, kontrak, penerima, asal, kendaraan, pengemudi,
+      },
       status: "PENDING",
       attempts: 0,
       created_at: Date.now(),
@@ -185,6 +194,8 @@ export function useTugApprovals({
       uptId: txn.uptId,
       txnId: txn.id,
       arah: "MASUK",
+      lokasi: uploadedData.lokasiPenyerahan || txn.lokasiPenyerahan || "",
+      kontrak: { nama: txn.judulKontrak || "", noSP: txn.suratPesananNo || "", pt: txn.dariSupplier || "" },
       items: stockItems.map(si => ({
         kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
         nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",
@@ -230,7 +241,12 @@ export function useTugApprovals({
       await upsertTug3Transaction(updatedTxn);
       logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.tug3 || txn.id, { stage: "APPROVED", mtuReceiptId: updatedTxn.mtuReceiptId });
       showToast(`✅ ${txn.docNumbers?.tug3 || txn.id} DISETUJUI FINAL! Penerimaan MTU masuk ke Data Stok.`);
-      notify({ eventType: "COMPLETION", docType: "TUG3", docNumber: txn.docNumbers?.tug3 || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
+      notify({
+        eventType: "COMPLETION", docType: "TUG3", docNumber: txn.docNumbers?.tug3 || "", uptId: txn.uptId,
+        txnId: txn.id, arah: "MASUK", lokasi: txn.lokasiPenyerahan || "",
+        kontrak: { nama: txn.judulKontrak || "", noSP: txn.suratPesananNo || "", pt: txn.dariSupplier || "" },
+        items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })),
+      });
       return true;
     }
 
@@ -277,6 +293,7 @@ export function useTugApprovals({
       notify({
         eventType: "COMPLETION", docType: "TUG3", docNumber: txn.docNumbers?.tug3 || "", uptId: txn.uptId,
         txnId: txn.id, arah: "MASUK",
+        lokasi: txn.lokasiPenyerahan || "",
         items: (txn.stockItems || []).map(si => {
           const k = si.katalogMode === "existing" ? resolvedKatalogs.get(si.katalogId) : (result.katalogs || []).find(x => x.katalog === si.katalogBaru);
           return { kode: k?.katalog || si.katalogBaru || "", nama: k?.name || si.namaBaru || "", qty: si.qty, satuan: k?.satuan || si.satuanBaru || "" };
@@ -451,6 +468,7 @@ export function useTugApprovals({
       uptId: txn.uptId,
       txnId: txn.id,
       arah: "MASUK",
+      lokasi: txn.lokasiPenyerahan || "",
       items: txn.stockItems.map(si => ({
         kode: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.katalog : si.katalogBaru) || "",
         nama: (si.katalogMode === "existing" ? katalogList.find(k => k.id === si.katalogId)?.name : si.namaBaru) || "",

@@ -370,8 +370,8 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
   const missingList = tug10Missing(txnForm);
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:20}}>
-          <div style={{...sty.card,width:700,maxWidth:"100%",maxHeight:"90dvh",overflowY:"auto"}}>
-            <div style={sty.modalHeader}>
+          <div style={{...sty.card,width:860,maxWidth:"calc(100vw - 32px)",maxHeight:"90dvh",overflowY:"auto"}}>
+            <div style={{...sty.modalHeader,position:"sticky",top:0,zIndex:2}}>
               <span style={{fontWeight:800,fontSize:15}}>Formulir TUG-10 — Bon Pengembalian</span>
               <div style={{display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
                 <span style={{fontSize:12,fontWeight:700,color:"white",background:"rgba(255,255,255,0.18)",borderRadius: 10,padding:"3px 9px",whiteSpace:"nowrap"}}>No: {docSeq}.TUG-10/...</span>
@@ -388,7 +388,8 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>
               <div><label style={sty.label}>Pekerjaan (jenis)</label><input style={sty.input} value={txnForm.pekerjaan} onChange={e=>setTxnForm(tf=>({...tf,pekerjaan:e.target.value}))} placeholder="cth: Penggantian"/></div>
               <div><label style={sty.label}>No. BA Penggantian</label><input style={sty.input} value={txnForm.noBAPenggantian} onChange={e=>setTxnForm(tf=>({...tf,noBAPenggantian:e.target.value}))} placeholder="0266/PT-SD/VI/2026"/></div>
-              <div ref={setRef("namaPekerjaan")} style={{gridColumn:"1/-1",...hl("namaPekerjaan")}}><label style={sty.label}>Nama Pekerjaan *</label><input style={sty.input} value={txnForm.namaPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,namaPekerjaan:e.target.value}))} placeholder="cth: Pengembalian Material Relay GIS Darmo dan GIS Waru"/></div>
+              <div ref={setRef("namaPekerjaan")} style={{...hl("namaPekerjaan")}}><label style={sty.label}>Nama Pekerjaan *</label><input style={sty.input} value={txnForm.namaPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,namaPekerjaan:e.target.value}))} placeholder="cth: Pengembalian Material Relay GIS Darmo dan GIS Waru"/></div>
+              <div ref={setRef("tanggalPenggantianTerakhirBeroperasi")} style={hl("tanggalPenggantianTerakhirBeroperasi")}><label style={sty.label}>Tanggal Penggantian / Terakhir Beroperasi *</label><input style={sty.input} type="date" value={txnForm.tanggalPenggantianTerakhirBeroperasi||""} onChange={e=>setTxnForm(tf=>({...tf,tanggalPenggantianTerakhirBeroperasi:e.target.value}))}/></div>
               <div ref={setRef("lokasiPekerjaan")} style={{gridColumn:"1/-1",...hl("lokasiPekerjaan")}}><label style={sty.label}>Lokasi Pekerjaan *</label><input style={sty.input} value={txnForm.lokasiPekerjaan} onChange={e=>setTxnForm(tf=>({...tf,lokasiPekerjaan:e.target.value}))} placeholder="cth: GIS Darmo dan GIS Waru"/></div>
             </div>
 
@@ -411,6 +412,7 @@ export function Tug10FormModal({ txnForm, setTxnForm, setTxnModal, setEditingDra
                 </select>
                 {gudangList.length===0 && <div style={{fontSize:12,color:"#be185d",marginTop:4}}>Belum ada Master Gudang. Tambahkan dulu di Master Data → Master Gudang.</div>}
               </div>
+              <div ref={setRef("tanggalPenerimaan")} style={hl("tanggalPenerimaan")}><label style={sty.label}>Tanggal Penerimaan *</label><input style={sty.input} type="date" value={txnForm.tanggalPenerimaan||""} onChange={e=>setTxnForm(tf=>({...tf,tanggalPenerimaan:e.target.value}))}/></div>
               {!isLegacyGud && tug10Subs.length>0 && (
                 <div>
                   <label style={sty.label}>Sub Gudang</label>

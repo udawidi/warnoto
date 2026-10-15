@@ -31,6 +31,76 @@ test("TUG-9 Keterangan uses material status, not jenisBarang", () => {
   assert.doesNotMatch(html, /\(Persediaan\) Untuk pekerjaan/);
 });
 
+test("TUG-10 prints reception warehouse and dates", () => {
+  const html = buildTUG10HTML({
+    ...baseTxn,
+    gudangTujuanId: "g-1",
+    tanggalPenggantianTerakhirBeroperasi: "2026-06-10",
+    tanggalPenerimaan: "2026-06-12",
+  }, [], [], [], [], [{ id: "g-1", nama: "Gudang Waru" }], [], []);
+  assert.match(html, /LOKASI GUDANG/);
+  assert.match(html, /Gudang Waru/);
+  assert.match(html, /10 Juni 2026/);
+  assert.match(html, /12 Juni 2026/);
+  assert.match(html, /Tanggal Penerimaan/);
+  assert.doesNotMatch(html, /INFORMASI PENERIMAAN MATERIAL|reception-tbl|reception-label/);
+  const legacy = buildTUG10HTML({ ...baseTxn, gudangTujuanId: "missing" }, [], [], [], [], [], [], []);
+  assert.match(legacy, /LOKASI GUDANG/);
+  assert.match(legacy, />-<\/td>/);
+});
+
+test("TUG-10 form exposes manual date inputs and submit validation", () => {
+  const source = fs.readFileSync(new URL("../../src/components/TugFormModals.jsx", import.meta.url), "utf8");
+  const hook = fs.readFileSync(new URL("../../src/hooks/useTugTransactions.js", import.meta.url), "utf8");
+  assert.match(source, /type="date" value=\{txnForm\.tanggalPenggantianTerakhirBeroperasi/);
+  assert.match(source, /type="date" value=\{txnForm\.tanggalPenerimaan/);
+  assert.match(hook, /if \(!tf\.tanggalPenggantianTerakhirBeroperasi\)/);
+  assert.match(hook, /if \(!tf\.tanggalPenerimaan\)/);
+});
+
+test("TUG-10 signers stay scoped and reject role mismatch", () => {
+  const txn = { ...baseTxn, uptId: "UPT-A", approvedByTL: "tl-b", approvedByAsman: "asman-a" };
+  const users = [
+    { id: "tl-b", role: "TL", uptId: "UPT-B", name: "TL WRONG" },
+    { id: "tl-a", role: "TL", uptId: "UPT-A", name: "TL A" },
+    { id: "asman-a", role: "ADMIN", uptId: "UPT-A", name: "ASMAN WRONG ROLE" },
+    { id: "asman-b", role: "ASMAN", uptId: "UPT-B", name: "ASMAN WRONG UPT" },
+    { id: "asman-c", role: "ASMAN", uptId: "UPT-A", name: "ASMAN A" },
+  ];
+  const html = buildTUG10HTML({ ...txn, identitySnapshot: { tl_name: "SNAPSHOT TL" } }, [], [], users, [], [], [], []);
+  assert.match(html, /SNAPSHOT TL/);
+  assert.match(html, /ASMAN A/);
+  assert.doesNotMatch(html, /TL WRONG|ASMAN WRONG ROLE|ASMAN WRONG UPT|ASEP MOCH|WIDI FERDIAN/);
+  const unscoped = buildTUG10HTML({ ...baseTxn }, [], [], [{ role: "TL", name: "GLOBAL TL" }, { role: "ASMAN", name: "GLOBAL ASMAN" }], [], [], [], []);
+  assert.doesNotMatch(unscoped, /GLOBAL TL|GLOBAL ASMAN/);
+  assert.match(unscoped, /\.\.\.\.\.\.\.\.\.\.\.\.\.\.\./);
+});
+
+test("TUG-10 prints compact warehouse location in metadata order", () => {
+  const html = buildTUG10HTML({ ...baseTxn, uptId: "UPT-A", gudangTujuanId: "g1", subGudangTujuanId: "s1", lokasiTujuanId: "l1", noBAPenggantian: "BA-1", tanggalPenggantianTerakhirBeroperasi: "2026-06-10" }, [], [{ id: "l1", kode: "B02", subGudangId: "s1" }], [], [], [{ id: "g1", nama: "Gudang Utama" }], [{ id: "s1", nama: "Transformator", gudangId: "g1" }, { id: "other", nama: "Transformator", gudangId: "g2" }], []);
+  assert.match(html, /LOKASI GUDANG[\s\S]*Gudang Utama \/ TRN \/ B02[\s\S]*NO BA PENGGANTIAN[\s\S]*BA-1[\s\S]*TANGGAL PENGGANTIAN/);
+  assert.doesNotMatch(html, /NAMA GUDANG DITERIMA MATERIAL|reception-tbl/);
+
+  const legacy = buildTUG10HTML({ ...baseTxn, gudangTujuanId: "", lokasiTujuanId: "l2" }, [], [{ id: "l2", nama: "Blok Legacy", gudangId: "g1", subGudangId: "s2" }], [], [], [{ id: "g1", nama: "Gudang Lama" }], [{ id: "s2", nama: "Transformator" , gudangId: "g1" }, { id: "other", nama: "Transformator", gudangId: "g2" }], []);
+  assert.match(legacy, /Gudang Lama \/ TRN \/ Blok Legacy/);
+  const gi = buildTUG10HTML({ ...baseTxn, gudangTujuanId: "g1" }, [], [], [], [], [{ id: "g1", nama: "GI C" }], [], []);
+  assert.match(gi, /GI C/);
+});
+
+test("TUG-10 prints catalog number from master, snapshot, or new material", () => {
+  const html = buildTUG10HTML({ ...baseTxn, stockItems: [
+    { katalogMode: "existing", katalogId: "m1", qty: 1, statusMaterial: "Material Sisa Baru", noAsset: "A1" },
+    { katalogMode: "existing", katalogId: "legacy", snapshot: { name: "Legacy", katalog: "000123" }, qty: 2, statusMaterial: "Bongkaran" },
+    { katalogMode: "new", namaBaru: "Baru & Khusus", katalogBaru: "CAT-NEW", satuanBaru: "unit", qty: 1, statusMaterial: "Material Sisa Baru" },
+    { katalogMode: "new", namaBaru: "Tanpa Kode", qty: 1, statusMaterial: "Material Sisa Baru" },
+  ] }, [{ id: "m1", name: "Master", katalog: "MAT-001", satuan: "BH" }], [], [], [], [], [], [], []);
+  assert.match(html, /Master[\s\S]*MAT-001/);
+  assert.match(html, /Legacy[\s\S]*123/);
+  assert.match(html, /Baru &amp; Khusus[\s\S]*CAT-NEW/);
+  assert.match(html, /Tanpa Kode[\s\S]*>-<\/td>/);
+  assert.match(html, /No\. Catalog/);
+});
+
 test("all TUG document builders keep one physical A4 layout for screen and print", () => {
   for (const [name, build] of builders) {
     const html = build();

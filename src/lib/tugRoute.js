@@ -7,7 +7,7 @@ export const TUG_ROUTE_DEFAULTS = {
 
 export const TUG_ROUTE_OPTIONS = {
   penerimaan: ["TUG3", "TUG10"],
-  pengeluaran: ["TUG9", "TUG8"],
+  pengeluaran: ["TUG9", "TUG8", "BA_NON_STOCK"],
   permintaan: ["TUG5"],
   laporan: ["TUG15"],
 };

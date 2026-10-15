@@ -67,3 +67,35 @@ test("field kosong -> baris tidak dicetak, tak ada separator menggantung", () =>
   const sepCount = (msg.match(/━━━━━━━━━━━━━━━━━━━━/g) || []).length;
   assert.equal(sepCount, 1);
 });
+
+test("TUG-3 PENDING -> lokasi penyerahan dan judul kontrak tampil, supplier bukan pekerjaan", () => {
+  const msg = renderWaMessage({
+    eventType: "PENDING", arah: "MASUK", docType: "TUG3", docLabel: "TUG-3 Penerimaan",
+    docNumber: "DOC-3", uptNama: "UPT Surabaya", tanggal: "1 Januari 2026, 08.00 WIB",
+    lokasi: "Gudang Ketintang", kontrak: { nama: "Pengadaan Kabel", noSP: "SP-1", pt: "PT Sumber Jaya" },
+    items: [{ kode: "K-1", nama: "Kabel", qty: 2, satuan: "PCS" }], totalItem: 1,
+  });
+  assert.match(msg, /Lokasi: Gudang Ketintang/);
+  assert.match(msg, /Kontrak: Pengadaan Kabel .* No\.SP SP-1 .* PT Sumber Jaya/);
+  assert.doesNotMatch(msg, /Pekerjaan:/);
+});
+
+test("TUG-8/9 PENDING dan TUG-10 COMPLETION -> pekerjaan dan lokasi tampil", () => {
+  const keluar = renderWaMessage({
+    eventType: "PENDING", arah: "KELUAR", docType: "TUG8", docLabel: "TUG-8 Pengeluaran",
+    docNumber: "DOC-8", pekerjaan: "Penggantian PMT", lokasi: "GI Buduran",
+    penerima: "ARIFIN (ULTG SBS)", items: [{ kode: "K-1", nama: "Kabel", qty: 1, satuan: "PCS" }], totalItem: 1,
+  });
+  assert.match(keluar, /Pekerjaan: Penggantian PMT/);
+  assert.match(keluar, /Lokasi: GI Buduran/);
+
+  const masuk = renderWaMessage({
+    eventType: "COMPLETION", arah: "MASUK", docType: "TUG10", docLabel: "TUG-10 Penerimaan",
+    docNumber: "DOC-10", pekerjaan: "Pengembalian material", lokasi: "GI Waru",
+    asal: { vendor: "PT Mitra", pic: "Budi" }, items: [{ kode: "K-2", nama: "Relay", qty: 1, satuan: "PCS" }], totalItem: 1,
+  });
+  assert.match(masuk, /Pekerjaan: Pengembalian material/);
+  assert.match(masuk, /Lokasi: GI Waru/);
+  assert.match(masuk, /Asal\/Vendor: PT Mitra .* PIC Budi/);
+  assert.doesNotMatch(masuk, /Kontrak:/);
+});

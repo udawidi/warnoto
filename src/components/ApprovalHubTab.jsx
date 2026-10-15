@@ -38,6 +38,7 @@ export function ApprovalHubTab({
   approvalHistoryShowAll, setApprovalHistoryShowAll,
   deleteDraftTug3, editDraftTug3, editTug5, editTug10, openEditCanonicalTug, timMutuList, submitTUG4DanLampiran, approveTUG3Final_Asman, rejectTUG3Final_Asman,
   approveTUG3_TL, rejectTUG3_TL,
+  baNonStockRecords, approveBaNonStock, rejectBaNonStock, previewBaNonStock,
   handleImg,
 }) {
   // UIT dulu dianggap "global" (nasional) — sekarang dibatasi ke semua UPT di UIT-nya lewat
@@ -48,7 +49,8 @@ export function ApprovalHubTab({
     ? approvalHistoryList
     : approvalHistoryList.filter(h => inScopeUpt(userUptById.get(h.decidedBy), historyScope) || inScopeUpt(userUptById.get(h.requestedBy), historyScope) || inScopeUpt(h.uptId, historyScope)))
     .filter(h => h.decidedBy === currentUser.id);
-  const tugCount = myPendingApprovals.length;
+  const baNonStockPending = hasRole(currentUser, "TL", "SUPERADMIN") ? (baNonStockRecords || []).filter(record => record.stage === "PENDING_TL") : [];
+  const tugCount = myPendingApprovals.length + baNonStockPending.length;
   const capCount = hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0;
   const lokasiCount = hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0;
   const stokCount = hasRole(currentUser, "TL")
@@ -146,6 +148,16 @@ export function ApprovalHubTab({
         rejectTUG3_TL={rejectTUG3_TL}
         handleImg={handleImg}
       />
+
+      {(approvalTypeFilter==="ALL"||approvalTypeFilter==="TUG") && baNonStockPending.length > 0 && (
+        <div style={{...sty.card,marginBottom:16,borderLeft:`4px solid ${C.yellow}`}}>
+          <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>BA Material Non Stock / Pinjam ({baNonStockPending.length})</div>
+          {baNonStockPending.map(record=><div key={record.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
+            <div><strong style={{fontSize:12}}>{record.penerimaNama || "Penerima belum diisi"}</strong><div style={{fontSize:12,color:C.muted}}>{record.items?.length || 0} material · {record.tanggal || "-"} · {record.jenis === "PINJAM" ? "Pinjam" : "Non Stock"}</div></div>
+            <div className="approval-actions approval-actions--compact"><button style={sty.btn("ghost","sm")} onClick={()=>previewBaNonStock?.(record)}>Pratinjau</button><button className="approval-btn--approve" onClick={()=>approveBaNonStock?.(record)}>✓ Setujui</button><button className="approval-btn--reject" onClick={()=>rejectBaNonStock?.(record)}>✕ Tolak</button></div>
+          </div>)}
+        </div>
+      )}
 
       {/* Perpindahan gudang oleh ADMIN wajib direview TL. */}
       {(approvalTypeFilter==="ALL"||approvalTypeFilter==="STOK") && hasRole(currentUser, "TL") && stocks.some(s=>s.lokasiMovePending && ["TL", "ASMAN"].includes(s.lokasiMoveApprover)) && (()=>{

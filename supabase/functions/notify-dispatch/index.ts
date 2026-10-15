@@ -50,14 +50,56 @@ function mapItems(raw: any[]) {
   return (raw || []).map((i: any) => ({ kode: i.kode || "-", nama: i.nama || "-", qty: i.qty, satuan: i.satuan || "" }));
 }
 
-// Detail canonical (TUG-8/9): txnId = tug_transactions.id. TUG-3/10 (legacy, blob
-// txns lama) tidak punya row di sini -> query balik null, buildMessage jatuh ke payload.
-async function fetchCanonical(txnId: string) {
+function mapDocumentItems(doc: any) {
+  const raw = Array.isArray(doc?.stockItems) ? doc.stockItems : (Array.isArray(doc?.items) ? doc.items : []);
+  return mapItems(raw.map((i: any) => ({
+    kode: i.kode || i.katalog || i.katalogBaru || i.katalogId,
+    nama: i.nama || i.name || i.namaBaru || i.katalogId,
+    qty: i.qty ?? i.permintaan,
+    satuan: i.satuan || i.satuanBaru || i.unit,
+  })));
+}
+
+function hasValues(value: any) {
+  return !!value && typeof value === "object" && Object.values(value).some(Boolean);
+}
+
+function epochIso(value: any) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? new Date(n).toISOString() : null;
+}
+
+// Detail canonical (TUG-8/9): txnId = tug_transactions.id. TUG-3/10 memakai
+// tabel dedicated; snapshot payload tetap menjadi sumber pertama untuk header.
+async function fetchCanonical(txnId: string, docType?: string) {
   const { data: txn } = await admin
     .from("tug_transactions")
     .select("document, identity_snapshot, submitted_at, final_approved_at, doc_number, upt_id")
     .eq("id", txnId).maybeSingle();
-  if (!txn) return null;
+  if (!txn) {
+    // TUG-3/TUG-10 memakai tabel dedicated legacy/canonical sendiri. Ambil
+    // snapshot JSONB agar notifikasi tetap lengkap tanpa mengubah skema.
+    const table = docType === "TUG3" ? "tug3_transactions" : docType === "TUG10" ? "tug10_transactions" : null;
+    if (!table) return null;
+    const { data: legacy } = await admin.from(table)
+      .select("id, doc_number, upt_id, data, stage, status, created_at, updated_at")
+      .eq("id", txnId).maybeSingle();
+    if (!legacy) return null;
+    const doc = legacy.data || {};
+    const approved = String(legacy.status || "").toUpperCase() === "APPROVED" || String(legacy.stage || "").toUpperCase() === "APPROVED";
+    return {
+      txn: {
+        upt_id: legacy.upt_id,
+        doc_number: legacy.doc_number,
+        submitted_at: epochIso(legacy.created_at),
+        final_approved_at: approved ? epochIso(legacy.updated_at || legacy.created_at) : null,
+      },
+      doc,
+      items: mapDocumentItems(doc),
+      pengaju: doc.createdByName || doc.createdBy || "",
+      approver: doc.approvedByName || "",
+    };
+  }
 
   const { data: approvals } = await admin
     .from("tug_approvals").select("event_type, decision, actor_snapshot, created_at")
@@ -82,6 +124,7 @@ async function fetchCanonical(txnId: string) {
         return { kode: kat.katalog || "-", nama: kat.name || i.stock_id || "-", qty: i.qty, satuan: i.unit || kat.satuan || "" };
       });
     }
+    if (!items.length) items = mapDocumentItems(doc);
   }
 
   return { txn, doc, items, pengaju: created?.actor_snapshot?.name || "", approver: finalApprove?.actor_snapshot?.name || "" };
@@ -99,7 +142,7 @@ async function buildMessage(row: { doc_type: string; payload: Record<string, any
   const label = docLabelFor(docType);
 
   try {
-    const canon = p.txnId ? await fetchCanonical(p.txnId) : null;
+    const canon = p.txnId ? await fetchCanonical(p.txnId, docType) : null;
     const doc = canon?.doc || {};
 
     const [uptNama, gudang] = await Promise.all([
@@ -113,8 +156,13 @@ async function buildMessage(row: { doc_type: string; payload: Record<string, any
       ? join2(p.penerima.nama, p.penerima.unit)
       : doc.penerimaNama ? join2(doc.penerimaNama, doc.penerimaUnit) : "";
 
-    const kontrak = p.kontrak || (doc.judulKontrak || doc.suratPesananNo || doc.dariSupplier
-      ? { nama: doc.judulKontrak, noSP: doc.suratPesananNo, pt: doc.dariSupplier } : null);
+    const kontrakFromDoc = docType === "TUG3" && (doc.judulKontrak || doc.suratPesananNo || doc.dariSupplier)
+      ? { nama: doc.judulKontrak, noSP: doc.suratPesananNo, pt: doc.dariSupplier } : null;
+    const kontrak = docType === "TUG3" && hasValues(p.kontrak) ? p.kontrak : kontrakFromDoc;
+    const asalFromDoc = docType === "TUG10" && (doc.menyerahkanUnit || doc.menyerahkanNama)
+      ? { vendor: doc.menyerahkanUnit, pic: doc.menyerahkanNama } : null;
+    const asal = hasValues(p.asal) ? p.asal : asalFromDoc;
+    const isReceipt = docType === "TUG3";
 
     const tsMs = eventType === "COMPLETION"
       ? (canon?.txn?.final_approved_at ? Date.parse(canon.txn.final_approved_at) : row.created_at)
@@ -125,15 +173,16 @@ async function buildMessage(row: { doc_type: string; payload: Record<string, any
       docNumber: canon?.txn?.doc_number || p.docNumber || "",
       uptNama, gudang,
       tanggal: fmtTanggal(tsMs),
-      pekerjaan: p.pekerjaan || doc.namaPekerjaan || doc.pekerjaan || "",
-      lokasi: doc.lokasiPekerjaan || "",
+      // TUG-3 `namaPekerjaan` berisi supplier pada sebagian data legacy.
+      pekerjaan: isReceipt ? "" : (p.pekerjaan || doc.namaPekerjaan || doc.pekerjaan || ""),
+      lokasi: p.lokasi || (isReceipt ? doc.lokasiPenyerahan : doc.lokasiPekerjaan) || "",
       penerima,
-      kendaraan: doc.nopol || "",
-      pengemudi: doc.namaPengemudi || "",
+      kendaraan: p.kendaraan || doc.nopol || "",
+      pengemudi: p.pengemudi || doc.namaPengemudi || "",
       approver: eventType === "COMPLETION" ? canon?.approver || "" : "",
       tl: eventType === "COMPLETION" ? canon?.txn?.identity_snapshot?.tl_name || "" : "",
       kontrak,
-      asal: p.asal || null,
+      asal,
       pengaju: eventType === "PENDING" ? canon?.pengaju || "" : "",
       items,
       totalItem: items.length,

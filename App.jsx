@@ -124,6 +124,7 @@ import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransa
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
 import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final, formatTugMaraError } from "./src/lib/tug10Sync.js";
 import { loadTugWorkflowTransactions, mergeWorkflowServerWins, migrateLegacyWorkflowDrafts, isWorkflowDoc } from "./src/lib/tugWorkflowSync.js";
+import { loadBaNonStock, saveBaNonStockDraft as persistBaNonStockDraft, submitBaNonStock as persistBaNonStockSubmit, decideBaNonStock } from "./src/lib/baNonStockSync.js";
 import { readTugRoute, writeTugRoute, TUG_ROUTE_DEFAULTS, TUG_ROUTE_OPTIONS } from "./src/lib/tugRoute.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
@@ -181,6 +182,7 @@ const TUG_UI = {
   TUG10: { title:"Barang Kembali / Retur",  code:"TUG-10",  chip:"Barang Kembali / Retur",   buat:"Catat Barang Kembali",    desc:"Sisa pekerjaan atau bekas bongkaran dikembalikan ke gudang." },
   TUG9:  { title:"Keluarkan / Pakai Barang",code:"TUG-9",   chip:"Pakai Barang",             buat:"Keluarkan Barang",        desc:"Ambil barang dari gudang untuk dipakai pekerjaan di unit sendiri (UPT Surabaya)." },
   TUG8:  { title:"Kirim ke Unit PLN Lain",  code:"TUG-8",   chip:"Kirim ke Unit Lain",       buat:"Kirim ke Unit Lain",      desc:"Keluarkan barang untuk dipakai unit PLN lain." },
+  BA_NON_STOCK: { title:"BA Material Non Stock / Pinjam", code:"BA Non Stock", chip:"Non Stock / Pinjam", buat:"Buat BA Non Stock", desc:"Pengeluaran material manual tanpa mengambil atau mengurangi Data Stok." },
   TUG5:  { title:"Minta Barang ke Gudang",  code:"TUG-5",   chip:"Minta Barang",             buat:"Buat Permintaan Barang",  desc:"Ajukan permintaan material — Intracompany (→TUG-7) atau Intercompany (→TUG-5 UIT)." },
   TUG15: { title:"Laporan Mutasi Stok",     code:"TUG-15",  chip:"Laporan Mutasi Stok",      buat:null,                      desc:"Riwayat mutasi stok dari semua transaksi TUG yang disetujui — filter tanggal & unduh." },
 };
@@ -191,7 +193,7 @@ const TUG_GROUP_UI = {
   laporan:     { icon:"📊", label:"Laporan",       hint:"Riwayat mutasi stok" },
 };
 // Ikon pembeda per jenis TUG untuk tombol pemilih section (biar staf baru gampang bedakan).
-const TUG_ICON = { TUG3:"🆕", TUG10:"↩️", TUG9:"🔧", TUG8:"🚚", TUG5:"📝", TUG15:"📊" };
+const TUG_ICON = { TUG3:"🆕", TUG10:"↩️", TUG9:"🔧", TUG8:"🚚", BA_NON_STOCK:"📄", TUG5:"📝", TUG15:"📊" };
 
 // Glosarium LENGKAP singkatan & istilah material PLN (sheet PLN-Terminology, CATALOG
 // MASTER.xlsx). KHUSUS untuk konteks AI (AI Agent web & Telegram bot) supaya paham
@@ -348,6 +350,7 @@ export default function PLNWarehouse() {
   const [katalogList, setKatalogList] = useState(() => readCachedList("pln_katalog_v4") ?? []); // Master Katalog Barang
   const [lokasiList, setLokasiList] = useState(() => dropCachedGiRows(readCachedList("pln_lokasi_v4")) ?? []); // Master Lokasi Gudang
   const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
+  const [baNonStockRecords, setBaNonStockRecords] = useState([]);
   const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? []);
   const [supplierList, setSupplierList] = useState(() => readCachedList("pln_supplier_v1") ?? []); // Master Supplier (nasional, dipakai jg di form TUG-3)
   const [timMutuList, setTimMutuList] = useState(() => readCachedList("pln_tim_mutu_v1") ?? []);
@@ -1395,7 +1398,7 @@ export default function PLNWarehouse() {
       setDataRefreshing(false);
       showToastRef.current && showToastRef.current("⚠️ Sinkronisasi cloud gagal. Data lokal tetap ditampilkan.", "error");
     });
-  }, [authLoading, currentUser?.id]);
+  }, [authLoading, currentUser?.id, tab]);
 
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
   // sengaja tidak memakai cache/saveToCloud agar tidak ikut full sync state lama.
@@ -2036,6 +2039,49 @@ export default function PLNWarehouse() {
   function showToast(msg, type="success") { setToast({msg,type}); setTimeout(()=>setToast(null), type==="error"?5500:3500); }
   showToastRef.current = showToast;
 
+  async function refreshBaNonStock() {
+    const result = await loadBaNonStock();
+    if (!result.unavailable && !result.error) setBaNonStockRecords(result.rows);
+    return result;
+  }
+
+  async function saveBaNonStockDraft(form) {
+    const isFile = value => typeof File !== "undefined" && value instanceof File;
+    const photoFiles = { label:isFile(form.foto1) ? form.foto1 : null, loaded:isFile(form.foto2) ? form.foto2 : null };
+    const draft = { ...form, foto1:photoFiles.label ? null : form.foto1, foto2:photoFiles.loaded ? null : form.foto2 };
+    const result = await persistBaNonStockDraft({ draft, items:form.items, expectedVersion:form.workflowVersion ?? null, photoFiles });
+    if (!result.ok) { showToast(result.error?.message || "BA Non Stock gagal disimpan.", "error"); return null; }
+    await refreshBaNonStock();
+    showToast("Draft BA Non Stock tersimpan.");
+    return result.row;
+  }
+
+  async function submitBaNonStock(record) {
+    const result = await persistBaNonStockSubmit(record.id, record.workflowVersion);
+    if (!result.ok) { showToast(result.error?.message || "BA Non Stock gagal diajukan.", "error"); return false; }
+    await refreshBaNonStock();
+    showToast("BA Non Stock diajukan ke Team Leader.");
+    return true;
+  }
+
+  async function approveBaNonStock(record) {
+    const result = await decideBaNonStock(record.id, record.workflowVersion, "APPROVE");
+    if (!result.ok) { showToast(result.error?.message || "BA Non Stock gagal disetujui.", "error"); return false; }
+    await refreshBaNonStock();
+    showToast(`BA disetujui: ${result.result?.docNumber || "nomor diterbitkan"}.`);
+    return true;
+  }
+
+  async function rejectBaNonStock(record) {
+    const reason = window.prompt("Alasan penolakan BA:");
+    if (!reason?.trim()) return false;
+    const result = await decideBaNonStock(record.id, record.workflowVersion, "REJECT", reason.trim());
+    if (!result.ok) { showToast(result.error?.message || "BA Non Stock gagal ditolak.", "error"); return false; }
+    await refreshBaNonStock();
+    showToast("BA Non Stock ditolak.");
+    return true;
+  }
+
   const {
     txnModal, setTxnModal, txnForm, setTxnForm,
     editingDraftTxnId, setEditingDraftTxnId,
@@ -2422,6 +2468,15 @@ export default function PLNWarehouse() {
       console.warn("Data admin latar belakang gagal dimuat.", error);
     });
   }, [authLoading, currentUser?.id, dataRefreshing]);
+
+  useEffect(() => {
+    if (authLoading || !currentUser || !supabase) { setBaNonStockRecords([]); return; }
+    let alive = true;
+    loadBaNonStock().then(result => {
+      if (alive && !result.unavailable && !result.error) setBaNonStockRecords(result.rows);
+    }).catch(error => console.warn("BA Non Stock gagal dimuat.", error));
+    return () => { alive = false; };
+  }, [authLoading, currentUser?.id]);
 
   // RBAC guard render: kalau role tidak (lagi) punya izin menu untuk tab aktif
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama
@@ -3362,10 +3417,10 @@ export default function PLNWarehouse() {
           // yang trigger SQL tidak punya. Trigger di-drop lewat migration proposal
           // 20260903d (belum di-apply); dobel-kirim dicegah dedup by target di enqueueTugNotif.
           if (txn.docType === "TUG8" || txn.docType === "TUG9") {
-            enqueueTugNotif({ eventType: "COMPLETION", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR", penerima: { nama: txn.penerimaNama || "", unit: txn.penerimaUnit || "", jabatan: txn.penerimaJabatan || "" }, pekerjaan: txn.namaPekerjaan || "" });
+            enqueueTugNotif({ eventType: "COMPLETION", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR", penerima: { nama: txn.penerimaNama || "", unit: txn.penerimaUnit || "", jabatan: txn.penerimaJabatan || "" }, pekerjaan: txn.namaPekerjaan || "", lokasi: txn.lokasiPekerjaan || "", kendaraan: txn.nopol || "", pengemudi: txn.namaPengemudi || "" });
           }
         } else if (txn.docType === "TUG8" || txn.docType === "TUG9") {
-          enqueueTugNotif({ eventType: "PENDING", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR", penerima: { nama: txn.penerimaNama || "", unit: txn.penerimaUnit || "", jabatan: txn.penerimaJabatan || "" }, pekerjaan: txn.namaPekerjaan || "" });
+          enqueueTugNotif({ eventType: "PENDING", docType: txn.docType, docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "KELUAR", penerima: { nama: txn.penerimaNama || "", unit: txn.penerimaUnit || "", jabatan: txn.penerimaJabatan || "" }, pekerjaan: txn.namaPekerjaan || "", lokasi: txn.lokasiPekerjaan || "", kendaraan: txn.nopol || "", pengemudi: txn.namaPengemudi || "" });
         }
         setTxns(prev => prev.map(t => t.id === txn.id ? { ...t, status:isFinal ? "APPROVED" : "PENDING", stage:result.data.stage, requiredApprover:isFinal ? null : "ASMAN", canonicalVersion:result.data.version, ...(isFinal ? {approvedBy:currentUser.id,approvedAt:Date.now()} : {approvedByTL:currentUser.id,approvedAtTL:Date.now()}), asmanAutoApproved:false } : t));
         delete canonicalDecisionKeysRef.current[txn.id];
@@ -3446,7 +3501,7 @@ export default function PLNWarehouse() {
           try { CLOUD.set("pln_txns_v3", newTxns); } catch (error) { console.warn("Cache TUG-10 gagal diperbarui:", error); }
           logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.[dKey] || txn.id, { stage: "PENDING_ASMAN" });
           showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} diteruskan ke Asman. Stok belum berubah.`);
-          enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
+          enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", pekerjaan: txn.namaPekerjaan || "", lokasi: txn.lokasiPekerjaan || "", asal: { vendor: txn.menyerahkanUnit || "", pic: txn.menyerahkanNama || "" }, items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
           return true;
         }
         if (approvalStage !== "PENDING_ASMAN") {
@@ -3499,6 +3554,7 @@ export default function PLNWarehouse() {
           })),
           asal: { vendor: txn.menyerahkanUnit || "", pic: txn.menyerahkanNama || "" },
           pekerjaan: txn.namaPekerjaan || "",
+          lokasi: txn.lokasiPekerjaan || "",
         });
         return true;
       } catch (err) {
@@ -4829,6 +4885,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
             adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
+            baNonStockRecords={baNonStockRecords} saveBaNonStockDraft={saveBaNonStockDraft} submitBaNonStock={submitBaNonStock}
+            approveBaNonStock={approveBaNonStock} rejectBaNonStock={rejectBaNonStock} currentUptId={currentUserUptId} satpamList={satpamList}
           />
         )}
 
@@ -4976,7 +5034,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           )}
 
         {/* APPROVAL — semua notifikasi approval (TUG, Lokasi/Blok, Pemindahan Stok, dkk) dikumpulkan di sini, dipisah per-bagian + riwayat di bawah */}
-        {tab==="approval" && hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG") && (
+        {tab==="approval" && hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG","SUPERADMIN") && (
           <ApprovalHubTab
             currentUser={currentUser} sty={sty} C={C} isMobile={isMobile}
             myPendingApprovals={myPendingApprovals} gudangCapacityImports={gudangCapacityImports} lokasiList={lokasiList} stocks={scopedStocks}
@@ -5007,6 +5065,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             submitTUG4DanLampiran={submitTUG4DanLampiran}
             approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
             approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
+            baNonStockRecords={baNonStockRecords} approveBaNonStock={approveBaNonStock} rejectBaNonStock={rejectBaNonStock} previewBaNonStock={setDocPreview}
             handleImg={handleImg}
           />
         )}

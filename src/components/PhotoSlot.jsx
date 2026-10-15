@@ -10,21 +10,25 @@ export function PhotoSlot({ label, value, onChange, onRemove, handleImg, sty, C,
   const [displaySrc, setDisplaySrc] = useState(value);
   useEffect(() => {
     let alive = true;
+    let objectUrl = null;
     if (typeof value === "string" && value.startsWith("priv:")) {
       resolvePrivPhoto(value).then(u => { if (alive) setDisplaySrc(u); });
+    } else if (typeof File !== "undefined" && value instanceof File) {
+      objectUrl = URL.createObjectURL(value);
+      setDisplaySrc(objectUrl);
     } else {
       setDisplaySrc(value);
     }
-    return () => { alive = false; };
+    return () => { alive = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
   }, [value]);
   return (
     <div>
       <label style={{...sty.label, display:"block", minHeight:34, lineHeight:1.25}}>{label}{required && <span style={{color:C.red}}> *</span>}</label>
-      <div style={{height:90,borderRadius:10,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,marginBottom:6}}>
+      <div style={{height:90,borderRadius:10,background:C.bg,border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,marginBottom:6}}>
         {value ? <img src={displaySrc} alt={label} width={120} height={90} style={{width:"100%",height:"100%",objectFit:"cover"}}/> : (<><Image size={24} weight="duotone" color="#9ca3af" aria-hidden="true" /><span style={{fontSize:11,color:C.muted}}>Belum ada foto</span></>)}
       </div>
       <div style={{display:"flex",gap:6}}>
-        <label tabIndex={0} style={{...sty.btn("ghost","sm"),flex:1,textAlign:"center",cursor:"pointer",minHeight:44,touchAction:"manipulation",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
+        <label tabIndex={0} style={{...sty.btn("ghost","sm"),background:C.bg,color:C.text,border:`1px solid ${C.border}`,flex:1,textAlign:"center",cursor:"pointer",minHeight:44,touchAction:"manipulation",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}
           onKeyDown={e=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); e.currentTarget.querySelector("input[type=file]")?.click(); } }}>
           <Camera size={15} weight="bold" aria-hidden="true" /> {value?"Ganti Foto":"Ambil Foto"}
           {/* Sengaja TANPA accept="image/*": di Android 13+ accept image-only memicu

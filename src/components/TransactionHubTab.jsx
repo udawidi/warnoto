@@ -11,6 +11,7 @@ import { fmtDate } from "../lib/utils.js";
 import { statusMaterialBadgeStyle, formatKontrakSumber } from "../lib/sap.js";
 import { matchesTugHistorySearch } from "../lib/tugSearch.js";
 import { friendlyNiimbotError, printCompactLabelM2h, resolveCompactLabelKatalog } from "../lib/niimbotM2h.js";
+import { BaNonStockTab } from "./BaNonStockTab.jsx";
 
 export function TransactionHubTab({
   C, sty, currentUser, isMobile,
@@ -35,6 +36,7 @@ export function TransactionHubTab({
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
   adoptTUG5ULTG, openDraftTug9,
+  baNonStockRecords, saveBaNonStockDraft, submitBaNonStock, approveBaNonStock, rejectBaNonStock, currentUptId, satpamList,
 }){
   // Terapkan tugUptFilter ke txns mentah yg dioper ke sub-tab TUG3/TUG5/TUG15 —
   // filteredTxns (App.jsx) sudah kena filter ini, tapi txns mentah belum.
@@ -129,7 +131,7 @@ export function TransactionHubTab({
               </div>
               <div className="tug-process-tabs__options" role="tablist" aria-label="Pilih proses TUG">
                 {(tugGroup==="penerimaan" ? ["TUG3","TUG10"]
-                  : tugGroup==="pengeluaran" ? ["TUG9","TUG8"]
+                  : tugGroup==="pengeluaran" ? ["TUG9","TUG8","BA_NON_STOCK"]
                   : tugGroup==="laporan" ? ["TUG15"]
                   : ["TUG5"]
                 ).map(id=>{
@@ -185,7 +187,7 @@ export function TransactionHubTab({
               </div>}
             </section>}
 
-            {tugSubTab==="TUG3" ? (
+            {tugSubTab==="BA_NON_STOCK" ? <BaNonStockTab C={C} sty={sty} currentUser={currentUser} records={baNonStockRecords} onSave={saveBaNonStockDraft} onSubmit={submitBaNonStock} onApprove={approveBaNonStock} onReject={rejectBaNonStock} onPreview={setDocPreview} gudangList={gudangList} satpamList={satpamList} users={users} currentUptId={currentUptId} isMobile={isMobile} /> : tugSubTab==="TUG3" ? (
               <>
                 <TUG3Tab
                   txns={pagedDocTxns}
