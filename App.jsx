@@ -22,7 +22,7 @@ import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inSco
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { activePairedGudangRows, dropCachedGiRows } from "./src/lib/giWarehouse.js";
 import { stockScopeExtraCols, stockScopeColumnsAvailable } from "./src/lib/stockScope.js";
-import { archiveManualPhotoChange, listScopedOpnameSessions, stockUptId } from "./src/lib/stockOpnamePhotoHistory.js";
+import { listScopedOpnameSessions, stockUptId } from "./src/lib/stockOpnamePhotoHistory.js";
 import { can } from "./src/lib/perms.js";
 import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentStatusFromKondisi, normalizeHeavyEquipmentRecord, getHeavyEquipmentLoanOwnerUpt, getHeavyEquipmentLoanRequesterUpt, getHeavyEquipmentLoanStartDate, getHeavyEquipmentLoanReturnDate, getHeavyEquipmentLoanJobName, normalizeHeavyEquipmentLoanStatus, isPendingHeavyEquipmentLoan, getHeavyEquipmentLoanRuntimeStatus, canApproveHeavyEquipmentLoan, getEquipmentCategory } from "./src/lib/heavyEquipment.js";
 import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, ATTB_FIELDS_BY_JENIS, ATTB_ALASAN_PENGHAPUSBUKUAN, ATTB_WAKTU_USULAN_OPTIONS, ATTB_CORE_FIELDS, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, parseAttbCurrency, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "./src/lib/attb.js";
@@ -2757,7 +2757,7 @@ export default function PLNWarehouse() {
     let sf = stockForm;
     try {
       for (const f of ["fotoNameplate","fotoKeseluruhan"])
-        if (_isDataUrl(sf[f])) sf = {...sf, [f]: await uploadStockFoto(sf.katalogId, f, sf[f], sf.uptId)};
+        if (_isDataUrl(sf[f])) sf = {...sf, [f]: await uploadStockFoto(sf.katalogId, f, sf[f], stockUptId(sf))};
     } catch (e) {
       console.warn("Upload foto Data Stok gagal:", sf.id, e?.message||e);
       showToast("Gagal upload foto ke server, coba lagi.","error"); return;
@@ -2793,25 +2793,53 @@ export default function PLNWarehouse() {
     }
     else ns = [...stocks, {...sf, createdAt:Date.now()}];
 
+    const original = stockModal === "edit" ? stateRef.current.stocks.find(s => s.id === sf.id) : null;
+    const photoChanges = stockModal === "edit"
+      ? ["fotoNameplate", "fotoKeseluruhan"]
+        .filter(field => sf[field] && sf[field] !== original?.[field])
+        .map(field => ({ field, url: sf[field] }))
+      : [];
     if (stockModal === "edit") {
-      const original = stocks.find(s => s.id === sf.id);
       if (!stockUptId(original)) { showToast("Foto stok wajib memiliki UPT.", "error"); return; }
-      ns = ns.map(s => {
-        if (s.id !== sf.id) return s;
-        let next = s;
-        for (const field of ["fotoNameplate", "fotoKeseluruhan"]) {
-          if (next[field] && next[field] !== original[field]) {
-            const archived = archiveManualPhotoChange({ ...next, [field]: original[field] }, field, next[field]);
-            next = { ...next, photoHistory: archived.photoHistory || next.photoHistory, [field]: next[field] };
-            if (field === "fotoNameplate") next.fotoNameplateOcr = null;
-          }
-        }
-        return next;
-      });
+      // TUG-3 photos are written separately through the narrow RPC. Full-row save
+      // carries the server's original photo fields so the protected row stays intact.
+      ns = ns.map(s => s.id === sf.id
+        ? { ...s, fotoNameplate: original.fotoNameplate, fotoKeseluruhan: original.fotoKeseluruhan,
+            fotoNameplateOcr: original.fotoNameplateOcr, photoHistory: original.photoHistory }
+        : s);
     }
+    const rowEditableFields = [
+      "katalogId", "lokasiId", "price", "minQty", "jenisBarang", "sapStatus", "img",
+      "editPending", "pendingEditData", "editRequestedBy", "editRequestedAt",
+    ];
+    const savedRow = ns.find(s => s.id === sf.id);
+    const rowChanged = stockModal !== "edit"
+      || rowEditableFields.some(field => JSON.stringify(savedRow?.[field]) !== JSON.stringify(original?.[field]));
     // Hanya 1 baris berubah (edit/tambah baris id===sf.id) — sync ringan cuma baris itu.
-    const savedOk = await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===sf.id)});
-    if (!savedOk) return;
+    if (rowChanged) {
+      const savedOk = await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===sf.id)});
+      if (!savedOk) return;
+      setStocks(ns);
+    }
+    // Foto edit memakai RPC per-field. Jika salah satu gagal, modal tetap terbuka
+    // dengan URL hasil upload di form agar user dapat mengulang tanpa memilih ulang.
+    if (stockModal === "edit" && photoChanges.length > 0) {
+      let nextStocks = rowChanged ? ns : stateRef.current.stocks;
+      for (const { field, url } of photoChanges) {
+        try {
+          const canonical = await updateStockPhotoRpc(sf.id, field, url);
+          nextStocks = nextStocks.map(s => s.id === sf.id ? mergeRpcStock(s, canonical) : s);
+          ns = nextStocks;
+          setStocks(nextStocks);
+          sf = { ...sf, ...canonical };
+        } catch (e) {
+          setStockForm(sf);
+          console.warn("Simpan foto Data Stok gagal:", sf.id, field, e?.message || e);
+          showToast(stockPhotoRpcError(e), "error");
+          return;
+        }
+      }
+    }
     setStocks(ns); setStockModal(null);
     logAudit(currentUser, stockModal==="edit"?"UPDATE":"CREATE", "stocks", sf.id, {katalogId:sf.katalogId, lokasiId:sf.lokasiId, wentToApproval});
     showToast(wentToApproval ? "📨 Perubahan barang (nama/no katalog/satuan)/harga/jenis diajukan! Menunggu approval TL." : (stockModal==="edit" ? "Data Stok diupdate!" : "Data Stok baru ditambahkan!"));
@@ -2832,36 +2860,61 @@ export default function PLNWarehouse() {
     const path = `${uptFolder}/${kode}/${field==="fotoNameplate"?"tambahan":"utama"}-${versi}.jpg`;
     return _withTimeout(uploadPhotoToStorage(await compressImage(img, {maxBytes:1_000_000}), "stock-photos", path, { upsert: false }), 30_000, "unggah foto");
   }
-  // Upload langsung foto Nameplate/Keseluruhan dari modal detail (klik baris Data Stok) — khusus Admin/TL
-  // Return true kalau tersimpan, false kalau upload gagal (foto pending jangan dibuang).
+  function stockPhotoRpcError(error) {
+    const message = String(error?.message || error || "");
+    if (message.includes("STOCK_PHOTO_SCOPE_DENIED")) return "Foto ditolak: stok berada di luar scope UPT akun ini.";
+    if (message.includes("STOCK_PHOTO_OBJECT_MISSING")) return "Foto gagal disimpan: object Storage tidak ditemukan.";
+    if (message.includes("STOCK_PHOTO_URL_INVALID")) return "Foto gagal disimpan: URL atau folder UPT tidak valid.";
+    if (message.includes("STOCK_PHOTO_ROLE_DENIED")) return "Role akun ini tidak boleh mengubah foto stok.";
+    if (message.includes("STOCK_PHOTO_RPC_REQUIRED") || message.includes("TUG3_STOCK_RPC_REQUIRED")) return "Foto gagal disimpan lewat jalur aman. Coba ulang.";
+    return "Gagal menyimpan foto ke server. Coba lagi.";
+  }
+  async function updateStockPhotoRpc(id, field, url) {
+    if (!supabase) throw new Error("Koneksi server belum tersedia.");
+    const { data, error } = await supabase.rpc("update_stock_photo", { p_stock_id: id, p_field: field, p_photo_url: url });
+    if (error) throw error;
+    if (!data || data.id !== id) throw new Error("Respons server foto stok tidak valid.");
+    return data;
+  }
+  async function updateStockNameplateOcrRpc(id, photoUrl, text) {
+    if (!supabase) throw new Error("Koneksi server belum tersedia.");
+    const { data, error } = await supabase.rpc("update_stock_nameplate_ocr", { p_stock_id: id, p_photo_url: photoUrl, p_ocr_text: text });
+    if (error) throw error;
+    return data;
+  }
+  function mergeRpcStock(current, payload) {
+    const canonical = payload?.stock || payload;
+    return canonical?.id ? { ...current, ...canonical } : current;
+  }
+  // Upload langsung foto Nameplate/Keseluruhan dari modal detail (klik baris Data Stok) — khusus Admin/TL.
+  // Return true kalau tersimpan, false kalau upload/database gagal (foto pending jangan dibuang).
   async function updateStockFoto(id, field, img) {
+    const original = stateRef.current.stocks.find(s => s.id === id);
+    if (!original || !stockUptId(original)) { showToast("Foto stok wajib memiliki UPT.", "error"); return false; }
     let url;
-    try { const st = stocks.find(s=>s.id===id); url = await uploadStockFoto(st?.katalogId, field, img, st?.uptId); }
+    try { url = await uploadStockFoto(original.katalogId, field, img, stockUptId(original)); }
     catch (e) {
       console.warn("Upload foto Data Stok gagal:", id, field, e?.message||e);
       showToast("Gagal upload foto ke server, coba lagi.","error"); return false;
     }
-    const original = stocks.find(s => s.id === id);
-    if (!original || !stockUptId(original)) { showToast("Foto stok wajib memiliki UPT.", "error"); return false; }
-    let ns = stocks.map(s=>s.id===id?{...archiveManualPhotoChange(s, field, url), [field]:url, ...(field === "fotoNameplate" && s.fotoNameplate !== url ? { fotoNameplateOcr: null } : {})}:s);
+    let canonical;
+    try { canonical = await updateStockPhotoRpc(id, field, url); }
+    catch (e) {
+      console.warn("Simpan foto Data Stok gagal:", id, field, e?.message||e);
+      showToast(stockPhotoRpcError(e), "error"); return false;
+    }
+    let ns = stateRef.current.stocks.map(s=>s.id===id ? mergeRpcStock(s, canonical) : s);
     setStocks(ns);
-    // Foto = payload paling berat; cuma 1 baris berubah → sync ringan baris itu saja.
-    // saveToCloud return false kalau write ke Supabase gagal (401 sesi expired/RLS/network) —
-    // dulu return-nya diabaikan sehingga toast "berhasil" tetap muncul & pendingFoto dibuang
-    // meski DB tak berubah (bug "upload berhasil tapi data tak berubah"). Sekarang dihormati:
-    // saveToCloud sudah tampilkan toast bagian mana yang gagal, jadi di sini cukup return false
-    // supaya pendingFoto TIDAK dibuang (user bisa simpan ulang).
-    const savedOk = await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
-    if (!savedOk) return false;
     showToast(`📷 ${field==="fotoNameplate"?"Foto Nameplate":"Foto Keseluruhan"} diperbarui!`);
     // Nameplate: OCR teksnya sekali & cache di fotoNameplateOcr, supaya foto ini
     // ikut jadi pembanding di pencarian foto mode Nameplate tanpa OCR ulang tiap cari.
     if (field==="fotoNameplate" && img) {
       try {
         const text = await ocrSpaceOCR(img);
-        ns = ns.map(s=>s.id===id?{...s,fotoNameplateOcr:text}:s);
+        const ocr = await updateStockNameplateOcrRpc(id, url, text);
+        if (ocr?.updated === false && ocr?.reason === "STALE_PHOTO") return true;
+        ns = stateRef.current.stocks.map(s=>s.id===id ? mergeRpcStock(s, ocr?.stock) : s);
         setStocks(ns);
-        await saveToCloud({stocks: ns}, {stocksChangedRows: ns.filter(s=>s.id===id)});
       } catch (e) {
         // Senyap: user tak perlu tahu soal OCR. Foto tetap tersimpan; kalau OCR
         // gagal, foto ini nanti ikut disapu ulang oleh auto-OCR latar belakang.
@@ -2879,10 +2932,17 @@ export default function PLNWarehouse() {
   async function runAutoOcrNameplates() {
     const flush = async (updates) => {
       if (!updates.size) return;
-      const ns = stateRef.current.stocks.map(s => updates.has(s.id) ? {...s, fotoNameplateOcr: updates.get(s.id)} : s);
-      setStocks(ns);
-      // Cuma baris ber-`updates` yang berubah (bukan seluruh tabel) → sync ringan baris itu saja.
-      await saveToCloud({ stocks: ns }, {stocksChangedRows: ns.filter(s => updates.has(s.id))});
+      for (const [id, text] of updates) {
+        const cur = stateRef.current.stocks.find(s => s.id === id);
+        if (!cur?.fotoNameplate) continue;
+        try {
+          const result = await updateStockNameplateOcrRpc(id, cur.fotoNameplate, text);
+          if (result?.updated === false) continue; // stale photo: discard OCR result
+          setStocks(previous => previous.map(s => s.id === id ? mergeRpcStock(s, result?.stock) : s));
+        } catch (e) {
+          console.warn("Simpan auto-OCR nameplate gagal:", id, e?.message || e);
+        }
+      }
       updates.clear();
     };
     // `== null` (bukan sekadar falsy): foto yang sudah di-OCR tapi hasilnya kosong

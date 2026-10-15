@@ -132,6 +132,7 @@ export async function loadMasterTable(table, { uptIds } = {}) {
     // baru menulis kolom tapi lupa data.uitId, atau sebaliknya), user UIT bisa
     // buta opname senyap karena scope client jadi [] padahal RLS mengizinkan.
     if (table === "upt") item.uitId = row.uit_id || item.uitId || item.uit_id || null;
+    if (table === "stocks") item.uptId = row.upt_id || item.uptId || item.upt_id || null;
     if (table === "heavy_equipment") {
       item.uptId = row.upt_id || item.uptId || item.upt_id || null;
       item.isCrossUptBorrowable = row.is_cross_upt_borrowable ?? item.isCrossUptBorrowable ?? item.is_cross_upt_borrowable ?? false;
