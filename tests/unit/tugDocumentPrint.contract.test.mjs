@@ -122,6 +122,18 @@ test("document preview gates print/open until iframe assets settle", () => {
   assert.match(source, /disabled=\{!previewReady\}/g);
 });
 
+test("document preview keeps A4 viewport and scales the screen stage", () => {
+  const source = fs.readFileSync(new URL("../../src/components/StockModals.jsx", import.meta.url), "utf8");
+  assert.match(source, /const previewViewportRef = useRef\(null\)/);
+  assert.match(source, /new ResizeObserver\(updateScale\)/);
+  assert.match(source, /\(viewport\.clientWidth - 36\) \/ 794/);
+  assert.match(source, /width:\"794px\"/);
+  assert.match(source, /transform:`scale\(\$\{previewScale\}\)`/);
+  assert.match(source, /overflowY:\"auto\"/);
+  assert.match(source, /overflowX:\"hidden\"/);
+  assert.match(source, /frameDocument\.documentElement\?\.scrollHeight/);
+});
+
 test("UPT-PBG documents never inherit Surabaya identity", () => {
   const uptList = [{ id: "UPT-PBG", nama: "UPT Probolinggo", kode: "UPT-PBLG", alamat: "Jl. Probolinggo" }];
   const txn = { ...baseTxn, id: "TUG-PBG-TEST", uptId: "UPT-PBG", unitPenerima: "UPT Probolinggo", uptPengirimId: "UPT-PBG", stockItems: [] };

@@ -143,14 +143,28 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
   // URL publik). Fallback ke docPreview mentah selama resolusi berjalan.
   const dp = docPreviewDoc || docPreview;
   const iframeRef = useRef(null);
+  const previewViewportRef = useRef(null);
   const [previewReady, setPreviewReady] = useState(false);
+  const [previewScale, setPreviewScale] = useState(1);
+  const [previewHeight, setPreviewHeight] = useState(1123);
   const documentHtml = dp.docType==="BA_NON_STOCK" ? buildBaNonStockHTML(dp) : dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList, gudangList);
   const baNonStockApproved = dp.docType !== "BA_NON_STOCK" || String(dp.status || dp.stage || "").toUpperCase() === "APPROVED";
   const previewHtml = documentHtml.replace(/<div class="print-bar">[\s\S]*?<\/div>/, "");
 
   useEffect(() => {
     setPreviewReady(false);
+    setPreviewHeight(1123);
   }, [documentHtml]);
+
+  useEffect(() => {
+    const viewport = previewViewportRef.current;
+    if (!viewport) return undefined;
+    const updateScale = () => setPreviewScale(Math.min(1, Math.max(0.1, (viewport.clientWidth - 36) / 794)));
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
 
   const handlePreviewLoad = () => {
     const frameDocument = iframeRef.current?.contentDocument;
@@ -169,7 +183,11 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
     const fontReady = frameDocument.fonts?.ready
       ? Promise.resolve(frameDocument.fonts.ready).catch(() => undefined)
       : Promise.resolve();
-    Promise.all([fontReady, ...imageReady]).then(() => setPreviewReady(true));
+    Promise.all([fontReady, ...imageReady]).then(() => {
+      const height = Math.max(1123, frameDocument.documentElement?.scrollHeight || frameDocument.body?.scrollHeight || 1123);
+      setPreviewHeight(height);
+      setPreviewReady(true);
+    });
   };
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:1500}}>
@@ -188,15 +206,17 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
               <button style={sty.btn("danger","sm")} onClick={()=>setDocPreview(null)}>✕ Tutup</button>
             </div>
           </div>
-          <div style={{flex:1,background:"#e5e7eb",overflow:"hidden"}}>
+          <div ref={previewViewportRef} style={{flex:1,background:"#e5e7eb",overflowY:"auto",overflowX:"hidden",padding:"18px 0"}}>
+            <div style={{width:`${794 * previewScale}px`,height:`${previewHeight * previewScale}px`,margin:"0 auto",position:"relative"}}>
             <iframe
               ref={iframeRef}
               title="Document Preview"
               srcDoc={previewHtml}
                 /* print-bar (onclick window.print) diblok CSP di iframe app → buang dari PREVIEW; modal punya tombol Print React. File unduhan/window.open (tanpa CSP) tetap punya tombol yang jalan. */
               onLoad={handlePreviewLoad}
-              style={{width:"100%",height:"100%",border:"none"}}
+              style={{width:"794px",height:`${previewHeight}px`,border:"none",display:"block",transform:`scale(${previewScale})`,transformOrigin:"top left"}}
             />
+            </div>
           </div>
           <div tabIndex={0} className="info-note" style={{padding:"8px 18px",background:"#fef3c7",fontSize:12,color:"#92400e",flexShrink:0}}>
             {previewReady ? "✅ Dokumen siap dicetak." : "⏳ Menunggu font dan foto selesai dimuat..."} Tips: klik "Unduh File", buka file-nya di browser HP/laptop, lalu pilih menu Print → Save as PDF untuk dapat file PDF asli.
