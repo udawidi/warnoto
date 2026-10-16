@@ -6,7 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20261015_ba_non_stock.sql"), "utf8");
+const baseMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261015_ba_non_stock.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20261016_ba_non_stock_draft_tl_review.sql"), "utf8");
 const docker = process.env.BA_NON_STOCK_REHEARSAL_DOCKER || "docker";
 const dockerHost = process.env.BA_NON_STOCK_REHEARSAL_DOCKER_HOST || "";
 const container = `warnoto-ba-non-stock-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
@@ -107,7 +108,25 @@ async function main() {
     started = true;
     await waitForPostgres();
     await psql(prerequisites);
+    await psql(baseMigration);
     await psql(migration);
+
+    const partialId = "BA-REHEARSAL-TL-PARTIAL";
+    await psql(`select set_config('request.jwt.claim.sub','${ids.tl}',false);
+      select public.save_ba_non_stock_draft('${partialId}',null,'UPT-A',${payload({ kind: "NON_STOCK", items: [{ qty: 2 }] })});
+    `);
+    assert.equal(await scalar(`select coalesce(material_name, '') || ':' || qty::text from public.ba_non_stock_items where ba_id='${partialId}';`), ":2");
+    await expectSqlError(`select set_config('request.jwt.claim.sub','${ids.tl}',false); select public.submit_ba_non_stock('${partialId}',1);`, "BA_REQUIRED_FIELD");
+    await psql(`insert into storage.objects(bucket_id,name) values ('tug-photos','ba-non-stock/${partialId}/label.jpg'),('tug-photos','ba-non-stock/${partialId}/loaded.jpg');
+      select set_config('request.jwt.claim.sub','${ids.tl}',false);
+      select public.save_ba_non_stock_draft('${partialId}',1,'UPT-A',${payload(completePayload(partialId))});
+    `);
+    await expectSqlError(`select set_config('request.jwt.claim.sub','${ids.tl}',false); select public.save_ba_non_stock_draft('${partialId}',1,'UPT-A',${payload(completePayload(partialId))});`, "BA_VERSION_MISMATCH");
+    await psql(`select set_config('request.jwt.claim.sub','${ids.tl}',false);
+      select public.submit_ba_non_stock('${partialId}',2);
+      select public.decide_ba_non_stock('${partialId}',3,'APPROVE',null);
+    `);
+    assert.equal(await scalar(`select doc_number from public.ba_non_stock where id='${partialId}';`), "001.BA/UPT-A/10/2026");
 
     const id = "BA-REHEARSAL-001";
     await psql(`insert into storage.objects(bucket_id,name,metadata) values
@@ -129,8 +148,8 @@ async function main() {
     assert.equal(await scalar(`select stage from public.ba_non_stock where id='${id}';`), "PENDING_TL");
     await expectSqlError(`select set_config('request.jwt.claim.sub','${ids.otherTl}',false); select public.decide_ba_non_stock('${id}',3,'APPROVE',null);`, "BA_SCOPE_DENIED");
     await psql(`select set_config('request.jwt.claim.sub','${ids.tl}',false); select public.decide_ba_non_stock('${id}',3,'APPROVE',null);`);
-    assert.equal(await scalar(`select doc_number from public.ba_non_stock where id='${id}';`), "001.BA/UPT-A/10/2026");
-    assert.equal(await scalar("select count(*) from public.ba_non_stock_counters where upt_id='UPT-A' and year=2026 and last_value=1;"), "1");
+    assert.equal(await scalar(`select doc_number from public.ba_non_stock where id='${id}';`), "002.BA/UPT-A/10/2026");
+    assert.equal(await scalar("select count(*) from public.ba_non_stock_counters where upt_id='UPT-A' and year=2026 and last_value=2;"), "1");
 
     const concurrentIds = ["BA-REHEARSAL-002", "BA-REHEARSAL-003"];
     await psql(`insert into storage.objects(bucket_id,name) values
@@ -144,7 +163,7 @@ async function main() {
     `);
     const approveSql = idToApprove => `select set_config('request.jwt.claim.sub','${ids.tl}',false); select public.decide_ba_non_stock('${idToApprove}',2,'APPROVE',null);`;
     await Promise.all(concurrentIds.map(idToApprove => psql(approveSql(idToApprove))));
-    assert.equal(await scalar("select count(*) from public.ba_non_stock where doc_number in ('002.BA/UPT-A/10/2026','003.BA/UPT-A/10/2026');"), "2");
+    assert.equal(await scalar("select count(*) from public.ba_non_stock where doc_number in ('003.BA/UPT-A/10/2026','004.BA/UPT-A/10/2026');"), "2");
     await expectSqlError(`select set_config('request.jwt.claim.sub','${ids.tl}',false); select public.decide_ba_non_stock('${id}',4,'REJECT',null);`, "BA_STAGE_INVALID");
     console.log("BA Non Stock PostgreSQL rehearsal passed: draft, submit validation, scope denial, atomic numbering, and final snapshot path.");
   } finally {

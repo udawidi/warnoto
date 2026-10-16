@@ -5678,9 +5678,9 @@ create unique index if not exists ba_non_stock_sequence_unique_idx
 create table if not exists public.ba_non_stock_items (
   ba_id text not null references public.ba_non_stock(id) on delete cascade,
   line_no integer not null check (line_no > 0),
-  material_name text not null,
-  qty numeric not null check (qty > 0),
-  unit text not null,
+  material_name text,
+  qty numeric check (qty is null or qty > 0),
+  unit text,
   description text not null default '',
   primary key (ba_id, line_no)
 );
@@ -5820,6 +5820,7 @@ declare
   item_unit text;
   item_description text;
   item_qty numeric;
+  item_qty_text text;
   next_version integer;
   next_stage text := 'DRAFT';
   next_status text := 'DRAFT';
@@ -5828,7 +5829,7 @@ declare
 begin
   select * into actor from public.profiles where id = auth.uid();
   if actor.id is null then raise exception 'BA_AUTH_REQUIRED'; end if;
-  if actor.role not in ('ADMIN', 'SUPERADMIN') then raise exception 'BA_ROLE_DENIED'; end if;
+  if actor.role not in ('ADMIN', 'TL', 'SUPERADMIN') then raise exception 'BA_ROLE_DENIED'; end if;
   if p_id is null or btrim(p_id) = '' or p_upt_id is null or btrim(p_upt_id) = '' then raise exception 'BA_REQUIRED_FIELD'; end if;
   if actor.role <> 'SUPERADMIN' and actor.upt_id is distinct from p_upt_id then raise exception 'BA_SCOPE_DENIED'; end if;
   if not public.can_access_upt(p_upt_id) then raise exception 'BA_SCOPE_DENIED'; end if;
@@ -5866,6 +5867,7 @@ begin
     );
     next_version := 1;
   else
+    if old_row.upt_id is distinct from p_upt_id then raise exception 'BA_SCOPE_DENIED'; end if;
     if p_expected_version is null or old_row.version <> p_expected_version then raise exception 'BA_VERSION_MISMATCH'; end if;
     if old_row.stage not in ('DRAFT', 'REJECTED') then raise exception 'BA_STAGE_INVALID'; end if;
     if old_row.created_by <> auth.uid() and actor.role <> 'SUPERADMIN' then raise exception 'BA_ROLE_DENIED'; end if;
@@ -5906,9 +5908,10 @@ begin
          and item_description = '' then
         continue;
       end if;
-      if item_name is null or item_unit is null or item->>'qty' is null or item->>'qty' !~ '^[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$' then raise exception 'BA_ITEM_INVALID'; end if;
-      item_qty := (item->>'qty')::numeric;
-      if item_qty <= 0 then raise exception 'BA_ITEM_INVALID'; end if;
+      item_qty_text := nullif(btrim(coalesce(item->>'qty', '')), '');
+      if item_qty_text is not null and item_qty_text !~ '^[+]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)$' then raise exception 'BA_ITEM_INVALID'; end if;
+      item_qty := case when item_qty_text is null then null else item_qty_text::numeric end;
+      if item_qty is not null and item_qty <= 0 then raise exception 'BA_ITEM_INVALID'; end if;
       insert into public.ba_non_stock_items(ba_id, line_no, material_name, qty, unit, description)
       values (p_id, item_no, item_name, item_qty, item_unit, item_description);
     end loop;
@@ -5932,9 +5935,10 @@ declare
 begin
   select * into actor from public.profiles where id = auth.uid();
   if actor.id is null then raise exception 'BA_AUTH_REQUIRED'; end if;
-  if actor.role not in ('ADMIN', 'SUPERADMIN') then raise exception 'BA_ROLE_DENIED'; end if;
+  if actor.role not in ('ADMIN', 'TL', 'SUPERADMIN') then raise exception 'BA_ROLE_DENIED'; end if;
   select * into row from public.ba_non_stock where id = p_id for update;
   if row.id is null then raise exception 'BA_NOT_FOUND'; end if;
+  if actor.role <> 'SUPERADMIN' and actor.upt_id is distinct from row.upt_id then raise exception 'BA_SCOPE_DENIED'; end if;
   if p_expected_version is null or row.version <> p_expected_version then raise exception 'BA_VERSION_MISMATCH'; end if;
   if row.created_by <> auth.uid() and actor.role <> 'SUPERADMIN' then raise exception 'BA_ROLE_DENIED'; end if;
   if row.stage <> 'DRAFT' or row.status <> 'DRAFT' then raise exception 'BA_STAGE_INVALID'; end if;

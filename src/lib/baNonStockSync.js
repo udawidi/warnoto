@@ -56,15 +56,17 @@ function rpcError(error) {
 }
 
 function mapItem(row) {
-  if (!isRecord(row) || typeof row.material_name !== "string") return null;
+  if (!isRecord(row)) return null;
+  const materialName = typeof row.material_name === "string" ? row.material_name : "";
+  const unit = typeof row.unit === "string" ? row.unit : "";
   return {
     lineNo: row.line_no,
-    materialName: row.material_name,
-    qty: row.qty,
-    unit: row.unit,
+    materialName,
+    qty: row.qty ?? "",
+    unit,
     description: row.description || "",
-    nama: row.material_name,
-    satuan: row.unit,
+    nama: materialName,
+    satuan: unit,
     keterangan: row.description || "",
   };
 }

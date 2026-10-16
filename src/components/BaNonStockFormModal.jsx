@@ -5,22 +5,25 @@ import { PhotoSlot } from "./PhotoSlot.jsx";
 
 const emptyItem = () => ({ nama:"", qty:"", satuan:"", keterangan:"" });
 
-export function BaNonStockFormModal({ C, sty, currentUser, initialValue, onClose, onSave, onSubmit, gudangList=[], satpamList=[], users=[], currentUptId, isMobile=false }) {
+export function BaNonStockFormModal({ C, sty, currentUser, initialValue, onClose, onSave, onSubmit, gudangList=[], satpamList=[], users=[], uptList=[], currentUptId, isMobile=false }) {
   const [form,setForm]=useState(()=>({jenis:"NON_STOCK",tanggal:new Date().toISOString().slice(0,10),gudangId:"",satpamId:"",penerimaNama:"",penerimaJabatan:"",penerimaUnit:"",sumber:"",tujuan:"",referensi:"",keperluan:"",items:[emptyItem()],foto1:null,foto2:null,...(initialValue||{})}));
   const [busy,setBusy]=useState(false);
   const set=(key,value)=>setForm(v=>({...v,[key]:value}));
   const updateItem=(i,key,value)=>set("items",form.items.map((item,index)=>index===i?{...item,[key]:value}:item));
-  const selectedWarehouse=gudangList.find(item=>item.id===form.gudangId);
-  const uptId=form.uptId||selectedWarehouse?.uptId||selectedWarehouse?.upt_id||currentUptId||"";
-  const warehouses=useMemo(()=>gudangList.filter(item=>!currentUptId||(item.uptId||item.upt_id)===currentUptId),[gudangList,currentUptId]);
+  const selectedUptId=hasRole(currentUser,"SUPERADMIN") ? (form.uptId||"") : (currentUptId||"");
+  const uptId=hasRole(currentUser,"SUPERADMIN")
+    ? selectedUptId
+    : (currentUptId||"");
+  const warehouses=useMemo(()=>gudangList.filter(item=>(selectedUptId ? (item.uptId||item.upt_id)===selectedUptId : !hasRole(currentUser,"SUPERADMIN"))),[gudangList,selectedUptId,currentUser]);
   const guards=satpamList.filter(item=>!form.gudangId||item.gudangId===form.gudangId);
   const teamLeaders=users.filter(user=>user.role==="TL"&&(!uptId||user.uptId===uptId||user.upt_id===uptId));
   const handleEvidence=(event,setter)=>{const file=event.target.files?.[0];if(!file)return;const error=validateBaNonStockPhoto(file);if(error){alert(error);event.target.value="";return;}setter(file);};
   async function save(submit){
+    if(!uptId)return alert("Pilih UPT terlebih dahulu.");
     const items=form.items.filter(item=>item.nama.trim()||item.qty||item.satuan.trim()||item.keterangan.trim());
-    if(!items.length||items.some(item=>!item.nama.trim()||!(Number(item.qty)>0)||!item.satuan.trim()))return alert("Lengkapi nama, qty, dan satuan setiap material.");
+    if(submit&&(!items.length||items.some(item=>!item.nama.trim()||!(Number(item.qty)>0)||!item.satuan.trim())))return alert("Lengkapi nama, qty, dan satuan setiap material.");
     if(submit&&(!form.gudangId||!form.satpamId||!form.penerimaNama.trim()||!form.penerimaJabatan.trim()||!form.penerimaUnit.trim()||!form.sumber.trim()||!form.tujuan.trim()||!form.referensi.trim()||!form.keperluan.trim()||!form.foto1||!form.foto2))return alert("Lengkapi seluruh identitas, gudang, satpam, referensi, dan dua foto.");
-    setBusy(true);try{const saved=await onSave?.({...form,uptId,items});if(!saved)return;if(submit)await onSubmit?.(saved);onClose();}finally{setBusy(false);}
+    setBusy(true);try{const saved=await onSave?.({...form,uptId,items});if(!saved)return;if(submit){const submitted=await onSubmit?.(saved);if(!submitted)return;}onClose();}finally{setBusy(false);}
   }
   const field=(label,control,key)=><div key={key}><label style={sty.label}>{label}</label>{control}</div>;
   const section=(title,children)=><section style={{marginBottom:16}}><div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:9,borderBottom:`1px solid ${C.border}`,paddingBottom:5}}>{title}</div>{children}</section>;
@@ -33,7 +36,8 @@ export function BaNonStockFormModal({ C, sty, currentUser, initialValue, onClose
         {section("DATA BERITA ACARA",<div style={grid}>
           {field("Jenis BA",<select style={sty.select} value={form.jenis} onChange={e=>set("jenis",e.target.value)}><option value="NON_STOCK">Non Stock</option><option value="PINJAM">Pinjam</option></select>)}
           {field("Tanggal",<input type="date" style={sty.input} value={form.tanggal||""} onChange={e=>set("tanggal",e.target.value)}/>)}
-          {field("Gudang",<select style={sty.select} value={form.gudangId||""} onChange={e=>setForm(v=>({...v,gudangId:e.target.value,satpamId:""}))}><option value="">Pilih gudang</option>{warehouses.map(item=><option key={item.id} value={item.id}>{item.nama||item.name||item.data?.nama||item.id}</option>)}</select>)}
+          {hasRole(currentUser,"SUPERADMIN") && field("UPT",<select style={sty.select} value={selectedUptId} onChange={e=>setForm(v=>({...v,uptId:e.target.value,gudangId:"",satpamId:""}))}><option value="">Pilih UPT terlebih dahulu</option>{uptList.map(item=><option key={item.id} value={item.id}>{item.nama||item.name||item.data?.nama||item.id}</option>)}</select>)}
+          {field("Gudang",<select style={sty.select} value={form.gudangId||""} disabled={hasRole(currentUser,"SUPERADMIN")&&!selectedUptId} onChange={e=>setForm(v=>({...v,gudangId:e.target.value,satpamId:""}))}><option value="">Pilih gudang</option>{warehouses.map(item=><option key={item.id} value={item.id}>{item.nama||item.name||item.data?.nama||item.id}</option>)}</select>)}
           {field("Satpam",<select style={sty.select} value={form.satpamId||""} disabled={!form.gudangId} onChange={e=>set("satpamId",e.target.value)}><option value="">Pilih satpam</option>{guards.map(item=><option key={item.id} value={item.id}>{item.name||item.nama||item.id}</option>)}</select>)}
           {field("Sumber / Pengirim",<input style={sty.input} value={form.sumber||""} onChange={e=>set("sumber",e.target.value)}/>)}{field("Unit Tujuan",<input style={sty.input} value={form.tujuan||""} onChange={e=>set("tujuan",e.target.value)}/>)}
           {field("Dokumen Referensi",<input style={sty.input} value={form.referensi||""} onChange={e=>set("referensi",e.target.value)}/>)}{field("Keperluan",<input style={sty.input} value={form.keperluan||""} onChange={e=>set("keperluan",e.target.value)}/>)}
@@ -51,7 +55,7 @@ export function BaNonStockFormModal({ C, sty, currentUser, initialValue, onClose
           <PhotoSlot label="Foto label / packing list" required value={form.foto1} onChange={img=>set("foto1",img)} onRemove={()=>set("foto1",null)} handleImg={handleEvidence} sty={sty} C={C}/><PhotoSlot label="Foto material sudah dimuat" required value={form.foto2} onChange={img=>set("foto2",img)} onRemove={()=>set("foto2",null)} handleImg={handleEvidence} sty={sty} C={C}/>
         </div>)}
       </div>
-      <div style={{...sty.stickyFooter,position:"sticky",bottom:0,zIndex:1}}><button type="button" disabled={busy} style={{...sty.btn("ghost"),background:C.bg,color:C.text,border:`1px solid ${C.border}`,flex:1}} onClick={onClose}>Batal</button><button type="button" disabled={busy} style={{...sty.btn("ghost"),background:C.bg,color:C.text,border:`1px solid ${C.border}`,flex:1}} onClick={()=>save(false)}>Simpan Draft</button><button type="button" disabled={busy||!hasRole(currentUser,"ADMIN","SUPERADMIN")} style={{...sty.btn("primary"),flex:1}} onClick={()=>save(true)}>{busy?"Menyimpan...":"Ajukan ke TL"}</button></div>
+      <div style={{...sty.stickyFooter,position:"sticky",bottom:0,zIndex:1}}><button type="button" disabled={busy} style={{...sty.btn("ghost"),background:C.bg,color:C.text,border:`1px solid ${C.border}`,flex:1}} onClick={onClose}>Batal</button><button type="button" disabled={busy} style={{...sty.btn("ghost"),background:C.bg,color:C.text,border:`1px solid ${C.border}`,flex:1}} onClick={()=>save(false)}>Simpan Draft</button><button type="button" disabled={busy||!hasRole(currentUser,"ADMIN","TL","SUPERADMIN")} style={{...sty.btn("primary"),flex:1}} onClick={()=>save(true)}>{busy?"Menyimpan...":"Ajukan ke TL"}</button></div>
     </div>
   </div>;
 }

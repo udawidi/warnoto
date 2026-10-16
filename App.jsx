@@ -125,6 +125,7 @@ import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
 import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final, formatTugMaraError } from "./src/lib/tug10Sync.js";
 import { loadTugWorkflowTransactions, mergeWorkflowServerWins, migrateLegacyWorkflowDrafts, isWorkflowDoc } from "./src/lib/tugWorkflowSync.js";
 import { loadBaNonStock, saveBaNonStockDraft as persistBaNonStockDraft, submitBaNonStock as persistBaNonStockSubmit, decideBaNonStock } from "./src/lib/baNonStockSync.js";
+import { BaNonStockReviewModal } from "./src/components/BaNonStockReviewModal.jsx";
 import { readTugRoute, writeTugRoute, TUG_ROUTE_DEFAULTS, TUG_ROUTE_OPTIONS } from "./src/lib/tugRoute.js";
 import { nextSafeDocSeq } from "./src/lib/docSeqGuard.js";
 import { getHeavyEquipmentUploadErrorMessage, getHeavyEquipmentProcessingErrorMessage } from "./src/lib/heavyEquipmentPhoto.js";
@@ -351,6 +352,7 @@ export default function PLNWarehouse() {
   const [lokasiList, setLokasiList] = useState(() => dropCachedGiRows(readCachedList("pln_lokasi_v4")) ?? []); // Master Lokasi Gudang
   const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
   const [baNonStockRecords, setBaNonStockRecords] = useState([]);
+  const [baNonStockReview, setBaNonStockReview] = useState(null);
   const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? []);
   const [supplierList, setSupplierList] = useState(() => readCachedList("pln_supplier_v1") ?? []); // Master Supplier (nasional, dipakai jg di form TUG-3)
   const [timMutuList, setTimMutuList] = useState(() => readCachedList("pln_tim_mutu_v1") ?? []);
@@ -2045,6 +2047,15 @@ export default function PLNWarehouse() {
     return result;
   }
 
+  async function refreshBaNonStockReview(record) {
+    const result = await loadBaNonStock();
+    if (result.error || result.unavailable) throw result.error || new Error("BA Non Stock tidak tersedia.");
+    const fresh = result.rows.find(row => row.id === record?.id);
+    if (!fresh) throw new Error("BA tidak ditemukan atau di luar scope UPT.");
+    setBaNonStockRecords(result.rows);
+    return fresh;
+  }
+
   async function saveBaNonStockDraft(form) {
     const isFile = value => typeof File !== "undefined" && value instanceof File;
     const photoFiles = { label:isFile(form.foto1) ? form.foto1 : null, loaded:isFile(form.foto2) ? form.foto2 : null };
@@ -2072,8 +2083,8 @@ export default function PLNWarehouse() {
     return true;
   }
 
-  async function rejectBaNonStock(record) {
-    const reason = window.prompt("Alasan penolakan BA:");
+  async function rejectBaNonStock(record, suppliedReason = null) {
+    const reason = suppliedReason || window.prompt("Alasan penolakan BA:");
     if (!reason?.trim()) return false;
     const result = await decideBaNonStock(record.id, record.workflowVersion, "REJECT", reason.trim());
     if (!result.ok) { showToast(result.error?.message || "BA Non Stock gagal ditolak.", "error"); return false; }
@@ -4532,7 +4543,12 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const filteredTxns = scopedTxns.filter(t=> (filterStatus==="ALL" || t.status===filterStatus) &&
     (!tugUptFilter || (t.uptId || users.find(u=>u.id===t.createdBy)?.uptId) === tugUptFilter)
   ).sort((a,b)=>b.createdAt-a.createdAt);
-  const activeTugTxns = tugSubTab==="TUG15" ? [] : scopedTxns.filter(t=>t.docType===tugSubTab);
+  const activeBaRecords = baNonStockRecords.filter(record =>
+    (!tugUptFilter || record.uptId === tugUptFilter)
+  );
+  const activeTugTxns = tugSubTab === "BA_NON_STOCK"
+    ? activeBaRecords
+    : tugSubTab === "TUG15" ? [] : scopedTxns.filter(t=>t.docType===tugSubTab);
   const activeTugSummary = [
     {label:"Total Dokumen",val:activeTugTxns.length},
     {label:"Menunggu",val:activeTugTxns.filter(t=>t.status==="PENDING").length,cls:"is-alert"},
@@ -4683,7 +4699,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"kapasitasGudang",icon:<SidebarIcon name="capacity"/>,label:"Kapasitas Gudang"},
     {id:"master",icon:<SidebarIcon name="master"/>,label:"Master Data"},
     {id:"transaction",icon:<SidebarIcon name="transaction"/>,label:"TUG"},
-    ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge:myPendingApprovals.length + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "TL") ? scopedStocks.filter(s=>(s.lokasiMovePending&&["TL", "ASMAN"].includes(s.lokasiMoveApprover))||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0) + (hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0)}] : []),
+    ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge:myPendingApprovals.length + (hasRole(currentUser, "TL") ? baNonStockRecords.filter(r=>r.stage==="PENDING_TL").length : 0) + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "TL") ? scopedStocks.filter(s=>(s.lokasiMovePending&&["TL", "ASMAN"].includes(s.lokasiMoveApprover))||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0) + (hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0)}] : []),
     {id:"heavyEquipment",icon:<SidebarIcon name="equipment"/>,label:"Alat Berat",badge:(hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"MRWI",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
@@ -4946,7 +4962,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
             adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
             baNonStockRecords={baNonStockRecords} saveBaNonStockDraft={saveBaNonStockDraft} submitBaNonStock={submitBaNonStock}
-            approveBaNonStock={approveBaNonStock} rejectBaNonStock={rejectBaNonStock} currentUptId={currentUserUptId} satpamList={satpamList}
+            onReviewBaNonStock={setBaNonStockReview} currentUptId={currentUserUptId} satpamList={satpamList}
           />
         )}
 
@@ -5125,7 +5141,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             submitTUG4DanLampiran={submitTUG4DanLampiran}
             approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
             approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
-            baNonStockRecords={baNonStockRecords} approveBaNonStock={approveBaNonStock} rejectBaNonStock={rejectBaNonStock} previewBaNonStock={setDocPreview}
+            baNonStockRecords={baNonStockRecords} approveBaNonStock={approveBaNonStock} rejectBaNonStock={rejectBaNonStock} reviewBaNonStock={setBaNonStockReview} previewBaNonStock={setDocPreview}
             handleImg={handleImg}
           />
         )}
@@ -5582,6 +5598,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {supplierModal && <SupplierModal supplierModal={supplierModal} setSupplierModal={setSupplierModal} supplierForm={supplierForm} setSupplierForm={setSupplierForm} saveSupplier={saveSupplier} sty={sty} C={C} />}
 
       {/* DOCUMENT PREVIEW MODAL (TUG-9 / TUG-8 / TUG-10 / TUG-3 package) */}
+      {baNonStockReview && <BaNonStockReviewModal record={baNonStockReview} C={C} sty={sty} onLoad={refreshBaNonStockReview} onApprove={approveBaNonStock} onReject={rejectBaNonStock} onClose={()=>setBaNonStockReview(null)} uptList={uptList} gudangList={gudangList} satpamList={satpamList} users={users} />}
       {docPreview && <DocPreviewModal docPreview={docPreview} setDocPreview={setDocPreview} docPreviewDoc={docPreviewDoc} docKeyOf={docKeyOf} katalogList={katalogList} lokasiList={lokasiList} users={users} satpamList={satpamList} gudangList={gudangList} subGudangList={subGudangList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} enrichedStocks={enrichedStocks} showToast={showToast} sty={sty} C={C} />}
 
     </div>

@@ -36,7 +36,7 @@ export function TransactionHubTab({
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
   adoptTUG5ULTG, openDraftTug9,
-  baNonStockRecords, saveBaNonStockDraft, submitBaNonStock, approveBaNonStock, rejectBaNonStock, currentUptId, satpamList,
+  baNonStockRecords, saveBaNonStockDraft, submitBaNonStock, onReviewBaNonStock, currentUptId, satpamList,
 }){
   // Terapkan tugUptFilter ke txns mentah yg dioper ke sub-tab TUG3/TUG5/TUG15 —
   // filteredTxns (App.jsx) sudah kena filter ini, tapi txns mentah belum.
@@ -187,7 +187,7 @@ export function TransactionHubTab({
               </div>}
             </section>}
 
-            {tugSubTab==="BA_NON_STOCK" ? <BaNonStockTab C={C} sty={sty} currentUser={currentUser} records={baNonStockRecords} onSave={saveBaNonStockDraft} onSubmit={submitBaNonStock} onApprove={approveBaNonStock} onReject={rejectBaNonStock} onPreview={setDocPreview} gudangList={gudangList} satpamList={satpamList} users={users} currentUptId={currentUptId} isMobile={isMobile} /> : tugSubTab==="TUG3" ? (
+            {tugSubTab==="BA_NON_STOCK" ? <BaNonStockTab C={C} sty={sty} currentUser={currentUser} records={baNonStockRecords} onSave={saveBaNonStockDraft} onSubmit={submitBaNonStock} onReview={onReviewBaNonStock} onPreview={setDocPreview} gudangList={gudangList} satpamList={satpamList} users={users} uptList={uptList} currentUptId={currentUptId} filterStatus={filterStatus} tugUptFilter={tugUptFilter} isMobile={isMobile} /> : tugSubTab==="TUG3" ? (
               <>
                 <TUG3Tab
                   txns={pagedDocTxns}
