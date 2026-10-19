@@ -4,14 +4,13 @@ import { fmtDate } from "../lib/utils.js";
 const CHECKS = [
   ["identity", "UPT, gudang, satpam, pengirim, tujuan, dan penerima sudah diperiksa."],
   ["items", "Material, qty, satuan, dan keperluan sudah sesuai."],
-  ["evidence", "Dua foto bukti dan preview dokumen sudah diperiksa."],
+  ["evidence", "Dua foto bukti dan dokumen BA sudah diperiksa."],
 ];
 
 export function BaNonStockReviewModal({ record, C, sty, onLoad, onApprove, onReject, onClose, onPreview, uptList=[], gudangList=[], satpamList=[], users=[] }) {
   const [fresh,setFresh] = useState(record);
   const [loading,setLoading] = useState(true);
   const [busy,setBusy] = useState(false);
-  const [previewed,setPreviewed] = useState(false);
   const [checked,setChecked] = useState({});
   const [reason,setReason] = useState("");
   const [error,setError] = useState("");
@@ -27,12 +26,8 @@ export function BaNonStockReviewModal({ record, C, sty, onLoad, onApprove, onRej
   const recipientUnit=[data.penerimaUnit,data.penerimaPerusahaan].filter(Boolean).join(" · ")||"-";
   const materialRows=data.items||[];
   const missingChecks=CHECKS.filter(([key])=>!checked[key]).map(([,label])=>label);
-  const canApprove=!loading&&!busy&&!error&&!readOnly&&previewed&&CHECKS.every(([key])=>checked[key]);
-  function printBa() {
-    // Membuka cetakan adalah pemeriksaan preview yang diwajibkan sebelum approval.
-    setPreviewed(true);
-    onPreview?.(data);
-  }
+  const canApprove=!loading&&!busy&&!error&&!readOnly&&CHECKS.every(([key])=>checked[key]);
+  function printBa() { onPreview?.(data); }
   async function reloadLatest(){setLoading(true);setError("");try{const row=await onLoad?.(data);if(row)setFresh(row);}catch(error){setError(error?.message||"Data BA terbaru tidak dapat dimuat.");}finally{setLoading(false);}}
   async function reloadAfterFailure(message){setError(message);try{const row=await onLoad?.(data);if(row)setFresh(row);}catch(error){setError(`${message} ${error?.message||"Data terbaru juga gagal dimuat."}`);}}
   async function approve(){if(!canApprove)return;setBusy(true);setError("");try{const ok=await onApprove?.(data);if(ok)onClose?.();else await reloadAfterFailure("Approval gagal karena data BA berubah.");}finally{setBusy(false)}}
@@ -41,13 +36,13 @@ export function BaNonStockReviewModal({ record, C, sty, onLoad, onApprove, onRej
     <div style={{...sty.card,width:760,maxWidth:"100%",maxHeight:"92dvh",overflowY:"auto"}}>
       <div style={sty.modalHeader}><div><strong>Periksa BA Non Stock / Pinjam</strong><div style={{fontSize:12,opacity:.85}}>{data.docNumber||"Belum bernomor"} · {uptName}</div></div><button type="button" onClick={onClose} disabled={busy} aria-label="Tutup" style={{background:"transparent",border:0,color:"white",fontSize:24}}>×</button></div>
       {loading&&<div role="status" style={{padding:16,color:C.muted}}>Memuat snapshot BA terbaru…</div>}
-      {!loading&&<div style={{padding:16}}>
+        {!loading&&<div style={{padding:16}}>
         {error&&<div style={{color:C.red,background:"#fee2e2",padding:10,borderRadius:8,marginBottom:12}}>{error}<button type="button" style={{...sty.btn("ghost","sm"),marginLeft:8}} onClick={reloadLatest} disabled={busy||loading}>Coba Lagi</button></div>}
-        {!readOnly&&!loading&&!error&&<div role="status" style={{color:canApprove?C.green:C.muted,background:canApprove?"#dcfce7":"#f8fafc",padding:10,borderRadius:8,marginBottom:12,fontSize:12}}>{canApprove?"Semua syarat terpenuhi. BA siap disetujui.":<>Syarat Setujui: {previewed?"preview sudah dibuka":"buka preview"}; {missingChecks.length?`${missingChecks.length} checklist belum dicentang`:"semua checklist sudah dicentang"}.</>}</div>}
+        {!readOnly&&!loading&&!error&&<div role="status" style={{color:canApprove?C.green:C.muted,background:canApprove?"#dcfce7":"#f8fafc",padding:10,borderRadius:8,marginBottom:12,fontSize:12}}>{canApprove?"Semua syarat terpenuhi. BA siap disetujui.":<>{missingChecks.length?`${missingChecks.length} checklist belum dicentang`:"semua checklist sudah dicentang"}. Print BA tersedia untuk pemeriksaan sebelum persetujuan.</>}</div>}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10,fontSize:12,marginBottom:14}}>{[["Status",data.status === "APPROVED" ? "Disetujui" : data.status === "REJECTED" ? "Ditolak" : data.status],["UPT",uptName],["Jenis",data.jenis === "NON_STOCK" ? "Non Stock" : data.jenis],["Tanggal transaksi",data.tanggal],["Gudang",gudangName],["Satpam",satpamName],["Pengirim",data.sumber],["Tujuan",data.tujuan],["Dokumen referensi",data.referensi||data.referenceDocument],["Penerima",data.penerimaNama],["Unit/perusahaan penerima",recipientUnit],["Jabatan",data.penerimaJabatan],["Keperluan",data.keperluan],["Diajukan oleh",creatorName],["Waktu diajukan",fmtDate(data.submittedAt||data.createdAt)],["TL approver",approverName],["Waktu diputus",fmtDate(data.approvedAt||data.rejectedAt)]].map(([fieldLabel,value])=><div key={fieldLabel}><b>{fieldLabel}</b><br/>{value||"-"}</div>)}</div>
-        <details open={readOnly} onToggle={event=>{if(event.currentTarget.open)setPreviewed(true)}} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:12}}><summary style={{cursor:"pointer",fontWeight:700}}>Buka preview dokumen final</summary><div style={{marginTop:10}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr><th style={{textAlign:"left",padding:6}}>Material</th><th style={{textAlign:"right",padding:6}}>Qty</th><th style={{textAlign:"left",padding:6}}>Satuan</th><th style={{textAlign:"left",padding:6}}>Keterangan</th></tr></thead><tbody>{materialRows.map((item,index)=><tr key={index} style={{borderTop:`1px solid ${C.border}`}}><td style={{padding:6}}>{item.materialName||item.nama||"-"}</td><td style={{padding:6,textAlign:"right"}}>{item.qty??"-"}</td><td style={{padding:6}}>{item.unit||item.satuan||"-"}</td><td style={{padding:6}}>{item.keterangan||item.description||"-"}</td></tr>)}</tbody></table></div></details>
+        <details open={readOnly} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:12}}><summary style={{cursor:"pointer",fontWeight:700}}>Buka preview dokumen final</summary><div style={{marginTop:10}}><table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}><thead><tr><th style={{textAlign:"left",padding:6}}>Material</th><th style={{textAlign:"right",padding:6}}>Qty</th><th style={{textAlign:"left",padding:6}}>Satuan</th><th style={{textAlign:"left",padding:6}}>Keterangan</th></tr></thead><tbody>{materialRows.map((item,index)=><tr key={index} style={{borderTop:`1px solid ${C.border}`}}><td style={{padding:6}}>{item.materialName||item.nama||"-"}</td><td style={{padding:6,textAlign:"right"}}>{item.qty??"-"}</td><td style={{padding:6}}>{item.unit||item.satuan||"-"}</td><td style={{padding:6}}>{item.keterangan||item.description||"-"}</td></tr>)}</tbody></table></div></details>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>{[["Foto label / packing list",data.photoLabelUrl||data.foto1],["Foto material dimuat",data.photoLoadedUrl||data.foto2]].map(([label,url])=><div key={label}><div style={{fontSize:12,fontWeight:700,marginBottom:5}}>{label}</div>{url?<img src={url} alt={label} style={{width:"100%",maxHeight:180,objectFit:"contain",border:`1px solid ${C.border}`,borderRadius:8}}/>:<div style={{padding:20,color:C.red,border:`1px solid ${C.border}`,borderRadius:8}}>Foto belum tersedia</div>}</div>)}</div>
-        {!readOnly && CHECKS.map(([key,label])=><label key={key} style={{display:"flex",gap:8,alignItems:"flex-start",fontSize:12,marginBottom:8}}><input type="checkbox" checked={!!checked[key]} onChange={event=>setChecked(value=>({...value,[key]:event.target.checked}))} disabled={busy}/><span>{label}{key==="evidence"&&!previewed?" (buka preview terlebih dahulu)":""}</span></label>)}
+        {!readOnly && CHECKS.map(([key,label])=><label key={key} style={{display:"flex",gap:8,alignItems:"flex-start",fontSize:12,marginBottom:8}}><input type="checkbox" checked={!!checked[key]} onChange={event=>setChecked(value=>({...value,[key]:event.target.checked}))} disabled={busy}/><span>{label}</span></label>)}
         {!readOnly && <label style={{display:"block",fontSize:12,fontWeight:700,marginTop:12}}>Alasan penolakan (isi bila menolak)<textarea style={{...sty.input,width:"100%",minHeight:70,marginTop:5}} value={reason} onChange={event=>setReason(event.target.value)} disabled={busy}/></label>}
         <div className="approval-actions" style={{marginTop:14}}><button className="approval-btn--cancel" onClick={onClose} disabled={busy}>Kembali</button><button type="button" style={sty.btn("ghost","sm")} onClick={printBa} disabled={busy}>🖨️ Print BA</button>{!readOnly && <><button className="approval-btn--reject" onClick={reject} disabled={busy||!reason.trim()}>Tolak</button><button className="approval-btn--approve" onClick={approve} disabled={!canApprove}>{busy?"Memproses…":"Setujui BA"}</button></>}</div>
       </div>}
