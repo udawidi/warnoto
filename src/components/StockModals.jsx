@@ -141,15 +141,23 @@ export function MaturityAssessmentModal({ setMaturityModal, maturityForm, setMat
 export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docKeyOf, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, timMutuList, uitList, uptList, ultgList, enrichedStocks, showToast, sty, C }) {
   // dp = transaksi dgn SIM/KTP privat sudah jadi signed URL (foto lain sudah
   // URL publik). Fallback ke docPreview mentah selama resolusi berjalan.
-  const dp = docPreviewDoc || docPreview;
+  // Do not render a stale snapshot while the resolver catches up with a
+  // reopened BA/TUG whose workflow state or version has changed.
+  const sameDocument = Boolean(docPreview?.id) && docPreviewDoc?.id === docPreview.id
+    && (docPreview?.workflowVersion == null || docPreviewDoc?.workflowVersion === docPreview.workflowVersion)
+    && (docPreview?.status == null || docPreviewDoc?.status === docPreview.status)
+    && (docPreview?.stage == null || docPreviewDoc?.stage === docPreview.stage)
+    && (docPreview?.updatedAt == null || docPreviewDoc?.updatedAt === docPreview.updatedAt);
+  const dp = sameDocument ? docPreviewDoc : docPreview;
   const iframeRef = useRef(null);
   const previewViewportRef = useRef(null);
   const [previewReady, setPreviewReady] = useState(false);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewHeight, setPreviewHeight] = useState(1123);
   const documentHtml = dp.docType==="BA_NON_STOCK" ? buildBaNonStockHTML(dp) : dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList, gudangList);
-  const baNonStockApproved = dp.docType !== "BA_NON_STOCK" || String(dp.status || dp.stage || "").toUpperCase() === "APPROVED";
-  const previewHtml = documentHtml.replace(/<div class="print-bar">[\s\S]*?<\/div>/, "");
+  const previewHtml = dp.docType === "BA_NON_STOCK"
+    ? documentHtml.replace(/<div class="bar">[\s\S]*?<\/div>/, "")
+    : documentHtml.replace(/<div class="print-bar">[\s\S]*?<\/div>/, "");
 
   useEffect(() => {
     setPreviewReady(false);
@@ -194,15 +202,15 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 18px",background:C.sidebar,flexShrink:0}}>
             <div style={{color:"white",fontWeight:700,fontSize:13}}>📄 Dokumen {dp.docType.replace("TUG","TUG-")} — {dp.docNumbers?.[docKeyOf(dp)]||dp.draftLabel||dp.id}</div>
             <div style={{display:"flex",gap:8}}>
-              {baNonStockApproved && <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("success"),padding:"7px 16px"}} onClick={()=>{
+              <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("success"),padding:"7px 16px"}} onClick={()=>{
                 if (dp.docType==="BA_NON_STOCK") downloadBaNonStockHTML(dp, showToast);
                 else if (dp.docType==="TUG10") downloadTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast, uptList);
                 else if (dp.docType==="TUG3") downloadTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, showToast, uptList);
                 else if (dp.docType==="TUG5") downloadTUG5HTML(dp, katalogList, uitList, users, showToast, ultgList, uptList);
                 else if (dp.docType==="TUG7") downloadTUG7HTML(dp, katalogList, uitList, uptList, users, showToast);
                 else downloadTUG9HTML(dp, enrichedStocks, users, satpamList, showToast, uptList, gudangList);
-              }}>⬇️ Unduh File (untuk Print/PDF)</button>}
-              {baNonStockApproved && <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("primary"),padding:"7px 16px"}} onClick={()=>iframeRef.current?.contentWindow?.print()}>🖨️ Print / Save PDF</button>}
+              }}>⬇️ Unduh File (untuk Print/PDF)</button>
+              <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("primary"),padding:"7px 16px"}} onClick={()=>iframeRef.current?.contentWindow?.print()}>🖨️ Print / Save PDF</button>
               <button style={sty.btn("danger","sm")} onClick={()=>setDocPreview(null)}>✕ Tutup</button>
             </div>
           </div>

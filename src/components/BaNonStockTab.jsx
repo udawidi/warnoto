@@ -36,6 +36,7 @@ export function BaNonStockTab({ C, sty, currentUser, records=[], onSave, onSubmi
       {record.rejectionReason && <div style={{fontSize:12,color:C.red,marginTop:5}}>Alasan penolakan: {record.rejectionReason}</div>}
       <div style={{display:"flex",gap:8,marginTop:8,flexWrap:"wrap"}}>
         <button style={sty.btn("ghost","sm")} onClick={()=>onPreview?.(record)}>Pratinjau</button>
+        <button style={sty.btn("ghost","sm")} onClick={()=>onPreview?.(record)}>🖨️ Print BA</button>
         {terminal && <button style={sty.btn("ghost","sm")} onClick={()=>onReview?.(record)}>Buka detail</button>}
         {canCreate && ["DRAFT","REJECTED"].includes(record.status) && (record.createdBy===currentUser?.id || hasRole(currentUser,"SUPERADMIN")) && <button style={sty.btn("ghost","sm")} onClick={()=>{setEditing(record);setOpen(true)}}>Edit</button>}
         {hasRole(currentUser,"TL","SUPERADMIN") && record.stage === "PENDING_TL" && <button className="approval-btn--approve" onClick={()=>onReview?.(record)}>Periksa &amp; Setujui</button>}

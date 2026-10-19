@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { buildBaNonStockHTML } from "../../src/lib/docBuilders.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const baseMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261015_ba_non_stock.sql"), "utf8");
@@ -93,6 +94,25 @@ test("BA UI exposes TL creation, UPT-scoped history, and review gates", () => {
   assert.match(tab, /Diputus oleh/);
   assert.match(review, /const readOnly=\["APPROVED","REJECTED"\]/);
   assert.match(review, /details open=\{readOnly\}/);
+  assert.match(review, /function printBa\(\)[\s\S]*setPreviewed\(true\);[\s\S]*onPreview\?\.\(data\)/);
   assert.match(review, /TL approver/);
   assert.match(review, /Keterangan/);
+});
+
+test("BA review gate and print actions cover all workflow states", () => {
+  const draftHtml = buildBaNonStockHTML({
+    id: "BA-TEST-DRAFT",
+    status: "PENDING",
+    items: [{ nama: "Kabel", qty: 2, satuan: "M", keterangan: "uji" }],
+  });
+  const approvedHtml = buildBaNonStockHTML({
+    id: "BA-TEST-APPROVED",
+    status: "APPROVED",
+    docNumber: "001.BA/UPT-TEST/10/2026",
+    items: [{ nama: "Kabel", qty: 2, satuan: "M", keterangan: "uji" }],
+  });
+  assert.match(draftHtml, /DRAFT \/ BELUM DISETUJUI/);
+  assert.match(draftHtml, /PRATINJAU — BELUM DISETUJUI/);
+  assert.doesNotMatch(approvedHtml, /DRAFT \/ BELUM DISETUJUI/);
+  assert.match(approvedHtml, /001\.BA\/UPT-TEST\/10\/2026/);
 });

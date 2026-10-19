@@ -61,6 +61,11 @@ test("cloud bootstrap bounds pending loaders", () => {
   assert.match(app, /_withTimeout\(Promise\.resolve\(promise\), 30000, label\)/);
 });
 
+test("cloud bootstrap does not reload when the active tab changes", () => {
+  assert.match(app, /loadCloud\(\)\.catch\(error =>[\s\S]*?\}, \[authLoading, currentUser\?\.id\]\);/);
+  assert.doesNotMatch(app, /loadCloud\(\)\.catch\(error =>[\s\S]*?\}, \[authLoading, currentUser\?\.id, tab\]\);/);
+});
+
 test("dismissed maturity migration does not abort cloud bootstrap", () => {
   assert.doesNotMatch(app, /maturityMigrationDismissedSigRef\.current === migrationSignature\) return;/);
   assert.match(app, /maturityMigrationDismissedSigRef\.current !== migrationSignature/);

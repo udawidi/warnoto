@@ -154,7 +154,7 @@ export function ApprovalHubTab({
           <div style={{fontWeight:800,fontSize:13,marginBottom:10}}>BA Material Non Stock / Pinjam ({baNonStockPending.length})</div>
           {baNonStockPending.map(record=><div key={record.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",padding:"9px 0",borderBottom:`1px solid ${C.border}`}}>
             <div><strong style={{fontSize:12}}>{record.penerimaNama || "Penerima belum diisi"}</strong><div style={{fontSize:12,color:C.muted}}>{record.items?.length || 0} material · {record.tanggal || "-"} · {record.jenis === "PINJAM" ? "Pinjam" : "Non Stock"}</div></div>
-            <div className="approval-actions approval-actions--compact"><button style={sty.btn("ghost","sm")} onClick={()=>previewBaNonStock?.(record)}>Pratinjau</button><button className="approval-btn--approve" onClick={()=>reviewBaNonStock?.(record)}>Periksa &amp; Setujui</button></div>
+            <div className="approval-actions approval-actions--compact"><button style={sty.btn("ghost","sm")} onClick={()=>previewBaNonStock?.(record)}>Pratinjau</button><button style={sty.btn("ghost","sm")} onClick={()=>previewBaNonStock?.(record)}>🖨️ Print BA</button><button className="approval-btn--approve" onClick={()=>reviewBaNonStock?.(record)}>Periksa &amp; Setujui</button></div>
           </div>)}
         </div>
       )}

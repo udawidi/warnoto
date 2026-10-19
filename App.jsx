@@ -1400,7 +1400,7 @@ export default function PLNWarehouse() {
       setDataRefreshing(false);
       showToastRef.current && showToastRef.current("⚠️ Sinkronisasi cloud gagal. Data lokal tetap ditampilkan.", "error");
     });
-  }, [authLoading, currentUser?.id, tab]);
+  }, [authLoading, currentUser?.id]);
 
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
   // sengaja tidak memakai cache/saveToCloud agar tidak ikut full sync state lama.
@@ -5598,7 +5598,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {supplierModal && <SupplierModal supplierModal={supplierModal} setSupplierModal={setSupplierModal} supplierForm={supplierForm} setSupplierForm={setSupplierForm} saveSupplier={saveSupplier} sty={sty} C={C} />}
 
       {/* DOCUMENT PREVIEW MODAL (TUG-9 / TUG-8 / TUG-10 / TUG-3 package) */}
-      {baNonStockReview && <BaNonStockReviewModal record={baNonStockReview} C={C} sty={sty} onLoad={refreshBaNonStockReview} onApprove={approveBaNonStock} onReject={rejectBaNonStock} onClose={()=>setBaNonStockReview(null)} uptList={uptList} gudangList={gudangList} satpamList={satpamList} users={users} />}
+      {baNonStockReview && <BaNonStockReviewModal record={baNonStockReview} C={C} sty={sty} onLoad={refreshBaNonStockReview} onApprove={approveBaNonStock} onReject={rejectBaNonStock} onClose={()=>setBaNonStockReview(null)} onPreview={setDocPreview} uptList={uptList} gudangList={gudangList} satpamList={satpamList} users={users} />}
       {docPreview && <DocPreviewModal docPreview={docPreview} setDocPreview={setDocPreview} docPreviewDoc={docPreviewDoc} docKeyOf={docKeyOf} katalogList={katalogList} lokasiList={lokasiList} users={users} satpamList={satpamList} gudangList={gudangList} subGudangList={subGudangList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} enrichedStocks={enrichedStocks} showToast={showToast} sty={sty} C={C} />}
 
     </div>

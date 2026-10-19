@@ -55,8 +55,9 @@ Pengguna dalam scope UPT dapat mencari riwayat, melihat pratinjau, dan mencetak 
 **Acceptance Scenarios**:
 
 1. **Given** BA final, **When** pratinjau dibuka, **Then** halaman pertama memuat identitas dan tabel material, sedangkan lampiran memuat dua foto.
-2. **Given** BA belum final, **When** pratinjau dibuka, **Then** dokumen ditandai belum disetujui dan tidak dapat dicetak sebagai dokumen resmi.
-3. **Given** master satpam atau profil TL kemudian berubah, **When** BA lama dicetak, **Then** identitas penandatangan tetap sesuai snapshot saat final.
+2. **Given** BA berstatus DRAFT atau PENDING, **When** tombol Print BA dipilih, **Then** dokumen boleh dicetak untuk review dengan watermark `DRAFT / BELUM DISETUJUI`.
+3. **Given** BA berstatus APPROVED, **When** tombol Print BA dipilih, **Then** dokumen dicetak sebagai versi final dengan nomor BA dan snapshot penandatangan.
+4. **Given** master satpam atau profil TL kemudian berubah, **When** BA lama dicetak, **Then** identitas penandatangan tetap sesuai snapshot saat final.
 
 ### Edge Cases
 
@@ -86,7 +87,7 @@ Pengguna dalam scope UPT dapat mencari riwayat, melihat pratinjau, dan mencetak 
 - **FR-012**: Sistem MUST menyimpan snapshot Penerima Material, Satpam, dan TL approver untuk cetakan historis.
 - **FR-013**: Sistem MUST menyediakan riwayat dan pencarian berdasarkan nomor, sumber, penerima, referensi, dan material.
 - **FR-014**: Sistem MUST menghasilkan pratinjau A4 dan hasil Print/Save PDF dengan tabel `Nama Material | Qty | Satuan | Keterangan`, dua foto, dan tanda tangan Penerima Material, Satpam, serta Team Leader.
-- **FR-015**: Sistem MUST mencegah cetakan resmi sebelum status APPROVED.
+- **FR-015**: Sistem MUST menyediakan tombol Print BA pada daftar TUG, antrean Approval, dan review untuk semua status; DRAFT/PENDING wajib memakai watermark `DRAFT / BELUM DISETUJUI`, sedangkan cetakan APPROVED memakai nomor dan snapshot final.
 - **FR-016**: Sistem MUST mengisolasi data per UPT mengikuti aturan akses WARNOTO yang sudah berlaku.
 - **FR-017**: Sistem MUST NOT mengubah Data Stock, source lot, katalog, MARA, stock movements, canonical TUG-8/9, atau laporan TUG-15.
 - **FR-018**: Sistem MUST mempertahankan audit pembuat, pengaju, approver atau penolak, alasan penolakan, dan waktu transisi.
