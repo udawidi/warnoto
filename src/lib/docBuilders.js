@@ -31,7 +31,7 @@ body{overflow-x:auto}
 .page table tr,.page .sig-row,.page .sig-row-2,.page .sig-row-3,.page .photo-box-2col,.page .photo-box-full,.page img{break-inside:avoid;page-break-inside:avoid}
 @media print{
   .print-bar{display:none!important}
-  body{background:#fff;overflow:visible}
+  body{background:#fff;overflow:visible;print-color-adjust:exact;-webkit-print-color-adjust:exact}
   .page{width:210mm;min-height:297mm;max-width:none;margin:0;padding:${padding};box-shadow:none}
 }
 `;
@@ -1753,7 +1753,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
   .media-row { display: flex; gap: 16px; margin-bottom: 16px; justify-content: space-between; }
   .media-box { flex: 1; border: 1.5px solid #111; padding: 12px; text-align: center; background: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 220px; }
   .media-title { font-weight: 800; font-size: 12px; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #cbd5e1; width: 100%; padding-bottom: 4px; }
-  @media print { .bar { display: none; } body { background: white; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+  @media print { .bar { display: none; } body { background: white; print-color-adjust: exact; -webkit-print-color-adjust: exact; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
 </style></head><body>
 <div class="bar">📄 Kartu Gantung (Halaman Depan / QR Code) siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
@@ -1902,7 +1902,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
   .items-tbl { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1.5px solid #111; }
   .items-tbl th { background: #f1f5f9; border: 1px solid #111; padding: 6px 4px; font-size: 10px; font-weight: bold; text-align: center; }
   .items-tbl td { border: 1px solid #111; padding: 6px 6px; font-size: 9.5px; }
-  @media print { .bar { display: none; } body { background: white; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
+  @media print { .bar { display: none; } body { background: white; print-color-adjust: exact; -webkit-print-color-adjust: exact; } .page { box-shadow: none; margin: 0; max-width: none; padding: 0; } }
 </style></head><body>
 <div class="bar">📄 Lembar Riwayat Keluar-Masuk (TUG.2 Belakang) siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">
@@ -2294,7 +2294,7 @@ table.items thead{display:table-header-group}
 .sig-right{width:220px}
 .sig-space{height:40px}
 .sig-name{font-weight:800;text-decoration:underline}
-@media print{.bar{display:none}body{background:white}.page{max-width:none;margin:0;padding:0}table.items{page-break-inside:auto}table.items tr{page-break-inside:avoid}}
+@media print{.bar{display:none}body{background:white;print-color-adjust:exact;-webkit-print-color-adjust:exact}.page{max-width:none;margin:0;padding:0}table.items{page-break-inside:auto}table.items tr{page-break-inside:avoid}}
 </style></head><body>
 <div class="bar">📄 TUG-15 siap dicetak <button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
 <div class="page">

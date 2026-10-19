@@ -8,6 +8,9 @@ import {
   buildTUG7HTML,
   buildTUG9HTML,
   buildTUG10HTML,
+  buildTUG15HTML,
+  buildTUG2FrontHTML,
+  buildTUG2BackHTML,
 } from "../../src/lib/docBuilders.js";
 
 const baseTxn = { id: "TUG-PRINT-TEST", stockItems: [] };
@@ -47,6 +50,35 @@ test("TUG-10 prints reception warehouse and dates", () => {
   const legacy = buildTUG10HTML({ ...baseTxn, gudangTujuanId: "missing" }, [], [], [], [], [], [], []);
   assert.match(legacy, /LOKASI GUDANG/);
   assert.match(legacy, />-<\/td>/);
+});
+
+test("TUG-10 print keeps preview colors", () => {
+  const html = buildTUG10HTML(baseTxn, [], [], [], [], [], [], []);
+  assert.match(html, /print-color-adjust\s*:\s*exact/);
+  assert.match(html, /-webkit-print-color-adjust\s*:\s*exact/);
+  assert.match(html, /table\.items-tbl th\{background:#1e3a5f;color:#fff/);
+  assert.match(html, /\.top-accent\{height:4px;background:#007d9c/);
+  assert.match(html, /window\.print\(\)/);
+});
+
+test("all TUG builders preserve preview colors when printing", () => {
+  for (const [name, build] of builders) {
+    const html = build();
+    assert.match(html, /print-color-adjust\s*:\s*exact/, name);
+    assert.match(html, /-webkit-print-color-adjust\s*:\s*exact/, name);
+  }
+  const tug15 = buildTUG15HTML({ ...baseTxn, items: [] }, { tanggal: "2026-06-10" }, { katalogList: [], uptList: [] });
+  assert.match(tug15, /print-color-adjust\s*:\s*exact/, "TUG15");
+  assert.match(tug15, /-webkit-print-color-adjust\s*:\s*exact/, "TUG15");
+});
+
+test("TUG-2 A4 front and back preserve preview colors when printing", async () => {
+  const front = await buildTUG2FrontHTML({}, [], [], [], [], "UPT TEST");
+  const back = await buildTUG2BackHTML({}, [], [], [], [], [], "UPT TEST");
+  for (const [name, html] of [["TUG2 front", front], ["TUG2 back", back]]) {
+    assert.match(html, /print-color-adjust\s*:\s*exact/, name);
+    assert.match(html, /-webkit-print-color-adjust\s*:\s*exact/, name);
+  }
 });
 
 test("TUG-10 form exposes manual date inputs and submit validation", () => {
