@@ -6,14 +6,16 @@ import { processTxnPhotos } from "./supabaseSync.js";
 
 const TYPES = new Set(["TUG5", "TUG7", "TUG8", "TUG9"]);
 
-function rowToTxn(row) {
+export function rowToTxn(row) {
   const data = row?.data && typeof row.data === "object" ? row.data : {};
   return {
     ...data,
     id: row.id,
     docType: row.doc_type,
     uptId: row.upt_id !== undefined ? row.upt_id : (data.uptId || null),
-    uitId: row.uit_id !== undefined ? row.uit_id : (data.uitId || null),
+    uitId: row.doc_type === "TUG5" && row.upt_id
+      ? (data.uitId || null)
+      : (row.uit_id !== undefined ? row.uit_id : (data.uitId || null)),
     ultgId: row.ultg_id !== undefined ? row.ultg_id : (data.ultgId || null),
     stage: row.stage,
     status: row.status,
