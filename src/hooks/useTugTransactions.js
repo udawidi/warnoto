@@ -931,6 +931,16 @@ export function useTugTransactions({
     setTug5MaterialPage(0);
     setTxnModal(true);
   }
+  async function deleteDraftTug5(txn) {
+    if (txn.stage !== "DRAFT" || txn.createdBy !== currentUser.id) { showToast("Tidak diizinkan menghapus draft ini.","error"); return; }
+    const deleted = await deleteTugWorkflowTransaction(txn.id, txn.workflowVersion);
+    if (!deleted.ok) { showToast(deleted.conflict ? "Draft sudah berubah dari perangkat lain. Muat ulang sebelum menghapus." : "Draft TUG-5 gagal dihapus dari database.","error"); return; }
+    const newTxns = txns.filter(t => t.id !== txn.id);
+    setTxns(newTxns);
+    await saveToCloud({ txns: newTxns });
+    logAudit(currentUser, "DELETE", "txns", txn.id);
+    showToast("Draft TUG-5 dihapus.");
+  }
   function editCanonicalTug98(txn) {
     // Data lama (sebelum #4 scope-gudang) belum punya gudangId — backfill dari barang
     // pertama biar SearchableSelect material tak terkunci "pilih gudang dulu" saat edit.
@@ -957,6 +967,6 @@ export function useTugTransactions({
     saveTxn, commitNewTxn,
     editDraftTug3, submitDraftTug3, deleteDraftTug3,
     editDraftTug10, submitDraftTug10, deleteDraftTug10,
-    editTug10: editDraftTug10, editTug5, editCanonicalTug98,
+    editTug10: editDraftTug10, editTug5, deleteDraftTug5, editCanonicalTug98,
   };
 }

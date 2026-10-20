@@ -8,7 +8,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
   approveTUG5_Asman, rejectTUG5_Asman, approveTUG5_Manager, rejectTUG5_Manager,
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, setDocPreview,
-  ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG, openDraftTug9, editTug5, isMobile=false }) {
+  ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG, openDraftTug9, editTug5, deleteDraftTug5, isMobile=false }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Modal, setTug7Modal] = useState(null);
@@ -88,6 +88,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               )}
               <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 {t.stage==="DRAFT"?"Pratinjau / Cetak":"Lihat Dokumen TUG-5"}</button>
               {t.stage==="DRAFT" && t.createdBy===currentUser?.id && <button style={sty.btn("primary","sm")} onClick={()=>editTug5?.(t)}>✏️ Lanjutkan Draft</button>}
+              {t.stage==="DRAFT" && t.createdBy===currentUser?.id && <button style={sty.btn("danger","sm")} onClick={()=>{ if (window.confirm("Hapus draft TUG-5 ini?")) deleteDraftTug5?.(t); }}>🗑️ Hapus</button>}
             </div>
           </div>
         );

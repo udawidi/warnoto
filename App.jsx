@@ -2107,7 +2107,7 @@ export default function PLNWarehouse() {
     tug10Missing, flagTug10Invalid,
     saveTxn, commitNewTxn,
     editDraftTug3, submitDraftTug3, deleteDraftTug3,
-    editTug5, editTug10, editCanonicalTug98,
+    editTug5, deleteDraftTug5, editTug10, editCanonicalTug98,
     editDraftTug10, submitDraftTug10, deleteDraftTug10,
   } = useTugTransactions({
     currentUser, showToast, rolePerms,
@@ -4969,7 +4969,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             approveTUG5_Asman={approveTUG5_Asman} rejectTUG5_Asman={rejectTUG5_Asman} approveTUG5_Manager={approveTUG5_Manager} rejectTUG5_Manager={rejectTUG5_Manager}
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
-            adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9} editTug5={editTug5}
+            adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9} editTug5={editTug5} deleteDraftTug5={deleteDraftTug5}
             baNonStockRecords={baNonStockRecords} saveBaNonStockDraft={saveBaNonStockDraft} submitBaNonStock={submitBaNonStock}
             onReviewBaNonStock={setBaNonStockReview} currentUptId={currentUserUptId} satpamList={satpamList}
           />
