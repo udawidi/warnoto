@@ -63,7 +63,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
               </>
             ) : (
             <>
-            <div tabIndex={0} className="info-note" style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Alur: Asman approve → Manager UPT approve → INTRACOMPANY: auto draft TUG-7 di UIT | INTERCOMPANY: auto draft TUG-5 UIT (cetak manual).</div>
+            <div tabIndex={0} className="info-note" style={{background:"#dbeafe",border:`1px solid #93c5fd`,borderRadius: 10,padding:"8px 12px",fontSize:12,color: "#1d4ed8",marginBottom:16}}>ℹ️ Alur: Asman menyetujui → INTRACOMPANY: draft TUG-7 otomatis dibuat di UIT | INTERCOMPANY: draft TUG-5 UIT otomatis dibuat untuk dicetak dan dikirim manual. TUG-5 dapat dicetak sebelum disetujui.</div>
 
             <div style={{fontSize:12,fontWeight:800,color:C.accent,marginBottom:8,borderBottom:`1px solid ${C.border}`,paddingBottom:4}}>HEADER DOKUMEN</div>
             <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:12,marginBottom:14}}>

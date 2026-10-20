@@ -87,7 +87,7 @@ export function ApprovalTab({ pendingTxns, stocks, katalogList, lokasiList, user
   const pendingStockCount = pendingStockMoves.length + pendingStockEdits.length + pendingStockDeletes.length;
 
   function stageLabelOf(t) {
-    if (t.docType==="TUG5") return t.stage==="PENDING_ASMAN"?"Menunggu Asman":"Menunggu Manager";
+    if (t.docType==="TUG5") return ({PENDING_ASMAN:"Menunggu Asman",PENDING_MANAGER:"Menunggu Manager",PENDING_MGR_ULTG:"Menunggu Manager ULTG",DRAFT_UIT:"Draft — Perlu dilengkapi Admin UIT"})[t.stage] || "PENDING";
     if (t.docType==="TUG7") return t.stage==="DRAFT_UIT"?"Draft — Perlu dilengkapi Admin UIT":"Menunggu Mgr Logistik UIT";
     if (t.docType==="TUG8" && t.stage==="DRAFT_TUG8") return "Draft TUG-8 — Lengkapi & Ajukan";
     if (t.docType==="TUG3") {

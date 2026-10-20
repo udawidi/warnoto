@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-19
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-20
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -79,6 +79,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **TUG-5 UPT aktif di production (2026-10-20, `5faf137`).** Form dapat mencari 42.703 material MARA pada self-host, menyimpan draft parsial ke database, mencetak draft sebelum approval, dan memakai data yang sama untuk pratinjau/PDF. Approval digital selesai di Asman; tanda tangan Manager dan Asman tetap basah pada dokumen. RPC atomik membuat draft TUG-7 UIT atau TUG-5 UIT sesuai jenis transfer; baris lama yang sudah PENDING_MANAGER tetap memakai jalur legacy. Migrasi `20261020_tug5_asman_atomic_approval.sql` sudah diterapkan setelah backup `/home/admin_warnoto/backups/tug5-pre-asman-20261020.dump`; verifier 3/3 lulus. Uji transaksi production di-rollback: draft parsial/simpan ulang, kedua jenis transfer, retry idempoten, proteksi spoof, dan blokir PENDING_ASMAN→PENDING_MANAGER lulus; tidak ada baris TEST tersisa. 610/610 test dan build lulus. Smoke UI akun nyata masih perlu dilakukan.
 - **Warna Print/Save PDF seluruh TUG disamakan dengan preview (2026-10-19, selesai lokal; siap commit/push).** CSS `print-color-adjust: exact` diterapkan pada builder A4 bersama serta TUG-2 dan TUG-15 yang berdiri sendiri, tanpa mengubah isi atau geometri dokumen. Pengguna sudah memeriksa localhost. Verifikasi: 607/607 test, build, dan smoke Chromium Print/Save PDF TUG-10 berwarna dengan `printBackground:false` lulus. Tidak ada perubahan schema, API, atau data self-host.
 - **BA Pengeluaran Material Non Stock / Pinjam dan penyempurnaan TUG-10 sudah di-push (2026-10-19, `a8fd22f`).** Menu BA memakai input material manual tanpa mutasi Data Stock, eviden foto, alur Satpam/TL/Penerima existing, serta PDF lengkap qty, satuan, dan keterangan. Review TL memakai tiga checklist tanpa syarat preview tersembunyi; tombol cetak tersedia sebelum dan sesudah approval. Skema BA Non Stock sudah aktif di self-host. Verifikasi aplikasi: 604/604 test dan build lulus; approval data produksi belum dijalankan.
 - **Cari Foto dan rutin AI foto dipulihkan (2026-10-14, siap commit/push).** Detail error `services-proxy` kini diteruskan aman ke UI. Cohere production key sudah disinkronkan ke GitHub Actions; Knowledge Base Sync manual berhasil. Job embedding foto sekarang menyelesaikan UPT stok legacy melalui `lokasi -> gudang`, membaca embedding existing dalam chunk 50 agar tidak terpotong limit PostgREST 1.000 baris, dan fail-fast pada quota `429` permanen. Backfill production membuat 805 embedding baru; total 2.136/2.136 baris memiliki vektor. Katalog `000000004020014` UPT-SBY sudah terindeks. Satu foto legacy 5,31 MB masih gagal karena batas Cohere 5 MB; upload foto baru di atas 4 MB kini otomatis dikompres dan tetap fail-closed bila hasilnya masih terlalu besar. Verifikasi: 577/577 test, build, dry-run embedding 1.296/1.297 selesai, dan diff-check lulus; tanpa perubahan schema/dependensi.
@@ -686,6 +687,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Smoke TUG-5 pada tab produksi baru tanpa me-reload form pengguna yang masih terisi: cari material MARA, simpan draft, buka ulang, cetak/pratinjau PDF, lalu uji submit dan approval Asman dengan dokumen nyata yang memang siap diproses. Pastikan anak UIT hanya satu dan Manager tidak menerima approval baru.
 - Setelah deploy, smoke production BA Non Stock dari draft sampai approval TL dan cetak PDF; cek juga PDF TUG-10 memiliki No. Catalog, lokasi gudang, tanggal, nama TL/Asman, serta warna tabel/aksen yang sama dengan preview. Bandingkan Print/Save PDF berwarna untuk TUG-2/3/4/5/5-ULTG/7/8/9/15. Migrasi `20261015_ba_non_stock.sql` sudah aktif dan terverifikasi di self-host; jangan apply ulang tanpa kebutuhan.
 - Setelah deploy, uji Data Stok > Cari Foto > Bentuk Barang memakai foto katalog `000000004020014` UPT Surabaya; barang yang sama harus muncul sebagai hasil teratas. Unggah ulang satu foto legacy `spe_upt-sby_1002020226_utama` yang berukuran 5,31 MB agar melewati kompresi upload maksimum 4 MB, lalu jalankan ulang job embedding foto.
 - Pantau deploy Vercel versi `2.1.86`; perubahan SQL bootstrap tidak perlu dan tidak boleh diterapkan ke production. Gunakan `supabase/migrations/` untuk perubahan database existing.
