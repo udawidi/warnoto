@@ -13,7 +13,7 @@ import { loadMasterTable } from "../lib/masterSync.js";
 import { CLOUD } from "../lib/cloud.js";
 import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
 import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
-import { saveTugWorkflowTransaction, transitionTugWorkflowTransaction, transitionTugWorkflowWithChild, issueTugWorkflowDocumentNumber, deleteTugWorkflowTransaction, isWorkflowDoc } from "../lib/tugWorkflowSync.js";
+import { saveTugWorkflowTransaction, transitionTugWorkflowTransaction, transitionTugWorkflowWithChild, approveTug5AsmanWithChild, issueTugWorkflowDocumentNumber, deleteTugWorkflowTransaction, isWorkflowDoc } from "../lib/tugWorkflowSync.js";
 
 // Normalisasi nomor WA "0812xxx" -> "62812xxx" (Fonnte/WA API butuh country code,
 // bukan 0 lokal). Tidak ada helper existing untuk ini (parseIndoNumber di lib/utils.js
@@ -502,13 +502,37 @@ export function useTugApprovals({
   async function approveTUG5_Asman(txn) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menyetujui TUG-5 tahap ini.","error"); return; }
     if (txn.stage !== "PENDING_ASMAN") { showToast("TUG-5 ini tidak dalam tahap menunggu Asman.","error"); return; }
-    const changed = {...txn, stage:"PENDING_MANAGER", requiredApprover:"MANAGER", approvedByAsman:currentUser.id, approvedAtAsman:Date.now()};
-    const persisted = await persistWorkflow(changed, txn); if (!persisted) return;
-    const newTxns = txns.map(t => t.id===txn.id ? persisted : t);
-    setTxns(newTxns);
-    await saveToCloud({txns: newTxns});
-    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"PENDING_MANAGER"});
-    showToast(`✅ ${txn.docNumbers.tug5} disetujui Asman! Menunggu approval Manager.`);
+    const penerimaUptNama = uptList.find(u => u.id === txn.uptTujuanId || u.id === txn.uptId)?.nama;
+    const child = txn.jenisTransfer === "INTRACOMPANY"
+      ? {
+        id: `TUG7-` + uid().slice(-6), docType: "TUG7", docSeq: null, docNumbers: {},
+        tug5Id: txn.id, tug5DocNo: txn.docNumbers.tug5, uitId: txn.uitId,
+        uptPengirimId: "", atasBebanRekening: "",
+        perintahKerja: txn.perintahKerja||"", kodeAkun: txn.kodePerkiraan||"", fungsi: txn.fungsi||"",
+        stockItems: txn.stockItems.map(si=>({...si, qty: si.permintaan||si.qty||0})),
+        stage: "DRAFT_UIT", status: "PENDING", requiredApprover: "ADMIN_UIT",
+        approvedByAdminUIT: null, approvedAtAdminUIT: null, approvedByMgrLogistik: null, approvedAtMgrLogistik: null,
+        rejectedBy: null, rejectedAt: null, rejectReason: null, createdAt: Date.now(),
+        unitPenerima: penerimaUptNama || txn.unitPenerima || txn.unitTujuan || txn.uptTujuan || "-",
+      }
+      : {
+        id: `TUG5UIT-` + uid().slice(-6), docType: "TUG5", docSubType: "UIT_INTERCOMPANY",
+        docSeq: null, docNumbers: {}, tug5UptId: txn.id, uitId: txn.uitId,
+        jenisTransfer: "INTERCOMPANY", keteranganUmum: txn.keteranganUmum,
+        perintahKerja: txn.perintahKerja||"", kodePerkiraan: txn.kodePerkiraan||"", fungsi: txn.fungsi||"",
+        stockItems: txn.stockItems.map(si=>({...si})), stage: "DRAFT_UIT", status: "PENDING",
+        createdAt: Date.now(), namaPekerjaan: txn.keteranganUmum||"Permintaan Intercompany", lokasiPekerjaan: "UIT-JBM",
+      };
+    const atomic = await approveTug5AsmanWithChild({ parent: txn, child });
+    if (!atomic.ok) { showToast(atomic.conflict ? "TUG-5 sudah berubah dari perangkat lain. Muat ulang sebelum melanjutkan." : "Persetujuan TUG-5 gagal disimpan atomik.", "error"); return; }
+    const newTxns = txns.map(t => t.id===txn.id ? atomic.parent : t);
+    const allTxns = [...newTxns, atomic.child];
+    setTxns(allTxns);
+    await saveToCloud({txns: allTxns, docSeq});
+    logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers.tug5, {stage:"APPROVED", generated:atomic.child.id});
+    showToast(txn.jenisTransfer === "INTRACOMPANY"
+      ? `✅ ${txn.docNumbers.tug5} DISETUJUI Asman! Draft TUG-7 otomatis dibuat untuk UIT. 📋`
+      : `✅ ${txn.docNumbers.tug5} DISETUJUI Asman! Draft TUG-5 UIT dibuat — cetak & kirim manual ke UIT tujuan. 📄`);
   }
   async function rejectTUG5_Asman(txn, reason) {
     if (!hasRole(currentUser, "ASMAN")) { showToast("Hanya Asman Konstruksi yang bisa menolak TUG-5.","error"); return; }

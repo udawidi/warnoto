@@ -136,6 +136,23 @@ export async function transitionTugWorkflowWithChild({ action, parent, child }) 
   return { ok: true, idempotent: !!result?.idempotent, result, parent: parentTxn, child: childTxn };
 }
 
+export async function approveTug5AsmanWithChild({ parent, child }) {
+  if (!supabase || !parent?.id || !child?.id) return { ok: false, unavailable: !supabase };
+  const { data: processed, pending = [] } = await processTxnPhotos(child, child.id);
+  if (pending.length) return { ok: false, error: new Error("TUG_WORKFLOW_PHOTO_NOT_STORED") };
+  const { data, error } = await supabase.rpc("approve_tug5_asman_with_child", {
+    p_parent_id: parent.id,
+    p_expected_version: parent.workflowVersion ?? null,
+    p_child_id: child.id,
+    p_child_data: { ...processed, docType: String(child.docType || "").toUpperCase() },
+  });
+  if (error) return rpcErrorResult(error);
+  const result = Array.isArray(data) ? data[0] : data;
+  const parentTxn = result?.parent ? { ...parent, ...rowToTxn(result.parent) } : parent;
+  const childTxn = result?.child ? { ...child, ...rowToTxn(result.child) } : child;
+  return { ok: true, idempotent: !!result?.idempotent, result, parent: parentTxn, child: childTxn };
+}
+
 export function mergeWorkflowServerWins(serverRows = [], cachedRows = []) {
   const serverIds = new Set(serverRows.map(row => row?.id).filter(Boolean));
   return [...serverRows, ...cachedRows.filter(row => isWorkflowDoc(row) && !serverIds.has(row.id))];

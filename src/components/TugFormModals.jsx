@@ -12,7 +12,7 @@ import { ROLES } from "../lib/roles.js";
 import { sortBlokOptions } from "../lib/masterSync.js";
 import { STATUS_SAP } from "../constants.js";
 
-export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, enrichedStocks = [], gudangList = [], tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C, uptKode }) {
+export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitList, ultgList, katalogList, enrichedStocks = [], gudangList = [], tug5MaterialPage, setTug5MaterialPage, tug5ExpandedIdx, setTug5ExpandedIdx, addItemRow, removeItemRow, updateItemRow, saveTxn, isMobile, sty, C, uptKode, maraSearch="", setMaraSearch, maraSearchResults=[], setMaraSearchResults, maraSearchLoading=false, maraSearchError="", searchMaraCatalog, applyMaraToItemRow }) {
   const isUltg = txnForm.sourceType === "ULTG";
   const gudangStocks = txnForm.gudangId ? enrichedStocks.filter(s => s.gudangId === txnForm.gudangId && Number(s.qty) > 0 && !isLegacySourceAllocation(s)) : [];
   const sourceSummary = stock => {
@@ -97,7 +97,7 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
               const pageIdxs = txnForm.stockItems.map((_,i)=>i).slice(pageStart, pageStart+5);
               return pageIdxs.map(idx=>{
                 const si = txnForm.stockItems[idx];
-                const kat = katalogList.find(k=>k.id===si.katalogId);
+                const kat = (!isUltg && si.katalogSnapshot) || katalogList.find(k=>k.id===si.katalogId) || si.katalogSnapshot;
                 const isExpanded = idx===tug5ExpandedIdx;
                 if (!isExpanded) {
                   return (
@@ -117,6 +117,13 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                   <div style={{display:"flex",flexDirection:isMobile?"column":"row",gap:8,alignItems:isMobile?"stretch":"flex-end",marginBottom:8}}>
                     <div style={{flex:isMobile?undefined:3}}>
                       <label style={sty.label}>Nama Barang {idx+1}</label>
+                      {!isUltg && <div style={{marginBottom:8,padding:8,borderRadius:8,background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+                        <label style={sty.label}>Cari material MARA</label>
+                        <input style={sty.input} value={maraSearch} placeholder="Ketik nama atau kode MARA (min. 2 huruf)..." onChange={e=>searchMaraCatalog?.(e.target.value)}/>
+                        {maraSearchLoading && <div style={{fontSize:11,color:C.accent,marginTop:4}}>Mencari MARA...</div>}
+                        {maraSearchError && <div style={{fontSize:11,color:C.red,marginTop:4}}>{maraSearchError}</div>}
+                        {maraSearchResults.length>0 && <div style={{marginTop:5,maxHeight:150,overflowY:"auto"}}>{maraSearchResults.map(item=><button type="button" key={item.id||item.kode_material||item.katalog} style={{display:"block",width:"100%",textAlign:"left",padding:"6px 8px",border:0,borderBottom:"1px solid #dbeafe",background:"white",cursor:"pointer"}} onClick={()=>{applyMaraToItemRow?.(idx,item);setMaraSearch?.("");setMaraSearchResults?.([]);}}><b>{item.nama_material||item.name||item.nama||"-"}</b><br/><span style={{fontSize:11,color:C.muted}}>{item.kode_material||item.katalog||"-"} · {item.satuan||"-"}</span></button>)}</div>}
+                      </div>}
                       <SearchableSelect
                         options={isUltg ? gudangStocks : katalogList}
                         value={isUltg ? si.stockId : si.katalogId}
@@ -127,10 +134,11 @@ export function Tug5FormModal({ txnForm, setTxnForm, setTxnModal, docSeq, uitLis
                         placeholder={isUltg ? "-- Cari & pilih stok per lokasi --" : "-- Cari & pilih dari Master Katalog --"}
                         sty={sty} C={C} isMobile={isMobile}
                       />
+                      {!isUltg && si.katalogSnapshot && <div style={{fontSize:11,color:"#166534",marginTop:4}}>✓ MARA: {si.katalogSnapshot.name} · {si.katalogSnapshot.katalog} · {si.katalogSnapshot.satuan}</div>}
                     </div>
                     {txnForm.stockItems.length>1 && <button type="button" title="Hapus material TUG-5 ini" style={{...sty.btn("danger","sm")}} onClick={()=>{removeItemRow(idx);setTug5ExpandedIdx(Math.max(0,idx-1));}}>✕</button>}
                   </div>
-                  {kat && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Nomor Normalisasi: {kat.katalog||"-"} • Satuan: {kat.satuan}</div>}
+                  {kat && <div style={{fontSize:12,color:C.muted,marginBottom:8}}>Nomor Normalisasi: {kat.katalog||kat.kode_material||"-"} • Satuan: {kat.satuan||"-"}</div>}
                   {txnForm.sourceType==="ULTG" ? (
                     <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"1fr 1fr",gap:8}}>
                       <div><label style={sty.label}>Sisa Persediaan <span style={{color:C.muted,fontWeight:400}}>(stok lokasi)</span></label><input style={{...sty.input,background:"#f3f4f6"}} type="number" inputMode="decimal" min="0" value={si.sisaPersediaan||0} disabled/></div>

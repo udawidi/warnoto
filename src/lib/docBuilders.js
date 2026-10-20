@@ -665,8 +665,8 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
   const uptNama = resolveUptNama(txn.uptId, uptList);
   const uptKode = resolveDocumentUnitCode(txn.uptId, uptList) || "UPT";
   const uptAlamat = upt.alamat || "-";
-  const managerUser = users.find(u=>u.role==="MANAGER")||{};
-  const asmanUser = users.find(u=>u.role==="ASMAN")||{};
+  const managerUser = users.find(u=>u.role==="MANAGER" && (!txn.uptId || u.uptId===txn.uptId))||{};
+  const asmanUser = users.find(u=>u.role==="ASMAN" && (!txn.uptId || u.uptId===txn.uptId))||{};
   const uit = (uitList||[]).find(u=>u.id===txn.uitId)||{};
   const dateInfo = (() => {
     const d = txn.createdAt ? new Date(txn.createdAt) : new Date();
@@ -674,13 +674,13 @@ export function buildTUG5HTML(txn, katalogList, uitList, users, ultgList, uptLis
     return `${esc(uptNama)}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
   })();
 
-  const docNoTUG5 = docs.tug5 || (txn.docSeq ? `${txn.docSeq}.TUG-5/LOG-${uptKode}/VII/2026` : `TUG5-${(txn.id||"").slice(-6)}`);
+  const docNoTUG5 = txn.stage === "DRAFT" ? `DRAFT — ${docs.tug5 || txn.draftLabel || txn.id || "TUG-5"}` : (docs.tug5 || (txn.docSeq ? `${txn.docSeq}.TUG-5/LOG-${uptKode}/VII/2026` : `TUG5-${(txn.id||"").slice(-6)}`));
 
   const itemRows = (txn.stockItems||[]).map((si)=>{
-    const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
+    const kat = si.katalogSnapshot || (katalogList||[]).find(k=>k.id===si.katalogId)||{};
     return `<tr>
       <td>${esc(kat.name||"-")}</td>
-      <td style="text-align:center">${esc(canonicalKatalogCode(kat.katalog)||"-")}</td>
+      <td style="text-align:center">${esc(canonicalKatalogCode(kat.katalog||kat.kode_material)||"-")}</td>
       <td style="text-align:center">${esc(kat.satuan||"-")}</td>
       <td style="text-align:center">${fmtNum(si.pemakaianBulan||0)}</td>
       <td style="text-align:center">${fmtNum(si.sisaPersediaan||0)}</td>
@@ -805,12 +805,12 @@ ${A4_PAGE_LAYOUT_CSS("20px")}
     <div class="sig-col">
       <div class="sig-role">MANAGER ${esc(uptNama.toUpperCase())}</div>
       <div class="sig-space"></div>
-      <div class="sig-name">${esc(managerUser.name || "IVAN NUR PRATAMA")}</div>
+      <div class="sig-name">${esc(managerUser.name || ".....................")}</div>
     </div>
     <div class="sig-col">
       <div class="sig-role">ASMAN KONSTRUKSI</div>
       <div class="sig-space"></div>
-      <div class="sig-name">${esc(asmanUser.name || "ASEP MOCH. YUSUP")}</div>
+      <div class="sig-name">${esc(asmanUser.name || ".....................")}</div>
     </div>
   </div>
 
@@ -832,7 +832,7 @@ export function buildTUG5ULTGHTML(txn, katalogList, users, ultgList) {
   const tanggalApprove = txn.approvedAtMgrUltg ? fmtDate(txn.approvedAtMgrUltg) : "";
 
   const itemRows = (txn.stockItems||[]).map((si)=>{
-    const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||{};
+    const kat = (katalogList||[]).find(k=>k.id===si.katalogId)||si.katalogSnapshot||{};
     return `<tr>
       <td>${esc(kat.name||"-")}</td>
       <td style="text-align:center">${esc(canonicalKatalogCode(kat.katalog)||"-")}</td>

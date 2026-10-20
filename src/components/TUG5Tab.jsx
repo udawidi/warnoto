@@ -8,7 +8,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
   approveTUG5_Asman, rejectTUG5_Asman, approveTUG5_Manager, rejectTUG5_Manager,
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, setDocPreview,
-  ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG, openDraftTug9, isMobile=false }) {
+  ultgList, approveTUG5_MgrULTG, rejectTUG5_MgrULTG, adoptTUG5ULTG, openDraftTug9, editTug5, isMobile=false }) {
   const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
   const [tug7Modal, setTug7Modal] = useState(null);
@@ -69,8 +69,8 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
             </div>
             <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
               {(t.stockItems||[]).map((si,idx)=>{
-                const kat = katalogList.find(k=>k.id===si.katalogId);
-                return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
+                const kat = si.katalogSnapshot || katalogList.find(k=>k.id===si.katalogId);
+                return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||kat?.nama_material||"-"} <span style={{color:C.muted}}>[{kat?.katalog||kat?.kode_material||"-"}]</span> <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
               })}
             </div>
             {t.status==="REJECTED" && <div style={{fontSize:12,color:C.red,marginBottom:8}}>❌ {t.rejectReason}</div>}
@@ -86,7 +86,8 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                   ? <span className="approval-actions"><button className="approval-btn--danger" onClick={()=>{rejectTUG5_Manager(t,reason);setRejectingId(null);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Konfirmasi Tolak</button><button className="approval-btn--cancel" onClick={()=>setRejectingId(null)}>Batal</button></span>
                   : <span className="approval-actions"><button className="approval-btn--approve" onClick={()=>approveTUG5_Manager(t)}><span className="approval-btn__ic" aria-hidden="true">✓</span>Setujui (Manager) → Generate {t.jenisTransfer==="INTRACOMPANY"?"TUG-7":"TUG-5 UIT"}</button><button className="approval-btn--reject" onClick={()=>{setRejectingId(t.id);setReason("");}}><span className="approval-btn__ic" aria-hidden="true">✕</span>Tolak</button></span>
               )}
-              <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 Lihat Dokumen TUG-5</button>
+              <button style={sty.btn("ghost","sm")} onClick={()=>setDocPreview(t)}>📄 {t.stage==="DRAFT"?"Pratinjau / Cetak":"Lihat Dokumen TUG-5"}</button>
+              {t.stage==="DRAFT" && t.createdBy===currentUser?.id && <button style={sty.btn("primary","sm")} onClick={()=>editTug5?.(t)}>✏️ Lanjutkan Draft</button>}
             </div>
           </div>
         );
@@ -143,7 +144,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 </div>
                 <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                   {(t.stockItems||[]).map((si,idx)=>{
-                    const kat = katalogList.find(k=>k.id===si.katalogId);
+                    const kat = katalogList.find(k=>k.id===si.katalogId) || si.katalogSnapshot;
                     return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>Permintaan: {si.permintaan}</b> {kat?.satuan} {si.keterangan&&<span style={{color:C.muted}}>— {si.keterangan}</span>}</div>;
                   })}
                 </div>
@@ -199,7 +200,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
                 </div>
                 <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                   {(t.stockItems||[]).map((si,idx)=>{
-                    const kat = katalogList.find(k=>k.id===si.katalogId);
+                    const kat = katalogList.find(k=>k.id===si.katalogId) || si.katalogSnapshot;
                     return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>x{si.qty||si.permintaan}</b> {kat?.satuan}</div>;
                   })}
                 </div>
@@ -237,7 +238,7 @@ export function TUG5Tab({ txns, filterStatus, users, sty, C, currentUser, katalo
               </div>
               <div style={{background:"#f9fafb",borderRadius: 10,padding:8,marginBottom:8}}>
                 {(t.stockItems||[]).map((si,idx)=>{
-                  const kat = katalogList.find(k=>k.id===si.katalogId);
+                  const kat = katalogList.find(k=>k.id===si.katalogId) || si.katalogSnapshot;
                   return <div key={idx} style={{fontSize:12,padding:"3px 0"}}>📦 {kat?.name||"-"} <b>x{si.qty}</b> {kat?.satuan}</div>;
                 })}
               </div>

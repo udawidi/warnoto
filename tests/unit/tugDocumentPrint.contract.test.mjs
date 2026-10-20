@@ -61,6 +61,25 @@ test("TUG-10 print keeps preview colors", () => {
   assert.match(html, /window\.print\(\)/);
 });
 
+test("TUG-5 draft print uses MARA identity and signer names from its UPT", () => {
+  const html = buildTUG5HTML({
+    id: "draft-5", docType: "TUG5", stage: "DRAFT", uptId: "UPT-GRS", uitId: "UIT-JBM",
+    stockItems: [{ katalogId: "local-1", katalogSnapshot: { katalog: "000000000123", name: "MARA ISOLATOR", satuan: "BH" }, permintaan: 2 }],
+  }, [{ id: "local-1", katalog: "123", name: "NAMA LAMA", satuan: "SET" }],
+  [{ id: "UIT-JBM", kode: "JBM", nama: "UIT JBM" }],
+  [
+    { role: "MANAGER", uptId: "UPT-SBY", name: "Manager Surabaya" },
+    { role: "MANAGER", uptId: "UPT-GRS", name: "Manager Gresik" },
+    { role: "ASMAN", uptId: "UPT-GRS", name: "Asman Gresik" },
+  ], [], [{ id: "UPT-GRS", nama: "Gresik", kode: "GRS" }]);
+  assert.match(html, /DRAFT/);
+  assert.match(html, /MARA ISOLATOR/);
+  assert.match(html, /Manager Gresik/i);
+  assert.match(html, /Asman Gresik/i);
+  assert.match(html, /sig-space/);
+  assert.doesNotMatch(html, /NAMA LAMA|Manager Surabaya/);
+});
+
 test("all TUG builders preserve preview colors when printing", () => {
   for (const [name, build] of builders) {
     const html = build();

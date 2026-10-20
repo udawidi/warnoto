@@ -2620,6 +2620,15 @@ export default function PLNWarehouse() {
   // Sama seperti applyMaraToKatalog tapi mengisi baris item TUG-3 ("Barang Baru"),
   // bukan form Master Katalog — reuse hasil searchMaraCatalog yang sama.
   function applyMaraToItemRow(idx, item) {
+    if (txnForm?.docType === "TUG5" && txnForm?.sourceType !== "ULTG") {
+      const kode = item.kode_material || item.katalog || "";
+      const snapshot = { katalog: kode, name: item.nama || item.nama_material || "", satuan: item.satuan || "" };
+      const local = (katalogList || []).find(k => String(k.katalog || "").replace(/^0+/, "") === String(kode).replace(/^0+/, ""));
+      setTxnForm(tf => ({ ...tf, stockItems: (tf.stockItems || []).map((row, i) => i === idx ? { ...row, katalogId: local?.id || "", katalogSnapshot: snapshot } : row) }));
+      setMaraSearchResults([]);
+      setMaraSearch("");
+      return;
+    }
     updateItemRow(idx, "katalogBaru", item.kode_material || "");
     updateItemRow(idx, "namaBaru", item.nama || "");
     updateItemRow(idx, "satuanBaru", item.satuan || "");
@@ -4960,7 +4969,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             approveTUG5_Asman={approveTUG5_Asman} rejectTUG5_Asman={rejectTUG5_Asman} approveTUG5_Manager={approveTUG5_Manager} rejectTUG5_Manager={rejectTUG5_Manager}
             submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
             konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
-            adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
+            adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9} editTug5={editTug5}
             baNonStockRecords={baNonStockRecords} saveBaNonStockDraft={saveBaNonStockDraft} submitBaNonStock={submitBaNonStock}
             onReviewBaNonStock={setBaNonStockReview} currentUptId={currentUserUptId} satpamList={satpamList}
           />
@@ -5580,7 +5589,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {resetPasswordModal && <ResetPasswordModal resetPasswordModal={resetPasswordModal} setResetPasswordModal={setResetPasswordModal} resetPasswordForm={resetPasswordForm} setResetPasswordForm={setResetPasswordForm} resetPasswordBusy={resetPasswordBusy} submitResetPassword={submitResetPassword} sty={sty} />}
 
       {/* TXN MODAL - TUG5 FORM */}
-      {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} enrichedStocks={enrichedStocks} gudangList={visibleTugGudangList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} />}
+      {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} enrichedStocks={enrichedStocks} gudangList={visibleTugGudangList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} />}
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
       {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} visibleGudangList={visibleTugGudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}

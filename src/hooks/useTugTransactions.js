@@ -191,6 +191,7 @@ export function useTugTransactions({
         // TUG-5 dari ULTG: tujuan implisit = UPT induk ULTG-nya, tidak perlu pilih UIT/jenis transfer
         setTxnForm({
           ...base,
+          uptId: ultgList.find(u => u.id === currentUser.ultgId)?.parentUptId || canonicalUptId,
           sourceType: "ULTG",
           ultgId: currentUser.ultgId || "",
           lokasiPekerjaan: "",
@@ -201,6 +202,7 @@ export function useTugTransactions({
       } else {
         setTxnForm({
           ...base,
+          uptId: canonicalUptId,
           // TUG-5 header
           uitId: uitList[0]?.id || "",       // Kepada: UIT tujuan
           jenisTransfer: "INTRACOMPANY",     // INTRACOMPANY | INTERCOMPANY
@@ -273,6 +275,12 @@ export function useTugTransactions({
         items[i].katalogSnapshot = stock ? { id: stock.katalogId, katalog: stock.katalog, name: stock.name, satuan: stock.unit } : null;
         items[i].lokasiId = stock?.lokasiId || "";
       }
+      if (tf.docType === "TUG5" && tf.sourceType !== "ULTG" && key === "katalogId") {
+        const katalog = katalogList.find(k => k.id === val);
+        items[i].katalogSnapshot = katalog
+          ? { katalog: katalog.katalog, name: katalog.name, satuan: katalog.satuan }
+          : null;
+      }
       return {...tf, stockItems: items};
     });
   }
@@ -336,7 +344,7 @@ export function useTugTransactions({
     // server approval stage; only a new row may enter DRAFT.
     if (docType === "TUG3" && targetStage === "DRAFT" && editingTxnRef.current?.stage === "PENDING_TL") targetStage = "PENDING_TL";
 
-    if (docType !== "TUG3" && docType !== "TUG10") {
+    if (docType !== "TUG3" && docType !== "TUG10" && !(docType === "TUG5" && (targetStage === "DRAFT" || txnForm.sourceType !== "ULTG"))) {
       if (!txnForm.namaPekerjaan.trim()) { showToast("Nama Pekerjaan wajib diisi!","error"); return; }
       if (!txnForm.lokasiPekerjaan.trim()) { showToast("Lokasi Pekerjaan wajib diisi!","error"); return; }
     }
@@ -454,9 +462,12 @@ export function useTugTransactions({
         return;
       }
       if (!txnForm.uitId) { showToast("Pilih UIT tujuan (Kepada)!","error"); return; }
-      const validItems = txnForm.stockItems.filter(si => si.katalogId && si.permintaan > 0);
-      if (validItems.length === 0) { showToast("Minimal 1 material harus diisi!","error"); return; }
-      await commitNewTxn(docType, { ...txnForm, stockItems: validItems, namaPekerjaan: txnForm.keteranganUmum || "Permintaan Material", lokasiPekerjaan: "UPT Surabaya" }, { replaceDraftId: editingDraftTxnId });
+      if (!txnForm.stockItems?.length || txnForm.stockItems.some(si =>
+        !(Number(si.permintaan) > 0) || !(si.katalogId ||
+          (si.katalogSnapshot?.katalog && si.katalogSnapshot?.name && si.katalogSnapshot?.satuan)))) {
+        showToast("Setiap material wajib dipilih dari MARA dan memiliki jumlah lebih dari nol.","error"); return;
+      }
+      await commitNewTxn(docType, { ...txnForm, namaPekerjaan: txnForm.keteranganUmum || "Permintaan Material", lokasiPekerjaan: txnForm.lokasiPekerjaan || "UPT Surabaya" }, { replaceDraftId: editingDraftTxnId });
       return;
     }
   }
@@ -533,7 +544,7 @@ export function useTugTransactions({
         docSeq: null,
         docNumbers: {},
         ...formData,
-        uptId: formData.uptId || currentUser?.uptId || currentUserUptId || null,
+        uptId: formData.uptId || (formData.sourceType === "ULTG" ? ultgList.find(u => u.id === formData.ultgId)?.parentUptId : null) || currentUser?.uptId || currentUserUptId || null,
         stage: "DRAFT",
         status: "DRAFT",
         requiredApprover: null,
@@ -646,8 +657,7 @@ export function useTugTransactions({
     }
 
     if (docType === "TUG5") {
-      // TUG-5: 2-stage approval: Asman → Manager UPT
-      // Then auto-generates: INTRACOMPANY → draft TUG-7, INTERCOMPANY → draft TUG-5 UIT
+      // Approval digital TUG-5 UPT selesai di Asman, lalu menghasilkan draft UIT.
       // TL amend (pola sama blok ULTG di atas): edit PENDING in-place, jangan bikin baru.
       const replacedDraft5 = replaceDraftId ? txns.find(t => t.id === replaceDraftId) : null;
       const isEditInPlace5 = replacedDraft5?.status === "PENDING";
@@ -657,6 +667,7 @@ export function useTugTransactions({
         docSeq: isEditInPlace5 ? replacedDraft5.docSeq : seq,
         docNumbers: isEditInPlace5 ? replacedDraft5.docNumbers : docNumbers,
         ...formData,
+        uptId: formData.uptId || currentUser?.uptId || currentUserUptId || null,
         stage: isEditInPlace5 ? replacedDraft5.stage : "PENDING_ASMAN",
         status: "PENDING",
         requiredApprover: isEditInPlace5 ? replacedDraft5.requiredApprover : "ASMAN",

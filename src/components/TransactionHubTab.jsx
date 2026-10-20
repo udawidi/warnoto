@@ -36,6 +36,7 @@ export function TransactionHubTab({
   submitTUG7_AdminUIT, approveTUG7_MgrLogistik, rejectTUG7_MgrLogistik,
   konfirmasiDraftTUG8, approveTUG5_MgrULTG, rejectTUG5_MgrULTG,
   adoptTUG5ULTG, openDraftTug9,
+  editTug5,
   baNonStockRecords, saveBaNonStockDraft, submitBaNonStock, onReviewBaNonStock, currentUptId, satpamList,
 }){
   // Terapkan tugUptFilter ke txns mentah yg dioper ke sub-tab TUG3/TUG5/TUG15 —
@@ -220,6 +221,7 @@ export function TransactionHubTab({
                 ultgList={ultgList}
                 approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
                 adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
+                editTug5={editTug5}
                 isMobile={isMobile}
               />
             ) : tugSubTab==="TUG15" ? (
