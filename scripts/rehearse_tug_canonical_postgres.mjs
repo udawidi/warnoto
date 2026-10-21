@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260729_tug_canonical_approval.sql"), "utf8");
+const stockWitnessMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261021_tug3_guard_canonical_stock_witness.sql"), "utf8");
 const docker = process.env.TUG_REHEARSAL_DOCKER || "docker";
 const dockerHost = process.env.TUG_REHEARSAL_DOCKER_HOST || "";
+const postgresImage = process.env.TUG_REHEARSAL_POSTGRES_IMAGE || "postgres:17-alpine";
 const container = `warnoto-tug-rehearsal-${process.pid}-${crypto.randomBytes(4).toString("hex")}`;
 const postgresPassword = crypto.randomBytes(16).toString("hex");
 const ids = {
@@ -105,19 +107,50 @@ insert into public.gudang(id,upt_id) values ('GD-A','UPT-A'),('GD-B','UPT-B');
 insert into public.lokasi(id,gudang_id) values ('LOC-A','GD-A'),('LOC-B','GD-B');
 insert into public.katalog(id) values ('KAT-A'),('KAT-B');
 insert into public.stocks(id,katalog_id,lokasi_id,data) values
-  ('STK-A','KAT-A','LOC-A','{"qty":10}'::jsonb),
-  ('STK-B','KAT-B','LOC-B','{"qty":10}'::jsonb);
+  ('STK-A','KAT-A','LOC-A','{"qty":10,"sourceLot":{"kind":"TUG3_CONTRACT"}}'::jsonb),
+  ('STK-B','KAT-B','LOC-B','{"qty":10}'::jsonb),
+  ('STK-C','KAT-A','LOC-A','{"qty":5,"sourceLot":{"kind":"TUG3_CONTRACT"}}'::jsonb);
+`;
+
+const legacyStockGuard = `
+create or replace function public.tug3_guard_legacy_stock_write()
+returns trigger language plpgsql security definer set search_path = public, pg_catalog
+as $$
+begin
+  if coalesce(current_setting('app.tug3_final_rpc', true), '') = 'on'
+     or coalesce(current_setting('app.mtu_khs_receipt_rpc', true), '') = 'on' then
+    return new;
+  end if;
+  if tg_op = 'INSERT' and (new.data ? '_tug3Applied' or new.data->'sourceLot'->>'kind' = 'TUG3_CONTRACT') then
+    raise exception 'TUG3_STOCK_RPC_REQUIRED' using errcode = '42501';
+  end if;
+  if tg_op = 'UPDATE' and (
+       new.data->'_tug3Applied' is distinct from old.data->'_tug3Applied'
+       or old.data->'sourceLot'->>'kind' = 'TUG3_CONTRACT'
+          and (new.data->>'qty' is distinct from old.data->>'qty'
+            or new.data->'sourceLot' is distinct from old.data->'sourceLot')
+     ) then
+    raise exception 'TUG3_STOCK_RPC_REQUIRED' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+create trigger trg_tug3_guard_legacy_stock_write
+before insert or update on public.stocks
+for each row execute function public.tug3_guard_legacy_stock_write();
 `;
 
 async function main() {
   let started = false;
   try {
     await runDocker(["version", "--format", "{{.Server.Version}}"]);
-    await runDocker(["run", "--rm", "-d", "--name", container, "-e", `POSTGRES_PASSWORD=${postgresPassword}`, "postgres:17-alpine"]);
+    await runDocker(["run", "--rm", "-d", "--name", container, "-e", `POSTGRES_PASSWORD=${postgresPassword}`, postgresImage]);
     started = true;
     await waitForPostgres();
     await psql(bootstrap);
     await psql(migration);
+    await psql(legacyStockGuard);
+    await psql(stockWitnessMigration);
     await psql("insert into public.tug_global_document_counters(upt_id,document_unit_code,last_value) values ('UPT-A','UPTA',0),('UPT-B','UPTB',0);");
 
     const setupAndFlow = `
@@ -221,18 +254,68 @@ do $$ declare tx uuid; review jsonb; stale_token uuid; fresh_token uuid; r jsonb
 end $$;
 
 select set_config('request.jwt.claim.sub','${ids.adminA}',false);
-do $$ declare r jsonb; tx uuid; review jsonb; begin
-  r := public.tug_create_transaction('{"docType":"TUG9","uptId":"UPT-A"}'::jsonb, '[{"stockId":"STK-A","qty":20}]'::jsonb, '30000000-0000-4000-8000-000000000001');
+do $$ declare r jsonb; tx uuid; begin
+  begin
+    update public.stocks
+    set data=jsonb_set(data,'{qty}',to_jsonb(4::numeric),true)
+    where id='STK-C';
+    raise exception 'TUG_TEST_EXPECTED_ERROR_NOT_RAISED';
+  exception when others then if sqlerrm <> 'TUG3_STOCK_RPC_REQUIRED' then raise; end if; end;
+  if (select (data->>'qty')::numeric from public.stocks where id='STK-C') <> 5 then
+    raise exception 'direct TUG-3 lot write changed stock';
+  end if;
+  r := public.tug_create_transaction(
+    '{"docType":"TUG9","uptId":"UPT-A","rehearsal":"tug3-witness"}'::jsonb,
+    '[{"stockId":"STK-C","qty":2}]'::jsonb,
+    '30000000-0000-4000-8000-000000000001'
+  );
   tx := (r->>'id')::uuid;
   perform public.tug_submit_transaction(tx,1,'30000000-0000-4000-8000-000000000002');
 end $$;
 select set_config('request.jwt.claim.sub','${ids.tlA}',false);
-do $$ declare tx uuid; begin select id into tx from public.tug_transactions where doc_type='TUG9'; perform public.tug_decide(tx,2,'APPROVE',null,null,'30000000-0000-4000-8000-000000000003',null); end $$;
+do $$ declare tx uuid; begin
+  select id into tx from public.tug_transactions where document->>'rehearsal'='tug3-witness';
+  perform public.tug_decide(tx,2,'APPROVE',null,null,'30000000-0000-4000-8000-000000000003',null);
+end $$;
+select set_config('request.jwt.claim.sub','${ids.asmanA}',false);
+do $$ declare tx uuid; review jsonb; r jsonb; begin
+  select id into tx from public.tug_transactions where document->>'rehearsal'='tug3-witness';
+  review := public.tug_prepare_review(tx,3);
+  r := public.tug_decide(tx,3,'APPROVE',(review->>'reviewToken')::uuid,null,'30000000-0000-4000-8000-000000000004','{"items":true,"parties":true,"document":true,"impact":true}'::jsonb);
+  if r->>'status' <> 'FINAL_APPROVED'
+     or (select (data->>'qty')::numeric from public.stocks where id='STK-C') <> 3
+     or (select count(*) from public.stock_movements where transaction_id=tx) <> 1
+     or not exists (select 1 from public.stock_movements where transaction_id=tx and xact_id is not null) then
+    raise exception 'TUG-9 TUG-3 witness approval failed';
+  end if;
+end $$;
+
+do $$ begin
+  begin
+    update public.stocks
+    set data=jsonb_set(data,'{qty}',to_jsonb(2::numeric),true)
+    where id='STK-C';
+    raise exception 'TUG_TEST_EXPECTED_ERROR_NOT_RAISED';
+  exception when others then if sqlerrm <> 'TUG3_STOCK_RPC_REQUIRED' then raise; end if; end;
+  if (select (data->>'qty')::numeric from public.stocks where id='STK-C') <> 3
+     or (select count(*) from public.stock_movements where stock_id='STK-C') <> 1 then
+    raise exception 'post-approval direct provenance write changed stock';
+  end if;
+end $$;
+
+select set_config('request.jwt.claim.sub','${ids.adminA}',false);
+do $$ declare r jsonb; tx uuid; review jsonb; begin
+  r := public.tug_create_transaction('{"docType":"TUG9","uptId":"UPT-A","rehearsal":"insufficient"}'::jsonb, '[{"stockId":"STK-A","qty":20}]'::jsonb, '31000000-0000-4000-8000-000000000001');
+  tx := (r->>'id')::uuid;
+  perform public.tug_submit_transaction(tx,1,'31000000-0000-4000-8000-000000000002');
+end $$;
+select set_config('request.jwt.claim.sub','${ids.tlA}',false);
+do $$ declare tx uuid; begin select id into tx from public.tug_transactions where document->>'rehearsal'='insufficient'; perform public.tug_decide(tx,2,'APPROVE',null,null,'31000000-0000-4000-8000-000000000003',null); end $$;
 select set_config('request.jwt.claim.sub','${ids.asmanA}',false);
 do $$ declare tx uuid; review jsonb; begin
-  select id into tx from public.tug_transactions where doc_type='TUG9'; review := public.tug_prepare_review(tx,3);
+  select id into tx from public.tug_transactions where document->>'rehearsal'='insufficient'; review := public.tug_prepare_review(tx,3);
   begin
-    perform public.tug_decide(tx,3,'APPROVE',(review->>'reviewToken')::uuid,null,'30000000-0000-4000-8000-000000000004','{"items":true,"parties":true,"document":true,"impact":true}'::jsonb);
+    perform public.tug_decide(tx,3,'APPROVE',(review->>'reviewToken')::uuid,null,'31000000-0000-4000-8000-000000000004','{"items":true,"parties":true,"document":true,"impact":true}'::jsonb);
     raise exception 'TUG_TEST_EXPECTED_ERROR_NOT_RAISED';
   exception when others then if sqlerrm not like 'TUG_INSUFFICIENT_STOCK%' then raise; end if; end;
   if (select (data->>'qty')::numeric from public.stocks where id='STK-A') <> 8
@@ -258,7 +341,7 @@ end $$;
     assert.equal(response(first), response(second), "parallel same-key calls must return the same response");
     assert.equal((await psql("select count(*) from public.tug_transactions where document->>'rehearsal'='parallel';")).trim(), "1");
 
-    console.log("TUG canonical PostgreSQL rehearsal passed: security, idempotency, stale review, cross-UPT, TL-to-Asman, and stock atomicity.");
+    console.log("TUG canonical PostgreSQL rehearsal passed: security, idempotency, stale review, cross-UPT, TL-to-Asman, TUG-3 lot witness, and stock atomicity.");
   } finally {
     if (started) await runDocker(["rm", "-f", container]).catch(() => {});
   }

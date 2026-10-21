@@ -4126,6 +4126,7 @@ create table if not exists public.stock_movements (
   before_qty numeric(18,4) not null,
   after_qty numeric(18,4) not null,
   actor_id uuid not null references public.profiles(id),
+  xact_id bigint not null default txid_current(),
   created_at timestamptz not null default now(),
   unique (transaction_id, tug_item_id, direction)
 );
@@ -5458,6 +5459,9 @@ language plpgsql
 security definer
 set search_path = public, pg_catalog
 as $$
+declare
+  v_old_qty numeric;
+  v_new_qty numeric;
 begin
   if coalesce(current_setting('app.tug3_final_rpc', true), '') = 'on'
      or coalesce(current_setting('app.mtu_khs_receipt_rpc', true), '') = 'on' then
@@ -5469,13 +5473,35 @@ begin
      ) then
     raise exception 'TUG3_STOCK_RPC_REQUIRED' using errcode = '42501';
   end if;
-  if tg_op = 'UPDATE' and (
-       new.data->'_tug3Applied' is distinct from old.data->'_tug3Applied'
-       or old.data->'sourceLot'->>'kind' = 'TUG3_CONTRACT'
-          and (new.data->>'qty' is distinct from old.data->>'qty'
-            or new.data->'sourceLot' is distinct from old.data->'sourceLot')
-     ) then
+  if tg_op = 'UPDATE' and new.data->'_tug3Applied' is distinct from old.data->'_tug3Applied' then
     raise exception 'TUG3_STOCK_RPC_REQUIRED' using errcode = '42501';
+  end if;
+  if tg_op = 'UPDATE' and old.data->'sourceLot'->>'kind' = 'TUG3_CONTRACT'
+     and (new.data->>'qty' is distinct from old.data->>'qty'
+       or new.data->'sourceLot' is distinct from old.data->'sourceLot') then
+    v_old_qty := coalesce(nullif(old.data->>'qty', '')::numeric, 0);
+    v_new_qty := coalesce(nullif(new.data->>'qty', '')::numeric, 0);
+    if new.data->'sourceLot' is distinct from old.data->'sourceLot'
+       or v_new_qty >= v_old_qty
+       or not exists (
+      select 1
+      from public.stock_movements m
+      join public.tug_transactions t on t.id = m.transaction_id
+      join public.tug_items i on i.id = m.tug_item_id and i.transaction_id = m.transaction_id
+      where m.xact_id = txid_current()
+        and m.direction = 'OUT'
+        and t.doc_type in ('TUG8', 'TUG9')
+        and t.status = 'PENDING'
+        and t.stage = 'PENDING_ASMAN'
+        and m.stock_id = old.id
+        and i.stock_id = old.id
+        and m.before_qty = v_old_qty
+        and m.after_qty = v_new_qty
+        and m.qty = v_old_qty - v_new_qty
+        and m.qty = i.qty
+    ) then
+      raise exception 'TUG3_STOCK_RPC_REQUIRED' using errcode = '42501';
+    end if;
   end if;
   return new;
 end;
