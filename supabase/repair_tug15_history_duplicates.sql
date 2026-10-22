@@ -1,6 +1,6 @@
 -- PROPOSAL ONLY: repair tug15_history after review and explicit approval.
 -- This is intentionally outside supabase/migrations. Do not run automatically.
--- It has no DDL and does not change stocks or source transactions.
+-- It has no permanent DDL and does not change stocks or source transactions.
 --
 -- Safety rules:
 --   * source rows must be approved/final-approved;
@@ -19,6 +19,8 @@
 begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '60s';
+create temp table tug15_repair_start_count on commit drop as
+select count(*)::integer as history_count from public.tug15_history;
 
 -- Explicit SBY source-catalog repairs approved by the architect. This block
 -- is intentionally guarded by exact source/history/stock assertions. The
@@ -576,16 +578,20 @@ from (
   select sync_key from public.tug15_history where sync_key like '%|%' group by sync_key having count(*)>1
 ) d;
 
--- Abort if production changed after the reviewed audit or the reported scan
--- does not reconcile. Pre-repair count: 598; delete 135; insert 33.
+-- Other UPT transactions may be added between audit and execution. Assert the
+-- reviewed repair delta against the count at the start of this transaction.
 do $$
 declare
   history_count integer;
+  start_count integer;
   scan_result jsonb;
   total_masuk numeric;
 begin
   select count(*) into history_count from public.tug15_history;
-  if history_count <> 496 then raise exception 'unexpected final history count: %', history_count; end if;
+  select s.history_count into start_count from tug15_repair_start_count s;
+  if history_count <> start_count - 135 + 33 then
+    raise exception 'unexpected final history count: % (started at %)', history_count, start_count;
+  end if;
 
   select public.public_material_scan('KAT-TUG10-9590ea6e8d39423a8154379d0eb4eff1','UPT-PBG') into scan_result;
   select coalesce(sum((h->>'qty')::numeric),0) into total_masuk

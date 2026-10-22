@@ -419,8 +419,9 @@ from (select 4::integer as groups, 8::integer as alias_rows_deleted,
 
 select 'REPAIR_PLAN_SUMMARY' as report,
        row_to_json(r)::text
-from (select 127::integer as generic_delete_rows,
+from (select 598::integer as reviewed_baseline_history_rows,
+             127::integer as generic_delete_rows,
              8::integer as explicit_alias_delete_rows,
              135::integer as total_delete_rows,
              33::integer as insert_rows,
-             496::integer as expected_final_history_rows) r;
+             496::integer as reviewed_snapshot_final_history_rows) r;
