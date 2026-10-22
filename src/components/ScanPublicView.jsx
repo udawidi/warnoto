@@ -110,6 +110,7 @@ export function ScanPublicView({ katalogId, uptId = null }) {
   const newest = [...history].reverse();
   const totalMasuk = history.reduce((a,h)=>a+(h.jenis_transaksi==="MASUK"?Number(h.qty)||0:0),0);
   const totalKeluar = history.reduce((a,h)=>a+(h.jenis_transaksi==="KELUAR"?Number(h.qty)||0:0),0);
+  const saldoAwalTersirat = Number(qty || 0) - totalMasuk + totalKeluar;
   const last = newest[0];
   const rakTerakhir = locations[0]?.blok || "-";
   const satuan = katalog.satuan || "";
@@ -208,6 +209,8 @@ export function ScanPublicView({ katalogId, uptId = null }) {
               <div style={{flex:1,background:"#dc2626"}}/>
             </div>
           )}
+          {saldoAwalTersirat > 0 && <div style={{fontSize:12,color:"#64748b",textAlign:"center",marginTop:9}}>Saldo awal / migrasi: {fmtNum(saldoAwalTersirat)} {satuan}</div>}
+          {saldoAwalTersirat < 0 && <div style={{fontSize:12,color:"#b45309",textAlign:"center",marginTop:9}}>Riwayat belum cocok dengan stok saat ini. Periksa catatan transaksi.</div>}
         </div>
 
         <div style={{...card,padding:"14px 14px 16px"}}>
@@ -269,7 +272,7 @@ export function ScanPublicView({ katalogId, uptId = null }) {
             {history.length>0 && <span style={{marginLeft:"auto",fontSize:12,fontWeight:700,color: "#64748b",background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:999,padding:"2px 9px"}}>{fmtNum(history.length)} baris</span>}
           </div>
           {history.length===0 ? (
-            <div style={{fontSize:13,color:"#64748b",textAlign:"center",padding:"18px 0",lineHeight:1.55}}>Belum ada catatan keluar-masuk untuk barang ini.<br/>Stok yang tercatat berasal dari data awal gudang.</div>
+            <div style={{fontSize:13,color:"#64748b",textAlign:"center",padding:"18px 0",lineHeight:1.55}}>Belum ada catatan keluar-masuk untuk barang ini.<br/>Stok yang tercatat berasal dari saldo awal atau migrasi data gudang.</div>
           ) : (
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
               {shown.map((h,i)=>{
@@ -303,6 +306,7 @@ export function ScanPublicView({ katalogId, uptId = null }) {
               )}
             </div>
           )}
+          {qty > 0 && history.length === 0 && <div style={{fontSize:12,color:"#64748b",background:"#f8fafc",borderRadius:10,padding:"9px 10px",marginTop:10}}>Total masuk hanya menghitung transaksi yang tercatat. Saldo awal atau migrasi tidak dihitung sebagai transaksi masuk.</div>}
         </div>
 
         {/* Pembaca halaman ini sering bukan orang gudang — jelaskan halamannya apa. */}

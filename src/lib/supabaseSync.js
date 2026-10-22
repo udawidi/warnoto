@@ -17,6 +17,9 @@ function endpointScopedStorageKey(baseKey) {
   return `${baseKey}::${host}`;
 }
 const SYNCED_KEYS_STORAGE = endpointScopedStorageKey("warnoto_synced_tug15_keys");
+const HISTORY_DOC_BATCH_SIZE = 25;
+const HISTORY_DOC_PAGE_SIZE = 1000;
+const HISTORY_DOC_SEPARATOR = "\u001f";
 
 const FOTO_SYNCED_HASHES_STORAGE = endpointScopedStorageKey("warnoto_synced_foto_hashes");
 
@@ -40,8 +43,75 @@ async function authHeaders() {
   return { apikey: SUPABASE_KEY, Authorization: `Bearer ${session.access_token}` };
 }
 
-function rowSyncKey(r) {
-  return `${r.katalogId}|${r.ts}|${r.masuk}|${r.keluar}|${r.docType}`;
+export function historySyncKey(r, direction = r.masuk > 0 ? "MASUK" : "KELUAR") {
+  if (r.source === "BARU" && (!r.transactionId || !Number.isInteger(r.itemIndex))) {
+    throw new Error("Riwayat live tidak memiliki identitas transaksi/item.");
+  }
+  return `${r.transactionId || "legacy"}|${r.itemIndex ?? 0}|${r.katalogId}|${direction}`;
+}
+
+export function historySyncDocumentKey(docType, noBon) {
+  return `${docType ?? ""}${HISTORY_DOC_SEPARATOR}${noBon ?? ""}`;
+}
+
+export function isCanonicalHistorySyncKey(value) {
+  const parts = String(value || "").split("|");
+  return parts.length === 4
+    && Boolean(parts[0])
+    && /^\d+$/.test(parts[1])
+    && Boolean(parts[2])
+    && (parts[3] === "MASUK" || parts[3] === "KELUAR");
+}
+
+function postgrestValue(value) {
+  return `"${String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"`;
+}
+
+export async function findLegacyHistoryDocuments(rows, headers, request = fetchSupabase, baseUrl = SUPABASE_URL) {
+  const documents = new Map();
+  rows.forEach(row => {
+    const docType = row.docType ?? null;
+    const noBon = row.tugBaDoc ?? null;
+    const key = historySyncDocumentKey(docType, noBon);
+    documents.set(key, { key, docType, noBon });
+  });
+
+  const documentList = [...documents.values()];
+  const legacyKeys = new Set();
+  for (let offset = 0; offset < documentList.length; offset += HISTORY_DOC_BATCH_SIZE) {
+    const batch = documentList.slice(offset, offset + HISTORY_DOC_BATCH_SIZE);
+    const orFilters = batch.map(doc => {
+      const typeFilter = doc.docType === null
+        ? "doc_type.is.null"
+        : `doc_type.eq.${postgrestValue(doc.docType)}`;
+      const bonFilter = doc.noBon === null
+        ? "no_bon.is.null"
+        : `no_bon.eq.${postgrestValue(doc.noBon)}`;
+      return `and(${typeFilter},${bonFilter})`;
+    }).join(",");
+    const params = new URLSearchParams({
+      select: "doc_type,no_bon,sync_key",
+      or: `(${orFilters})`,
+      limit: String(HISTORY_DOC_PAGE_SIZE),
+      offset: "0",
+    });
+    const response = await request(
+      `${baseUrl}/rest/v1/tug15_history?${params.toString()}`,
+      { headers },
+    );
+    if (!response.ok) throw new Error(`Gagal membaca riwayat legacy (${response.status}).`);
+    const historyRows = await response.json();
+    if (!Array.isArray(historyRows)) throw new Error("Respons riwayat legacy tidak valid.");
+    if (historyRows.length >= HISTORY_DOC_PAGE_SIZE) {
+      throw new Error("Riwayat legacy melebihi batas pemeriksaan per batch.");
+    }
+    historyRows.forEach(historyRow => {
+      if (!isCanonicalHistorySyncKey(historyRow.sync_key)) {
+        legacyKeys.add(historySyncDocumentKey(historyRow.doc_type, historyRow.no_bon));
+      }
+    });
+  }
+  return documentList.filter(doc => legacyKeys.has(doc.key));
 }
 
 function getSyncedKeys() {
@@ -58,13 +128,24 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
     throw new Error("Supabase belum dikonfigurasi (cek VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY di .env)");
   }
   const synced = getSyncedKeys();
-  const newRows = rows.filter(r => r.source !== "LAMA" && r.affectsSaldo !== false && r.katalogId && r.katalogId!=="-" && !synced.has(rowSyncKey(r)));
+  const newRows = rows.filter(r => r.source !== "LAMA" && r.affectsSaldo !== false && r.katalogId && r.katalogId!=="-" && !synced.has(historySyncKey(r)));
   if (newRows.length === 0) return { katalogCount: 0, historyCount: 0 };
 
   const headers = { ...(await authHeaders()), "Content-Type": "application/json" };
 
+  const skippedDocuments = await findLegacyHistoryDocuments(newRows, headers);
+  const skippedDocumentKeys = new Set(skippedDocuments.map(doc => doc.key));
+  const syncableRows = newRows.filter(row => !skippedDocumentKeys.has(historySyncDocumentKey(row.docType, row.tugBaDoc)));
+  const skippedDocumentIds = skippedDocuments.map(({ docType, noBon }) => ({ docType, noBon }));
+  if (skippedDocuments.length > 0) {
+    console.warn("Sync TUG-15 dilewati karena dokumen masih memiliki history legacy:", skippedDocumentIds);
+    if (syncableRows.length === 0) {
+      return { katalogCount: 0, historyCount: 0, skippedDocumentCount: skippedDocuments.length, skippedDocuments: skippedDocumentIds };
+    }
+  }
+
   // 1. Upsert katalog yang dipakai (FK target — harus ada dulu sebelum insert history)
-  const katalogIds = [...new Set(newRows.map(r=>r.katalogId))];
+  const katalogIds = [...new Set(syncableRows.map(r=>r.katalogId))];
   const katalogPayload = katalogIds.map(kid => {
     const kat = katalogList.find(k=>k.id===kid);
     return { id: kid, data: { name: kat?.name||kid, katalog: kat?.katalog||null, satuan: kat?.satuan||null, jenisBarang: kat?.jenisBarang||null } };
@@ -88,11 +169,10 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
   // terkirim ulang (atau ada race antar tab), Supabase sendiri yang menolak duplikatnya,
   // bukan cuma mengandalkan cache di localStorage.
   const historyPayload = [];
-  newRows.forEach(r => {
+  syncableRows.forEach(r => {
     const tanggal = new Date(r.ts).toISOString().slice(0,10);
-    const baseKey = `${r.katalogId}_${r.ts}_${r.docType}`;
-    if (r.masuk > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "MASUK", qty: r.masuk, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: `${baseKey}_MASUK` });
-    if (r.keluar > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "KELUAR", qty: r.keluar, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: `${baseKey}_KELUAR` });
+    if (r.masuk > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "MASUK", qty: r.masuk, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: historySyncKey(r, "MASUK") });
+    if (r.keluar > 0) historyPayload.push({ katalog_id: r.katalogId, tanggal, jenis_transaksi: "KELUAR", qty: r.keluar, lokasi_id: r.lokasiId||null, lokasi_kode: r.lokasiKode||null, doc_type: r.docType, no_bon: r.tugBaDoc||null, catatan: r.keterangan||null, sync_key: historySyncKey(r, "KELUAR") });
   });
   const histRes = await fetchSupabase(`${SUPABASE_URL}/rest/v1/tug15_history?on_conflict=sync_key`, {
     method: "POST",
@@ -101,9 +181,14 @@ export async function syncTUG15ToSupabase(rows, katalogList) {
   });
   if (!histRes.ok) throw new Error(`Gagal sync tug15_history: ${await histRes.text()}`);
 
-  newRows.forEach(r => synced.add(rowSyncKey(r)));
+  syncableRows.forEach(r => synced.add(historySyncKey(r)));
   saveSyncedKeys(synced);
-  return { katalogCount: katalogPayload.length, historyCount: historyPayload.length };
+  return {
+    katalogCount: katalogPayload.length,
+    historyCount: historyPayload.length,
+    skippedDocumentCount: skippedDocuments.length,
+    skippedDocuments: skippedDocumentIds,
+  };
 }
 
 // ─── SUPABASE SYNC (Data Stok → stock_current) ─────────────────────────────
@@ -645,6 +730,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           source: "BARU",
           sourceLabel: "Baru",
           materialKey: historyMaterialKey(kat.katalog, kat.name, "live", `${t.id}:${itemIndex}`),
+          transactionId: t.id, itemIndex,
         }, {
           eventKind: "KELUAR",
           documentNo: docNo,
@@ -692,6 +778,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           source: "BARU",
           sourceLabel: "Baru",
           materialKey: historyMaterialKey(kat?.katalog, kat?.name, "live", `${t.id}:${itemIndex}`),
+          transactionId: t.id, itemIndex,
         }, {
           eventKind: "MASUK",
           documentNo: docNo,
@@ -737,6 +824,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           source: "BARU",
           sourceLabel: "Baru",
           materialKey: historyMaterialKey(kat?.katalog, kat?.name, "live", `${t.id}:${itemIndex}`),
+          transactionId: t.id, itemIndex,
         }, {
           eventKind: "MASUK",
           documentNo: docNo,
@@ -777,6 +865,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
           docType:"TUG5", lokasiId:"", lokasiKode:"-",
           warehouseName:"Tidak tercatat",
           source:"BARU", sourceLabel:"Baru", materialKey:historyMaterialKey(kat?.katalog, kat?.name, "live", `${t.id}:${itemIndex}`),
+          transactionId: t.id, itemIndex,
         }, {
           eventKind:"PERMINTAAN",
           requestedQty:si.qty,
@@ -824,6 +913,7 @@ export function buildMutasiRows(txns, katalogList, stocks, filter, lokasiList, _
       docType: "-", lokasiId: "", lokasiKode: "-",
       warehouseName: ref.warehouseName,
       source: "BARU", sourceLabel: "Baru",
+      affectsSaldo: false,
       materialKey: historyMaterialKey(ref.katalog, ref.deskripsi, "live", `baseline:${kid}`),
     }, {
       eventKind: "MASUK",

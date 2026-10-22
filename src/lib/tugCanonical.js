@@ -116,7 +116,7 @@ export function canonicalRowToTxn(row) {
     docType: row.doc_type,
     docSeq: Number(row.doc_sequence),
     docNumbers: { ...(document.docNumbers || {}), [docKey]: row.doc_number },
-    stockItems: (row.tug_items || []).map(i => ({
+    stockItems: [...(row.tug_items || [])].sort((a, b) => Number(a.line_no || 0) - Number(b.line_no || 0)).map(i => ({
       ...i.snapshot,
       stockId: i.stock_id,
       katalogId: i.katalog_id,

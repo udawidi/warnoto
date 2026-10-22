@@ -3605,7 +3605,7 @@ export default function PLNWarehouse() {
           stage: "APPROVED",
           requiredApprover: null,
           approvedBy: currentUser.id,
-          approvedAt: Date.now(),
+          approvedAt: result.transaction?.approvedAt || Date.now(),
         };
         const mergeRows = (previous, rows) => {
           if (!rows?.length) return previous;
