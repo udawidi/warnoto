@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-21
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-22
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -80,6 +80,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
+- **Riwayat scan material TUG-15 lintas UPT diperbaiki (2026-10-22, `3b136e9`, `9ee2af5`).** Kunci sinkronisasi sekarang memakai transaksi, indeks item, katalog, dan arah; sinkronisasi menolak dokumen yang masih memiliki riwayat legacy agar tidak menggandakan mutasi. Repair `tug15_history` production sudah di-commit setelah backup dan dry-run: 135 baris duplikat/alias dihapus, 33 item TUG-10 yang hilang ditambahkan; 5 transaksi baru yang sah tetap terjaga. Hasil scan katalog 3060016 UPT Probolinggo: stok 21, total masuk 21, satu riwayat. Semua `sync_key` non-null unik; 625/625 test dan build lulus. Baris legacy tanpa sumber pasti tetap dibiarkan.
 - **Approval TUG-9 nomor 291 siap dicoba ulang (2026-10-21).** Migrasi guard sudah diterapkan ke self-host PostgreSQL 17.6. Dokumen masih `PENDING_ASMAN` versi 3; stok lot TUG-3 masih 42 untuk pengeluaran 30 dan mutasi keluar masih 0. Rehearsal PostgreSQL 16, bootstrap schema dua kali, 28 test kontrak, serta diff-check lulus. Perbaikan kode sudah di-commit/push; approval nyata tetap dilakukan akun Asman.
 - **TUG-5 UPT aktif di production (2026-10-20, `5faf137`–`7458fab`).** Pencarian MARA, draft database-first, pratinjau/cetak sebelum approval, dan dokumen dengan tanda tangan basah Manager/Asman telah terpasang. Approval digital berhenti di Asman; RPC atomik membuat draft TUG-7 UIT atau TUG-5 UIT, sementara PENDING_MANAGER lama tetap memakai jalur legacy. Migrasi diterapkan setelah backup `/home/admin_warnoto/backups/tug5-pre-asman-20261020.dump`; verifier 3/3 lulus. Uji transaksi production yang di-rollback meluluskan draft parsial/simpan ulang, kedua jenis transfer, retry idempoten, proteksi spoof, dan pengaman tahap. Smoke browser production akun nyata: MARA ditemukan, draft `TEST-TUG5-20261020-verifikasi-draft` bertahan setelah reload, UIT tujuan dipertahankan setelah perbaikan mapper, dan pratinjau berlabel DRAFT memiliki tombol cetak serta tanda tangan basah. Penghapusan draft uji menunggu konfirmasi wajib tepat sebelum aksi permanen. Submit/approval akun nyata masih perlu satu dokumen operasional yang siap diproses. 612/612 test dan build lulus.
 - **Warna Print/Save PDF seluruh TUG disamakan dengan preview (2026-10-19, selesai lokal; siap commit/push).** CSS `print-color-adjust: exact` diterapkan pada builder A4 bersama serta TUG-2 dan TUG-15 yang berdiri sendiri, tanpa mengubah isi atau geometri dokumen. Pengguna sudah memeriksa localhost. Verifikasi: 607/607 test, build, dan smoke Chromium Print/Save PDF TUG-10 berwarna dengan `printBackground:false` lulus. Tidak ada perubahan schema, API, atau data self-host.
@@ -689,6 +690,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
+- Setelah deploy Vercel, scan ulang katalog 3060016 di UPT Probolinggo dengan sesi bersih; pastikan stok dan total masuk sama-sama 21. Spot-check katalog lain di setiap UPT yang memiliki riwayat transaksi; saldo awal/migrasi ditampilkan terpisah dari total masuk.
 - Hapus draft uji `TEST-TUG5-20261020-verifikasi-draft` setelah konfirmasi penghapusan permanen. Jangan me-reload form pengguna yang masih terisi di tab semula. Saat ada TUG-5 operasional yang siap diajukan, uji submit dan approval akun Asman; pastikan anak UIT hanya satu dan Manager tidak menerima approval baru.
 - Setelah deploy, smoke production BA Non Stock dari draft sampai approval TL dan cetak PDF; cek juga PDF TUG-10 memiliki No. Catalog, lokasi gudang, tanggal, nama TL/Asman, serta warna tabel/aksen yang sama dengan preview. Bandingkan Print/Save PDF berwarna untuk TUG-2/3/4/5/5-ULTG/7/8/9/15. Migrasi `20261015_ba_non_stock.sql` sudah aktif dan terverifikasi di self-host; jangan apply ulang tanpa kebutuhan.
 - Setelah deploy, uji Data Stok > Cari Foto > Bentuk Barang memakai foto katalog `000000004020014` UPT Surabaya; barang yang sama harus muncul sebagai hasil teratas. Unggah ulang satu foto legacy `spe_upt-sby_1002020226_utama` yang berukuran 5,31 MB agar melewati kompresi upload maksimum 4 MB, lalu jalankan ulang job embedding foto.
@@ -837,7 +839,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
-- `npm test` → 607/607 lulus (2026-10-19)
+- `npm test` → 625/625 lulus (2026-10-22)
 - `node --test tests/unit/tugDocumentPrint.contract.test.mjs`
 - `node --test tests/unit/attbTrace.test.mjs tests/unit/attbUnitTrace.contract.test.mjs`
 - `node scripts/rehearse_attb_unit_trace.mjs`
