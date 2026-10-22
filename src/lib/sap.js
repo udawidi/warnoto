@@ -4,17 +4,30 @@
 import { subGudangKodeMap } from "./masterSync.js";
 import { getSAPLabel, resolveSapLabel as resolveSapLabelShared, rowSapLabel } from "./ragShared.mjs";
 
-// Kartu Gantung selalu scoped ke UPT baris stok yang dibuka. Data legacy boleh
-// fallback ke lokasi/gudang, tetapi data tanpa UPT yang dapat dipastikan ditolak.
-export function resolveKartuGantungUptId(row, lokasiList = [], gudangList = []) {
+// Kartu Gantung selalu scoped ke UPT baris stok yang dibuka. UPT eksplisit pada
+// stok menjadi owner; lokasi/gudang hanya dipakai untuk legacy atau validasi.
+export function resolveKartuGantungOwner(row, lokasiList = [], gudangList = []) {
+  const explicitIds = [...new Set([row?.uptId, row?.upt_id].map(v => String(v || "").trim()).filter(Boolean))];
+  const explicitUptId = explicitIds[0] || null;
   const lokasi = row?.lokasiId ? (lokasiList || []).find(l => l.id === row.lokasiId) : null;
-  const gudangId = lokasi?.gudangId || row?.gudangId;
-  return (gudangId ? (gudangList || []).find(g => g.id === gudangId)?.uptId : null) || row?.uptId || row?.upt_id || null;
+  const gudangId = lokasi?.gudangId || row?.gudangId || null;
+  const gudang = gudangId ? (gudangList || []).find(g => g.id === gudangId) : null;
+  const lokasiUptId = String(gudang?.uptId || gudang?.upt_id || "").trim() || null;
+  if (explicitIds.length > 1) return { uptId: null, explicitUptId, lokasiUptId, error: "UPT stok memiliki upt_id yang saling bertentangan." };
+  if (explicitUptId && lokasiUptId && explicitUptId !== lokasiUptId) {
+    return { uptId: null, explicitUptId, lokasiUptId, error: `UPT stok (${explicitUptId}) berbeda dengan UPT lokasi/gudang (${lokasiUptId}).` };
+  }
+  const uptId = explicitUptId || lokasiUptId;
+  return { uptId, explicitUptId, lokasiUptId, error: uptId ? null : "UPT stok dan lokasi/gudang belum dapat ditentukan." };
+}
+
+export function resolveKartuGantungUptId(row, lokasiList = [], gudangList = []) {
+  return resolveKartuGantungOwner(row, lokasiList, gudangList).uptId;
 }
 
 export function scopeKartuGantungData(katalog, stocks, txns, lokasiList = [], gudangList = [], users = []) {
   const targetUptId = katalog?.uptId || katalog?.upt_id || null;
-  if (!targetUptId) return { uptId: null, stocks: [], txns: [] };
+  if (!targetUptId) return { uptId: null, stocks: [], txns: [], error: katalog?.kartuGantungError || "UPT Kartu Gantung belum dapat ditentukan." };
   const scopedStocks = (stocks || []).filter(s => s.katalogId === katalog.id && resolveKartuGantungUptId(s, lokasiList, gudangList) === targetUptId);
   const stockIds = new Set(scopedStocks.map(s => s.id));
   const scopedTxns = (txns || []).filter(t => {
@@ -22,7 +35,7 @@ export function scopeKartuGantungData(katalog, stocks, txns, lokasiList = [], gu
     if (directUptId) return directUptId === targetUptId;
     return (t.stockItems || []).some(si => stockIds.has(si.stockId) || resolveKartuGantungUptId({ lokasiId: si.lokasiId }, lokasiList, gudangList) === targetUptId);
   });
-  return { uptId: targetUptId, stocks: scopedStocks, txns: scopedTxns };
+  return { uptId: targetUptId, stocks: scopedStocks, txns: scopedTxns, error: katalog?.kartuGantungError || null };
 }
 
 // ─── PENCARIAN MATERIAL: struktur nama (KATEGORI;SUBTIPE;SPEK...) di katalog
@@ -546,15 +559,17 @@ export function buildKartuGantungHistory(katalog, txns, stocks, lokasiList, subG
 // (KartuGantungModal) & HTML print (docBuilders buildTUG2FrontHTML/BackHTML).
 export function resolveLokasiLengkap(katalog, stocks, lokasiList, subGudangList, gudangList) {
   const katalogId = katalog.id;
-  const lokasiIds = [...new Set((stocks||[]).filter(s=>s.katalogId===katalogId).map(s=>s.lokasiId))];
-  const combos = lokasiIds.map(lid => {
-    const lok = (lokasiList||[]).find(l=>l.id===lid);
-    if (!lok) return null;
-    const gudangNama = (gudangList||[]).find(g=>g.id===lok.gudangId)?.nama;
-    const subGudangNama = lok.subGudangId ? (subGudangList||[]).find(sg=>sg.id===lok.subGudangId)?.nama : null;
-    return [gudangNama, subGudangNama, lok.kode].filter(Boolean).join(" • ");
+  const combos = (stocks||[]).filter(s=>s.katalogId===katalogId).map(stock => {
+    const lok = stock.lokasiId ? (lokasiList||[]).find(l=>l.id===stock.lokasiId) : null;
+    const gudangId = lok?.gudangId || stock.gudangId || null;
+    const gudang = gudangId ? (gudangList||[]).find(g=>g.id===gudangId) : null;
+    const gudangNama = gudang?.nama || gudang?.kode;
+    const subGudang = lok?.subGudangId ? (subGudangList||[]).find(sg=>sg.id===lok.subGudangId) : null;
+    const subGudangNama = subGudang?.nama || subGudang?.kode;
+    const legacyLokasi = ["-", "—"].includes(String(stock.lokasi || "").trim()) ? null : stock.lokasi;
+    return [gudangNama, subGudangNama, lok?.kode || lok?.nama || legacyLokasi].filter(Boolean).join(" • ");
   }).filter(Boolean);
-  return [...new Set(combos)].join(", ") || "-";
+  return [...new Set(combos)].join(", ") || "Lokasi belum diisi";
 }
 
 // Normalisasi nomor katalog (buang zero-padding) untuk pencocokan — dipindah dari App.jsx Fase 5c.

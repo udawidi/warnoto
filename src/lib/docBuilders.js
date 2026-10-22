@@ -1725,7 +1725,14 @@ export async function buildLabelBlokHTML(lokasiList, gudang, tokenByLokasi = {})
 // ─── TUG-2 DOCUMENT HTML BUILDERS (Kartu Gantung Barang TUG. 2 - Depan & Belakang) ────
 
 // Halaman 1 (Depan): Header + Metadata + Foto Barang + QR Code
+function requireKartuGantungUptNama(katalog, uptNama) {
+  const value = String(uptNama || katalog?.uptNama || "").trim();
+  if (!value) throw new Error("KARTU_GANTUNG_UPT_REQUIRED");
+  return value;
+}
+
 export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList, uptNama) {
+  const resolvedUptNama = requireKartuGantungUptNama(katalog, uptNama);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const scanUrl = scanUrlFor(katalog.id);
   const qrDataUrl = await QRCode.toDataURL(scanUrl, { margin: 1, width: 280 });
@@ -1765,7 +1772,7 @@ export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangL
       <td style="padding-left:10px">
         <div style="font-size:11px;font-weight:800;line-height:1.2">PT PLN (PERSERO)</div>
         <div style="font-size:10px;font-weight:700;line-height:1.2">TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${esc((uptNama || UPT).toUpperCase())}</div>
+        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${esc(resolvedUptNama.toUpperCase())}</div>
       </td>
       <td style="text-align:right">
         <div style="font-size:14px;font-weight:900;letter-spacing:1px">TUG. 2</div>
@@ -1841,6 +1848,7 @@ export async function buildTUG2FrontCompactHTML(katalog) {
 
 // Halaman 2 (Belakang): Header + Metadata + Tabel Riwayat Keluar-Masuk (SISA PERSEDIAAN: RAK / PETI / JMLH)
 export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGudangList, gudangList, uptNama) {
+  const resolvedUptNama = requireKartuGantungUptNama(katalog, uptNama);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const history = buildKartuGantungHistory(katalog, txns, stocks, lokasiList, subGudangList, gudangList);
 
@@ -1914,7 +1922,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
       <td style="padding-left:10px">
         <div style="font-size:11px;font-weight:800;line-height:1.2">PT PLN (PERSERO)</div>
         <div style="font-size:10px;font-weight:700;line-height:1.2">TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${esc((uptNama || UPT).toUpperCase())}</div>
+        <div style="font-size:9.5px;font-weight:700;color:#334155;line-height:1.2">${esc(resolvedUptNama.toUpperCase())}</div>
       </td>
       <td style="text-align:right">
         <div style="font-size:14px;font-weight:900;letter-spacing:1px">TUG. 2</div>
@@ -1970,7 +1978,7 @@ export async function buildTUG2BackHTML(katalog, stocks, txns, lokasiList, subGu
 }
 
 export async function buildTUG2HTML(katalog, stocks, txns, lokasiList, subGudangList, gudangList) {
-  return buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList);
+  return buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList, katalog?.uptNama);
 }
 
 // ─── FORM 5S LAPORAN HTML BUILDER (Checklist 5S siap TTD Asman UPT) ──────────

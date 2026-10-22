@@ -375,7 +375,7 @@ export function enrichStock(stock, katalogList, lokasiList) {
     unit: kat.satuan || stock.unit || "unit",
     lokasi: lok.kode || stock.lokasi || "-",
     lokasiKeterangan: lok.keterangan || "",
-    gudangId: lok.gudangId ?? null,
+    gudangId: lok.gudangId ?? stock.gudangId ?? null,
     // Jenis pada baris stok dapat diedit tanpa mengubah Master Katalog.
     jenisBarang: stock.jenisBarang || kat.jenisBarang || "Cadang",
   };

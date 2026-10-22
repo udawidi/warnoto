@@ -1,13 +1,44 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { buildTUG2FrontHTML, buildTUG2FrontCompactHTML } from "../../src/lib/docBuilders.js";
+import { buildTUG2FrontHTML, buildTUG2FrontCompactHTML, buildTUG2BackHTML } from "../../src/lib/docBuilders.js";
 
 const katalog = { id: "kat-1", katalog: "CAT-<&\"", name: "Motor <uji> & panjang material dengan deskripsi sangat panjang", satuan: "BH<&" };
 
 test("Kartu Gantung front keeps existing A4 format", async () => {
   const html = await buildTUG2FrontHTML(katalog, [], [], [], [], "UPT");
   assert.match(html, /@page\s*\{\s*size:\s*A4 portrait/);
+});
+
+test("Kartu Gantung A4 builders fail closed without an UPT name", async () => {
+  await assert.rejects(() => buildTUG2FrontHTML(katalog, [], [], [], []), /KARTU_GANTUNG_UPT_REQUIRED/);
+  await assert.rejects(() => buildTUG2BackHTML(katalog, [], [], [], [], []), /KARTU_GANTUNG_UPT_REQUIRED/);
+});
+
+test("A4 Kartu Gantung memakai identitas UPT non-SBY dan lokasi yang sama di depan/belakang", async () => {
+  const item = { id: "K-MLG", katalog: "CAT-MLG", name: "Material Malang", satuan: "BH", uptId: "UPT-MLG", uptNama: "UPT Malang" };
+  const stocks = [{ id: "S-MLG", katalogId: "K-MLG", upt_id: "UPT-MLG", lokasiId: "L-MLG", qty: 2, jenisBarang: "Cadang", unit: "BH" }];
+  const lokasi = [{ id: "L-MLG", gudangId: "G-MLG", subGudangId: "SG-MLG", kode: "B-07" }];
+  const subGudang = [{ id: "SG-MLG", nama: "Sub Gudang Malang" }];
+  const gudang = [{ id: "G-MLG", nama: "Gudang Malang", uptId: "UPT-MLG" }];
+  const front = await buildTUG2FrontHTML(item, stocks, lokasi, subGudang, gudang, item.uptNama);
+  const back = await buildTUG2BackHTML(item, stocks, [], lokasi, subGudang, gudang, item.uptNama);
+  for (const html of [front, back]) {
+    assert.match(html, /UPT MALANG/);
+    assert.match(html, /Gudang Malang/);
+    assert.match(html, /Sub Gudang Malang/);
+    assert.match(html, /B-07/);
+    assert.doesNotMatch(html, /Surabaya/i);
+  }
+});
+
+test("A4 Kartu Gantung menandai lokasi kosong", async () => {
+  const item = { id: "K-EMPTY", katalog: "CAT-EMPTY", name: "Material tanpa lokasi", satuan: "BH", uptId: "UPT-MLG", uptNama: "UPT Malang" };
+  const stocks = [{ id: "S-EMPTY", katalogId: "K-EMPTY", upt_id: "UPT-MLG", qty: 1, jenisBarang: "Cadang", unit: "BH" }];
+  const front = await buildTUG2FrontHTML(item, stocks, [], [], [], item.uptNama);
+  const back = await buildTUG2BackHTML(item, stocks, [], [], [], [], item.uptNama);
+  assert.match(front, /Lokasi belum diisi/);
+  assert.match(back, /Lokasi belum diisi/);
 });
 
 test("compact Kartu Gantung is 70x50 landscape, QR-linked, escaped, and minimal", async () => {

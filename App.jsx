@@ -17,7 +17,7 @@ import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty, UPT_MAP_COLOR } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
-import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation, scopeKartuGantungData, resolveKartuGantungUptId } from "./src/lib/sap.js";
+import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation, scopeKartuGantungData, resolveKartuGantungUptId, resolveKartuGantungOwner } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { activePairedGudangRows, dropCachedGiRows } from "./src/lib/giWarehouse.js";
@@ -5316,12 +5316,15 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         const discardEdit = () => { setConfirmDiscard(false); setStockModal(null); };
         const printKartuGantung = async () => {
           if (!kat) return;
-          const kartuUptId = resolveKartuGantungUptId(st, lokasiList, gudangList);
-          const kartuKatalog = { ...kat, uptId: kartuUptId, uptNama: uptList.find(u => u.id === kartuUptId)?.nama || null };
+          const owner = resolveKartuGantungOwner(rawSt, lokasiList, gudangList);
+          const kartuUptId = owner.uptId;
+          const kartuUptNama = uptList.find(u => u.id === kartuUptId)?.nama || null;
+          const kartuKatalog = { ...kat, uptId: kartuUptId, uptNama: kartuUptNama, kartuGantungError: owner.error || (!kartuUptNama ? `Nama UPT untuk ${kartuUptId} belum tersedia.` : null) };
+          if (kartuKatalog.kartuGantungError) { showToast(kartuKatalog.kartuGantungError, "error"); return; }
           const kartuScope = scopeKartuGantungData(kartuKatalog, stocks, txns, lokasiList, gudangList, users);
           if (isMobile) {
-            const html = await buildTUG2FrontHTML(kartuKatalog, kartuScope.stocks, lokasiList, subGudangList, gudangList, kartuKatalog.uptNama || currentUptNama);
             const w = window.open("", "_blank");
+            const html = await buildTUG2FrontHTML(kartuKatalog, kartuScope.stocks, lokasiList, subGudangList, gudangList, kartuKatalog.uptNama);
             if (w) { w.document.write(html); w.document.close(); }
             else showToast("Popup diblokir browser. Izinkan popup untuk mencetak.", "error");
           } else {
@@ -5550,7 +5553,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         <KartuGantungModal
           katalog={kartuGantungDetail}
           stocks={stocks} txns={txns} users={users} lokasiList={lokasiList} gudangList={gudangList} subGudangList={subGudangList}
-          sty={sty} C={C} uptNama={currentUptNama}
+          sty={sty} C={C}
           onClose={()=>setKartuGantungDetail(null)}
         />
       )}

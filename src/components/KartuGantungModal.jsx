@@ -8,9 +8,8 @@ import { buildTUG2FrontHTML, buildTUG2FrontCompactHTML, buildTUG2BackHTML } from
 import { friendlyNiimbotError, printCompactLabelM2h } from "../lib/niimbotM2h.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { PLN_LOGO_DATA_URI } from "../assets/plnLogoBase64.js";
-import { UPT } from "../constants.js";
 
-export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangList, subGudangList, users = [], sty, C, onClose, uptNama }) {
+export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangList, subGudangList, users = [], sty, C, onClose }) {
   const [view, setView] = useState("front"); // "front" | "back"
   const [niimbotState, setNiimbotState] = useState("idle");
   const [niimbotMessage, setNiimbotMessage] = useState("");
@@ -18,7 +17,8 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const scoped = scopeKartuGantungData(katalog, stocks, txns, lokasiList, gudangList, users);
   const scopedStocks = scoped.stocks;
   const scopedTxns = scoped.txns;
-  const kartuUptNama = katalog.uptNama || uptNama;
+  const kartuUptNama = katalog.uptNama || null;
+  const kartuGantungError = katalog.kartuGantungError || scoped.error || (!kartuUptNama ? "UPT Kartu Gantung belum dapat ditentukan." : null);
   const history = buildKartuGantungHistory(katalog, scopedTxns, scopedStocks, lokasiList, subGudangList, gudangList);
   // "Lokasi :" di header kartu = gabungan Gudang + Sub Gudang + Blok Gudang.
   const gudangStr = resolveLokasiLengkap(katalog, scopedStocks, lokasiList, subGudangList, gudangList);
@@ -30,6 +30,18 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
 
   const scanUrl = scanUrlFor(katalog.id);
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
+
+  if (kartuGantungError) {
+    return (
+      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1500,padding:16}}>
+        <div role="dialog" aria-modal="true" aria-labelledby="kartu-gantung-error" style={{...sty.card,width:560,maxWidth:"100%",background:"white",color:"#111",padding:20}}>
+          <h2 id="kartu-gantung-error" style={{fontSize:16,margin:"0 0 10px",color:"#b91c1c"}}>Kartu Gantung tidak dapat dibuka</h2>
+          <div role="alert" style={{fontSize:13,lineHeight:1.5}}>{kartuGantungError}</div>
+          <button style={{...sty.btn("danger","sm"),marginTop:16}} onClick={onClose}>Tutup</button>
+        </div>
+      </div>
+    );
+  }
 
   // window.open WAJIB dipanggil sinkron di dalam handler klik. Builder TUG.2 async
   // (await QRCode.toDataURL) — kalau open dipanggil SETELAH await, gesture user
@@ -139,7 +151,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   <div>
                     <div style={{fontSize:11,fontWeight:800,color:"#0f172a",lineHeight:1.2}}>PT PLN (PERSERO)</div>
                     <div style={{fontSize:10,fontWeight:700,color:"#334155",lineHeight:1.2}}>TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{(kartuUptNama||UPT||"UNIT PELAKSANA SURABAYA").toUpperCase()}</div>
+                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{kartuUptNama.toUpperCase()}</div>
                   </div>
                 </div>
                 <div style={{fontSize:15,fontWeight:900,color:"#0f172a",letterSpacing:1}}>
@@ -228,7 +240,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
                   <div>
                     <div style={{fontSize:11,fontWeight:800,color:"#0f172a",lineHeight:1.2}}>PT PLN (PERSERO)</div>
                     <div style={{fontSize:10,fontWeight:700,color:"#334155",lineHeight:1.2}}>TRANSMISI JAWA BAGIAN TIMUR DAN BALI</div>
-                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{(kartuUptNama||UPT||"UNIT PELAKSANA SURABAYA").toUpperCase()}</div>
+                    <div style={{fontSize:9.5,fontWeight:700,color:"#475569",lineHeight:1.2}}>{kartuUptNama.toUpperCase()}</div>
                   </div>
                 </div>
                 <div style={{fontSize:15,fontWeight:900,color:"#0f172a",letterSpacing:1}}>

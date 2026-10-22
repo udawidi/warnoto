@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { JENIS_BARANG, STATUS_SAP_FILTER } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
-import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabel, isLegacySourceAllocation, legacySourceCandidates, resolveKartuGantungUptId } from "../lib/sap.js";
+import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabel, isLegacySourceAllocation, legacySourceCandidates, resolveKartuGantungUptId, resolveKartuGantungOwner } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
@@ -67,9 +67,11 @@ export function DataStokTab({
 
   function katalogForStock(st) {
     const katalog = katalogList.find(k => k.id === st.katalogId);
-    const uptId = resolveKartuGantungUptId(st, lokasiList, gudangList);
+    const owner = resolveKartuGantungOwner(st, lokasiList, gudangList);
+    const uptId = owner.uptId;
     const uptNama = (uptList || []).find(u => u.id === uptId)?.nama || null;
-    if (katalog) return { ...katalog, uptId, uptNama };
+    const kartuGantungError = owner.error || (!uptNama ? `Nama UPT untuk ${uptId} belum tersedia.` : null);
+    if (katalog) return { ...katalog, uptId, uptNama, kartuGantungError };
     return {
       id: st.katalogId,
       name: st.name,
@@ -80,6 +82,7 @@ export function DataStokTab({
       keterangan: st.keterangan,
       uptId,
       uptNama,
+      kartuGantungError,
     };
   }
 
@@ -359,7 +362,7 @@ export function DataStokTab({
                           <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{canonicalKatalogCode(st.katalog)||"-"}</span></div>
                           <div className="stock-mobile-summary__description">{st.keteranganBarang || "Keterangan barang belum diisi."}</div>
                           {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:2}}>Sumber: {sourceLotLabel(st)}</div>}
-                          <div className="stock-mobile-summary__meta"><span><MapPin size={14} weight="bold" aria-hidden="true"/> {[gdg?.kode||gdg?.nama, lok?.kode||st.lokasi].filter(Boolean).join(" • ") || "Lokasi belum diisi"}</span><span className={isLow ? "is-critical" : "is-ok"}>{st.jenisBarang==="Non-Stock" ? "Project-Based" : `${fmtNum(st.qty)} ${st.unit}`}</span></div>
+                          <div className="stock-mobile-summary__meta"><span><MapPin size={14} weight="bold" aria-hidden="true"/> {[gdg?.kode||gdg?.nama, lok?.kode||st.lokasi].filter(Boolean).join(" • ") || "Lokasi belum diisi"}</span><span className={isLow ? "is-critical" : "is-ok"}>{fmtNum(st.qty)} {st.unit} {st.jenisBarang==="Non-Stock" && <small style={{color:"#be185d",fontWeight:800}}>Non-Stock</small>}</span></div>
                           <div className="stock-mobile-summary__detail" aria-hidden="true">{isAgg ? "Lihat sebaran" : "Detail"} <CaretRight size={11} weight="bold" aria-hidden="true"/></div>
                         </td>
                         <td className="mobile-card-table__title" data-label="Nama Barang" style={{padding:"8px 10px",minWidth:200}}>
@@ -378,12 +381,12 @@ export function DataStokTab({
                           )}
                         </td>
                         <td data-label="Qty" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
-                          {st.jenisBarang==="Non-Stock"
-                            ? <span style={{color:C.muted}}>Project-Based</span>
-                            : <div>
-                                <span style={{fontWeight:700,color:isLow?C.red:C.green}}>{fmtNum(st.qty)} {st.unit}</span>
-                                <div style={{fontSize:12,color:C.muted}}>Min {fmtNum(st.minQty)} {st.unit}</div>
-                              </div>}
+                          <div>
+                            <span style={{fontWeight:700,color:isLow?C.red:C.green}}>{fmtNum(st.qty)} {st.unit}</span>
+                            {st.jenisBarang==="Non-Stock"
+                              ? <div style={{fontSize:12,color:"#be185d",fontWeight:800}}>Non-Stock</div>
+                              : <div style={{fontSize:12,color:C.muted}}>Min {fmtNum(st.minQty)} {st.unit}</div>}
+                          </div>
                           {isLow && <div style={{fontSize:12,color:C.red,fontWeight:700,marginTop:2}}>⚠️ Stok kritis</div>}
                         </td>
                         <td data-label={stockViewMode==="katalog"?"Sebaran":"Lokasi"} style={{padding:"8px 10px",minWidth:130}}>
