@@ -252,7 +252,9 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
         fotoKeseluruhan: newKatalog.fotoKeseluruhan || null, belumDicocokkanMara: !maraPicked && maraSkip,
       }],
     }));
-    setQrResult(newKatalog);
+    const selectedLokasi = lokasiList?.find(l => l.id === f.lokasiId);
+    const selectedGudang = gudangList?.find(g => g.id === selectedLokasi?.gudangId);
+    setQrResult({ ...newKatalog, uptId: selectedGudang?.uptId || selectedGudang?.upt_id || null });
     if (activeQueueId) {
       setTambahQueue(q => q.map(item => item.id === activeQueueId ? { ...item, status: "DONE" } : item));
     }
@@ -1438,11 +1440,11 @@ export function StockOpnameTab({ opnameList, stocks, katalogList, currentUser, u
                 <>
                   <h3 style={{fontSize:15,fontWeight:800,marginBottom:14}}>🏷️ Label QR Siap Dicetak</h3>
                   {(() => {
-                    const scanUrl = scanUrlFor(qrResult.id);
-                    const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(scanUrl)}`;
+                    const scanUrl = qrResult.uptId ? scanUrlFor(qrResult.id, qrResult.uptId) : null;
+                    const qrImgUrl = scanUrl ? `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(scanUrl)}` : null;
                     return (
                       <div style={{border:`3px solid ${C.accent}`,borderRadius:10,padding:16,background:"white",textAlign:"center",marginBottom:14}}>
-                        <img src={qrImgUrl} alt="QR" width={160} height={160} style={{display:"block",margin:"0 auto"}}/>
+                        {qrImgUrl ? <img src={qrImgUrl} alt="QR" width={160} height={160} style={{display:"block",margin:"0 auto"}}/> : <div role="alert" style={{padding:"60px 12px",fontSize:13,color:C.red}}>UPT lokasi belum dapat ditentukan. QR belum bisa dicetak.</div>}
                         <div style={{fontSize:13,fontWeight:800,marginTop:10}}>{qrResult.name}</div>
                         <div style={{fontSize:12,color:C.muted,marginTop:4}}>Kode: {qrResult.katalog}</div>
                         <span style={{display:"inline-block",marginTop:8,padding:"3px 10px",borderRadius: 14,fontSize:12,fontWeight:700,background:"#dbeafe",color: "#1d4ed8"}}>Non-Stock — Pending Approval</span>

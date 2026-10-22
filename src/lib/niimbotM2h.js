@@ -20,12 +20,15 @@ export function isSupportedM2hPrinter(info) {
 }
 
 export function getCompactLabelPayload(katalog = {}) {
-  return {
+  const payload = {
     scanId: katalog.id || "",
     catalogCode: canonicalKatalogCode(katalog.katalog) || "-",
     unit: String(katalog.satuan || "BH"),
     description: String(katalog.name || "-"),
   };
+  const uptId = katalog.uptId || katalog.upt_id;
+  if (uptId) payload.uptId = uptId;
+  return payload;
 }
 
 // Resolve the master row before printing. History rows may predate the catalog id
@@ -143,7 +146,7 @@ export async function renderCompactLabelRaster(katalog) {
     throw new Error("Renderer label hanya tersedia di browser.");
   }
   const payload = getCompactLabelPayload(katalog);
-  const qrDataUrl = await QRCode.toDataURL(scanUrlFor(payload.scanId), { margin: 1, width: 300 });
+  const qrDataUrl = await QRCode.toDataURL(scanUrlFor(payload.scanId, payload.uptId), { margin: 1, width: 300 });
   const qrImage = await loadImage(qrDataUrl);
   const landscape = document.createElement("canvas");
   landscape.width = LANDSCAPE_LABEL.width;

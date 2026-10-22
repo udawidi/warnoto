@@ -4580,7 +4580,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
   // ══════════════════════ PUBLIC SCAN VIEW (QR dari HP, tanpa login) ══════════════════════
   const scanKatalogId = new URLSearchParams(window.location.search).get("scan");
-  if (scanKatalogId) return <ScanPublicView katalogId={scanKatalogId} />;
+  const scanUptId = new URLSearchParams(window.location.search).get("upt");
+  if (scanKatalogId) return <ScanPublicView katalogId={scanKatalogId} uptId={scanUptId} />;
   const scanLokasiId = new URLSearchParams(window.location.search).get("loc");
   if (scanLokasiId) return <ScanBlockPublicView lokasiId={scanLokasiId} />;
   const scanAttbId = new URLSearchParams(window.location.search).get("attb");

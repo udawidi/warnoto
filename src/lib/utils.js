@@ -460,8 +460,9 @@ export const PUBLIC_APP_ORIGIN = (() => {
 })();
 
 // URL halaman scan publik untuk satu katalog — satu-satunya tempat format ini dibentuk.
-export function scanUrlFor(katalogId) {
-  return `${PUBLIC_APP_ORIGIN}/?scan=${encodeURIComponent(katalogId)}`;
+export function scanUrlFor(katalogId, uptId = null) {
+  const uptParam = uptId ? `&upt=${encodeURIComponent(uptId)}` : "";
+  return `${PUBLIC_APP_ORIGIN}/?scan=${encodeURIComponent(katalogId)}${uptParam}`;
 }
 
 // URL halaman scan publik untuk satu blok lokasi (label QR blok gudang, Fase 2 Stock Opname).

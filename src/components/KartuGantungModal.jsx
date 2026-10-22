@@ -18,7 +18,8 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const scopedStocks = scoped.stocks;
   const scopedTxns = scoped.txns;
   const kartuUptNama = katalog.uptNama || null;
-  const kartuGantungError = katalog.kartuGantungError || scoped.error || (!kartuUptNama ? "UPT Kartu Gantung belum dapat ditentukan." : null);
+  const kartuUptId = katalog.uptId || katalog.upt_id || null;
+  const kartuGantungError = katalog.kartuGantungError || scoped.error || (!kartuUptId ? "UPT Kartu Gantung belum memiliki ID." : (!kartuUptNama ? "UPT Kartu Gantung belum dapat ditentukan." : null));
   const history = buildKartuGantungHistory(katalog, scopedTxns, scopedStocks, lokasiList, subGudangList, gudangList);
   // "Lokasi :" di header kartu = gabungan Gudang + Sub Gudang + Blok Gudang.
   const gudangStr = resolveLokasiLengkap(katalog, scopedStocks, lokasiList, subGudangList, gudangList);
@@ -28,7 +29,7 @@ export function KartuGantungModal({ katalog, stocks, txns, lokasiList, gudangLis
   const kategoriMaterial = kategoriStock ? stockSapLabel(kategoriStock) : "-";
   const opnameHistory = [...new Map(scopedStocks.flatMap(s=>Array.isArray(s.opnameHistory)?s.opnameHistory:[]).map(h=>[h.opnameId || `${h.tanggal}-${h.semester}`, h])).values()].sort((a,b)=>b.tanggal-a.tanggal);
 
-  const scanUrl = scanUrlFor(katalog.id);
+  const scanUrl = scanUrlFor(katalog.id, katalog.uptId || katalog.upt_id);
   const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(scanUrl)}`;
 
   if (kartuGantungError) {

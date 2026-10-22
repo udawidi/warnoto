@@ -5,48 +5,44 @@ import { SUPABASE_URL, SUPABASE_KEY } from "../supabaseClient.js";
 import { fmtNum } from "../lib/ragShared.mjs";
 import { fmtDateOnly } from "../lib/utils.js";
 
-// Dibuka lewat URL "?scan=<katalogId>". Ambil data langsung dari Supabase
+// Dibuka lewat URL "?scan=<katalogId>&upt=<uptId>". Ambil data melalui RPC
 // (anon key, read-only) — TIDAK butuh login/state aplikasi, supaya siapa pun
 // yang scan QR fisik di rak bisa langsung lihat riwayat material itu dari HP.
-export function ScanPublicView({ katalogId }) {
-  const [state, setState] = useState({ loading:true, error:"", katalog:null, qty:0, history:[] });
+export function ScanPublicView({ katalogId, uptId = null }) {
+  const isLocalPreview = import.meta.env.DEV && new URLSearchParams(window.location.search).get("preview") === "1";
+  const [activeUptId, setActiveUptId] = useState(uptId || null);
+  const [state, setState] = useState({ loading:true, error:"", status:"", katalog:null, upt:null, uptOptions:[], qty:0, locations:[], history:[] });
   const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
+      if (isLocalPreview) {
+        setState({ loading:false, error:"", status:"OK", katalog:{ name:"Kabel NYY 4x35 mm²", katalog:"DEMO-PBG", satuan:"m", jenisBarang:"Kabel", merk:"Demo PLN", type:"NYY", keterangan:"Data contoh untuk tinjauan lokal." }, upt:{ id:"UPT-PBG", nama:"UPT Probolinggo" }, uptOptions:[], qty:240, locations:[{ gudang:"Gudang UPT Probolinggo", subGudang:"Material Utama", blok:"B-07", qty:240 }], history:[{ jenis_transaksi:"MASUK", qty:300, sisa:300, tanggal:"2026-10-20T08:00:00.000Z", no_bon:"DEMO-MASUK-001", lokasi_kode:"B-07", doc_type:"TUG3", catatan:"Penerimaan contoh" }, { jenis_transaksi:"KELUAR", qty:60, sisa:240, tanggal:"2026-10-21T10:00:00.000Z", no_bon:"DEMO-KELUAR-001", lokasi_kode:"B-07", catatan:"Pemakaian contoh" }] });
+        return;
+      }
       if (!SUPABASE_URL || !SUPABASE_KEY) {
-        setState({ loading:false, error:"Supabase belum dikonfigurasi.", katalog:null, qty:0, history:[] });
+        setState({ loading:false, error:"Supabase belum dikonfigurasi.", status:"", katalog:null, upt:null, uptOptions:[], qty:0, locations:[], history:[] });
         return;
       }
       const headers = { "apikey": SUPABASE_KEY, "Authorization": `Bearer ${SUPABASE_KEY}` };
       try {
-        const [katRes, histRes, stockRes] = await Promise.all([
-          fetch(`${SUPABASE_URL}/rest/v1/katalog?id=eq.${encodeURIComponent(katalogId)}&select=*`, { headers }),
-          fetch(`${SUPABASE_URL}/rest/v1/tug15_history?katalog_id=eq.${encodeURIComponent(katalogId)}&select=*&order=tanggal.asc,id.asc`, { headers }),
-          fetch(`${SUPABASE_URL}/rest/v1/stock_current?katalog_id=eq.${encodeURIComponent(katalogId)}&select=qty`, { headers }),
-        ]);
-        if (!katRes.ok || !histRes.ok || !stockRes.ok) throw new Error("Gagal ambil data dari server.");
-        const [katArr, histArr, stockArr] = await Promise.all([katRes.json(), histRes.json(), stockRes.json()]);
+        const scanRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/public_material_scan`, {
+          method: "POST", headers: { ...headers, "Content-Type":"application/json" },
+          body: JSON.stringify({ p_katalog_id: katalogId, p_upt_id: activeUptId || null }),
+        });
+        if (!scanRes.ok) throw new Error("Gagal ambil data dari server.");
+        const payload = await scanRes.json();
         if (cancelled) return;
-        if (katArr.length === 0) {
-          setState({ loading:false, error:"Material dengan kode ini tidak ditemukan.", katalog:null, qty:0, history:[] });
+        if (!payload || payload.status === "NOT_FOUND") {
+          setState({ loading:false, error:"Material dengan kode ini tidak ditemukan.", status:"NOT_FOUND", katalog:null, upt:null, uptOptions:[], qty:0, locations:[], history:[] });
           return;
         }
-        // Hitung Sisa MUNDUR dari qty stok nyata saat ini (stock_current, ground
-        // truth), sama seperti buildKartuGantungHistory di web — bukan dijumlah
-        // maju dari 0, supaya baris terbaru selalu pas dengan qty sebenarnya.
-        const currentQty = stockArr[0]?.qty || 0;
-        const historyWithSisa = new Array(histArr.length); // histArr sudah urut tanggal.asc,id.asc
-        let running = currentQty;
-        for (let i = histArr.length - 1; i >= 0; i--) {
-          const h = histArr[i];
-          historyWithSisa[i] = { ...h, sisa: running };
-          running -= (h.jenis_transaksi === "MASUK" ? h.qty : -h.qty);
+        if (payload.status === "INVALID_UPT") {
+          setState({ loading:false, error:"UPT pada QR tidak cocok dengan material ini.", status:payload.status, katalog:payload.katalog || null, upt:null, uptOptions:payload.uptOptions || [], qty:0, locations:[], history:[] });
+          return;
         }
-        const katRow = katArr[0];
-        const katFlat = { ...(katRow.data||{}), id: katRow.id };
-        setState({ loading:false, error:"", katalog:katFlat, qty:currentQty, history:historyWithSisa });
+        setState({ loading:false, error:"", status:payload.status, katalog:payload.katalog || null, upt:payload.upt || null, uptOptions:payload.uptOptions || [], qty:Number(payload.qty)||0, locations:Array.isArray(payload.locations) ? payload.locations : [], history:Array.isArray(payload.history) ? payload.history : [] });
 
         // Log scan ke stock_scan_log — fire-and-forget, tidak menunggu/menghalangi
         // tampilan (kalau gagal, cukup diam, jangan ganggu pengalaman user yang
@@ -71,7 +67,7 @@ export function ScanPublicView({ katalogId }) {
     }
     load();
     return () => { cancelled = true; };
-  }, [katalogId]);
+  }, [katalogId, activeUptId, isLocalPreview]);
 
   // Tampilan sengaja mobile-first: halaman ini hampir selalu dibuka dari HP di
   // depan rak sesudah scan QR fisik. Riwayat dirender kartu, bukan tabel 7 kolom —
@@ -97,52 +93,42 @@ export function ScanPublicView({ katalogId }) {
     );
   }
 
-  const { katalog, qty, history } = state;
+  if (state.status === "SELECT_UPT") {
+    return <div style={page}><div style={shell}>
+      <div style={{...card,padding:20}}>
+        <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>Pilih UPT</div>
+        <div style={{fontSize:13,color:"#64748b",marginTop:5,lineHeight:1.5}}>QR lama belum membawa UPT. Pilih unit untuk melihat stok dan lokasi yang sesuai.</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:14}}>
+          {state.uptOptions.map(option => <button key={option.id} type="button" onClick={() => setActiveUptId(option.id)} style={{textAlign:"left",padding:"11px 12px",border:"1px solid #cbd5e1",borderRadius:10,background:"#fff",fontSize:13,fontWeight:700,color:"#0f172a",cursor:"pointer"}}>{option.nama}</button>)}
+        </div>
+      </div>
+    </div></div>;
+  }
+
+  const { katalog, upt, qty, locations, history } = state;
+  const uptDisplayName = upt?.nama ? (/^UPT\b/i.test(upt.nama) ? upt.nama : `UPT ${upt.nama}`) : "UPT";
   const newest = [...history].reverse();
   const totalMasuk = history.reduce((a,h)=>a+(h.jenis_transaksi==="MASUK"?Number(h.qty)||0:0),0);
   const totalKeluar = history.reduce((a,h)=>a+(h.jenis_transaksi==="KELUAR"?Number(h.qty)||0:0),0);
   const last = newest[0];
-  const rakTerakhir = newest.find(h=>h.lokasi_kode)?.lokasi_kode || "-";
+  const rakTerakhir = locations[0]?.blok || "-";
   const satuan = katalog.satuan || "";
-  // lokasiPublik dititipkan ke katalog.data waktu sinkron (supabaseSync.js) — tabel
-  // gudang/lokasi sendiri tidak bisa dibaca tanpa login. Kalau belum tersinkron,
-  // jatuh ke kode rak dari riwayat mutasi.
-  const lokasiPublik = Array.isArray(katalog.lokasiPublik) ? katalog.lokasiPublik : [];
-  // Cadangan kalau lokasiPublik belum tersinkron: rekap posisi dari riwayat
-  // mutasi yang memang dibaca publik — net masuk-keluar per kode blok. Angkanya
-  // perkiraan (dilabeli begitu di UI), tapi jauh lebih berguna daripada satu
-  // baris "belum tersinkron".
-  const lokasiRiwayat = [];
-  if (lokasiPublik.length === 0) {
-    const map = new Map();
-    history.forEach(h => {                       // history urut tanggal.asc
-      if (!h.lokasi_kode) return;
-      const cur = map.get(h.lokasi_kode) || { blok:h.lokasi_kode, qty:0, terakhir:h.tanggal };
-      cur.qty += (h.jenis_transaksi==="MASUK" ? 1 : -1) * (Number(h.qty)||0);
-      cur.terakhir = h.tanggal;
-      map.set(h.lokasi_kode, cur);
-    });
-    lokasiRiwayat.push(...[...map.values()].filter(l=>l.qty>0).sort((a,b)=>b.qty-a.qty));
-  }
   const hariSejakMutasi = history.length ? Math.floor((Date.now() - new Date(history[history.length-1].tanggal).getTime()) / 86400000) : null;
   const masukTerakhir = newest.find(h=>h.jenis_transaksi==="MASUK");
   const asalDok = { TUG3:"Penerimaan dari pengadaan (TUG-3)", TUG10:"Pengembalian dari pekerjaan (TUG-10)" }[masukTerakhir?.doc_type] || (masukTerakhir ? "Penerimaan barang" : "");
   // Kalimat ringkasan bahasa awam — pembaca halaman ini bukan petugas gudang,
   // jadi jawaban "ada berapa, di mana, kapan terakhir bergerak" ditulis sebagai
   // kalimat, bukan cuma angka dan kode blok.
-  const posisiTeks = lokasiPublik[0]
-    ? [lokasiPublik[0].gudang, lokasiPublik[0].blok && `Blok ${lokasiPublik[0].blok}`].filter(Boolean).join(" – ")
-    : lokasiRiwayat[0] ? `Blok ${lokasiRiwayat[0].blok}` : "";
+  const posisiTeks = locations[0]
+    ? [locations[0].gudang, locations[0].blok && `Blok ${locations[0].blok}`].filter(Boolean).join(" – ") : "";
   const ringkasan = (qty > 0
     ? `Tersedia ${fmtNum(qty)} ${satuan}${posisiTeks ? `, disimpan di ${posisiTeks}` : ""}.`
     : "Stok kosong — barang ini sedang tidak tersedia di gudang.")
     + (last
       ? ` Terakhir ${last.jenis_transaksi==="MASUK" ? "masuk" : "keluar"} ${fmtNum(last.qty)} ${satuan} pada ${fmtDateOnly(last.tanggal)}.`
       : " Belum ada catatan keluar-masuk barang.");
-  const lokasiRows = lokasiPublik.length
-    ? lokasiPublik.map(l => ({ gudang:l.gudang, subGudang:l.subGudang, blok:l.blok, qty:l.qty, note:null, perkiraan:false }))
-    : lokasiRiwayat.map(l => ({ gudang:null, subGudang:null, blok:l.blok, qty:l.qty, note:`Pergerakan terakhir ${fmtDateOnly(l.terakhir)}`, perkiraan:true }));
-  const blokUtama = lokasiPublik[0]?.blok || lokasiRiwayat[0]?.blok || (rakTerakhir!=="-" ? rakTerakhir : "");
+  const lokasiRows = locations.map(l => ({ gudang:l.gudang, subGudang:l.subGudang, blok:l.blok, qty:l.qty, note:null, perkiraan:false }));
+  const blokUtama = locations[0]?.blok || "";
   const rowLabel = { fontSize:12, color:"#64748b", fontWeight:700 };
   const chips = [katalog.katalog||"-", satuan||"-", katalog.jenisBarang||"-"];
   const shown = showAll ? newest : newest.slice(0,15);
@@ -154,8 +140,9 @@ export function ScanPublicView({ katalogId }) {
             Foto jadi thumbnail di sini (bukan banner besar) supaya identitas,
             foto, dan status stok kebaca dalam satu layar HP tanpa scroll. */}
         <div style={{...card,background:"linear-gradient(120deg,#0b2559 0%,#123d83 58%,#1d4ed8 100%)",border:"none",padding:0,color:"#fff",overflow:"hidden"}}>
+          {isLocalPreview && <div style={{padding:"7px 16px",background:"#fbbf24",color:"#422006",fontSize:12,fontWeight:800,textAlign:"center"}}>Data contoh / pratinjau lokal</div>}
           <div style={{padding:"14px 16px 0",display:"flex",alignItems:"center",gap:8,fontSize:12,fontWeight:700,letterSpacing:".6px",opacity:.85}}>
-            <Package size={16} weight="fill"/> PT PLN (PERSERO) UPT SURABAYA · WARNOTO
+            <Package size={16} weight="fill"/> PT PLN (PERSERO) {uptDisplayName} · WARNOTO
           </div>
           <div style={{display:"flex",gap:12,alignItems:"center",padding:"10px 16px 14px"}}>
             {katalog.fotoKeseluruhanUrl && (
@@ -187,7 +174,7 @@ export function ScanPublicView({ katalogId }) {
             {fmtNum(qty)} <span style={{fontSize:15,fontWeight:700,color:"#64748b"}}>{satuan}</span>
           </div>
           <div style={{display:"flex",justifyContent:"center",flexWrap:"wrap",gap:"4px 14px",fontSize:12,color: "#64748b",borderTop:"1px solid #e2e8f0",paddingTop:10}}>
-            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><MapPin size={14} weight="fill" color="#64748b"/> Blok {rakTerakhir}</span>
+            <span style={{display:"inline-flex",alignItems:"center",gap:4}}><MapPin size={14} weight="fill" color="#64748b"/> {blokUtama ? `Blok ${blokUtama}` : "Lokasi belum diisi"}</span>
             {last && (
               <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                 <ClockCounterClockwise size={14} color="#64748b"/> Mutasi terakhir {fmtDateOnly(last.tanggal)}
@@ -243,13 +230,10 @@ export function ScanPublicView({ katalogId }) {
                   {l.note && <div style={{fontSize:12,color:"#64748b",marginTop:3}}>{l.note}</div>}
                 </div>
               ))}
-              {lokasiRows[0]?.perkiraan && (
-                <div tabIndex={0} className="info-note" style={{fontSize:12,color:"#64748b"}}>Perkiraan posisi dihitung dari riwayat keluar-masuk barang; rincian gudang menyusul setelah sinkronisasi berikutnya.</div>
-              )}
             </div>
           ) : (
             <div style={{fontSize:13,color: "#64748b",lineHeight:1.55}}>
-              Rincian gudang untuk barang ini belum tersinkron ke halaman publik.{rakTerakhir!=="-" && <> Posisi terakhir tercatat: <b style={{color:"#0f172a"}}>Blok {rakTerakhir}</b>.</>} Tanyakan ke petugas gudang bila perlu dipastikan.
+              Lokasi belum diisi.
             </div>
           )}
         </div>
@@ -326,14 +310,14 @@ export function ScanPublicView({ katalogId }) {
           <div style={{fontSize:13,fontWeight:800,color:"#0f172a",marginBottom:6}}>Apa arti halaman ini?</div>
           <div style={{fontSize:13,color: "#64748b",lineHeight:1.6}}>
             Halaman ini muncul setelah Anda memindai QR pada kartu gantung barang. Isinya data resmi gudang
-            PT PLN (Persero) UPT Surabaya: jumlah barang yang tersisa, tempat penyimpanannya, dan catatan
+            PT PLN (Persero) {uptDisplayName}: jumlah barang yang tersisa, tempat penyimpanannya, dan catatan
             keluar-masuk barang. Data diperbarui otomatis oleh sistem WARNOTO setiap ada transaksi disetujui.
           </div>
         </div>
 
         <div style={{textAlign:"center",lineHeight:1.5,padding:"2px 8px"}}>
           <div style={{height:1,background:"#dbe3ee",margin:"2px auto 10px",maxWidth:180}}/>
-          <div style={{fontSize:12,fontWeight:800,color: "#64748b",letterSpacing:".5px"}}>WARNOTO · GUDANG UPT SURABAYA</div>
+          <div style={{fontSize:12,fontWeight:800,color: "#64748b",letterSpacing:".5px"}}>WARNOTO · GUDANG {uptDisplayName}</div>
           <div style={{fontSize:12,color:"#64748b",marginTop:3}}>
             Data langsung dari sistem, tanpa perlu login. Dibuka {fmtDateOnly(new Date().toISOString())}.<br/>
             Hubungi petugas gudang bila angka di rak berbeda dengan halaman ini.

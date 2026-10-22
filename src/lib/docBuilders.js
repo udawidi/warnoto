@@ -1654,9 +1654,9 @@ export function downloadBaNonStockHTML(ba, showToast) {
 export async function buildBarcodeSheetHTML(katalogItems, lokasiByKatalog) {
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
   const labels = await Promise.all(katalogItems.map(async (k) => {
-    const scanUrl = scanUrlFor(k.id);
+    const scanUrl = scanUrlFor(k.id, k.uptId || k.upt_id);
     const qr = await QRCode.toDataURL(scanUrl, { margin: 1, width: 220 });
-    const lok = (lokasiByKatalog[k.id] || []).join("; ") || "-";
+    const lok = (lokasiByKatalog[`${k.id}::${k.uptId || k.upt_id || ""}`] || lokasiByKatalog[k.id] || []).join("; ") || "-";
     return `<div class="label"><img src="${qr}" alt="QR"/><div class="nm">${esc(k.name || "-")}</div><div class="kt">No. Kat: ${esc(canonicalKatalogCode(k.katalog) || "-")}</div><div class="meta">${esc(k.jenisBarang || "-")} · ${esc(katalogSapLabel(k))}</div><div class="lk">📍 ${esc(lok)}</div></div>`;
   }));
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"/><title>Cetak Barcode Kartu Gantung — ${labels.length} label</title>
@@ -1734,7 +1734,7 @@ function requireKartuGantungUptNama(katalog, uptNama) {
 export async function buildTUG2FrontHTML(katalog, stocks, lokasiList, subGudangList, gudangList, uptNama) {
   const resolvedUptNama = requireKartuGantungUptNama(katalog, uptNama);
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
-  const scanUrl = scanUrlFor(katalog.id);
+  const scanUrl = scanUrlFor(katalog.id, katalog.uptId || katalog.upt_id);
   const qrDataUrl = await QRCode.toDataURL(scanUrl, { margin: 1, width: 280 });
 
   // "Lokasi :" di header kartu = gabungan Gudang + Sub Gudang + Blok Gudang.
@@ -1824,7 +1824,7 @@ export async function buildTUG2FrontCompactHTML(katalog) {
   const code = canonicalKatalogCode(katalog.katalog);
   const description = String(katalog.name || "-");
   const descriptionClass = description.length > 90 ? "description xs" : description.length > 55 ? "description sm" : description.length > 28 ? "description md" : "description";
-  const qrDataUrl = await QRCode.toDataURL(scanUrlFor(katalog.id), { margin: 1, width: 300 });
+  const qrDataUrl = await QRCode.toDataURL(scanUrlFor(katalog.id, katalog.uptId || katalog.upt_id), { margin: 1, width: 300 });
   return `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"/><title>Kartu Gantung Compact - ${esc(code)}</title>
 <style>
   @page { size: 70mm 50mm; margin: 0; } * { box-sizing: border-box; }

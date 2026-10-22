@@ -57,16 +57,20 @@ export function TransactionHubTab({
   const totalPages = Math.max(1, Math.ceil(filteredDocTxns.length / pageSize));
   const currentPage = Math.min(page, totalPages);
   const pagedDocTxns = filteredDocTxns.slice((currentPage-1)*pageSize, currentPage*pageSize);
-  const getLabelKatalog = item => resolveCompactLabelKatalog(item, katalogList);
+  const getLabelKatalog = (item, txn = null) => {
+    const base = resolveCompactLabelKatalog(item, katalogList);
+    const uptId = txn?.uptId || users.find(u=>u.id===txn?.createdBy)?.uptId || item?.uptId || item?.upt_id;
+    return base && (!txn || uptId) ? (uptId ? { ...base, uptId } : base) : null;
+  };
   const niimbotPhaseText = phase => ({
     connecting: "Menghubungkan ke NIIMBOT…",
     preparing: "Menyiapkan label…",
     printing: "Mengirim ke printer…",
     success: "Cetak selesai.",
   }[phase] || "");
-  const handlePrintTugLabel = async (item, key) => {
+  const handlePrintTugLabel = async (item, key, txn = null) => {
     if (niimbotBusyRef.current) return;
-    const katalog = getLabelKatalog(item);
+    const katalog = getLabelKatalog(item, txn);
     if (!katalog) return;
     let phase = "connecting";
     niimbotBusyRef.current = true;
@@ -268,14 +272,16 @@ export function TransactionHubTab({
                       }) : <details>
                         <summary style={{minHeight:44,display:"flex",alignItems:"center",cursor:"pointer",fontSize:12,fontWeight:700}}>Lihat item ({t.stockItems.length})</summary>
                         <div style={{paddingTop:6}}>{t.stockItems.map((si,idx)=>{
-                        const labelKatalog = getLabelKatalog(si);
-                        const namaBarang = si.katalogMode==="existing" ? (labelKatalog?.name||"?") : si.namaBaru;
+                        const labelBaseKatalog = getLabelKatalog(si);
+                        const labelUptId = t.uptId || users.find(u=>u.id===t.createdBy)?.uptId || si.uptId || si.upt_id;
+                        const labelKatalog = labelBaseKatalog && labelUptId ? { ...labelBaseKatalog, uptId: labelUptId } : null;
+                        const namaBarang = si.katalogMode==="existing" ? (labelBaseKatalog?.name||"?") : si.namaBaru;
                         const bs = statusMaterialBadgeStyle(si.statusMaterial);
                         const labelKey = `${t.id}:${idx}`;
                         return <div key={idx} style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:8,fontSize:12,padding:"4px 0"}}>
                           <span style={{flex:"1 1 220px",minWidth:0,overflowWrap:"anywhere"}}>📦 {namaBarang} <b>x{si.qty}</b> <span style={{padding:"2px 7px",borderRadius:14,fontSize:12,background:bs.bg,color:bs.fg,fontWeight:700}}>{si.statusMaterial}</span>{si.noSeri && <span style={{fontSize:12,color:C.muted}}> • SN: {si.noSeri}</span>}</span>
                           {t.status==="APPROVED" && <span style={{display:"inline-flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                            <button type="button" disabled={niimbotPrint.busy || !labelKatalog} aria-label={labelKatalog ? `Cetak label ${namaBarang}` : "Katalog belum sinkron"} title={!labelKatalog ? "Katalog belum sinkron" : "Cetak label NIIMBOT"} onClick={()=>handlePrintTugLabel(si,labelKey)} style={{...sty.btn("ghost","sm"),minHeight:44,padding:"8px 12px",display:"inline-flex",alignItems:"center",gap:6,opacity:labelKatalog ? 1 : .65}}><Printer size={16} aria-hidden="true" />{labelKatalog ? "Cetak label" : "Katalog belum sinkron"}</button>
+                            <button type="button" disabled={niimbotPrint.busy || !labelKatalog} aria-label={labelKatalog ? `Cetak label ${namaBarang}` : "UPT atau katalog belum sinkron"} title={!labelKatalog ? "UPT atau katalog belum sinkron" : "Cetak label NIIMBOT"} onClick={()=>handlePrintTugLabel(si,labelKey,t)} style={{...sty.btn("ghost","sm"),minHeight:44,padding:"8px 12px",display:"inline-flex",alignItems:"center",gap:6,opacity:labelKatalog ? 1 : .65}}><Printer size={16} aria-hidden="true" />{labelKatalog ? "Cetak label" : "UPT belum sinkron"}</button>
                             {niimbotPrint.key===labelKey && niimbotPrint.message && <span role="status" aria-live="polite" style={{fontSize:11,color:C.muted}}>{niimbotPrint.message}</span>}
                           </span>}
                         </div>;
