@@ -1,11 +1,13 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-22
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-25
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
 
 ## Keputusan arsitektur (mengikat)
+
+- **Maturity sampling (2026-10-25):** Audit baru memakai `samplingVersion: 1`; audit lama tetap memakai aturan eviden lama. Sampel berbagi grup pada aspek 1.2–1.5, 1.6–1.7, dan 1.9–1.10; aspek 3.5, 3.6, 5.1 (Persediaan/Cadang terpisah), dan 5.4 memakai grup sendiri. Semua sampel yang ditambahkan wajib melengkapi slot eviden. Folder tambahan aspek adalah pelengkap dan tidak memenuhi slot wajib. Review per sampel memakai `sample_id` pada kunci tabel. Upload eviden audit tidak memiliki batas ukuran aplikasi; batas teknis Drive/Storage tetap berlaku. Form 5S tetap maksimal 2 MiB setelah kompresi.
 
 ### Infrastruktur & data
 - **`supabase/schema.sql` adalah snapshot bootstrap database kosong, bukan runner upgrade/repair production (2026-10-13).** Histori perubahan database existing tetap canonical di `supabase/migrations/`. Snapshot tidak boleh memuat data-repair khusus production atau definisi fungsi lama yang tertimpa; verifikasi wajib menjalankan bootstrap dua kali pada PostgreSQL scratch.
@@ -79,6 +81,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Maturity sampling aktif di production (2026-10-25, `17a8d36`, v2.2.12).** Migrasi `20261025_maturity_sampling_evidence.sql` diterapkan setelah dump public 30 MB di `/home/admin_warnoto/maturity-public-before-sampling-20261025.dump`. Edge Function `maturity-drive` diperbarui dan sehat; versi lama disimpan sebagai `index.ts.bak_20261025`. Vercel mengonfirmasi deploy dan smoke browser menunjukkan menu Maturity terbuka tanpa error. Build, 629/629 test, serta bootstrap schema + migrasi dua kali pada PostgreSQL scratch lulus. Audit UPT Surabaya yang sudah ada belum memakai sampling; uji upload sampel nyata menunggu audit baru.
 
 - **Riwayat scan material TUG-15 lintas UPT diperbaiki (2026-10-22, `3b136e9`, `9ee2af5`).** Kunci sinkronisasi sekarang memakai transaksi, indeks item, katalog, dan arah; sinkronisasi menolak dokumen yang masih memiliki riwayat legacy agar tidak menggandakan mutasi. Repair `tug15_history` production sudah di-commit setelah backup dan dry-run: 135 baris duplikat/alias dihapus, 33 item TUG-10 yang hilang ditambahkan; 5 transaksi baru yang sah tetap terjaga. Hasil scan katalog 3060016 UPT Probolinggo: stok 21, total masuk 21, satu riwayat. Semua `sync_key` non-null unik; 625/625 test dan build lulus. Baris legacy tanpa sumber pasti tetap dibiarkan.
 - **Approval TUG-9 nomor 291 siap dicoba ulang (2026-10-21).** Migrasi guard sudah diterapkan ke self-host PostgreSQL 17.6. Dokumen masih `PENDING_ASMAN` versi 3; stok lot TUG-3 masih 42 untuk pengeluaran 30 dan mutasi keluar masih 0. Rehearsal PostgreSQL 16, bootstrap schema dua kali, 28 test kontrak, serta diff-check lulus. Perbaikan kode sudah di-commit/push; approval nyata tetap dilakukan akun Asman.
@@ -839,7 +843,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
 - `npm run build`
-- `npm test` → 625/625 lulus (2026-10-22)
+- `npm test` → 629/629 lulus (2026-10-25)
 - `node --test tests/unit/tugDocumentPrint.contract.test.mjs`
 - `node --test tests/unit/attbTrace.test.mjs tests/unit/attbUnitTrace.contract.test.mjs`
 - `node scripts/rehearse_attb_unit_trace.mjs`
@@ -870,5 +874,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-14 Codex: **Rutin embedding foto dipulihkan, Cohere GitHub Secret disinkronkan, backfill 805 foto selesai, upload gambar dibatasi 4 MB, serta 577/577 test dan build lulus.**
 - 2026-10-15 Codex: **BA Non Stock/Pinjam dan penyempurnaan form/PDF TUG-10 selesai; skema self-host terverifikasi, 593/593 test dan build lulus.**
+- 2026-10-25 Codex: **Maturity sampling dan folder pelengkap dirilis ke production; migrasi, Edge Function, Vercel, 629 test, dan bootstrap scratch terverifikasi.**
