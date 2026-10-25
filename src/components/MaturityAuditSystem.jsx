@@ -4,6 +4,7 @@ import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
 import { maturitySamplingGroupsForAspect, isMaturitySamplingGlobalItem, isMaturitySamplingItemForGroup } from "../hooks/useMaturity.jsx";
 import {
   downloadMaturityDriveEvidence,
+  loadMaturityDriveEvidence,
   openForm5SPhotos,
   openMaturityDriveEvidence,
   unlinkMaturityDriveEvidence,
@@ -154,7 +155,7 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
           background: "rgba(255,255,255,0.72)", backdropFilter: "blur(10px)",
           borderBottom: `1px solid ${C.border}`,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 800, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fileName}</span>
+          <span style={{ fontSize: 13, fontWeight: 800, color: C.text, flex: 1, minWidth: 0, overflowWrap: "anywhere", wordBreak: "break-word" }}>{fileName}</span>
           {isImage && !state.loading && !state.error && (
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <button type="button" onClick={() => setZoom(z => Math.max(50, z - 25))} style={{ width: 28, height: 28, borderRadius: 8, border: `1px solid ${C.border}`, background: "white", cursor: "pointer", fontWeight: 800 }}>−</button>
@@ -321,6 +322,8 @@ export function MaturityAuditEditor({
   const [activeSampleId, setActiveSampleId] = useState(null);
   const [newSampleLabel, setNewSampleLabel] = useState("");
   const [newFolderLabel, setNewFolderLabel] = useState("");
+  const [editingSupplementaryFile, setEditingSupplementaryFile] = useState(null);
+  const [supplementaryFileDraft, setSupplementaryFileDraft] = useState("");
   const isSamplingAudit = maturityAuditForm?.samplingVersion === 1;
   useEffect(() => {
     onUploadingChange?.(hasActiveUpload);
@@ -374,7 +377,7 @@ export function MaturityAuditEditor({
     if (!canScoreUPT || !audit.id || !autosaveMaturityDraft) return;
     const timer = setTimeout(() => { autosaveMaturityDraft(); }, 1500);
     return () => clearTimeout(timer);
-  }, [maturityAuditForm.aspekScores, maturityAuditForm.samplingGroups, maturityAuditEvidence, maturityAuditForm.aiAnalysis]);
+          }, [maturityAuditForm.aspekScores, maturityAuditForm.samplingGroups, maturityAuditForm.supplementaryFolders, maturityAuditEvidence, maturityAuditForm.aiAnalysis]);
   // Gate "Kirim Hasil ke UIT": wajib Form 5S sudah disimpan pada bulan berjalan
   const now = new Date();
   const persediaanEvidence = maturityAuditForm?.warehouseAssessments?.[MATURITY_WAREHOUSE_TYPES.PERSEDIAAN]?.evidence || {};
@@ -541,6 +544,87 @@ export function MaturityAuditEditor({
     const id = `${aspectSupplementaryKey}-extra-${Date.now()}`;
     setMaturityAuditForm(form => ({ ...form, samplingVersion: form.samplingVersion === 1 ? 1 : form.samplingVersion, supplementaryFolders: { ...(form.supplementaryFolders || {}), [aspectSupplementaryKey]: [...(form.supplementaryFolders?.[aspectSupplementaryKey] || []), { id, label }] } }));
     setNewFolderLabel("");
+  };
+  const renameSupplementaryFile = (folder, evidenceId, label) => {
+    if (!folder?.id || !evidenceId) return;
+    const nextLabel = String(label || "").trim();
+    if (!nextLabel) return;
+    setMaturityAuditForm(form => ({
+      ...form,
+      supplementaryFolders: {
+        ...(form.supplementaryFolders || {}),
+        [aspectSupplementaryKey]: (form.supplementaryFolders?.[aspectSupplementaryKey] || []).map(item => item.id === folder.id
+          ? { ...item, fileLabels: { ...(item.fileLabels || {}), [evidenceId]: nextLabel } }
+          : item),
+      },
+    }));
+  };
+  const startSupplementaryFileRename = (folder, file) => {
+    setEditingSupplementaryFile(`${folder.id}:${file.id}`);
+    setSupplementaryFileDraft(folder.fileLabels?.[file.id] || file.name || "");
+  };
+  const saveSupplementaryFileRename = (folder, file) => {
+    const nextLabel = supplementaryFileDraft.trim();
+    if (!nextLabel) {
+      const message = "Nama tampilan evidence tidak boleh kosong.";
+      setUploadError(message);
+      onUploadErrorChange?.(message);
+      return;
+    }
+    renameSupplementaryFile(folder, file.id, nextLabel);
+    setEditingSupplementaryFile(null);
+    setSupplementaryFileDraft("");
+  };
+  const mergeSupplementaryEvidence = (files, ...nextFiles) => nextFiles.reduce((merged, nextFile) => {
+    if (!nextFile?.id || merged.some(file => file?.id === nextFile.id)) return merged;
+    return [...merged, nextFile];
+  }, [...files]);
+  const reportUploadError = (message) => {
+    setUploadError(message);
+    onUploadErrorChange?.(message);
+  };
+  const reconcileEvidenceAfterUploadError = async (evidenceSnapshot) => {
+    let nextSnapshot = evidenceSnapshot;
+    let errorMessage = "";
+    const typedAspectId = maturityAspectKey(maturityWarehouseType, activeAspect?.id);
+    try {
+      const result = audit.id ? await loadMaturityDriveEvidence(audit.id) : null;
+      const canonicalRows = (result?.evidence || []).filter(row => {
+        const rawAspectId = String(row?.aspectId || "");
+        return rawAspectId === typedAspectId
+          || (row?.warehouseType === maturityWarehouseType && rawAspectId === activeAspect?.id)
+          || rawAspectId === `${maturityWarehouseType}::${activeAspect?.id}`;
+      });
+      const currentFiles = nextSnapshot[activeAspect.id] || [];
+      const mergedFiles = [...currentFiles];
+      canonicalRows.forEach(row => {
+        const normalized = { ...row, aspectId: activeAspect.id, warehouseType: maturityWarehouseType };
+        const index = mergedFiles.findIndex(file => file?.id && file.id === normalized.id);
+        if (index < 0) mergedFiles.push(normalized);
+        else mergedFiles[index] = { ...mergedFiles[index], ...normalized };
+      });
+      nextSnapshot = { ...nextSnapshot, [activeAspect.id]: mergedFiles };
+      setMaturityAuditEvidence(previous => {
+        const merged = [...(previous[activeAspect.id] || [])];
+        canonicalRows.forEach(row => {
+          const normalized = { ...row, aspectId: activeAspect.id, warehouseType: maturityWarehouseType };
+          const index = merged.findIndex(file => file?.id && file.id === normalized.id);
+          if (index < 0) merged.push(normalized);
+          else merged[index] = { ...merged[index], ...normalized };
+        });
+        return { ...previous, [activeAspect.id]: merged };
+      });
+    } catch (error) {
+      errorMessage = `Rekonsiliasi server gagal: ${error?.message || "coba buka ulang audit"}.`;
+    }
+    if (autosaveMaturityDraft) {
+      try {
+        if (!(await autosaveMaturityDraft(nextSnapshot))) errorMessage = `${errorMessage} Draft belum tersinkron, coba simpan ulang.`.trim();
+      } catch (error) {
+        errorMessage = `${errorMessage} Draft belum tersinkron, coba simpan ulang.`.trim();
+      }
+    }
+    return { evidenceSnapshot: nextSnapshot, errorMessage };
   };
   const categoryOrder = Math.max(1, AUDIT_CATEGORIES.findIndex(category => category.id === activeCategory.id) + 1);
 
@@ -772,28 +856,75 @@ export function MaturityAuditEditor({
                   {isSamplingAudit && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><Icons.Folder /><strong style={{ color: C.text, fontSize: 13 }}>Folder tambahan aspek</strong><span style={{ color: C.muted, fontSize: 12 }}>Berkas pelengkap, tidak dihitung sebagai slot wajib.</span></div>
-                      {aspectSupplementaryFolders.map(folder => <div key={folder.id} style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 12 }}><Icons.Folder /><span>{folder.label}</span><span style={{ color: C.accent, fontWeight: 700 }}>Pelengkap</span>{canScoreUPT && <label style={{ minHeight: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, fontWeight: 800, display: "inline-flex", alignItems: "center", cursor: "pointer" }}><Icons.Upload /><span>Tambah berkas</span><input type="file" multiple hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" disabled={maturityEvidenceLoading} onChange={async event => {
-                            const files = Array.from(event.target.files || []);
-                            if (!files.length) return;
-                            const key = `aspect-extra:${folder.id}`;
-                            setUploadingItems(previous => ({ ...previous, [key]: true }));
-                            setUploadError("");
-                            try {
-                              if (isSamplingAudit && autosaveMaturityDraft && !(await autosaveMaturityDraft())) throw new Error("Draft sampling belum tersimpan. Coba lagi sebelum mengunggah evidence.");
-                              const uploaded = [];
-                              for (const file of files) uploaded.push(await uploadMaturityDriveEvidence({ file, ...drivePayload({ aspectId: maturityAspectKey(maturityWarehouseType, activeAspect.id), aspectTitle: activeAspect.title, supplementary: true, extraFolderId: folder.id, extraFolderLabel: folder.label }) }));
-                              const linkedAt = Date.now();
-                              setMaturityAuditEvidence(previous => ({ ...previous, [activeAspect.id]: [...(previous[activeAspect.id] || []), ...uploaded.map(file => ({ ...file, linkedAt: file.linkedAt || linkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, supplementary: true, extraFolderId: folder.id, extraFolderLabel: folder.label }))] }));
-                            } catch (error) { setUploadError(error?.message || "Upload folder pelengkap gagal."); }
-                            finally { setUploadingItems(previous => ({ ...previous, [key]: false })); event.target.value = ""; }
-                          }} /></label>}</div>)}
-                      {aspectSupplementaryFolders.flatMap(folder => aspectFiles
-                        .filter(file => file.supplementary && file.extraFolderId === folder.id)
-                        .map(file => <div key={file.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", paddingLeft: 22, fontSize: 12 }}>
-                          <span style={{ color: C.muted }}>{folder.label} /</span>
-                          <button type="button" onClick={() => setViewerFile({ id: file.id, name: file.name })} style={{ border: 0, background: "transparent", color: C.accent, cursor: "pointer", padding: 4, overflowWrap: "anywhere" }}>{file.name}</button>
-                          <button type="button" onClick={() => downloadMaturityDriveEvidence(file.id).catch(error => setUploadError(error?.message || "Unduh berkas gagal."))} style={{ border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, color: C.text, cursor: "pointer", minHeight: 30, padding: "0 8px" }}>Unduh</button>
-                        </div>))}
+                      {aspectSupplementaryFolders.map(folder => {
+                        const folderFiles = aspectFiles.filter(file => file.supplementary && file.extraFolderId === folder.id);
+                        const uploadKey = `aspect-extra:${folder.id}`;
+                        return <div key={folder.id} style={{ display: "flex", flexDirection: "column", gap: 10, padding: 12, border: `1px solid ${C.border}`, borderRadius: 12, background: C.surface }}>
+                          <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, minWidth: 0, flex: "1 1 220px" }}>
+                              <Icons.Folder style={{ flexShrink: 0, marginTop: 2 }} />
+                              <div style={{ minWidth: 0 }}>
+                                <strong style={{ display: "block", color: C.text, fontSize: 13, overflowWrap: "anywhere", wordBreak: "break-word" }}>{folder.label}</strong>
+                                <span style={{ display: "block", marginTop: 3, color: C.muted, fontSize: 12 }}>{folderFiles.length} berkas · Pelengkap</span>
+                              </div>
+                            </div>
+                            {canScoreUPT && <label style={{ minHeight: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, cursor: uploadingItems[uploadKey] ? "wait" : "pointer", flexShrink: 0 }}><Icons.Upload /><span>{uploadingItems[uploadKey] ? "Mengunggah..." : "Tambah berkas"}</span><input type="file" multiple hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" disabled={maturityEvidenceLoading || uploadingItems[uploadKey]} onChange={async event => {
+                              const files = Array.from(event.target.files || []);
+                              if (!files.length) return;
+                              setUploadingItems(previous => ({ ...previous, [uploadKey]: true }));
+                              setUploadError("");
+                              onUploadErrorChange?.("");
+                              let successCount = 0;
+                              const failedNames = [];
+                              let evidenceSnapshot = { ...maturityAuditEvidence, [activeAspect.id]: [...(maturityAuditEvidence[activeAspect.id] || [])] };
+                              try {
+                                if (isSamplingAudit && autosaveMaturityDraft && !(await autosaveMaturityDraft())) throw new Error("Draft sampling belum tersimpan. Coba lagi sebelum mengunggah evidence.");
+                                for (const file of files) {
+                                  try {
+                                    const uploaded = await uploadMaturityDriveEvidence({ file, ...drivePayload({ aspectId: maturityAspectKey(maturityWarehouseType, activeAspect.id), aspectTitle: activeAspect.title, supplementary: true, extraFolderId: folder.id, extraFolderLabel: folder.label }) });
+                                    const linkedAt = Date.now();
+                                    const nextFile = { ...uploaded, linkedAt: uploaded.linkedAt || linkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, supplementary: true, extraFolderId: folder.id, extraFolderLabel: folder.label };
+                                    evidenceSnapshot = { ...evidenceSnapshot, [activeAspect.id]: mergeSupplementaryEvidence(evidenceSnapshot[activeAspect.id], nextFile) };
+                                    setMaturityAuditEvidence(previous => ({ ...previous, [activeAspect.id]: mergeSupplementaryEvidence(previous[activeAspect.id] || [], nextFile) }));
+                                    successCount += 1;
+                                  } catch (error) {
+                                    failedNames.push(`${file.name}: ${error?.message || "upload gagal"}`);
+                                  }
+                                }
+                                if (failedNames.length) {
+                                  const reconciled = await reconcileEvidenceAfterUploadError(evidenceSnapshot);
+                                  const prefix = successCount ? `${successCount} dari ${files.length} berkas berhasil. ` : "";
+                                  const suffix = reconciled.errorMessage ? ` ${reconciled.errorMessage}` : "";
+                                  reportUploadError(`${prefix}Gagal: ${failedNames.join("; ")}.${suffix}`);
+                                }
+                              } catch (error) {
+                                reportUploadError(error?.message || "Upload folder pelengkap gagal.");
+                              } finally { setUploadingItems(previous => ({ ...previous, [uploadKey]: false })); event.target.value = ""; }
+                            }} /></label>}
+                          </div>
+                          {folderFiles.length > 0 ? <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: isMobile ? 0 : 22 }}>
+                            {folderFiles.map(file => {
+                              const displayName = folder.fileLabels?.[file.id] || file.name || "Evidence tanpa nama";
+                              const editing = editingSupplementaryFile === `${folder.id}:${file.id}`;
+                              return <div key={file.id || file.name} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: 10, border: `1px solid ${C.border}`, borderRadius: 10, background: C.background || C.surface, fontSize: 12, flexWrap: "wrap" }}>
+                                <Icons.File style={{ color: C.accent, flexShrink: 0, marginTop: 3 }} />
+                                <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+                                  {editing ? <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                    <input autoFocus value={supplementaryFileDraft} onChange={event => setSupplementaryFileDraft(event.target.value)} aria-label={`Nama tampilan ${file.name || "evidence"}`} style={{ flex: "1 1 220px", minHeight: 34, minWidth: 0, border: `1px solid ${C.border}`, borderRadius: 7, padding: "0 8px", fontSize: 12, color: C.text, background: C.surface }} />
+                                    <button type="button" onClick={() => saveSupplementaryFileRename(folder, file)} style={{ minHeight: 34, padding: "0 9px", border: `1px solid ${C.accent}`, borderRadius: 7, background: C.accent, color: "white", cursor: "pointer", fontWeight: 800 }}>Simpan</button>
+                                    <button type="button" onClick={() => { setEditingSupplementaryFile(null); setSupplementaryFileDraft(""); }} style={{ minHeight: 34, padding: "0 9px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, color: C.text, cursor: "pointer" }}>Batal</button>
+                                  </div> : <button type="button" onClick={() => file.id && setViewerFile({ id: file.id, name: displayName })} disabled={!file.id} title={displayName} style={{ display: "block", width: "100%", border: 0, background: "transparent", color: C.accent, cursor: file.id ? "pointer" : "default", padding: 0, textAlign: "left", fontWeight: 700, overflowWrap: "anywhere", wordBreak: "break-word" }}>{displayName}</button>}
+                                  {displayName !== file.name && <small style={{ display: "block", marginTop: 3, color: C.muted, overflowWrap: "anywhere", wordBreak: "break-word" }}>Nama asli: {file.name || "—"}</small>}
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginLeft: "auto" }}>
+                                  {canScoreUPT && !editing && <button type="button" onClick={() => startSupplementaryFileRename(folder, file)} style={{ minHeight: 30, padding: "0 8px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, color: C.text, cursor: "pointer" }}>Ubah nama</button>}
+                                  {file.id && <button type="button" onClick={() => downloadMaturityDriveEvidence(file.id).catch(error => reportUploadError(error?.message || "Unduh berkas gagal."))} style={{ minHeight: 30, padding: "0 8px", border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, color: C.text, cursor: "pointer" }}>Unduh</button>}
+                                </div>
+                              </div>;
+                            })}
+                          </div> : <div style={{ padding: "4px 0 2px", color: C.muted, fontSize: 12 }}>Belum ada berkas di folder ini.</div>}
+                        </div>;
+                      })}
                       {canScoreUPT && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><input value={newFolderLabel} onChange={event => setNewFolderLabel(event.target.value)} placeholder="Nama folder tambahan" aria-label="Nama folder tambahan" style={{ flex: "1 1 180px", minHeight: 40, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 10px", fontSize: 13, color: C.text, background: C.surface }} /><button type="button" onClick={addAspectExtraFolder} style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>+ Buat folder tambahan</button></div>}
                     </div>
                   )}
@@ -946,32 +1077,41 @@ export function MaturityAuditEditor({
                                   setUploadError("");
                                   onUploadErrorChange?.("");
                                   setUploadingItems(prev => ({ ...prev, [eviItem.id]: true }));
+                                  let successCount = 0;
+                                  const failedNames = [];
+                                  let evidenceSnapshot = { ...maturityAuditEvidence, [activeAspect.id]: [...(maturityAuditEvidence[activeAspect.id] || [])] };
                                   try {
                                     if (isSamplingAudit && autosaveMaturityDraft && !(await autosaveMaturityDraft())) throw new Error("Draft sampling belum tersimpan. Coba lagi sebelum mengunggah evidence.");
-                                    const uploadedFiles = [];
                                     for (const f of files) {
-                                      uploadedFiles.push(await uploadMaturityDriveEvidence({
-                                        file: f,
-                                        ...drivePayload({
-                                          aspectId: maturityAspectKey(maturityWarehouseType, activeAspect.id),
-                                          aspectTitle: activeAspect.title,
-                                          itemId: eviItem.id,
-                                          itemLabel: eviItem.label,
-                                          ...(isSamplingAudit && !isGlobalSamplingItem && activeSampleGroup && selectedSample ? { sampleGroupId: activeSampleGroup.id, sampleId: selectedSample.id, sampleLabel: selectedSample.label } : {}),
-                                        })
-                                      }));
+                                      try {
+                                        const uploaded = await uploadMaturityDriveEvidence({
+                                          file: f,
+                                          ...drivePayload({
+                                            aspectId: maturityAspectKey(maturityWarehouseType, activeAspect.id),
+                                            aspectTitle: activeAspect.title,
+                                            itemId: eviItem.id,
+                                            itemLabel: eviItem.label,
+                                            ...(isSamplingAudit && !isGlobalSamplingItem && activeSampleGroup && selectedSample ? { sampleGroupId: activeSampleGroup.id, sampleId: selectedSample.id, sampleLabel: selectedSample.label } : {}),
+                                          })
+                                        });
+                                        const uploadLinkedAt = Date.now();
+                                        const nextFile = { ...uploaded, linkedAt: uploaded.linkedAt || uploadLinkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath, ...(isSamplingAudit && !isGlobalSamplingItem && activeSampleGroup && selectedSample ? { sampleGroupId: activeSampleGroup.id, sampleId: selectedSample.id, sampleLabel: selectedSample.label } : {}) };
+                                        evidenceSnapshot = { ...evidenceSnapshot, [activeAspect.id]: mergeSupplementaryEvidence(evidenceSnapshot[activeAspect.id], nextFile) };
+                                        setMaturityAuditEvidence(previous => ({ ...previous, [activeAspect.id]: mergeSupplementaryEvidence(previous[activeAspect.id] || [], nextFile) }));
+                                        successCount += 1;
+                                      } catch (error) {
+                                        failedNames.push(`${f.name}: ${error?.message || "upload gagal"}`);
+                                      }
                                     }
-                                    const uploadLinkedAt = Date.now();
-                                    const newFiles = uploadedFiles.map(res => ({ ...res, linkedAt: res.linkedAt || uploadLinkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath, ...(isSamplingAudit && !isGlobalSamplingItem && activeSampleGroup && selectedSample ? { sampleGroupId: activeSampleGroup.id, sampleId: selectedSample.id, sampleLabel: selectedSample.label } : {}) }));
-                                    setMaturityAuditEvidence(previous => ({
-                                      ...previous,
-                                      [activeAspect.id]: [...(previous[activeAspect.id] || []), ...newFiles],
-                                    }));
+                                    if (failedNames.length) {
+                                      const reconciled = await reconcileEvidenceAfterUploadError(evidenceSnapshot);
+                                      const prefix = successCount ? `${successCount} dari ${files.length} berkas berhasil. ` : "";
+                                      const suffix = reconciled.errorMessage ? ` ${reconciled.errorMessage}` : "";
+                                      reportUploadError(`${prefix}Gagal: ${failedNames.join("; ")}.${suffix}`);
+                                    }
                                   } catch (err) {
                                     console.warn("Upload evidence Maturity gagal:", err);
-                                    const message = err?.message || "Upload evidence Maturity gagal.";
-                                    setUploadError(message);
-                                    onUploadErrorChange?.(message);
+                                    reportUploadError(err?.message || "Upload evidence Maturity gagal.");
                                   } finally {
                                     setUploadingItems(prev => ({ ...prev, [eviItem.id]: false }));
                                     e.target.value = "";
@@ -1066,9 +1206,8 @@ export function MaturityAuditEditor({
                                           color: C.text,
                                           fontWeight: 700,
                                           fontSize: 13,
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          whiteSpace: "nowrap",
+                                          overflowWrap: "anywhere",
+                                          wordBreak: "break-word",
                                           textDecoration: "underline",
                                           border: "none",
                                           padding: 0,

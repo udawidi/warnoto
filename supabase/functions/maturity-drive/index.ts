@@ -57,6 +57,10 @@ function safeName(value: unknown, fallback: string) {
   const result = text(value, 120).replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
   return result || fallback;
 }
+function safeEvidenceName(value: unknown, fallback: string) {
+  const result = String(value ?? "").trim().replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim();
+  return result || fallback;
+}
 function storageKey(...segments: string[]) {
   return segments
     .map((s) => String(s ?? "").replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "x")
@@ -408,7 +412,7 @@ async function upsertEvidence(input: any) {
 // tag only if a file-level lookup is ever needed.
 async function uploadDriveFile(file: File, folderId: string, mappingKey: string) {
   const boundary = `warnoto-${crypto.randomUUID()}`;
-  const metadata = JSON.stringify({ name: safeName(file.name, "evidence"), parents: [folderId] });
+  const metadata = JSON.stringify({ name: safeEvidenceName(file.name, "evidence"), parents: [folderId] });
   const contentType = fileMimeType(file);
   const head = new TextEncoder().encode(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${boundary}\r\nContent-Type: ${contentType}\r\n\r\n`);
   const tail = new TextEncoder().encode(`\r\n--${boundary}--`);

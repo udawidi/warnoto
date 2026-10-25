@@ -135,7 +135,7 @@ test("UI maturity discope pakai id UPT, bukan kecocokan nama", () => {
 test("upload ulang evidence membuat reject UIT stale", () => {
   assert.match(driveSource, /function evidenceDto\(row: any\)[\s\S]*?linkedAt: row\.linked_at/);
   assert.match(editorSource, /f\.savedAt \|\| f\.uploadedAt \|\| f\.createdAt \|\| f\.linkedAt/);
-  assert.match(editorSource, /const uploadLinkedAt = Date\.now\(\);[\s\S]*?linkedAt: res\.linkedAt \|\| uploadLinkedAt/);
+  assert.match(editorSource, /const uploadLinkedAt = Date\.now\(\);[\s\S]*?linkedAt: uploaded\.linkedAt \|\| uploadLinkedAt/);
 });
 
 test("keluar input maturity menunggu upload dan simpan draft", () => {
