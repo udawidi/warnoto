@@ -67,6 +67,14 @@ function parseJson(value: unknown, fallback: any = {}) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 function quoteDrive(value: string) { return value.replace(/'/g, "\\'"); }
+const DRIVE_MAPPING_PROPERTY_KEY = "warnoto_maturity_key";
+const DRIVE_MAPPING_PROPERTY_MAX_BYTES = 124;
+async function driveMappingPropertyValue(mappingKey: string) {
+  const value = String(mappingKey ?? "");
+  if (new TextEncoder().encode(`${DRIVE_MAPPING_PROPERTY_KEY}${value}`).byteLength <= DRIVE_MAPPING_PROPERTY_MAX_BYTES) return value;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return `m:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
 function periodFor(value?: unknown) {
   const date = value ? new Date(Number(value)) : new Date();
   const valid = Number.isNaN(date.getTime()) ? new Date() : date;
@@ -268,7 +276,8 @@ async function mergeFolderGroup(keepId: string, extraIds: string[]) {
 // Merges duplicate Drive folders sharing a mapping key. Idempotent —
 // found.length <= 1 is a no-op.
 async function consolidateFolders(mappingKey: string, dbId: string | null | undefined) {
-  const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='warnoto_maturity_key' and value='${quoteDrive(mappingKey)}' }`);
+  const driveMappingKey = await driveMappingPropertyValue(mappingKey);
+  const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='${DRIVE_MAPPING_PROPERTY_KEY}' and value='${quoteDrive(driveMappingKey)}' }`);
   const found = await driveJson(`/files?q=${q}&fields=files(id,name)&pageSize=100&supportsAllDrives=true&includeItemsFromAllDrives=true`);
   const ids = (found.files || []).map((f: any) => f.id);
   if (ids.length <= 1) return ids[0] || dbId;
@@ -277,26 +286,35 @@ async function consolidateFolders(mappingKey: string, dbId: string | null | unde
   return keep;
 }
 // One Drive query for every maturity folder tagged under the app root,
-// grouped by mapping key, merging duplicates scoped to this UPT/period.
+// grouped by the canonical DB mapping key, merging duplicates scoped to this UPT/period.
 // Idempotent — groups with <= 1 folder are skipped.
 async function healDuplicateFolders(upt: any, period: any) {
   const prefix = `maturity-v1:${period.key}:${upt.name}`;
+  const { data: dbRows } = await admin
+    .from("maturity_audit_drive_folders")
+    .select("mapping_key,drive_folder_id")
+    .eq("period_key", period.key)
+    .eq("drive_root_id", DRIVE_ROOT_ID);
+  const tagToMapping = new Map<string, string>();
+  const scopedRows = (dbRows || []).filter((row: any) => row.mapping_key?.startsWith(prefix));
+  for (const row of scopedRows) tagToMapping.set(await driveMappingPropertyValue(row.mapping_key), row.mapping_key);
+  if (!tagToMapping.size) return;
   const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and appProperties has { key='warnoto_maturity_root' and value='${quoteDrive(DRIVE_ROOT_ID)}' }`);
   const groups = new Map<string, string[]>();
   let pageToken = "";
   do {
     const page = await driveJson(`/files?q=${q}&fields=nextPageToken,files(id,appProperties)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`);
     for (const f of page.files || []) {
-      const key = f.appProperties?.warnoto_maturity_key;
-      if (!key || !key.startsWith(prefix)) continue;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(f.id);
+      const mappingKey = tagToMapping.get(f.appProperties?.[DRIVE_MAPPING_PROPERTY_KEY]);
+      if (!mappingKey) continue;
+      if (!groups.has(mappingKey)) groups.set(mappingKey, []);
+      groups.get(mappingKey)!.push(f.id);
     }
     pageToken = page.nextPageToken || "";
   } while (pageToken);
   for (const [mappingKey, ids] of groups) {
     if (ids.length <= 1) continue;
-    const { data: dbRow } = await admin.from("maturity_audit_drive_folders").select("drive_folder_id").eq("mapping_key", mappingKey).maybeSingle();
+    const dbRow = scopedRows.find((row: any) => row.mapping_key === mappingKey);
     const { keep, extras } = chooseFolderMerge(ids, dbRow?.drive_folder_id);
     await mergeFolderGroup(keep, extras);
     await admin.from("maturity_audit_drive_folders").update({ drive_folder_id: keep, updated_at: nowMs() }).eq("mapping_key", mappingKey);
@@ -305,13 +323,14 @@ async function healDuplicateFolders(upt: any, period: any) {
 async function ensureFolder(input: any) {
   const cached = await getFolder(input.mappingKey);
   if (cached?.drive_folder_id) return cached;
-  const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and '${quoteDrive(input.parentFolderId)}' in parents and appProperties has { key='warnoto_maturity_key' and value='${quoteDrive(input.mappingKey)}' }`);
+  const driveMappingKey = await driveMappingPropertyValue(input.mappingKey);
+  const q = encodeURIComponent(`mimeType = 'application/vnd.google-apps.folder' and trashed = false and '${quoteDrive(input.parentFolderId)}' in parents and appProperties has { key='${DRIVE_MAPPING_PROPERTY_KEY}' and value='${quoteDrive(driveMappingKey)}' }`);
   const found = await driveJson(`/files?q=${q}&fields=files(id,name,parents)&pageSize=10&supportsAllDrives=true&includeItemsFromAllDrives=true`);
   let driveFolderId = (found.files?.length || 0) > 1
     ? await consolidateFolders(input.mappingKey, found.files[0].id)
     : found.files?.[0]?.id;
   if (!driveFolderId) {
-    const metadata = { name: input.name, mimeType: "application/vnd.google-apps.folder", parents: [input.parentFolderId], appProperties: { warnoto_maturity_key: input.mappingKey, warnoto_maturity_root: DRIVE_ROOT_ID } };
+    const metadata = { name: input.name, mimeType: "application/vnd.google-apps.folder", parents: [input.parentFolderId], appProperties: { [DRIVE_MAPPING_PROPERTY_KEY]: driveMappingKey, warnoto_maturity_root: DRIVE_ROOT_ID } };
     const created = await driveJson("/files?fields=id,name,parents&supportsAllDrives=true", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(metadata) });
     driveFolderId = created.id;
   }
