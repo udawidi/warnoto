@@ -1,7 +1,7 @@
 import { supabase } from "../supabaseClient.js";
-import { canonicalMaturityItemId, selectedMaturityRequiredItems } from "./maturityWarehouse.js";
+import { canonicalMaturityItemId, selectedMaturityRequiredItems, maturitySampleCompleteness } from "./maturityWarehouse.js";
 
-export const MATURITY_AI_ANALYSIS_VERSION = 2;
+export const MATURITY_AI_ANALYSIS_VERSION = 3;
 
 // djb2 cukup untuk gate cache; bukan hash kriptografis.
 function djb2(str) {
@@ -14,6 +14,8 @@ export function hashAspectSnapshot(evidenceList, _scoreObj, context = {}) {
   const evidence = (evidenceList || []).map(e => ({
     id: e.id || "",
     itemId: canonicalMaturityItemId(e.itemId || ""),
+    sampleId: e.sampleId || "",
+    sampleGroup: e.sampleGroup || "",
     name: e.name || e.file_name || "",
     size: e.size || 0,
   })).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
@@ -30,10 +32,10 @@ function filesForItem(item, aspect, files) {
 }
 
 /** Metadata checklist only. A matching upload is visible, but never proves content compliance. */
-export function buildMaturityEvidenceChecklist(aspect, evidenceList = []) {
+export function buildMaturityEvidenceChecklist(aspect, evidenceList = [], audit = null) {
   const files = Array.isArray(evidenceList) ? evidenceList : [];
   const selected = selectedMaturityRequiredItems(aspect, files);
-  return selected.map(item => {
+  const checklist = selected.map(item => {
     const matchingFiles = filesForItem(item, aspect, files);
     const terunggah = matchingFiles.length > 0;
     return {
@@ -49,10 +51,14 @@ export function buildMaturityEvidenceChecklist(aspect, evidenceList = []) {
         : `Belum ada berkas pada slot ini. Unggah ${item.label}.`,
     };
   });
+  const sampleGate = maturitySampleCompleteness(aspect, files, audit);
+  return sampleGate.missing.length
+    ? [...checklist, ...sampleGate.missing.map(gap => ({ id: `sample:${gap.group || "global"}:${gap.sampleId || gap.itemId || "minimum"}`, itemId: gap.itemId || "", label: gap.type === "minimum" ? `Minimal ${gap.required} sampel pada grup ${gap.group}` : `Evidence sampel ${gap.sampleLabel || gap.sampleId || ""} — ${gap.itemId || "slot"}`, terunggah: false, sampling: true }))]
+    : checklist;
 }
 
-function localChecklistSummary(aspect, evidenceList) {
-  const perEvidence = buildMaturityEvidenceChecklist(aspect, evidenceList);
+function localChecklistSummary(aspect, evidenceList, audit = null) {
+  const perEvidence = buildMaturityEvidenceChecklist(aspect, evidenceList, audit);
   const missing = perEvidence.filter(item => !item.terunggah);
   const gap = missing.map(item => item.label);
   const rekomendasi = missing.map(item => `Unggah evidence: ${item.label}.`);
@@ -72,8 +78,8 @@ const AI_REQUEST_TIMEOUT_MS = 25000;
 
 // Analisa metadata saja. Model hanya memberi level potensial dan satu alasan;
 // checklist, gap, serta rekomendasi berasal dari data lokal.
-export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { onProgress, invoke = (name, options) => supabase.functions.invoke(name, options) } = {}) {
-  const local = localChecklistSummary(aspect, evidenceList);
+export async function analyzeMaturityAspect(aspect, evidenceList, scoreObj, { onProgress, audit = null, invoke = (name, options) => supabase.functions.invoke(name, options) } = {}) {
+  const local = localChecklistSummary(aspect, evidenceList, audit);
   onProgress?.(0, 1);
   try {
     const controller = new AbortController();

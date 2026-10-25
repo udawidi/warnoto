@@ -358,6 +358,7 @@ function aspectReviewRowToItem(row) {
     auditId: row.audit_id,
     aspectId: row.aspect_id,
     itemId: row.item_id,
+    sampleId: row.sample_id || null,
     uptId: row.upt_id,
     state: row.state || "PENDING",
     note: row.note || "",
@@ -377,12 +378,13 @@ export async function loadAspectReviews(auditId) {
   return (data || []).map(aspectReviewRowToItem);
 }
 
-export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, state, note, reviewedBy, finalScore }) {
+export async function upsertAspectReview({ auditId, aspectId, itemId, sampleId = null, uptId, state, note, reviewedBy, finalScore }) {
   if (!supabase) return null;
   const row = {
     audit_id: auditId,
     aspect_id: aspectId,
     item_id: itemId,
+    sample_id: sampleId || "",
     upt_id: uptId || null,
     state,
     note: note || "",
@@ -392,7 +394,7 @@ export async function upsertAspectReview({ auditId, aspectId, itemId, uptId, sta
   // finalScore hanya dikirim bila eksplisit di-pass, supaya setAspectReview
   // (Check/Reject, tanpa skor) tak menimpa nilai final_score yang sudah ada.
   if (finalScore !== undefined) row.final_score = finalScore;
-  const { data, error } = await supabase.from("maturity_aspect_reviews").upsert(row, { onConflict: "audit_id,aspect_id,item_id" }).select().single();
+  const { data, error } = await supabase.from("maturity_aspect_reviews").upsert(row, { onConflict: "audit_id,aspect_id,item_id,sample_id" }).select().single();
   if (error) {
     console.error(`upsert maturity_aspect_reviews: ${error.message}`, error);
     return null;

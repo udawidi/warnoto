@@ -3,7 +3,7 @@ import { uid, fmtDateOnly } from "../lib/utils.js";
 import { CLOUD } from "../lib/cloud.js";
 import { logAudit } from "../lib/audit.js";
 import { hasRole } from "../lib/roles.js";
-import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
+import { AUDIT_ASPECTS, AUDIT_CATEGORIES, MATURITY_SAMPLE_RULES } from "../data/auditAspects.js";
 import { DEFAULT_UPT_LIST } from "../data/masterUpt.js";
 import {
   getDefaultMaturityAuditHistory, upsertMaturityAssessment, upsertMaturityAudit,
@@ -22,6 +22,91 @@ import {
   canonicalMaturityItemId, maturityItemIdsForReview, selectedMaturityRequiredItems, reconcileMaturityAuditEvidence,
 } from "../lib/maturityWarehouse.js";
 import { maturityUptOptions as getMaturityUptOptions } from "../lib/maturityUit.js";
+
+// Sampling metadata is deliberately kept in the audit JSON.  This lets old
+// audits keep their flat evidence UI while new audits use stable sample IDs.
+const SAMPLE_GROUP_LABELS = { "1.2-1.5": "Sampling material penerimaan", "1.6-1.7": "Sampling material pengeluaran", "1.9-1.10": "Sampling material penyimpanan", "3.5": "Sampling material ex-operasi", "3.6": "Sampling material cluster", "5.1-persediaan": "Sampling material Persediaan", "5.1-cadang": "Sampling material Cadang", "5.4": "Sampling material eks-operasi" };
+const normalizedSamplingRule = (aspectId, rule, group) => ({
+  id: group.group,
+  label: SAMPLE_GROUP_LABELS[group.group] || `Sampling ${group.group}`,
+  min: group.minimum,
+  aspectIds: rule.groups ? [aspectId] : Object.entries(MATURITY_SAMPLE_RULES).filter(([, candidate]) => candidate.group === group.group).map(([id]) => id),
+  sampledItemIds: group.sampledItemIds,
+  kind: group.group.endsWith("persediaan") ? "PERSEDIAAN" : group.group.endsWith("cadang") ? "CADANG" : null,
+  aspectId,
+});
+
+export const MATURITY_SAMPLING_CONFIG = Object.freeze(Object.fromEntries(Object.entries(MATURITY_SAMPLE_RULES).map(([aspectId, rule]) => [aspectId, (rule.groups || [rule]).map(group => normalizedSamplingRule(aspectId, rule, group))])));
+export const MATURITY_SAMPLING_GLOBAL_ITEMS = Object.freeze(Object.fromEntries(Object.entries(MATURITY_SAMPLE_RULES).map(([aspectId, rule]) => [aspectId, rule.globalItemIds || []])));
+
+export function isMaturitySamplingGlobalItem(aspectId, itemId) {
+  const id = String(itemId || "");
+  if ((MATURITY_SAMPLING_GLOBAL_ITEMS[String(aspectId || "")] || []).includes(id)) return true;
+  if (String(aspectId) === "3.6" && id.startsWith("cls_cluster_")) return true;
+  return false;
+}
+
+function samplingItemMatches(aspectId, groupId, itemId, configuredIds) {
+  const id = String(itemId || "");
+  if (configuredIds === "*") return !isMaturitySamplingGlobalItem(aspectId, id);
+  if ((configuredIds || []).includes(id)) return true;
+  if (String(aspectId) === "5.1" && groupId === "5.1-persediaan" && id === "it_tableau_persediaan") return true;
+  if (String(aspectId) === "5.1" && groupId === "5.1-cadang" && id === "it_tableau_cadang") return true;
+  return false;
+}
+
+export function isMaturitySamplingItemForGroup(aspectId, group, itemId) {
+  return Boolean(group && samplingItemMatches(aspectId, group.id, itemId, group.sampledItemIds));
+}
+
+export function maturitySamplingGroupsForAspect(aspectId) {
+  return MATURITY_SAMPLING_CONFIG[String(aspectId || "")] || [];
+}
+
+export function createMaturitySamplingGroups() {
+  return Object.fromEntries(Object.values(MATURITY_SAMPLING_CONFIG).flat().filter((group, index, all) => all.findIndex(candidate => candidate.id === group.id) === index).map(group => [group.id, {
+    id: group.id,
+    label: group.label,
+    kind: group.kind || null,
+    samples: Array.from({ length: group.min }, (_, index) => ({
+      id: `${group.id}-${uid().slice(-10)}`,
+      label: `Sampling ${index + 1}`,
+      autoLabel: true,
+    })),
+  }]));
+}
+
+export function validateMaturitySampling(form, assessments = {}) {
+  if (form?.samplingVersion !== 1) return { ok: true, missing: [] };
+  const missing = [];
+  Object.entries(assessments || {}).forEach(([warehouseType, assessment]) => {
+    const evidence = assessment?.evidence || {};
+    AUDIT_ASPECTS.filter(aspect => isMaturityAspectApplicable(aspect.id, warehouseType)).forEach(aspect => {
+      const groups = maturitySamplingGroupsForAspect(aspect.id);
+      if (!groups.length) return;
+      const globalItems = new Set(aspect.requiredEvidence.filter(item => isMaturitySamplingGlobalItem(aspect.id, item.id)).map(item => item.id));
+      groups.forEach(group => {
+        const state = form.samplingGroups?.[group.id];
+        const samples = Array.isArray(state?.samples) ? state.samples : [];
+        if (samples.length < group.min) missing.push(`${aspect.id}: minimal ${group.min} ${group.label}`);
+        samples.forEach(sample => {
+          const label = String(sample?.label || "").trim();
+          if (!label || sample?.autoLabel || /^Sampling\s+\d+$/i.test(label)) missing.push(`${aspect.id}: nama sampel wajib diisi dengan identitas material`);
+        });
+        const sampledItems = aspect.requiredEvidence.filter(item => samplingItemMatches(aspect.id, group.id, item.id, group.sampledItemIds));
+        samples.forEach(sample => sampledItems.forEach(item => {
+          const hasEvidence = (evidence[aspect.id] || []).some(file => file?.sampleGroupId === group.id && file?.sampleId === sample.id && canonicalMaturityItemId(file.itemId) === item.id);
+          if (!hasEvidence) missing.push(`${aspect.id} / ${sample.label}: ${item.label}`);
+        }));
+      });
+      aspect.requiredEvidence.filter(item => globalItems.has(item.id)).forEach(item => {
+        const hasEvidence = (evidence[aspect.id] || []).some(file => canonicalMaturityItemId(file.itemId) === item.id && !file.sampleId);
+        if (!hasEvidence) missing.push(`${aspect.id}: ${item.label}`);
+      });
+    });
+  });
+  return { ok: missing.length === 0, missing };
+}
 
 // Sama persis dengan readCachedList() di App.jsx — duplikasi 1 baris di sini
 // lebih murah & lebih aman (hindari circular import App.jsx <-> hook) daripada
@@ -349,7 +434,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
     const evidence = mergeCurrentMonth5SEvidence({}, selectedMaturityUptId);
     warehouseAssessments.PERSEDIAAN.evidence = evidence;
-    setMaturityAuditForm({ aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments });
+    setMaturityAuditForm({ samplingVersion: 1, samplingGroups: createMaturitySamplingGroups(), supplementaryFolders: {}, aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores, catatanUPT:"", catatanUIT:"", catatanPusat:"", fileUrl:"", fileNama:"", aiAnalysis:{}, warehouseAssessments });
     setMaturityAuditEvidence(evidence);
     setMaturityAspectReviews({}); // audit baru — belum ada review tersimpan
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
@@ -370,7 +455,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     active.evidence = evidence;
     assessments = { ...assessments, PERSEDIAAN: active };
     setMaturityWarehouseTypeState(MATURITY_WAREHOUSE_TYPES.PERSEDIAAN);
-    setMaturityAuditForm({ aspekScores: active.aspekScores || {}, catatanUPT: normalized.catatanUPT || "", catatanUIT: normalized.catatanUIT || "", catatanPusat: normalized.catatanPusat || "", fileUrl: normalized.fileUrl || "", fileNama: normalized.fileNama || "", aiAnalysis: active.aiAnalysis || {}, warehouseAssessments: assessments, _maturityEvidenceLoading: Boolean(audit?.id && !audit?.isNew) });
+    setMaturityAuditForm({ samplingVersion: normalized.samplingVersion, samplingGroups: normalized.samplingGroups || {}, supplementaryFolders: normalized.supplementaryFolders || {}, aspekScores: active.aspekScores || {}, catatanUPT: normalized.catatanUPT || "", catatanUIT: normalized.catatanUIT || "", catatanPusat: normalized.catatanPusat || "", fileUrl: normalized.fileUrl || "", fileNama: normalized.fileNama || "", aiAnalysis: active.aiAnalysis || {}, warehouseAssessments: assessments, _maturityEvidenceLoading: Boolean(audit?.id && !audit?.isNew) });
     setMaturityAuditEvidence(evidence);
     setExpandedAspek(AUDIT_CATEGORIES[0]?.id || null);
     setActiveAspectId(null);
@@ -379,7 +464,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     setMaturityAspectReviews({});
     if (audit?.id) {
       loadAspectReviews(audit.id).then(rows => {
-        setMaturityAspectReviews(Object.fromEntries(rows.map(r => [`${r.aspectId}::${r.itemId}`, r])));
+        setMaturityAspectReviews(Object.fromEntries(rows.map(r => [`${r.aspectId}::${r.itemId}::${r.sampleId || ""}`, r])));
       });
       if (!audit.isNew) {
         loadMaturityDriveEvidence(audit.id).then(result => {
@@ -399,7 +484,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
   // UIT/Pusat Check/Reject satu ITEM evidence (bukan seluruh aspek) — paralel
   // dgn UPT yang masih mengunggah item lain (tabel terpisah, tidak menyentuh
   // baris maturity_audits). Key state lokal: "aspectId::itemId".
-  async function setAspectReview(aspectId, itemId, state, note = "", warehouseType = maturityWarehouseType) {
+  async function setAspectReview(aspectId, itemId, state, note = "", warehouseType = maturityWarehouseType, sampleId = null) {
     if (maturityAuditFormRef.current?._maturityEvidenceLoading) return;
     const audit = maturityAuditModal;
     if (!audit?.id) return;
@@ -407,33 +492,35 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     const uptId = audit.uptId || uptIdByNama(uptName) || null;
     const reviewedBy = currentUser?.name || currentUser?.username || currentUser?.id || null;
     const typedAspectId = maturityAspectKey(warehouseType, aspectId);
-    const saved = await upsertAspectReview({ auditId: audit.id, aspectId: typedAspectId, itemId, uptId, state, note, reviewedBy });
+    const saved = await upsertAspectReview({ auditId: audit.id, aspectId: typedAspectId, itemId, sampleId, uptId, state, note, reviewedBy });
     if (!saved) {
       showToast("Review item tidak tersimpan karena server tidak dapat dihubungi.", "error");
       return;
     }
-    setMaturityAspectReviews(current => ({ ...current, [`${typedAspectId}::${itemId}`]: saved }));
-    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${typedAspectId}:${itemId}`, { state });
+    setMaturityAspectReviews(current => ({ ...current, [`${typedAspectId}::${itemId}::${sampleId || ""}`]: saved }));
+    logAudit(currentUser, "UPDATE", "maturity_aspect_review", `${audit.id}:${typedAspectId}:${itemId}:${sampleId || ""}`, { state });
   }
   // Nilai final Pusat 1 ITEM evidence (1-5) — merge dengan review existing
   // (state/note UIT tidak boleh terhapus oleh upsert ini). Setelah tersimpan,
   // agregasi ke aspekScores[aspek].pusat = mean(finalScore item non-auto aspek
   // itu), hanya kalau SEMUA item non-auto aspek sudah dinilai (else biarkan
   // 0 → calcMaturityScore jatuh ke fallback uit/upt/rasio).
-  async function setAspectItemScore(aspectId, itemId, score, warehouseType = maturityWarehouseType) {
+  async function setAspectItemScore(aspectId, itemId, score, warehouseType = maturityWarehouseType, sampleId = null) {
     if (maturityAuditFormRef.current?._maturityEvidenceLoading) return;
     const audit = maturityAuditModal;
     if (!audit?.id) return;
     const typedAspectId = maturityAspectKey(warehouseType, aspectId);
-    const key = `${typedAspectId}::${itemId}`;
+    const key = `${typedAspectId}::${itemId}::${sampleId || ""}`;
     const reviewIds = maturityItemIdsForReview(itemId);
-    const existing = reviewIds.map(id => maturityAspectReviews[`${typedAspectId}::${id}`]).find(Boolean)
-      || (warehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewIds.map(id => maturityAspectReviews[`${aspectId}::${id}`]).find(Boolean) : undefined)
+    const existing = reviewIds.map(id => maturityAspectReviews[`${typedAspectId}::${id}::${sampleId || ""}`]).find(Boolean)
+      || (!sampleId && reviewIds.map(id => maturityAspectReviews[`${typedAspectId}::${id}`]).find(Boolean))
+      || (warehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewIds.map(id => maturityAspectReviews[`${aspectId}::${id}::${sampleId || ""}`]).find(Boolean) : undefined)
+      || (!sampleId && warehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewIds.map(id => maturityAspectReviews[`${aspectId}::${id}`]).find(Boolean) : undefined)
       || {};
     const uptName = audit.upt || selectedMaturityUpt || "UPT Surabaya";
     const uptId = audit.uptId || uptIdByNama(uptName) || null;
     const reviewedBy = existing.reviewedBy || currentUser?.name || currentUser?.username || currentUser?.id || null;
-    const saved = await upsertAspectReview({ auditId: audit.id, aspectId: typedAspectId, itemId, uptId, state: existing.state || "PENDING", note: existing.note || "", reviewedBy, finalScore: score });
+    const saved = await upsertAspectReview({ auditId: audit.id, aspectId: typedAspectId, itemId, sampleId, uptId, state: existing.state || "PENDING", note: existing.note || "", reviewedBy, finalScore: score });
     if (!saved) {
       showToast("Nilai item tidak tersimpan karena server tidak dapat dihubungi.", "error");
       return;
@@ -524,6 +611,11 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const periodKey = auditData.periodKey || `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
       const uptName = auditData.upt || selectedMaturityUpt || "UPT Surabaya";
       const uptId = auditData.uptId || uptIdByNama(uptName) || null;
+      const samplingCheck = validateMaturitySampling(maturityAuditForm, warehouseAssessments);
+      if (newStatus !== "DRAFT" && !samplingCheck.ok) {
+        showToast(`Sampling belum lengkap (${samplingCheck.missing.length} slot). Lengkapi semua evidence tiap sampel sebelum mengajukan.`, "error");
+        return;
+      }
       const entry = {
         ...(isExistingAudit ? auditData : {}),
         id: auditData.id || `MA-${uid().slice(-8)}`,
@@ -534,6 +626,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         score: Number(scoreResult.total.toFixed(2)),
         periodKey,
         formatVersion: 2,
+        ...(maturityAuditForm.samplingVersion === 1 ? { samplingVersion: 1, samplingGroups: maturityAuditForm.samplingGroups || {}, supplementaryFolders: maturityAuditForm.supplementaryFolders || {} } : {}),
         warehouseAssessments,
         aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores,
         evidence: warehouseAssessments.PERSEDIAAN.evidence,
@@ -607,7 +700,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       const form = maturityAuditFormRef.current;
       const warehouseType = maturityWarehouseTypeRef.current;
       const warehouseAssessments = assessmentsWithActive(form, ev, warehouseType);
-      const savedSnapshot = JSON.stringify({ warehouseAssessments, catatanUPT: form.catatanUPT, catatanUIT: form.catatanUIT, catatanPusat: form.catatanPusat, fileUrl: form.fileUrl, fileNama: form.fileNama });
+      const savedSnapshot = JSON.stringify({ samplingVersion: form.samplingVersion, samplingGroups: form.samplingGroups, supplementaryFolders: form.supplementaryFolders, warehouseAssessments, catatanUPT: form.catatanUPT, catatanUIT: form.catatanUIT, catatanPusat: form.catatanPusat, fileUrl: form.fileUrl, fileNama: form.fileNama });
       const scoreResult = calcMaturityScore(warehouseAssessments);
       const createdAt = auditData.createdAt || Date.now();
       const createdDate = new Date(createdAt);
@@ -624,6 +717,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
         score: Number(scoreResult.total.toFixed(2)),
         periodKey,
         formatVersion: 2,
+        ...(form.samplingVersion === 1 ? { samplingVersion: 1, samplingGroups: form.samplingGroups || {}, supplementaryFolders: form.supplementaryFolders || {} } : {}),
         warehouseAssessments,
         aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores,
         evidence: warehouseAssessments.PERSEDIAAN.evidence,
@@ -646,7 +740,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       setMaturityAuditModal(prev => (prev && prev.id === entry.id) ? { ...prev, ...entry, isNew: false } : prev);
       const latestForm = maturityAuditFormRef.current;
       const latestAssessments = assessmentsWithActive(latestForm, maturityAuditEvidenceRef.current, maturityWarehouseTypeRef.current);
-      const latestSnapshot = JSON.stringify({ warehouseAssessments: latestAssessments, catatanUPT: latestForm.catatanUPT, catatanUIT: latestForm.catatanUIT, catatanPusat: latestForm.catatanPusat, fileUrl: latestForm.fileUrl, fileNama: latestForm.fileNama });
+      const latestSnapshot = JSON.stringify({ samplingVersion: latestForm.samplingVersion, samplingGroups: latestForm.samplingGroups, supplementaryFolders: latestForm.supplementaryFolders, warehouseAssessments: latestAssessments, catatanUPT: latestForm.catatanUPT, catatanUIT: latestForm.catatanUIT, catatanPusat: latestForm.catatanPusat, fileUrl: latestForm.fileUrl, fileNama: latestForm.fileNama });
       if (latestSnapshot !== savedSnapshot) autosaveDirty.current = true;
       // Jangan laporkan "tersimpan" sebelum perubahan yang datang saat request
       // berjalan ikut disimpan oleh putaran berikutnya.
@@ -706,7 +800,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       if (!assessment.aspekScores?.[a.id] && !assessment.evidence?.[a.id]) return;
       const s = assessment.aspekScores?.[a.id] || {};
       const evi = assessment.evidence?.[a.id] || [];
-      rows.push([type, a.id, a.title, calculateItemLevel(countCompletedEvidenceParents(a, evi), countRequiredEvidenceUnits(a)), s.uit || 0, s.pusat || 0, evi.map(e => e.name).join("; ") || "—"]);
+      rows.push([type, a.id, a.title, calculateItemLevel(countCompletedEvidenceParents(a, evi), countRequiredEvidenceUnits(a)), s.uit || 0, s.pusat || 0, evi.map(e => [e.sampleLabel, e.name].filter(Boolean).join(" / ")).join("; ") || "—"]);
     }));
     rows.push([]);
     rows.push(["Level Akhir", MATURITY_LEVELS[audit.level] || "—"]);
@@ -905,6 +999,8 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityDraftSavedAt,
     autosaveMaturityDraft,
     maturityAuditEvidence, setMaturityAuditEvidence,
+    MATURITY_SAMPLING_CONFIG, MATURITY_SAMPLING_GLOBAL_ITEMS,
+    validateMaturitySampling,
     maturityAspectReviews, setAspectReview, setAspectItemScore,
     expandedAspek, setExpandedAspek,
     activeAspectId, setActiveAspectId,

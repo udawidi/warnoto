@@ -163,7 +163,7 @@ export function countRequiredEvidenceUnits(aspect) {
 
 export function selectedMaturityRequiredItems(aspect, evidenceFiles = []) {
   const items = aspect?.requiredEvidence || [];
-  const files = Array.isArray(evidenceFiles) ? evidenceFiles : [];
+  const files = Array.isArray(evidenceFiles) ? evidenceFiles.filter(file => !file?.supplementary && !file?.isSupplementary) : [];
   const groups = new Map();
   for (const item of items) {
     if (!item.alternativeGroup) continue;
@@ -185,8 +185,62 @@ export function selectedMaturityRequiredItems(aspect, evidenceFiles = []) {
   return selected;
 }
 
+export function isMaturitySamplingEnabled(audit) {
+  return audit?.samplingEnabled === true || audit?.samplingVersion === 1 || audit?.data?.samplingEnabled === true || audit?.data?.samplingVersion === 1;
+}
+
+function samplingEntries(audit) {
+  const value = audit?.samples || audit?.materialSamples || audit?.sampling?.samples;
+  if (Array.isArray(value)) return value;
+  const groups = audit?.samplingGroups || audit?.sampling?.groups;
+  if (!groups || typeof groups !== "object") return [];
+  return Object.values(groups).flatMap(group => (Array.isArray(group?.samples) ? group.samples : []).map(sample => ({
+    ...sample,
+    group: sample?.group || sample?.sampleGroup || group?.id || group?.group,
+    aspectIds: Array.isArray(group?.aspectIds) ? group.aspectIds : [],
+  })));
+}
+
+/**
+ * Returns missing sample slots for an opted-in audit. Legacy audits return no
+ * gaps so their existing single-folder behavior is unchanged.
+ */
+export function maturitySampleCompleteness(aspect, evidenceFiles = [], audit = null) {
+  if (!isMaturitySamplingEnabled(audit) || !aspect?.sampling) return { complete: true, missing: [], sampleCount: 0 };
+  const rule = aspect.sampling;
+  const groups = Array.isArray(rule.groups) && rule.groups.length ? rule.groups : [rule];
+  const samples = samplingEntries(audit).filter(sample => sample && String(sample.id || "").trim());
+  const files = Array.isArray(evidenceFiles) ? evidenceFiles.filter(file => !file?.supplementary && !file?.isSupplementary) : [];
+  const missing = [];
+  for (const groupRule of groups) {
+    const group = String(groupRule.group || rule.group || "");
+    const scoped = samples.filter(sample => sample.group || sample.sampleGroup
+      ? String(sample.group || sample.sampleGroup) === group
+      : sample.aspectIds?.includes(aspect.id));
+    if (scoped.length < Number(groupRule.minimum || 0)) {
+      missing.push({ type: "minimum", group, required: Number(groupRule.minimum || 0), actual: scoped.length });
+      continue;
+    }
+    const configuredItems = groupRule.sampledItemIds ?? rule.sampledItemIds;
+    const itemIds = configuredItems === "*"
+      ? (aspect.requiredEvidence || []).map(item => [item.id])
+      : (configuredItems || []).map(item => Array.isArray(item) ? item.map(String) : [String(item)]);
+    for (const sample of scoped) {
+      for (const itemIdsForSlot of itemIds) {
+        const present = files.some(file => String(file?.sampleId || "") === String(sample.id)
+          && itemIdsForSlot.some(itemId => canonicalMaturityItemId(file?.itemId) === canonicalMaturityItemId(itemId)));
+        if (!present) missing.push({ type: "slot", group, sampleId: String(sample.id), sampleLabel: sample.label || "", itemId: itemIdsForSlot[0] });
+      }
+    }
+  }
+  for (const itemId of rule.globalItemIds || []) {
+    if (!files.some(file => !file?.sampleId && canonicalMaturityItemId(file?.itemId) === canonicalMaturityItemId(itemId))) missing.push({ type: "global", itemId });
+  }
+  return { complete: missing.length === 0, missing, sampleCount: samples.length };
+}
+
 export function countCompletedEvidenceParents(aspect, evidenceFiles = []) {
-  const files = Array.isArray(evidenceFiles) ? evidenceFiles : [];
+  const files = Array.isArray(evidenceFiles) ? evidenceFiles.filter(file => !file?.supplementary && !file?.isSupplementary) : [];
   const items = aspect?.requiredEvidence || [];
   const isPresent = item => files.some(file => canonicalMaturityItemId(file?.itemId) === item.id || (!file?.itemId && items.length === 1));
   const regular = items.filter(item => !item.alternativeGroup).filter(isPresent).length;
@@ -296,44 +350,86 @@ export function calculateMaturityDualScore(aspects, assessments, calculateItemLe
  * Evaluate workflow gates across every applicable warehouse. Legacy review
  * keys are accepted only for Persediaan; ATTB/MRWI must use typed keys.
  */
-export function evaluateMaturityWarehouseGate(aspects, assessments, reviews = {}) {
+export function evaluateMaturityWarehouseGate(aspects, assessments, reviews = {}, audit = null) {
   const applicable = Object.values(MATURITY_WAREHOUSE_TYPES).flatMap(type =>
     (aspects || [])
       .filter(aspect => isMaturityAspectApplicable(aspect.id, type))
       .map(aspect => ({ type, aspect }))
   );
-  const reviewFor = (type, aspectId, itemId) => {
+  const reviewFor = (type, aspectId, itemId, sampleId = null) => {
     const ids = maturityItemIdsForReview(itemId);
-    return ids.map(id => reviews[`${maturityAspectKey(type, aspectId)}::${id}`]).find(Boolean)
-      || (type === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? ids.map(id => reviews[`${aspectId}::${id}`]).find(Boolean) : undefined);
+    const sampleSuffix = sampleId ? `::${sampleId}` : "";
+    return ids.map(id => reviews[`${maturityAspectKey(type, aspectId)}::${id}${sampleSuffix}`]).find(Boolean)
+      || (sampleId ? undefined : ids.map(id => reviews[`${maturityAspectKey(type, aspectId)}::${id}`]).find(Boolean))
+      || (type === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? ids.map(id => reviews[`${aspectId}::${id}${sampleSuffix}`]).find(Boolean) : undefined)
+      || (type === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN && !sampleId ? ids.map(id => reviews[`${aspectId}::${id}`]).find(Boolean) : undefined);
   };
-  const filesFor = ({ type, aspect }) => assessments?.[type]?.evidence?.[aspect.id] || [];
+  const filesFor = ({ type, aspect }) => (assessments?.[type]?.evidence?.[aspect.id] || []).filter(file => !file?.supplementary && !file?.isSupplementary);
   const toEpoch = value => Number(value) || (value ? Date.parse(value) || 0 : 0);
   const latestFileAt = files => Math.max(0, ...files.map(file => toEpoch(file?.savedAt || file?.uploadedAt || file?.createdAt || file?.linkedAt)));
   const reviewIsCurrent = (review, files) => {
     if (!review || review.state !== "CHECKED") return false;
     return toEpoch(review.reviewedAt) >= latestFileAt(files);
   };
-  const filesForItem = ({ type, aspect, item }) => filesFor({ type, aspect }).filter(file => canonicalMaturityItemId(file?.itemId) === item.id || (!file?.itemId && aspect.requiredEvidence.length === 1));
+  const filesForItem = ({ type, aspect, item, sampleId = null }) => filesFor({ type, aspect }).filter(file =>
+    (sampleId ? String(file?.sampleId || "") === String(sampleId) : !file?.sampleId)
+    && canonicalMaturityItemId(file?.itemId) === item.id
+    || (!sampleId && !file?.sampleId && !file?.itemId && aspect.requiredEvidence.length === 1)
+  );
+  const sampledRequiredIds = aspect => {
+    if (!isMaturitySamplingEnabled(audit) || !aspect?.sampling) return new Set();
+    const rule = aspect.sampling;
+    const groups = Array.isArray(rule.groups) && rule.groups.length ? rule.groups : [rule];
+    return new Set(groups.flatMap(groupRule => {
+      const configured = groupRule.sampledItemIds ?? rule.sampledItemIds;
+      if (configured === "*") return (aspect.requiredEvidence || []).filter(item => !(rule.globalItemIds || []).includes(item.id)).map(item => item.id);
+      return (configured || []).flatMap(item => Array.isArray(item) ? item : [item]);
+    }).flatMap(itemId => (aspect.requiredEvidence || []).filter(item => maturityItemIdsForReview(itemId).includes(item.id)).map(item => item.id)));
+  };
   const missingEvidence = applicable.flatMap(({ type, aspect }) => {
     const files = filesFor({ type, aspect });
     const selected = selectedMaturityRequiredItems(aspect, files);
-    return selected.filter(item => filesForItem({ type, aspect, item }).length === 0)
+    const sampledIds = sampledRequiredIds(aspect);
+    return selected.filter(item => !sampledIds.has(item.id) && filesForItem({ type, aspect, item }).length === 0)
       .map(item => ({ type, aspectId: aspect.id, itemId: item.id }));
   });
-  const evidenceComplete = missingEvidence.length === 0;
-  const itemChecks = applicable.flatMap(({ type, aspect }) => selectedMaturityRequiredItems(aspect, filesFor({ type, aspect })).map(item => ({ type, aspect, item })));
-  const allItemsChecked = itemChecks.every(({ type, aspect, item }) => {
-    const files = filesForItem({ type, aspect, item });
+  const samplingMissing = applicable.flatMap(({ type, aspect }) => maturitySampleCompleteness(aspect, filesFor({ type, aspect }), audit).missing.map(gap => ({ type, aspectId: aspect.id, ...gap })));
+  const evidenceComplete = missingEvidence.length === 0 && samplingMissing.length === 0;
+  const sampledReviewChecks = applicable.flatMap(({ type, aspect }) => {
+    if (!isMaturitySamplingEnabled(audit) || !aspect?.sampling) return [];
+    const rule = aspect.sampling;
+    const groups = Array.isArray(rule.groups) && rule.groups.length ? rule.groups : [rule];
+    const samples = samplingEntries(audit);
+    const files = filesFor({ type, aspect });
+    return groups.flatMap(groupRule => {
+      const group = String(groupRule.group || rule.group || "");
+      const scopedSamples = samples.filter(sample => sample.group || sample.sampleGroup
+        ? String(sample.group || sample.sampleGroup) === group
+        : sample.aspectIds?.includes(aspect.id));
+      const configured = groupRule.sampledItemIds ?? rule.sampledItemIds;
+      const itemIds = configured === "*"
+        ? (aspect.requiredEvidence || []).filter(item => !(rule.globalItemIds || []).includes(item.id)).map(item => item.id)
+        : (configured || []).flatMap(item => Array.isArray(item) ? item : [item]);
+      return scopedSamples.flatMap(sample => itemIds.map(itemId => {
+        const item = (aspect.requiredEvidence || []).find(candidate => maturityItemIdsForReview(itemId).includes(candidate.id));
+        return item ? { type, aspect, item, sampleId: String(sample.id), files } : null;
+      }).filter(Boolean));
+    });
+  });
+  const regularItemChecks = applicable.flatMap(({ type, aspect }) => selectedMaturityRequiredItems(aspect, filesFor({ type, aspect })).map(item => ({ type, aspect, item })));
+  const sampledItemIds = new Set(sampledReviewChecks.map(({ aspect, item }) => `${aspect.id}::${item.id}`));
+  const itemChecks = [...regularItemChecks.filter(({ aspect, item }) => !sampledItemIds.has(`${aspect.id}::${item.id}`)), ...sampledReviewChecks];
+  const allItemsChecked = itemChecks.every(({ type, aspect, item, sampleId }) => {
+    const files = filesForItem({ type, aspect, item, sampleId });
     if (files.length > 0 && files.every(file => file.auto === true)) return true;
-    const parentReview = reviewFor(type, aspect.id, item.id);
+    const parentReview = reviewFor(type, aspect.id, item.id, sampleId);
     return files.length > 0 && reviewIsCurrent(parentReview, files);
   });
-  const allItemsScored = itemChecks.every(({ type, aspect, item }) => {
-    const files = filesForItem({ type, aspect, item });
+  const allItemsScored = itemChecks.every(({ type, aspect, item, sampleId }) => {
+    const files = filesForItem({ type, aspect, item, sampleId });
     if (files.length > 0 && files.every(file => file.auto === true)) return true;
-    const review = reviewFor(type, aspect.id, item.id);
+    const review = reviewFor(type, aspect.id, item.id, sampleId);
     return files.length > 0 && reviewIsCurrent(review, files) && review?.finalScore != null;
   });
-  return { evidenceComplete, allItemsChecked, allItemsScored, applicableCount: applicable.length, itemCount: itemChecks.length, missingEvidence, missingSubpoints: [] };
+  return { evidenceComplete, allItemsChecked, allItemsScored, applicableCount: applicable.length, itemCount: itemChecks.length, missingEvidence, missingSampling: samplingMissing, missingSubpoints: [] };
 }

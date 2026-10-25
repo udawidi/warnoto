@@ -2017,14 +2017,26 @@ create table if not exists maturity_audit_evidence (
   mime_type text not null default 'application/octet-stream', file_size bigint not null default 0 check (file_size >= 0), md5_checksum text,
   source text not null default 'UPLOAD' check (source in ('UPLOAD','SYNC','ASSIGN')),
   linked_at bigint not null default ((extract(epoch from now()) * 1000)::bigint), linked_by uuid references profiles(id) on delete set null,
-  unlinked_at bigint, unlinked_by uuid references profiles(id) on delete set null
+  unlinked_at bigint, unlinked_by uuid references profiles(id) on delete set null,
+  sample_id text,
+  sample_label text,
+  sample_group text,
+  supplementary_folder_id text,
+  supplementary_folder_name text,
+  is_supplementary boolean not null default false,
+  constraint maturity_audit_evidence_sample_metadata_check check (
+    (is_supplementary = true and sample_id is null and sample_group is null)
+    or (is_supplementary = false and sample_id is null and sample_group is null)
+    or (is_supplementary = false and sample_id is not null and sample_group is not null and sample_label is not null)
+  )
 );
 -- No audit FK: an existing UI draft may select evidence before its audit is saved.
 create unique index if not exists idx_maturity_audit_evidence_active_item on maturity_audit_evidence(audit_id, drive_file_id) where unlinked_at is null;
 create index if not exists idx_maturity_audit_evidence_audit_aspect on maturity_audit_evidence(audit_id, aspect_id) where unlinked_at is null;
+create index if not exists idx_maturity_audit_evidence_sample on maturity_audit_evidence(audit_id, aspect_id, sample_group, sample_id) where unlinked_at is null;
 create table if not exists maturity_audit_drive_folders (
   id uuid primary key default gen_random_uuid(), mapping_key text not null unique, audit_id text, period_key text,
-  folder_type text not null check (folder_type in ('ROOT','PERIOD','UPT','CATEGORY','ASPECT','ITEM')),
+  folder_type text not null check (folder_type in ('ROOT','PERIOD','UPT','CATEGORY','ASPECT','ITEM','FORM5S','SAMPLE','SUPPLEMENTARY')),
   parent_mapping_key text, drive_folder_id text not null unique, drive_root_id text not null,
   metadata jsonb not null default '{}'::jsonb,
   created_at bigint not null default ((extract(epoch from now()) * 1000)::bigint),
@@ -2491,18 +2503,21 @@ end $$;
 
 create table if not exists public.maturity_aspect_reviews (
   audit_id text not null references public.maturity_audits(id) on delete cascade,
-  aspect_id text not null, item_id text not null, upt_id text not null references public.upt(id) on delete restrict,
+  aspect_id text not null, item_id text not null, sample_id text not null default '', upt_id text not null references public.upt(id) on delete restrict,
   state text not null default 'PENDING' check (state in ('PENDING','CHECKED','REJECTED')),
   note text, reviewed_by text, reviewed_at bigint,
   final_score smallint check (final_score is null or final_score between 1 and 5),
-  primary key (audit_id, aspect_id, item_id)
+  primary key (audit_id, aspect_id, item_id, sample_id)
 );
 alter table public.maturity_aspect_reviews add column if not exists item_id text not null default '';
+alter table public.maturity_aspect_reviews add column if not exists sample_id text not null default '';
 alter table public.maturity_aspect_reviews add column if not exists final_score smallint check (final_score is null or final_score between 1 and 5);
 alter table public.maturity_aspect_reviews drop constraint if exists maturity_aspect_reviews_pkey;
-alter table public.maturity_aspect_reviews add constraint maturity_aspect_reviews_pkey primary key (audit_id, aspect_id, item_id);
+alter table public.maturity_aspect_reviews add constraint maturity_aspect_reviews_pkey primary key (audit_id, aspect_id, item_id, sample_id);
 alter table public.maturity_aspect_reviews alter column item_id drop default;
+alter table public.maturity_aspect_reviews alter column sample_id drop default;
 create index if not exists maturity_aspect_reviews_upt_idx on public.maturity_aspect_reviews(upt_id);
+create index if not exists maturity_aspect_reviews_sample_idx on public.maturity_aspect_reviews(audit_id, aspect_id, sample_id);
 create or replace function public.enforce_maturity_review_upt() returns trigger language plpgsql security definer set search_path = public as $$
 declare audit_upt text;
 begin

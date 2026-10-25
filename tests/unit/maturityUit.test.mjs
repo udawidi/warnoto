@@ -159,7 +159,7 @@ test("schema canonical mirror hardening maturity UIT", () => {
   assert.match(schemaSource, /create or replace function public\.can_access_maturity_upt/);
   assert.doesNotMatch(schemaSource, /actor\.role in \('ADMIN_UIT','ASMAN_LOG_UIT','MGR_LOGISTIK_UIT','HAR_UIT'\)/);
   assert.match(schemaSource, /MATURITY_REVIEW_UPT_MISMATCH/);
-  assert.match(schemaSource, /maturity_aspect_reviews_pkey primary key \(audit_id, aspect_id, item_id\)/);
+  assert.match(schemaSource, /maturity_aspect_reviews_pkey primary key \(audit_id, aspect_id, item_id, sample_id\)/);
   assert.match(schemaSource, /final_score smallint/);
   assert.match(schemaSource, /alter table public\.maturity_5s_assessments alter column upt_id set not null/);
   assert.match(schemaSource, /maturity_assessments_upt_id_fkey/);

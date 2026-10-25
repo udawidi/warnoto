@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ChartBar, FolderSimple, Pulse, UploadSimple, FileText, Check, CaretRight, CaretLeft, Sparkle, CheckCircle, Info, Trash } from "@phosphor-icons/react";
 import { AUDIT_ASPECTS, AUDIT_CATEGORIES } from "../data/auditAspects.js";
+import { maturitySamplingGroupsForAspect, isMaturitySamplingGlobalItem, isMaturitySamplingItemForGroup } from "../hooks/useMaturity.jsx";
 import {
   downloadMaturityDriveEvidence,
   openForm5SPhotos,
@@ -204,7 +205,7 @@ function EvidenceViewer({ C, isMobile, evidenceId, fileName, onClose }) {
 // Tombol Check/Reject UIT untuk 1 ITEM evidence — reject butuh alasan singkat,
 // jadi dipisah biar tidak window.prompt (bisa diblok browser). Tinggi tombol
 // 40px di HP (target sentuh), input alasan full-width di HP.
-function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, isMobile, state }) {
+function AspectReviewControls({ C, aspectId, itemId, sampleId, setAspectReview, disabled, isMobile, state }) {
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
   const btnH = isMobile ? 40 : 30;
@@ -213,7 +214,7 @@ function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, 
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 6, width: isMobile ? "100%" : "auto" }}>
         <input value={reason} onChange={e => setReason(e.target.value)} placeholder="Alasan reject…" style={{ flex: 1, minWidth: 0, height: btnH, fontSize: 12, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}` }} />
         <div style={{ display: "flex", gap: 6 }}>
-          <button type="button" disabled={disabled || !reason.trim()} onClick={() => { setAspectReview(aspectId, itemId, "REJECTED", reason.trim()); setRejecting(false); setReason(""); }} style={{ flex: 1, height: btnH, padding: "0 10px", borderRadius: 8, border: "1px solid #dc2626", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Kirim</button>
+          <button type="button" disabled={disabled || !reason.trim()} onClick={() => { setAspectReview(aspectId, itemId, "REJECTED", reason.trim(), sampleId); setRejecting(false); setReason(""); }} style={{ flex: 1, height: btnH, padding: "0 10px", borderRadius: 8, border: "1px solid #dc2626", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Kirim</button>
           <button type="button" onClick={() => { setRejecting(false); setReason(""); }} style={{ flex: 1, height: btnH, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.muted, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Batal</button>
         </div>
       </div>
@@ -227,12 +228,12 @@ function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, 
   }
   if (state === "REJECTED") {
     return (
-      <button type="button" disabled={disabled} onClick={() => setAspectReview(aspectId, itemId, "CHECKED", "")} style={{ height: btnH, width: isMobile ? "100%" : "auto", padding: "0 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.green, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Ubah ke Check</button>
+      <button type="button" disabled={disabled} onClick={() => setAspectReview(aspectId, itemId, "CHECKED", "", sampleId)} style={{ height: btnH, width: isMobile ? "100%" : "auto", padding: "0 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", color: C.green, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>Ubah ke Check</button>
     );
   }
   return (
     <div style={{ display: "flex", gap: 6, width: isMobile ? "100%" : "auto" }}>
-      <button type="button" disabled={disabled} onClick={() => setAspectReview(aspectId, itemId, "CHECKED", "")} style={{ flex: isMobile ? 1 : "none", height: btnH, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.green}`, background: C.green, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✓ Check</button>
+      <button type="button" disabled={disabled} onClick={() => setAspectReview(aspectId, itemId, "CHECKED", "", sampleId)} style={{ flex: isMobile ? 1 : "none", height: btnH, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.green}`, background: C.green, color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✓ Check</button>
       <button type="button" disabled={disabled} onClick={() => setRejecting(true)} style={{ flex: isMobile ? 1 : "none", height: btnH, padding: "0 12px", borderRadius: 8, border: "1px solid #dc2626", background: "transparent", color: "#dc2626", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>✗ Reject</button>
     </div>
   );
@@ -240,7 +241,7 @@ function AspectReviewControls({ C, aspectId, itemId, setAspectReview, disabled, 
 
 // Segmented 1-5 milik Pusat untuk menilai FINAL 1 ITEM evidence — pola sama
 // AspectReviewControls (state-aware, tap target ≥40px di HP).
-function PusatScoreControls({ C, aspectId, itemId, value, setAspectItemScore, disabled, isMobile }) {
+function PusatScoreControls({ C, aspectId, itemId, sampleId, value, setAspectItemScore, disabled, isMobile }) {
   const btnH = isMobile ? 40 : 32;
   const colorFor = v => (v <= 2 ? "#dc2626" : v === 3 ? "#f59e0b" : C.green);
   return (
@@ -254,7 +255,7 @@ function PusatScoreControls({ C, aspectId, itemId, value, setAspectItemScore, di
             disabled={disabled}
             aria-pressed={value === v}
             aria-label={`Nilai ${v} dari 5`}
-            onClick={() => setAspectItemScore(aspectId, itemId, v)}
+            onClick={() => setAspectItemScore(aspectId, itemId, v, sampleId)}
             style={{
               flex: isMobile ? 1 : "none",
               width: isMobile ? "auto" : 40,
@@ -316,6 +317,10 @@ export function MaturityAuditEditor({
   const hasActiveUpload = Object.values(uploadingItems).some(Boolean);
   const [uploadError, setUploadError] = useState("");
   const [viewerFile, setViewerFile] = useState(null);
+  const [activeSampleId, setActiveSampleId] = useState(null);
+  const [newSampleLabel, setNewSampleLabel] = useState("");
+  const [newFolderLabel, setNewFolderLabel] = useState("");
+  const isSamplingAudit = maturityAuditForm?.samplingVersion === 1;
   useEffect(() => {
     onUploadingChange?.(hasActiveUpload);
     return () => onUploadingChange?.(false);
@@ -368,7 +373,7 @@ export function MaturityAuditEditor({
     if (!canScoreUPT || !audit.id || !autosaveMaturityDraft) return;
     const timer = setTimeout(() => { autosaveMaturityDraft(); }, 1500);
     return () => clearTimeout(timer);
-  }, [maturityAuditForm.aspekScores, maturityAuditEvidence, maturityAuditForm.aiAnalysis]);
+  }, [maturityAuditForm.aspekScores, maturityAuditForm.samplingGroups, maturityAuditEvidence, maturityAuditForm.aiAnalysis]);
   // Gate "Kirim Hasil ke UIT": wajib Form 5S sudah disimpan pada bulan berjalan
   const now = new Date();
   const persediaanEvidence = maturityAuditForm?.warehouseAssessments?.[MATURITY_WAREHOUSE_TYPES.PERSEDIAAN]?.evidence || {};
@@ -394,6 +399,7 @@ export function MaturityAuditEditor({
     if (!force && cacheIsUsable) return;
     setAiAnalysisRunning(prev => ({ ...prev, [aspectId]: { i: 0, total: 1 } }));
     analyzeMaturityAspect(aspect, evidenceList, scoreObj, {
+      audit: { ...audit, samplingVersion: maturityAuditForm.samplingVersion, samplingGroups: maturityAuditForm.samplingGroups },
       onProgress: (i, total) => { if (!cancelRef?.cancelled) setAiAnalysisRunning(prev => ({ ...prev, [aspectId]: { i, total } })); },
     }).then(result => {
       if (cancelRef?.cancelled) return;
@@ -460,11 +466,15 @@ export function MaturityAuditEditor({
   const overallScoreVal = matlevTotalScore;
 
   const completedAspectsCount = warehouseAspects.filter(aspect => countCompletedEvidenceParents(aspect, maturityAuditEvidence[aspect.id] || []) === countRequiredEvidenceUnits(aspect)).length;
-  const gate = evaluateMaturityWarehouseGate(AUDIT_ASPECTS, warehouseAssessments, maturityAspectReviews);
+  const gate = evaluateMaturityWarehouseGate(AUDIT_ASPECTS, warehouseAssessments, maturityAspectReviews, {
+    ...audit,
+    samplingVersion: maturityAuditForm?.samplingVersion,
+    samplingGroups: maturityAuditForm?.samplingGroups,
+  });
   const evidenceComplete = gate.evidenceComplete;
   const allItemsChecked = gate.allItemsChecked;
   const allItemsScored = gate.allItemsScored;
-  const incompleteRequirementCount = gate.missingEvidence.length + gate.missingSubpoints.length;
+  const incompleteRequirementCount = gate.missingEvidence.length + gate.missingSampling.length + gate.missingSubpoints.length;
 
   const uitReviewedCount = warehouseAspects.filter(a => (maturityAuditForm.aspekScores[a.id]?.uit || 0) > 0).length;
   const pusatReviewedCount = warehouseAspects.filter(a => (maturityAuditForm.aspekScores[a.id]?.pusat || 0) > 0).length;
@@ -479,6 +489,58 @@ export function MaturityAuditEditor({
   const paginatedAspects = categoryAspects.slice((aspectPage - 1) * pageSize, aspectPage * pageSize);
 
   const activeAspect = warehouseAspects.find(a => a.id === activeAspectId);
+  const activeSamplingGroups = activeAspect && isSamplingAudit ? maturitySamplingGroupsForAspect(activeAspect.id) : [];
+  const activeSamplingState = activeSamplingGroups.map(group => ({
+    ...group,
+    state: maturityAuditForm?.samplingGroups?.[group.id] || { id: group.id, label: group.label, samples: [] },
+  }));
+  const activeSampleGroup = activeSamplingState.find(group => group.state.samples.some(sample => sample.id === activeSampleId)) || activeSamplingState[0];
+  const selectedSample = activeSampleGroup?.state.samples.find(sample => sample.id === activeSampleId) || activeSampleGroup?.state.samples[0];
+  useEffect(() => {
+    setActiveSampleId(activeSampleGroup?.state.samples[0]?.id || null);
+  }, [activeAspectId, maturityWarehouseType]);
+  const updateSamplingGroups = (updater) => setMaturityAuditForm(form => ({
+    ...form,
+    samplingVersion: 1,
+    samplingGroups: updater(form.samplingGroups || {}),
+  }));
+  const addSample = (group) => {
+    const typedLabel = newSampleLabel.trim();
+    const label = typedLabel || `Sampling ${group.state.samples.length + 1}`;
+    const id = `${group.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    updateSamplingGroups(groups => ({ ...groups, [group.id]: { ...group.state, samples: [...group.state.samples, { id, label, autoLabel: !typedLabel }] } }));
+    setNewSampleLabel("");
+    setActiveSampleId(id);
+  };
+  const renameSample = (group, sampleId, label) => updateSamplingGroups(groups => ({
+    ...groups,
+    [group.id]: { ...group.state, samples: group.state.samples.map(sample => sample.id === sampleId ? { ...sample, label, autoLabel: false } : sample) },
+  }));
+  const removeSample = (group, sampleId) => {
+    if (group.state.samples.length <= group.min) return;
+    const linkedEvidence = (group.aspectIds || []).some(aspectId => (maturityAuditEvidence?.[aspectId] || []).some(file => file?.sampleGroupId === group.id && file?.sampleId === sampleId));
+    const linkedReview = Object.entries(maturityAspectReviews || {}).some(([key, review]) => review?.sampleId === sampleId || key.endsWith(`::${sampleId}`));
+    if (linkedEvidence || linkedReview) {
+      const message = "Sampel tidak dapat dihapus karena sudah memiliki evidence atau review. Hapus evidence/review terkait dulu.";
+      setUploadError(message);
+      onUploadErrorChange?.(message);
+      return;
+    }
+    updateSamplingGroups(groups => ({
+      ...groups,
+      [group.id]: { ...group.state, samples: group.state.samples.filter(sample => sample.id !== sampleId) },
+    }));
+    setActiveSampleId(group.state.samples.find(sample => sample.id !== sampleId)?.id || null);
+  };
+  const aspectSupplementaryKey = activeAspect ? maturityAspectKey(maturityWarehouseType, activeAspect.id) : "";
+  const aspectSupplementaryFolders = aspectSupplementaryKey ? (maturityAuditForm?.supplementaryFolders?.[aspectSupplementaryKey] || []) : [];
+  const addAspectExtraFolder = () => {
+    const label = newFolderLabel.trim();
+    if (!label || !aspectSupplementaryKey) return;
+    const id = `${aspectSupplementaryKey}-extra-${Date.now()}`;
+    setMaturityAuditForm(form => ({ ...form, samplingVersion: form.samplingVersion === 1 ? 1 : form.samplingVersion, supplementaryFolders: { ...(form.supplementaryFolders || {}), [aspectSupplementaryKey]: [...(form.supplementaryFolders?.[aspectSupplementaryKey] || []), { id, label }] } }));
+    setNewFolderLabel("");
+  };
   const categoryOrder = Math.max(1, AUDIT_CATEGORIES.findIndex(category => category.id === activeCategory.id) + 1);
 
   const drivePayload = useCallback((overrides = {}) => ({
@@ -489,8 +551,9 @@ export function MaturityAuditEditor({
     categoryLabel: activeCategory.label,
     categoryOrder,
     warehouseType: maturityWarehouseType,
+    samplingEnabled: isSamplingAudit,
     ...overrides,
-  }), [audit.id, audit.createdAt, currentUptName, activeCategory, categoryOrder, maturityWarehouseType]);
+  }), [audit.id, audit.createdAt, currentUptName, activeCategory, categoryOrder, maturityWarehouseType, isSamplingAudit]);
 
   return (
     <div style={{ paddingBottom: 40 }}>
@@ -634,16 +697,95 @@ export function MaturityAuditEditor({
                     </div>
                   )}
 
+                  {isSamplingAudit && activeSamplingState.length > 0 && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: 14, borderRadius: 14, border: `1px solid ${C.accent}35`, background: `${C.accent}08` }}>
+                      <div style={{ display: "flex", gap: 10, alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap" }}>
+                        <div>
+                          <strong style={{ display: "block", color: C.text, fontSize: 14 }}>Sampling material</strong>
+                          <span style={{ color: C.muted, fontSize: 12 }}>Setiap folder sampling wajib lengkap sesuai slot evidence. Jumlah dapat ditambah sesuai kebutuhan.</span>
+                        </div>
+                        <span style={{ color: C.accent, fontSize: 12, fontWeight: 800 }}>{activeSamplingState.reduce((sum, group) => sum + group.state.samples.length, 0)} sampel</span>
+                      </div>
+                      {activeSamplingState.map(group => (
+                        <div key={group.id} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                            <span style={{ fontSize: 12, fontWeight: 800, color: C.text }}>{group.label}</span>
+                            <span style={{ fontSize: 11, color: C.muted }}>minimum {group.min}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 2 }} role="tablist" aria-label={group.label}>
+                            {group.state.samples.map(sample => {
+                              const selected = group.id === activeSampleGroup?.id && sample.id === selectedSample?.id;
+                              const fileCount = (aspectFiles || []).filter(file => file.sampleGroupId === group.id && file.sampleId === sample.id).length;
+                              return <div key={sample.id} style={{ display: "flex", alignItems: "center", gap: 4, flex: "0 0 auto" }}>
+                                <button type="button" role="tab" aria-selected={selected} onClick={() => setActiveSampleId(sample.id)} style={{ minHeight: 40, padding: "7px 10px", borderRadius: 9, border: `1px solid ${selected ? C.accent : C.border}`, background: selected ? `${C.accent}16` : C.surface, color: selected ? C.accent : C.text, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                                  📁 {sample.label} <span style={{ color: fileCount ? C.green : C.muted }}>({fileCount})</span>
+                                </button>
+                                {canScoreUPT && group.state.samples.length > group.min && <button type="button" aria-label={`Hapus ${sample.label}`} onClick={() => removeSample(group, sample.id)} style={{ width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.border}`, background: C.surface, color: C.muted, cursor: "pointer" }}>×</button>}
+                              </div>;
+                            })}
+                          </div>
+                          {canScoreUPT && (
+                            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                              <input value={newSampleLabel} onChange={event => setNewSampleLabel(event.target.value)} placeholder="Nama sampel baru (opsional)" aria-label="Nama sampel baru" style={{ flex: "1 1 180px", minHeight: 40, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 10px", fontSize: 13, color: C.text, background: C.surface }} />
+                              <button type="button" onClick={() => addSample(group)} style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.surface, color: C.accent, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>+ Tambah sampel</button>
+                            </div>
+                          )}
+                          {selectedSample && group.id === activeSampleGroup?.id && canScoreUPT && (
+                            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.muted }}>
+                              <span>Nama folder:</span>
+                              <input value={selectedSample.label} onChange={event => renameSample(group, selectedSample.id, event.target.value)} aria-label="Nama folder sampel" style={{ flex: 1, minHeight: 38, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 9px", fontSize: 13, color: C.text, background: C.surface }} />
+                            </label>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {isSamplingAudit && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: 12, borderRadius: 12, border: `1px solid ${C.border}`, background: C.surface }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><Icons.Folder /><strong style={{ color: C.text, fontSize: 13 }}>Folder tambahan aspek</strong><span style={{ color: C.muted, fontSize: 12 }}>Berkas pelengkap, tidak dihitung sebagai slot wajib.</span></div>
+                      {aspectSupplementaryFolders.map(folder => <div key={folder.id} style={{ display: "flex", alignItems: "center", gap: 8, color: C.muted, fontSize: 12 }}><Icons.Folder /><span>{folder.label}</span><span style={{ color: C.accent, fontWeight: 700 }}>Pelengkap</span>{canScoreUPT && <label style={{ minHeight: 36, padding: "0 10px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, fontWeight: 800, display: "inline-flex", alignItems: "center", cursor: "pointer" }}><Icons.Upload /><span>Tambah berkas</span><input type="file" multiple hidden accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv" disabled={maturityEvidenceLoading} onChange={async event => {
+                            const files = Array.from(event.target.files || []);
+                            if (!files.length) return;
+                            const key = `aspect-extra:${folder.id}`;
+                            setUploadingItems(previous => ({ ...previous, [key]: true }));
+                            setUploadError("");
+                            try {
+                              if (isSamplingAudit && autosaveMaturityDraft && !(await autosaveMaturityDraft())) throw new Error("Draft sampling belum tersimpan. Coba lagi sebelum mengunggah evidence.");
+                              const uploaded = [];
+                              for (const file of files) uploaded.push(await uploadMaturityDriveEvidence({ file, ...drivePayload({ aspectId: maturityAspectKey(maturityWarehouseType, activeAspect.id), aspectTitle: activeAspect.title, supplementary: true, extraFolderId: folder.id, extraFolderLabel: folder.label }) }));
+                              const linkedAt = Date.now();
+                              setMaturityAuditEvidence(previous => ({ ...previous, [activeAspect.id]: [...(previous[activeAspect.id] || []), ...uploaded.map(file => ({ ...file, linkedAt: file.linkedAt || linkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, supplementary: true, extraFolderId: folder.id, extraFolderLabel: folder.label }))] }));
+                            } catch (error) { setUploadError(error?.message || "Upload folder pelengkap gagal."); }
+                            finally { setUploadingItems(previous => ({ ...previous, [key]: false })); event.target.value = ""; }
+                          }} /></label>}</div>)}
+                      {aspectSupplementaryFolders.flatMap(folder => aspectFiles
+                        .filter(file => file.supplementary && file.extraFolderId === folder.id)
+                        .map(file => <div key={file.id} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", paddingLeft: 22, fontSize: 12 }}>
+                          <span style={{ color: C.muted }}>{folder.label} /</span>
+                          <button type="button" onClick={() => setViewerFile({ id: file.id, name: file.name })} style={{ border: 0, background: "transparent", color: C.accent, cursor: "pointer", padding: 4, overflowWrap: "anywhere" }}>{file.name}</button>
+                          <button type="button" onClick={() => downloadMaturityDriveEvidence(file.id).catch(error => setUploadError(error?.message || "Unduh berkas gagal."))} style={{ border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, color: C.text, cursor: "pointer", minHeight: 30, padding: "0 8px" }}>Unduh</button>
+                        </div>))}
+                      {canScoreUPT && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><input value={newFolderLabel} onChange={event => setNewFolderLabel(event.target.value)} placeholder="Nama folder tambahan" aria-label="Nama folder tambahan" style={{ flex: "1 1 180px", minHeight: 40, border: `1px solid ${C.border}`, borderRadius: 8, padding: "0 10px", fontSize: 13, color: C.text, background: C.surface }} /><button type="button" onClick={addAspectExtraFolder} style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.border}`, background: C.surface, color: C.text, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>+ Buat folder tambahan</button></div>}
+                    </div>
+                  )}
+
                   {activeAspect.requiredEvidence.map((eviItem, eviIdx) => {
-                    const itemFiles = aspectFiles.filter(f => canonicalMaturityItemId(f.itemId) === eviItem.id);
+                    const isGlobalSamplingItem = isSamplingAudit && isMaturitySamplingGlobalItem(activeAspect.id, eviItem.id);
+                    const itemSamplingGroup = !isGlobalSamplingItem && activeSamplingState.find(group => isMaturitySamplingItemForGroup(activeAspect.id, group, eviItem.id));
+                    if (itemSamplingGroup && activeSampleGroup?.id !== itemSamplingGroup.id) return null;
+                    const itemFiles = aspectFiles.filter(f => canonicalMaturityItemId(f.itemId) === eviItem.id && (!isSamplingAudit || isGlobalSamplingItem || !activeSamplingState.length || f.sampleGroupId === activeSampleGroup?.id && f.sampleId === selectedSample?.id));
                     const isUploaded = itemFiles.length > 0;
                     const isAutoFilled = isUploaded && itemFiles.every(f => f.auto === true);
-    const targetFolderPath = `${currentUptName} / ${MATURITY_WAREHOUSE_LABELS[maturityWarehouseType]} / ${activeCategory.label} / Aspek ${activeAspect.id} / ${eviItem.label}`;
+                    const targetFolderPath = `${currentUptName} / ${MATURITY_WAREHOUSE_LABELS[maturityWarehouseType]} / ${activeCategory.label} / Aspek ${activeAspect.id}${isSamplingAudit && !isGlobalSamplingItem && selectedSample ? ` / ${selectedSample.label}` : ""} / ${eviItem.label}`;
                     // Review per-item: key komposit "aspectId::itemId". Auto-filled dari Form 5S
                     // dianggap otomatis lolos, tidak perlu Check manual UIT.
                     const reviewKeyIds = maturityItemIdsForReview(eviItem.id);
-                    const itemReview = reviewKeyIds.map(itemId => maturityAspectReviews[`${maturityAspectKey(maturityWarehouseType, activeAspect.id)}::${itemId}`]).find(Boolean)
-                      || (maturityWarehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewKeyIds.map(itemId => maturityAspectReviews[`${activeAspect.id}::${itemId}`]).find(Boolean) : undefined);
+                    const itemSampleId = isSamplingAudit && !isGlobalSamplingItem ? selectedSample?.id : null;
+                    const itemReview = reviewKeyIds.map(itemId => maturityAspectReviews[`${maturityAspectKey(maturityWarehouseType, activeAspect.id)}::${itemId}::${itemSampleId || ""}`]).find(Boolean)
+                      || (!itemSampleId && reviewKeyIds.map(itemId => maturityAspectReviews[`${maturityAspectKey(maturityWarehouseType, activeAspect.id)}::${itemId}`]).find(Boolean))
+                      || (maturityWarehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewKeyIds.map(itemId => maturityAspectReviews[`${activeAspect.id}::${itemId}::${itemSampleId || ""}`]).find(Boolean) : undefined)
+                      || (!itemSampleId && maturityWarehouseType === MATURITY_WAREHOUSE_TYPES.PERSEDIAAN ? reviewKeyIds.map(itemId => maturityAspectReviews[`${activeAspect.id}::${itemId}`]).find(Boolean) : undefined);
                     const itemReviewState = itemReview?.state || "PENDING";
                     const itemLatestAt = Math.max(0, ...itemFiles.map(f => Number(f.savedAt || f.uploadedAt || f.createdAt || f.linkedAt || 0) || Date.parse(f.savedAt || f.uploadedAt || f.createdAt || f.linkedAt || "") || 0));
                     const itemReviewAt = Number(itemReview?.reviewedAt || 0) || Date.parse(itemReview?.reviewedAt || "") || 0;
@@ -713,7 +855,7 @@ export function MaturityAuditEditor({
                               <details style={{ marginTop: 3 }}>
                                 <summary style={{ minHeight: 44, display: "flex", alignItems: "center", cursor: "pointer", color: C.muted, fontSize: 12, fontWeight: 700 }}>Lokasi folder &amp; format file</summary>
                                 <div style={{ paddingBottom: 5, color: C.muted, fontSize: 12, lineHeight: 1.5, overflowWrap: "anywhere" }}>📍 {isMobile ? `Aspek ${activeAspect.id} / ${eviItem.label}` : targetFolderPath}</div>
-                                {canScoreUPT && !isAutoFilled && <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5 }}>Maks. 3 MB setelah kompresi aplikasi; foto, PDF, DOC/DOCX, XLS/XLSX, TXT, atau CSV. ZIP, RAR, dan EXE ditolak.</div>}
+                              {canScoreUPT && !isAutoFilled && <div style={{ color: C.muted, fontSize: 12, lineHeight: 1.5 }}>Foto, PDF, DOC/DOCX, XLS/XLSX, TXT, atau CSV. ZIP, RAR, dan EXE ditolak.</div>}
                               </details>
                             </div>
                           </div>
@@ -762,7 +904,7 @@ export function MaturityAuditEditor({
                               transition: "background-color .15s ease, border-color .15s ease, box-shadow .15s ease"
                             }}>
                               <Icons.Upload />
-                              <span>{uploadingItems[eviItem.id] ? "⌛ Mengompres & Mengunggah..." : isUploaded ? "+ Tambah / Ganti File" : "Pilih File / Foto"}</span>
+                              <span>{uploadingItems[eviItem.id] ? "⌛ Mengunggah..." : isUploaded ? "+ Tambah / Ganti File" : "Pilih File / Foto"}</span>
                               <input
                                 type="file"
                                 accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
@@ -777,6 +919,7 @@ export function MaturityAuditEditor({
                                   onUploadErrorChange?.("");
                                   setUploadingItems(prev => ({ ...prev, [eviItem.id]: true }));
                                   try {
+                                    if (isSamplingAudit && autosaveMaturityDraft && !(await autosaveMaturityDraft())) throw new Error("Draft sampling belum tersimpan. Coba lagi sebelum mengunggah evidence.");
                                     const uploadedFiles = [];
                                     for (const f of files) {
                                       uploadedFiles.push(await uploadMaturityDriveEvidence({
@@ -786,11 +929,12 @@ export function MaturityAuditEditor({
                                           aspectTitle: activeAspect.title,
                                           itemId: eviItem.id,
                                           itemLabel: eviItem.label,
+                                          ...(isSamplingAudit && !isGlobalSamplingItem && activeSampleGroup && selectedSample ? { sampleGroupId: activeSampleGroup.id, sampleId: selectedSample.id, sampleLabel: selectedSample.label } : {}),
                                         })
                                       }));
                                     }
                                     const uploadLinkedAt = Date.now();
-                                    const newFiles = uploadedFiles.map(res => ({ ...res, linkedAt: res.linkedAt || uploadLinkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath }));
+                                    const newFiles = uploadedFiles.map(res => ({ ...res, linkedAt: res.linkedAt || uploadLinkedAt, aspectId: activeAspect.id, warehouseType: maturityWarehouseType, folderPath: targetFolderPath, ...(isSamplingAudit && !isGlobalSamplingItem && activeSampleGroup && selectedSample ? { sampleGroupId: activeSampleGroup.id, sampleId: selectedSample.id, sampleLabel: selectedSample.label } : {}) }));
                                     setMaturityAuditEvidence(previous => ({
                                       ...previous,
                                       [activeAspect.id]: [...(previous[activeAspect.id] || []), ...newFiles],
@@ -839,14 +983,14 @@ export function MaturityAuditEditor({
                               {effectiveItemReviewState === "REJECTED" && itemReview?.note && <span style={{ fontSize: 12, color: "#dc2626", wordBreak: "break-word" }}>Alasan: {itemReview.note}</span>}
                             </div>
                             {canReviewUIT && isUploaded && (
-                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} setAspectReview={(id, item, state, note) => setAspectReview(id, item, state, note, maturityWarehouseType)} disabled={maturityAuditSaving || maturityEvidenceLoading} isMobile={isMobile} state={effectiveItemReviewState} />
+                              <AspectReviewControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} sampleId={itemSampleId} setAspectReview={(id, item, state, note, sampleId) => setAspectReview(id, item, state, note, maturityWarehouseType, sampleId)} disabled={maturityAuditSaving || maturityEvidenceLoading} isMobile={isMobile} state={effectiveItemReviewState} />
                             )}
                           </div>
                         )}
 
                         {canScorePusat && isUploaded && !isAutoFilled && (
                           <div style={{ borderTop: `1px dashed ${C.border}`, paddingTop: 8 }}>
-                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} value={itemReview?.finalScore ?? null} setAspectItemScore={(id, item, score) => setAspectItemScore(id, item, score, maturityWarehouseType)} disabled={maturityAuditSaving || maturityEvidenceLoading} isMobile={isMobile} />
+                            <PusatScoreControls C={C} aspectId={activeAspect.id} itemId={eviItem.id} sampleId={itemSampleId} value={itemReview?.finalScore ?? null} setAspectItemScore={(id, item, score, sampleId) => setAspectItemScore(id, item, score, maturityWarehouseType, sampleId)} disabled={maturityAuditSaving || maturityEvidenceLoading} isMobile={isMobile} />
                           </div>
                         )}
 
@@ -1026,7 +1170,7 @@ export function MaturityAuditEditor({
                     {(() => {
                       const running = aiAnalysisRunning[activeAspect.id];
                       const rawCached = maturityAuditForm.aiAnalysis?.[activeAspect.id];
-                      const localChecklist = buildMaturityEvidenceChecklist(activeAspect, aspectFiles);
+                      const localChecklist = buildMaturityEvidenceChecklist(activeAspect, aspectFiles, { ...audit, samplingVersion: maturityAuditForm.samplingVersion, samplingGroups: maturityAuditForm.samplingGroups });
                       const localMissing = localChecklist.filter(item => !item.terunggah);
                       const localUploaded = localChecklist.filter(item => item.terunggah);
                       const localChecklistView = (

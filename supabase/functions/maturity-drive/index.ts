@@ -12,7 +12,6 @@ const SHEET_EXPORT_FOLDER_ID = "1wh7A1c96VYEjYJ10ZcCFwImyqJxPAThB";
 const GOOGLE_CLIENT_ID = Deno.env.get("GOOGLE_DRIVE_CLIENT_ID") ?? "";
 const GOOGLE_CLIENT_SECRET = Deno.env.get("GOOGLE_DRIVE_CLIENT_SECRET") ?? "";
 const GOOGLE_REFRESH_TOKEN = Deno.env.get("GOOGLE_DRIVE_REFRESH_TOKEN") ?? "";
-const MAX_UPLOAD_BYTES = 3 * 1024 * 1024;
 const MAX_FORM5S_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_EXPORT_BYTES = 25 * 1024 * 1024;
 const FORBIDDEN_MIME = new Set([
@@ -82,12 +81,45 @@ function periodFromKey(value?: unknown) {
   if (!match) return null;
   return periodFor(Date.UTC(Number(match[1]), Number(match[2]) - 1, 15));
 }
+function samplingMetadata(body: any, audit: any) {
+  const sampleId = text(body.sampleId, 80);
+  const sampleGroup = text(body.sampleGroup ?? body.sampleGroupId, 80);
+  const sampleLabel = text(body.sampleLabel, 160);
+  const supplementary = body.isSupplementary === true || body.isSupplementary === "true" || body.supplementary === true || body.supplementary === "true";
+  const supplementaryFolderId = text(body.supplementaryFolderId ?? body.extraFolderId, 120);
+  const supplementaryFolderName = text(body.supplementaryFolderName ?? body.extraFolderLabel, 160);
+  const auditData = parseJson(audit?.data, {});
+  const samplingEnabled = auditData?.samplingEnabled === true || auditData?.samplingVersion === 1 || body.samplingEnabled === true || body.samplingEnabled === "true" || Number(body.samplingVersion) === 1;
+  if (!sampleId && !sampleGroup && !sampleLabel && !supplementary && !supplementaryFolderId && !supplementaryFolderName) return null;
+  if (!samplingEnabled) throw Object.assign(new Error("Audit lama tidak mendukung metadata sampel. Buat audit baru dengan samplingEnabled."), { status: 409 });
+  if (supplementary) {
+    if (sampleId || sampleGroup || sampleLabel) throw Object.assign(new Error("Folder pelengkap tidak boleh memiliki metadata sampel."), { status: 400 });
+    if (!supplementaryFolderId || !supplementaryFolderName) throw Object.assign(new Error("supplementaryFolderId dan supplementaryFolderName wajib diisi."), { status: 400 });
+    if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(supplementaryFolderId)) throw Object.assign(new Error("ID folder pelengkap tidak valid."), { status: 400 });
+    const configuredFolders = auditData?.supplementaryFolders;
+    if (configuredFolders && typeof configuredFolders === "object") {
+      const known = Object.values(configuredFolders).flatMap(value => Array.isArray(value) ? value : []);
+      if (known.length && !known.some(folder => String(folder?.id || "") === supplementaryFolderId)) throw Object.assign(new Error("Folder pelengkap tidak terdaftar pada audit."), { status: 400 });
+    }
+    return { isSupplementary: true, supplementaryFolderId, supplementaryFolderName };
+  }
+  if (!sampleId || !sampleGroup || !sampleLabel) throw Object.assign(new Error("sampleId, sampleGroup, dan sampleLabel wajib diisi bersama."), { status: 400 });
+  if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(sampleId) || !/^[A-Za-z0-9._-]{1,80}$/.test(sampleGroup)) throw Object.assign(new Error("ID atau grup sampel tidak valid."), { status: 400 });
+  const configuredGroup = auditData?.samplingGroups?.[sampleGroup];
+  if (configuredGroup) {
+    const knownSample = Array.isArray(configuredGroup.samples) && configuredGroup.samples.some(sample => String(sample?.id || "") === sampleId);
+    if (configuredGroup.samples?.length && !knownSample) throw Object.assign(new Error("ID sampel tidak terdaftar pada grup audit."), { status: 400 });
+  } else if (auditData?.samplingGroups && typeof auditData.samplingGroups === "object") {
+    throw Object.assign(new Error("Grup sampel tidak terdaftar pada audit."), { status: 400 });
+  }
+  return { isSupplementary: false, sampleId, sampleGroup, sampleLabel };
+}
 function fileAllowed(file: File) {
   const mime = text(file.type, 120).toLowerCase();
   if (FORBIDDEN_MIME.has(mime) || FORBIDDEN_EXT.test(file.name || "")) return false;
   const image = mime.startsWith("image/") || IMAGE_EXT.test(file.name || "");
   const extensionOk = ALLOWED_EXT.test(file.name || "");
-  return file.size > 0 && file.size <= MAX_UPLOAD_BYTES && (image || ALLOWED_MIME.has(mime) || extensionOk);
+  return file.size > 0 && (image || ALLOWED_MIME.has(mime) || extensionOk);
 }
 function fileMimeType(file: File) {
   const mime = text(file.type, 120).toLowerCase();
@@ -169,11 +201,20 @@ function assertMutableAudit(audit: any) {
 async function resolveAuditContext(body: any, ctx: any, { createDraft = false } = {}) {
   const auditId = text(body.auditId, 100);
   if (!auditId) throw new Error("auditId wajib diisi.");
-  const { data: existing, error } = await admin.from("maturity_audits").select("id,upt,upt_id,status,created_at,period_key,score,created_by,updated_by").eq("id", auditId).maybeSingle();
+  const { data: existing, error } = await admin.from("maturity_audits").select("id,upt,upt_id,status,created_at,period_key,score,created_by,updated_by,data").eq("id", auditId).maybeSingle();
   if (error) throw new Error(`Audit Maturity tidak dapat dibaca: ${error.message}`);
   if (existing) {
     const upt = await findUptById(existing.upt_id);
     if (body.upt && text(body.upt) !== existing.upt) throw Object.assign(new Error("UPT request tidak cocok dengan audit canonical."), { status: 409 });
+    if (body.samplingEnabled === true || body.samplingEnabled === "true" || Number(body.samplingVersion) === 1) {
+      const currentData = parseJson(existing.data, {});
+      if (currentData.samplingEnabled !== true || currentData.samplingVersion !== 1) {
+        const nextData = { ...currentData, samplingEnabled: true, samplingVersion: 1 };
+        const { error: markerError } = await admin.from("maturity_audits").update({ data: nextData }).eq("id", auditId);
+        if (markerError) throw new Error(`Penanda sampling audit tidak dapat disimpan: ${markerError.message}`);
+        existing.data = nextData;
+      }
+    }
     return { audit: existing, upt, isDraftStub: false };
   }
   if (!createDraft) throw Object.assign(new Error("Audit Maturity tidak ditemukan."), { status: 404 });
@@ -189,6 +230,12 @@ async function resolveAuditContext(body: any, ctx: any, { createDraft = false } 
   if (rpcError) throw Object.assign(new Error(rpcError.code === "23505" ? `UPT ini sudah memiliki audit Maturity untuk periode ${period.key}.` : `Draft audit tidak dapat dibuat: ${rpcError.message}`), { status: rpcError.code === "23505" ? 409 : 500 });
   const audit = rows?.[0];
   if (!audit) throw new Error("Draft audit tidak dapat dibuat.");
+  if (body.samplingEnabled === true || body.samplingEnabled === "true" || Number(body.samplingVersion) === 1) {
+    const nextData = { ...parseJson(audit.data, {}), samplingEnabled: true, samplingVersion: 1 };
+    const { error: markerError } = await admin.from("maturity_audits").update({ data: nextData }).eq("id", auditId);
+    if (markerError) throw new Error(`Penanda sampling audit tidak dapat disimpan: ${markerError.message}`);
+    audit.data = nextData;
+  }
   return { audit, upt, isDraftStub: true };
 }
 async function event(auditId: string, eventType: string, actorId: string, eventData: any) {
@@ -294,7 +341,9 @@ async function ensureTree(body: any) {
   const categoryId = text(body.categoryId, 100);
   const aspectId = text(body.aspectId, 100);
   const itemId = text(body.itemId, 160);
-  if (!auditId || !upt || !categoryId || !aspectId || !itemId) throw new Error("auditId, UPT, kategori, aspek, dan item wajib diisi.");
+  const sampleId = text(body.sampleId, 80);
+  const isSupplementary = body.isSupplementary === true || body.isSupplementary === "true";
+  if (!auditId || !upt || !categoryId || !aspectId || (!itemId && !isSupplementary)) throw new Error("auditId, UPT, kategori, aspek, dan item wajib diisi.");
   const period = periodFromKey(body.periodKey) || periodFor(body.auditCreatedAt);
   const base = `maturity-v1:${period.key}:${upt}`;
   const root = await ensureRoot();
@@ -303,11 +352,21 @@ async function ensureTree(body: any) {
   const uptFolder = await ensureFolder({ mappingKey: `${base}:upt`, name: safeName(upt, "UPT"), parentFolderId: periodFolder.drive_folder_id, periodKey: period.key, folderType: "UPT", parentMappingKey: periodFolder.mapping_key, metadata: { upt } });
   const categoryFolder = await ensureFolder({ mappingKey: `${base}:category:${categoryId}`, name: `${String(Math.max(1, Number(body.categoryOrder) || 1)).padStart(2, "0")} - ${safeName(body.categoryLabel, "Kategori")}`, parentFolderId: uptFolder.drive_folder_id, periodKey: period.key, folderType: "CATEGORY", parentMappingKey: uptFolder.mapping_key, metadata: { upt, categoryId, categoryLabel: text(body.categoryLabel, 160) } });
   const aspectFolder = await ensureFolder({ mappingKey: `${base}:aspect:${categoryId}:${aspectId}`, name: `${safeName(aspectId, "aspek")} - ${safeName(body.aspectTitle, "Aspek")}`, parentFolderId: categoryFolder.drive_folder_id, periodKey: period.key, folderType: "ASPECT", parentMappingKey: categoryFolder.mapping_key, metadata: { upt, categoryId, aspectId, aspectTitle: text(body.aspectTitle, 200) } });
-  const itemFolder = await ensureFolder({ mappingKey: `${base}:item:${categoryId}:${aspectId}:${itemId}`, name: `${safeName(itemId, "item")} - ${safeName(body.itemLabel, "Evidence")}`, parentFolderId: aspectFolder.drive_folder_id, periodKey: period.key, folderType: "ITEM", parentMappingKey: aspectFolder.mapping_key, metadata: { upt, categoryId, categoryLabel: text(body.categoryLabel, 160), aspectId, aspectTitle: text(body.aspectTitle, 200), itemId, itemLabel: text(body.itemLabel, 240) } });
-  return { period, root, periodFolder, uptFolder, categoryFolder, aspectFolder, itemFolder };
+  let targetParent = aspectFolder;
+  let sampleFolder = null;
+  if (sampleId) {
+    const sampleGroup = text(body.sampleGroup, 80);
+    sampleFolder = await ensureFolder({ mappingKey: `${base}:sample:${categoryId}:${aspectId}:${sampleGroup}:${sampleId}`, name: `${safeName(sampleId, "sample")} - ${safeName(body.sampleLabel, "Sampel")}`, parentFolderId: aspectFolder.drive_folder_id, periodKey: period.key, folderType: "SAMPLE", parentMappingKey: aspectFolder.mapping_key, metadata: { upt, categoryId, categoryLabel: text(body.categoryLabel, 160), aspectId, aspectTitle: text(body.aspectTitle, 200), sampleId, sampleGroup, sampleLabel: text(body.sampleLabel, 160) } });
+    targetParent = sampleFolder;
+  }
+  const itemFolder = isSupplementary
+    ? await ensureFolder({ mappingKey: `${base}:supplementary:${categoryId}:${aspectId}:${text(body.supplementaryFolderId, 80)}`, name: safeName(body.supplementaryFolderName, "Pelengkap"), parentFolderId: aspectFolder.drive_folder_id, periodKey: period.key, folderType: "SUPPLEMENTARY", parentMappingKey: aspectFolder.mapping_key, metadata: { upt, categoryId, categoryLabel: text(body.categoryLabel, 160), aspectId, aspectTitle: text(body.aspectTitle, 200), supplementaryFolderId: text(body.supplementaryFolderId, 80), supplementaryFolderName: text(body.supplementaryFolderName, 160) } })
+    : await ensureFolder({ mappingKey: `${base}:item:${categoryId}:${aspectId}:${sampleId ? `${text(body.sampleGroup, 80)}:${sampleId}:` : ""}${itemId}`, name: `${safeName(itemId, "item")} - ${safeName(body.itemLabel, "Evidence")}`, parentFolderId: targetParent.drive_folder_id, periodKey: period.key, folderType: "ITEM", parentMappingKey: targetParent.mapping_key, metadata: { upt, categoryId, categoryLabel: text(body.categoryLabel, 160), aspectId, aspectTitle: text(body.aspectTitle, 200), itemId, itemLabel: text(body.itemLabel, 240), ...(sampleId ? { sampleId, sampleGroup: text(body.sampleGroup, 80), sampleLabel: text(body.sampleLabel, 160) } : {}) } });
+  return { period, root, periodFolder, uptFolder, categoryFolder, aspectFolder, sampleFolder, itemFolder };
 }
 function evidenceDto(row: any) {
-  return { id: row.id, itemId: row.item_id, itemLabel: row.item_label, aspectId: row.aspect_id, categoryId: row.category_id, category: row.category_label, upt: row.upt, name: row.file_name, size: Number(row.file_size || 0), mimeType: row.mime_type, driveFileId: row.drive_file_id, driveFolderId: row.drive_folder_id, storagePath: row.storage_path || null, linkedAt: row.linked_at, isDrive: true, syncedToDrive: true, source: row.source };
+  const supplementary = row.is_supplementary === true;
+  return { id: row.id, itemId: row.item_id, itemLabel: row.item_label, aspectId: row.aspect_id, categoryId: row.category_id, category: row.category_label, upt: row.upt, name: row.file_name, size: Number(row.file_size || 0), mimeType: row.mime_type, driveFileId: row.drive_file_id, driveFolderId: row.drive_folder_id, storagePath: row.storage_path || null, linkedAt: row.linked_at, isDrive: true, syncedToDrive: true, source: row.source, sampleId: row.sample_id || null, sampleLabel: row.sample_label || null, sampleGroup: row.sample_group || null, sampleGroupId: row.sample_group || null, isSupplementary: supplementary, supplementary, supplementaryFolderId: row.supplementary_folder_id || null, extraFolderId: row.supplementary_folder_id || null, supplementaryFolderName: row.supplementary_folder_name || null, extraFolderLabel: row.supplementary_folder_name || null };
 }
 async function backupDriveFileToStorage(driveFile: any, storagePath: string, mimeType = "application/octet-stream") {
   const response = await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?alt=media&supportsAllDrives=true`);
@@ -319,7 +378,7 @@ async function backupDriveFileToStorage(driveFile: any, storagePath: string, mim
 async function upsertEvidence(input: any) {
   const { data: existing } = await admin.from("maturity_audit_evidence").select("audit_id").eq("drive_file_id", input.driveFile.id).maybeSingle();
   if (existing && existing.audit_id !== input.auditId) throw Object.assign(new Error("Berkas sudah terhubung ke audit lain."), { status: 409 });
-  const row = { audit_id: input.auditId, aspect_id: input.aspectId, item_id: input.itemId, item_label: input.itemLabel || "", category_id: input.categoryId || "", category_label: input.categoryLabel || "", upt: input.upt.name, upt_id: input.upt.id, drive_file_id: input.driveFile.id, drive_folder_id: input.folderId || null, file_name: input.driveFile.name || "Berkas", mime_type: input.driveFile.mimeType || "application/octet-stream", file_size: Number(input.driveFile.size || 0), md5_checksum: input.driveFile.md5Checksum || null, source: input.source || "UPLOAD", assignment_state: "ACTIVE", linked_at: nowMs(), linked_by: input.actorId, unlinked_at: null, unlinked_by: null, ...(input.storagePath ? { storage_path: input.storagePath } : {}) };
+  const row = { audit_id: input.auditId, aspect_id: input.aspectId, item_id: input.itemId, item_label: input.itemLabel || "", category_id: input.categoryId || "", category_label: input.categoryLabel || "", upt: input.upt.name, upt_id: input.upt.id, drive_file_id: input.driveFile.id, drive_folder_id: input.folderId || null, file_name: input.driveFile.name || "Berkas", mime_type: input.driveFile.mimeType || "application/octet-stream", file_size: Number(input.driveFile.size || 0), md5_checksum: input.driveFile.md5Checksum || null, source: input.source || "UPLOAD", assignment_state: "ACTIVE", linked_at: nowMs(), linked_by: input.actorId, unlinked_at: null, unlinked_by: null, ...(input.sampleId ? { sample_id: input.sampleId, sample_label: input.sampleLabel, sample_group: input.sampleGroup } : {}), ...(input.isSupplementary ? { is_supplementary: true, supplementary_folder_id: input.supplementaryFolderId, supplementary_folder_name: input.supplementaryFolderName } : {}), ...(input.storagePath ? { storage_path: input.storagePath } : {}) };
   const { data, error } = await admin.from("maturity_audit_evidence").upsert(row, { onConflict: "drive_file_id" }).select().single();
   if (error) throw new Error(`Metadata evidence tidak tersimpan: ${error.message}`);
   return data;
@@ -357,7 +416,7 @@ async function uploadSheetExport(base64: string, fileName: string, folderId: str
 // jangan mencemari kotak unassigned (folder-nya sengaja di luar alur evidence).
 function folderSyncRole(folderType: string): "evidence" | "unassigned" | "skip" {
   if (folderType === "ITEM" || folderType === "ASPECT") return "evidence";
-  if (folderType === "FORM5S") return "skip";
+  if (folderType === "FORM5S" || folderType === "SUPPLEMENTARY") return "skip";
   return "unassigned"; // ROOT/PERIOD/UPT/CATEGORY
 }
 // Folder ASPEK (lihat ensureTree) cuma simpan {upt,categoryId,aspectId,aspectTitle},
@@ -368,6 +427,12 @@ function aspectEvidenceMeta(meta: any) {
     itemId: meta.itemId || `${meta.aspectId}::aspek`,
     itemLabel: meta.itemLabel || meta.aspectTitle || "Evidence Aspek",
     categoryLabel: meta.categoryLabel || "",
+    sampleId: meta.sampleId || null,
+    sampleLabel: meta.sampleLabel || null,
+    sampleGroup: meta.sampleGroup || null,
+    isSupplementary: meta.folderType === "SUPPLEMENTARY" || meta.isSupplementary === true,
+    supplementaryFolderId: meta.supplementaryFolderId || null,
+    supplementaryFolderName: meta.supplementaryFolderName || null,
   };
 }
 // Jalankan fn untuk tiap item, maksimal `limit` berjalan bersamaan.
@@ -477,9 +542,11 @@ async function syncAudit(body: any, ctx: any) {
     const { itemId, itemLabel, categoryLabel } = aspectEvidenceMeta(meta);
     for (const driveFile of files) {
       if (driveFile.mimeType === "application/vnd.google-apps.folder") continue;
-      const storagePath = storageKey(audit.period_key, upt.id, meta.categoryId, meta.aspectId, itemId, driveFile.name);
+      const storagePath = meta.sampleId
+        ? storageKey(audit.period_key, upt.id, meta.categoryId, meta.aspectId, meta.sampleGroup, meta.sampleId, itemId, driveFile.name)
+        : storageKey(audit.period_key, upt.id, meta.categoryId, meta.aspectId, itemId, driveFile.name);
       await backupDriveFileToStorage(driveFile, storagePath, driveFile.mimeType || "application/octet-stream");
-      await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId, itemLabel, categoryId: meta.categoryId, categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id, storagePath });
+      await upsertEvidence({ auditId, upt, aspectId: meta.aspectId, itemId, itemLabel, categoryId: meta.categoryId, categoryLabel, folderId: folder.drive_folder_id, driveFile, source: "SYNC", actorId: ctx.user.id, storagePath, sampleId: meta.sampleId, sampleLabel: meta.sampleLabel, sampleGroup: meta.sampleGroup });
       await admin.from("maturity_audit_drive_unassigned").update({ assignment_state: "ACTIVE", last_error: null, updated_at: nowMs() }).eq("audit_id", auditId).eq("drive_file_id", driveFile.id);
     }
   }
@@ -515,21 +582,36 @@ Deno.serve(async (req) => {
       const context = await resolveAuditContext(body, ctx, { createDraft: true });
       await assertUptAccess(ctx, context.upt, true);
       assertMutableAudit(context.audit);
-      const canonicalBody = { ...body, upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
+      const sample = samplingMetadata(body, context.audit);
+      const canonicalBody = { ...body, ...(sample || {}), upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
       const tree = await ensureTree(canonicalBody);
       await event(text(body.auditId), "TREE_ENSURED", ctx.user.id, { itemFolderId: tree.itemFolder.drive_folder_id, period: tree.period.key });
-      return json({ ok: true, folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id });
+      return json({ ok: true, folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.sampleLabel || body.supplementaryFolderName || body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id, sampleId: sample?.sampleId || null, isSupplementary: sample?.isSupplementary === true });
     }
-    if (action === "upload") {
-      const file = form?.get("file");
-      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung atau hasilnya melebihi 3 MB." }, 400);
+    if (action === "ensure-supplementary-folder") {
       const context = await resolveAuditContext(body, ctx, { createDraft: true });
       await assertUptAccess(ctx, context.upt, true);
       assertMutableAudit(context.audit);
-      const canonicalBody = { ...body, upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
+      const canonicalBody = { ...body, isSupplementary: true, upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
+      const sample = samplingMetadata(canonicalBody, context.audit);
+      const tree = await ensureTree({ ...canonicalBody, ...(sample || {}) });
+      return json({ ok: true, folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.supplementaryFolderName}`, targetFolderId: tree.itemFolder.drive_folder_id, supplementaryFolderId: sample.supplementaryFolderId, supplementaryFolderName: sample.supplementaryFolderName });
+    }
+    if (action === "upload") {
+      const file = form?.get("file");
+      if (!(file instanceof File) || !fileAllowed(file)) return json({ ok: false, error: "Format berkas tidak didukung. Gunakan foto, PDF, DOC/DOCX, XLS/XLSX, TXT, atau CSV; ZIP, RAR, dan EXE ditolak." }, 400);
+      const context = await resolveAuditContext(body, ctx, { createDraft: true });
+      await assertUptAccess(ctx, context.upt, true);
+      assertMutableAudit(context.audit);
+      const sample = samplingMetadata(body, context.audit);
+      const canonicalBody = { ...body, ...(sample || {}), upt: context.upt.name, periodKey: context.audit?.period_key, auditCreatedAt: context.audit?.created_at || body.auditCreatedAt };
       const tree = await ensureTree(canonicalBody);
       const driveFile = await uploadDriveFile(file, tree.itemFolder.drive_folder_id, tree.itemFolder.mapping_key);
-      const storagePath = storageKey(tree.period.key, context.upt.name, text(body.categoryId), text(body.aspectId), text(body.itemId), file.name);
+      const storagePath = sample?.isSupplementary
+        ? storageKey(tree.period.key, context.upt.id, text(body.categoryId), text(body.aspectId), "supplementary", sample.supplementaryFolderId, text(body.itemId) || "supplementary", file.name)
+        : sample?.sampleId
+          ? storageKey(tree.period.key, context.upt.id, text(body.categoryId), text(body.aspectId), sample.sampleGroup, sample.sampleId, text(body.itemId) || "supplementary", file.name)
+        : storageKey(tree.period.key, context.upt.id, text(body.categoryId), text(body.aspectId), text(body.itemId) || "supplementary", file.name);
       try {
         const { error: storageError } = await admin.storage.from("maturity-evidence").upload(storagePath, file, { contentType: fileMimeType(file), upsert: true });
         if (storageError) throw storageError;
@@ -537,7 +619,14 @@ Deno.serve(async (req) => {
         await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch((cleanupError) => console.warn("Cleanup Drive gagal setelah backup self-host gagal:", cleanupError));
         throw new Error(`Backup self-host evidence wajib gagal: ${storageError instanceof Error ? storageError.message : "Storage upload gagal."}`);
       }
-      const row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId), itemLabel: text(body.itemLabel), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id, storagePath });
+      let row;
+      try {
+        row = await upsertEvidence({ auditId: text(body.auditId), upt: context.upt, aspectId: text(body.aspectId), itemId: text(body.itemId) || `${text(body.aspectId)}::supplementary`, itemLabel: text(body.itemLabel) || text(body.supplementaryFolderName), categoryId: text(body.categoryId), categoryLabel: text(body.categoryLabel), folderId: tree.itemFolder.drive_folder_id, driveFile, source: "UPLOAD", actorId: ctx.user.id, storagePath, ...(sample || {}) });
+      } catch (metadataError) {
+        await admin.storage.from("maturity-evidence").remove([storagePath]).catch(() => {});
+        await driveFetch(`/files/${encodeURIComponent(driveFile.id)}?supportsAllDrives=true`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trashed: true }) }).catch(() => {});
+        throw metadataError;
+      }
       await event(text(body.auditId), "EVIDENCE_UPLOADED", ctx.user.id, { evidenceId: row.id, driveFileId: driveFile.id, itemId: body.itemId });
       return json({ ok: true, evidence: evidenceDto(row), folderPath: `${tree.period.label}/${context.upt.name}/${body.categoryLabel}/${body.aspectId}/${body.itemLabel}`, targetFolderId: tree.itemFolder.drive_folder_id });
     }

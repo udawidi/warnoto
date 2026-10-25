@@ -848,3 +848,35 @@ for (const aspect of AUDIT_ASPECTS) {
     }
   }
 }
+
+// New audits opt into this structure explicitly with `samplingEnabled: true`.
+// Audits without the marker keep the legacy single-folder evidence rules.
+export const MATURITY_SAMPLE_RULES = Object.freeze({
+  "1.2": { group: "1.2-1.5", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+  "1.3": { group: "1.2-1.5", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+  "1.4": { group: "1.2-1.5", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+  "1.5": { group: "1.2-1.5", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+  "1.6": { group: "1.6-1.7", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+  "1.7": { group: "1.6-1.7", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+  "1.9": { group: "1.9-1.10", minimum: 3, sampledItemIds: "*", globalItemIds: [] },
+  "1.10": { group: "1.9-1.10", minimum: 3, sampledItemIds: "*", globalItemIds: [] },
+  "3.5": { group: "3.5", minimum: 3, sampledItemIds: "*", globalItemIds: [] },
+  "3.6": { group: "3.6", minimum: 3, sampledItemIds: ["cls_sampling"], globalItemIds: ["cls_cluster_standby", "cls_cluster_perbaikan", "cls_cluster_garansi_asuransi", "cls_cluster_usul_hapus", "cls_foto_penyimpanan"] },
+  "5.1": {
+    groups: [
+      { group: "5.1-persediaan", minimum: 3, sampledItemIds: ["it_tableau_persediaan", "it_foto_fisik_material"] },
+      { group: "5.1-cadang", minimum: 3, sampledItemIds: ["it_tableau_cadang", "it_foto_fisik_material"] },
+    ],
+    globalItemIds: ["it_ams_pdf"],
+  },
+  "5.4": { group: "5.4", minimum: 2, sampledItemIds: "*", globalItemIds: [] },
+});
+
+for (const aspect of AUDIT_ASPECTS) {
+  const rule = MATURITY_SAMPLE_RULES[aspect.id];
+  if (rule) aspect.sampling = rule;
+}
+
+export function maturitySamplingRuleForAspect(aspectId) {
+  return MATURITY_SAMPLE_RULES[String(aspectId || "")] || null;
+}

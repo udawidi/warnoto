@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const schema = fs.readFileSync(path.join(root, "supabase/schema.sql"), "utf8");
+const maturitySamplingMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261025_maturity_sampling_evidence.sql"), "utf8");
 const docker = process.env.SCHEMA_BOOTSTRAP_DOCKER || "docker";
 const image = process.env.SCHEMA_BOOTSTRAP_IMAGE || "pgvector/pgvector:pg16";
 const dockerHost = process.env.SCHEMA_BOOTSTRAP_DOCKER_HOST || "";
@@ -120,6 +121,11 @@ async function main() {
     }
     await psql(schema);
     await psql(schema);
+    await psql(maturitySamplingMigration);
+    await psql(maturitySamplingMigration);
+    assert.equal(await scalar("select string_agg(att.attname, ',' order by key.ordinality) from pg_constraint con join unnest(con.conkey) with ordinality key(attnum, ordinality) on true join pg_attribute att on att.attrelid=con.conrelid and att.attnum=key.attnum where con.conrelid='public.maturity_aspect_reviews'::regclass and con.contype='p';"), "audit_id,aspect_id,item_id,sample_id");
+    assert.equal(await scalar("select count(*) from information_schema.columns where table_schema='public' and table_name='maturity_audit_evidence' and column_name in ('sample_id','sample_label','sample_group','supplementary_folder_id','supplementary_folder_name','is_supplementary');"), "6");
+    assert.equal(await scalar("select position('FORM5S' in pg_get_constraintdef(oid)) > 0 from pg_constraint where conrelid='public.maturity_audit_drive_folders'::regclass and conname='maturity_audit_drive_folders_folder_type_check';"), "t");
     await assert.rejects(
       () => psql("select public.mtu_khs_apply_tug3_receipt('missing', 'bootstrap-negative');"),
       /MTU_RECEIPT_FORBIDDEN/,
@@ -180,7 +186,7 @@ async function main() {
       ["mtu_khs_record_events", "MTU KHS events scoped"], ["mtu_khs_record_evidence", "MTU KHS evidence scoped"], ["mtu_khs_transfer_requests", "MTU KHS transfers scoped"],
     ]) assert.equal(await scalar(`select count(*) from pg_policies where schemaname='public' and tablename='${table}' and policyname='${policy}';`), "1", `${table}.${policy}`);
     assert.equal(await scalar("select to_regclass('public.idx_mara_catalog_resolver_code') is not null;"), "t");
-    console.log("Schema bootstrap rehearsal passed: full snapshot applied twice with real Auth/Storage contracts and pgvector.");
+    console.log("Schema bootstrap rehearsal passed: full snapshot and maturity sampling migration applied twice with real Auth/Storage contracts and pgvector.");
   } finally {
     if (started) await runDocker(["rm", "-f", container]).catch(() => {});
   }
