@@ -749,6 +749,7 @@ export function useTugTransactions({
         approvedByAsman: null, approvedAtAsman: null,
         rejectedBy: null, rejectedAt: null, rejectReason: null,
         createdBy: replacedDraft3?.createdBy ?? currentUser.id, createdAt: replacedDraft3?.createdAt ?? Date.now(),
+        canonical3: true,
       };
       const newTxns3 = replaceDraftId ? txns.map(t => t.id === replaceDraftId ? nt3 : t) : [...txns, nt3];
       // Draft/edit-in-place tidak menambah nomor urut dokumen — nomor baru diberi saat
@@ -810,6 +811,7 @@ export function useTugTransactions({
       uptId: formData.uptId || currentUser?.uptId || currentUserUptId || "",
       status: isDraft10 ? "DRAFT" : "PENDING",
       canonical: !!canonicalSubmission && !canonicalSubmission.unavailable,
+      canonical10: true,
       canonicalId: canonicalSubmission?.id || null,
       canonicalVersion: canonicalSubmission?.version || null,
       identitySnapshot: canonicalSubmission?.identitySnapshot || null,

@@ -405,6 +405,15 @@ export function dedupeById(arr) {
   return { list, removed };
 }
 
+// Merge a server refresh without re-showing stale canonical rows from local state.
+export function mergeServerRowsById(localRows = [], serverRows = [], canonicalFlag) {
+  const serverIds = new Set((serverRows || []).map(row => row?.id).filter(Boolean));
+  return [
+    ...(localRows || []).filter(row => !row?.[canonicalFlag] && !serverIds.has(row?.id)),
+    ...(serverRows || []),
+  ];
+}
+
 // ─── MIGRATION: convert legacy flat-stock records (pre-master-data) ───
 // into the new {katalog, lokasi, stock} structure. Safe to run on data
 // that's already in the new shape (returns it unchanged via a marker).

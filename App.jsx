@@ -15,7 +15,7 @@ import { normalizeKatalogCode, canonicalKatalogCode } from "./src/lib/normalizeK
 import { expandMonthlySeriesFromMap, tsbMonthlyForecast } from "./src/lib/tsbForecast.js";
 import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty, UPT_MAP_COLOR } from "./src/theme.js";
-import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, migrateLegacyStocks } from "./src/lib/utils.js";
+import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, mergeServerRowsById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
 import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation, scopeKartuGantungData, resolveKartuGantungUptId, resolveKartuGantungOwner } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
@@ -2523,15 +2523,15 @@ export default function PLNWarehouse() {
     let alive = true;
     loadCanonicalTugTransactions().then(res => {
       if (!alive || res.unavailable) return;
-      setTxns(prev => [...prev.filter(t => !t.canonical), ...res.rows]);
+      setTxns(prev => mergeServerRowsById(prev, res.rows, "canonical"));
     }).catch(err => console.warn("Refresh TUG canonical gagal saat buka tab Approval.", err));
     loadTug3Transactions().then(res => {
       if (!alive || res.unavailable) return;
-      setTxns(prev => [...prev.filter(t => !t.canonical3), ...res.rows]);
+      setTxns(prev => mergeServerRowsById(prev, res.rows, "canonical3"));
     }).catch(err => console.warn("Refresh TUG-3 gagal saat buka tab Approval.", err));
     loadTug10Transactions().then(res => {
       if (!alive || res.unavailable) return;
-      setTxns(prev => [...prev.filter(t => !t.canonical10), ...res.rows]);
+      setTxns(prev => mergeServerRowsById(prev, res.rows, "canonical10"));
     }).catch(err => console.warn("Refresh TUG-10 gagal saat buka tab Approval.", err));
     loadTugWorkflowTransactions().then(res => {
       if (!alive || res.unavailable) return;

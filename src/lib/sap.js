@@ -518,7 +518,7 @@ export function buildKartuGantungHistory(katalog, txns, stocks, lokasiList, subG
         const isMatch = si.katalogMode==="existing" ? si.katalogId===katalogId : si.namaBaru===katalog.name;
         if (isMatch) {
           const lok = (lokasiList||[]).find(l=>l.id===t.lokasiTujuanId);
-          events.push({ docType: "TUG10", tgl: t.approvedAt||t.createdAt, noBon: t.docNumbers?.tug10, masuk:si.qty, keluar:0, rak: lok?.kode||"-", subGudang: resolveSubGudang(lok), catatan: t.namaPekerjaan||"-" });
+          events.push({ docType: "TUG10", tgl: t.tanggalPenerimaan||t.approvedAt||t.createdAt, noBon: t.docNumbers?.tug10, masuk:si.qty, keluar:0, rak: lok?.kode||"-", subGudang: resolveSubGudang(lok), catatan: t.namaPekerjaan||"-" });
         }
       });
     } else if (t.docType === "TUG3" && t.stage === "APPROVED") {
