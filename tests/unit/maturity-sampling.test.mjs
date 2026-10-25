@@ -79,3 +79,16 @@ test("review gate checks the sample review key for each uploaded sample", () => 
   assert.equal(result.allItemsChecked, true);
   assert.equal(result.allItemsScored, true);
 });
+
+test("activating sampling keeps old files but does not treat them as sampled evidence", () => {
+  const target = aspect("1.2");
+  const oldFiles = target.requiredEvidence.map(item => ({ itemId: item.id }));
+  const audit = { samplingVersion: 1, samplingGroups: { "1.2-1.5": {
+    id: "1.2-1.5", samples: [{ id: "material-a", label: "Material A" }, { id: "material-b", label: "Material B" }],
+  } } };
+  assert.equal(maturitySampleCompleteness(target, oldFiles, {}).complete, true);
+  const afterActivation = maturitySampleCompleteness(target, oldFiles, audit);
+  assert.equal(afterActivation.complete, false);
+  assert.ok(afterActivation.missing.some(gap => gap.sampleId === "material-a"));
+  assert.ok(afterActivation.missing.some(gap => gap.sampleId === "material-b"));
+});

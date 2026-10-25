@@ -57,7 +57,7 @@ export function MaturityDashboardTab({
   activeAspectId, setActiveAspectId,
   aspectPage, setAspectPage,
   maturityAuditSaving,
-  saveMaturityAudit, autosaveMaturityDraft, maturityDraftSavedAt, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet, exportMaturityAuditPptx,
+  saveMaturityAudit, autosaveMaturityDraft, activateMaturitySampling, maturityDraftSavedAt, deleteMaturityAudit, createMaturityAudit, openMaturityAudit, exportMaturityAuditExcel, exportMaturityGoogleSheet, exportMaturityAuditPptx,
   calculateItemLevel, calcMaturityScore,
   saveMaturityTarget,
   gudangList, askConfirmDelete,
@@ -777,6 +777,7 @@ export function MaturityDashboardTab({
                         setAspectPage={setAspectPage}
                         saveMaturityAudit={saveMaturityAudit}
                         autosaveMaturityDraft={autosaveMaturityDraft}
+                        activateMaturitySampling={activateMaturitySampling}
                         maturityDraftSavedAt={maturityDraftSavedAt}
                         deleteMaturityAudit={deleteMaturityAudit}
                         maturityAuditSaving={maturityAuditSaving}

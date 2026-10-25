@@ -759,6 +759,71 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
       }
     }
   }
+  async function activateMaturitySampling() {
+    const audit = maturityAuditModal;
+    const status = audit?.status || "DRAFT";
+    if (!audit?.id || audit.isNew || !["DRAFT", "SELF_ASSESSMENT", "REVISION"].includes(status)) {
+      showToast("Sampling material hanya dapat diaktifkan pada audit UPT yang masih editable.", "error");
+      return false;
+    }
+    if (!hasRole(currentUser, "ADMIN", "TL")) {
+      showToast("Hanya Admin Gudang / TL Logistik yang boleh mengaktifkan sampling material.", "error");
+      return false;
+    }
+    if (maturityAuditFormRef.current?._maturityEvidenceLoading || autosaveInFlight.current) {
+      showToast("Tunggu proses penyimpanan evidence selesai, lalu coba lagi.", "error");
+      return false;
+    }
+    const form = maturityAuditFormRef.current;
+    if (form.samplingVersion === 1) return true;
+    const samplingGroups = createMaturitySamplingGroups();
+    const warehouseAssessments = assessmentsWithActive(form, maturityAuditEvidenceRef.current, maturityWarehouseTypeRef.current);
+    const scoreResult = calcMaturityScore(warehouseAssessments);
+    const { isNew: _isNew, ...auditData } = audit;
+    const createdAt = auditData.createdAt || Date.now();
+    const createdDate = new Date(createdAt);
+    const periodKey = auditData.periodKey || `${createdDate.getFullYear()}-${String(createdDate.getMonth() + 1).padStart(2, "0")}`;
+    const uptName = auditData.upt || selectedMaturityUpt || "UPT Surabaya";
+    const uptId = auditData.uptId || uptIdByNama(uptName) || null;
+    const entry = {
+      ...auditData,
+      id: audit.id,
+      upt: uptName,
+      uptId,
+      status,
+      level: scoreResult.level,
+      score: Number(scoreResult.total.toFixed(2)),
+      periodKey,
+      formatVersion: 2,
+      samplingVersion: 1,
+      samplingGroups,
+      supplementaryFolders: form.supplementaryFolders || {},
+      warehouseAssessments,
+      aspekScores: warehouseAssessments.PERSEDIAAN.aspekScores,
+      evidence: warehouseAssessments.PERSEDIAAN.evidence,
+      catatanUPT: form.catatanUPT,
+      catatanUIT: form.catatanUIT,
+      catatanPusat: form.catatanPusat,
+      fileUrl: form.fileUrl,
+      fileNama: form.fileNama,
+      aiAnalysis: warehouseAssessments.PERSEDIAAN.aiAnalysis || {},
+      createdAt,
+      createdBy: auditData.createdBy || currentUser.id,
+      updatedAt: Date.now(),
+      updatedBy: currentUser.id,
+      history: auditData.history || [],
+    };
+    const saved = await upsertMaturityAudit(entry);
+    if (!saved) {
+      showToast("Sampling material tidak tersimpan karena server tidak dapat dihubungi.", "error");
+      return false;
+    }
+    setMaturityAudits(current => current.map(item => item.id === entry.id ? entry : item));
+    setMaturityAuditModal(previous => previous?.id === entry.id ? { ...previous, ...entry, isNew: false } : previous);
+    setMaturityAuditForm(previous => ({ ...previous, samplingVersion: 1, samplingGroups }));
+    showToast("Sampling material aktif. Evidence lama tetap tersimpan sebagai evidence belum terpetakan.");
+    return true;
+  }
   async function deleteMaturityAudit(id) {
     if (!guardMaturityWrite("menghapus Audit Maturity")) return;
     const audit = maturityAudits.find(a => a.id === id);
@@ -998,6 +1063,7 @@ export function useMaturity({ currentUser, showToast, uptList, currentUserUptId,
     maturityAuditSaving, setMaturityAuditSaving,
     maturityDraftSavedAt,
     autosaveMaturityDraft,
+    activateMaturitySampling,
     maturityAuditEvidence, setMaturityAuditEvidence,
     MATURITY_SAMPLING_CONFIG, MATURITY_SAMPLING_GLOBAL_ITEMS,
     validateMaturitySampling,

@@ -303,6 +303,7 @@ export function MaturityAuditEditor({
   setAspectPage,
   saveMaturityAudit,
   autosaveMaturityDraft,
+  activateMaturitySampling,
   maturityDraftSavedAt,
   deleteMaturityAudit,
   maturityAuditSaving,
@@ -629,6 +630,9 @@ export function MaturityAuditEditor({
         {/* Aspect Detail / Upload Screen */}
         {activeAspectId && activeAspect ? (() => {
           const aspectFiles = maturityAuditEvidence[activeAspect.id] || [];
+          const legacyUnassignedFiles = isSamplingAudit
+            ? aspectFiles.filter(file => !file.sampleId && !file.sampleGroupId && !file.supplementary && activeAspect.requiredEvidence.some(item => canonicalMaturityItemId(file.itemId) === item.id && activeSamplingState.some(group => isMaturitySamplingItemForGroup(activeAspect.id, group, item.id))))
+            : [];
           const uploadedCount = countCompletedEvidenceParents(activeAspect, aspectFiles);
           const calculatedLevel = getScore(activeAspect, "pusat");
           const statusSkorUIT = maturityAuditForm.aspekScores[activeAspect.id]?.uit || 0;
@@ -691,6 +695,19 @@ export function MaturityAuditEditor({
                   </div>
                   {uploadError && <div role="alert" style={{ padding: "10px 12px", borderRadius: 10, background: "#fef2f2", border: "1px solid #fecaca", color: "#b91c1c", fontSize: 13, fontWeight: 700 }}>{uploadError}</div>}
 
+                  {!isSamplingAudit && canScoreUPT && audit.id && !audit.isNew && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "10px 12px", borderRadius: 10, border: `1px solid ${C.accent}35`, background: `${C.accent}08` }}>
+                      <span style={{ flex: 1, minWidth: 220, color: C.text, fontSize: 12, lineHeight: 1.45 }}>Audit lama belum memakai sampling material. Evidence yang sudah ada tetap aman dan tidak dihapus.</span>
+                      <button type="button" disabled={maturityEvidenceLoading || maturityAuditSaving || hasActiveUpload} onClick={() => (askConfirmDelete ? askConfirmDelete({
+                        title: "Aktifkan sampling material?",
+                        message: "Konversi berlaku untuk seluruh audit ini. Evidence lama tetap tersimpan, tetapi belum ditempatkan ke sampel dan belum dihitung sebagai evidence sampel. Setelah aktif, setiap sampel wajib diisi sesuai seluruh syarat evidence.",
+                        confirmLabel: "Aktifkan sampling",
+                        variant: "warning",
+                        onConfirm: () => activateMaturitySampling?.(),
+                      }) : activateMaturitySampling?.())} style={{ minHeight: 40, padding: "0 12px", borderRadius: 8, border: `1px solid ${C.accent}`, background: C.surface, color: C.accent, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Aktifkan sampling material</button>
+                    </div>
+                  )}
+
                   {activeAspect.requiredEvidence.some(item => item.alternativeGroup) && (
                     <div role="note" style={{ padding: "10px 12px", borderRadius: 10, background: `${C.accent}08`, border: `1px solid ${C.accent}22`, color: C.text, fontSize: 12, lineHeight: 1.5 }}>
                       <strong>Pilih satu jalur evidence.</strong> Pilihan A cukup satu dokumen. Pilihan B wajib melengkapi semua dokumen berlabel Pilihan B.
@@ -738,6 +755,17 @@ export function MaturityAuditEditor({
                           )}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {legacyUnassignedFiles.length > 0 && (
+                    <div role="note" style={{ display: "flex", flexDirection: "column", gap: 6, padding: 12, borderRadius: 12, border: `1px solid #f59e0b55`, background: "#fffbeb" }}>
+                      <strong style={{ color: "#92400e", fontSize: 12 }}>Evidence lama belum dipetakan ke sampel ({legacyUnassignedFiles.length})</strong>
+                      <span style={{ color: "#92400e", fontSize: 12, lineHeight: 1.4 }}>Berkas tetap dapat dibuka atau diunduh, tetapi tidak mengisi kewajiban evidence sampel.</span>
+                      {legacyUnassignedFiles.map(file => <div key={file.id || file.name} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 12 }}>
+                        <button type="button" onClick={() => file.id && setViewerFile({ id: file.id, name: file.name })} disabled={!file.id} style={{ border: 0, background: "transparent", color: C.accent, cursor: file.id ? "pointer" : "default", padding: 4, textAlign: "left", overflowWrap: "anywhere" }}>{file.name || "Evidence tanpa nama"}</button>
+                        {file.id && <button type="button" onClick={() => downloadMaturityDriveEvidence(file.id).catch(error => setUploadError(error?.message || "Unduh berkas gagal."))} style={{ border: `1px solid ${C.border}`, borderRadius: 7, background: C.surface, color: C.text, cursor: "pointer", minHeight: 30, padding: "0 8px" }}>Unduh</button>}
+                      </div>)}
                     </div>
                   )}
 

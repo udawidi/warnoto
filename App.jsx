@@ -415,6 +415,7 @@ export default function PLNWarehouse() {
     saveMaturityAudit,
     saveMaturityTarget,
     autosaveMaturityDraft,
+    activateMaturitySampling,
     maturityDraftSavedAt,
     exportMaturityAuditPptx,
     deleteMaturityAudit,
@@ -5084,6 +5085,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
               maturityAuditSaving={maturityAuditSaving}
               saveMaturityAudit={saveMaturityAudit}
               autosaveMaturityDraft={autosaveMaturityDraft}
+              activateMaturitySampling={activateMaturitySampling}
               maturityDraftSavedAt={maturityDraftSavedAt}
               deleteMaturityAudit={deleteMaturityAudit}
               createMaturityAudit={createMaturityAudit}
