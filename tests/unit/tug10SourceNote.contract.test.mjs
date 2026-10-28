@@ -33,3 +33,18 @@ test("legacy TUG-10 markers promote only after scoped approved transaction check
     assert.match(text, /status is distinct from 'APPROVED'/);
   }
 });
+
+test("legacy note scope resolves stock, data, or location UPT and fails closed", () => {
+  for (const text of [legacyMigration, schema]) {
+    assert.match(text, /row_upt/);
+    assert.match(text, /data_upt/);
+    assert.match(text, /lokasi_upt/);
+    assert.match(text, /public\.lokasi l left join public\.gudang g/);
+    assert.match(text, /stock_row\.lokasi_id.*stock_data->>'lokasiId'.*TUG10_NOTE_STOCK_SCOPE_CONFLICT/s);
+    assert.match(text, /coalesce\(nullif\(btrim\(stock_row\.lokasi_id\), ''\), nullif\(btrim\(stock_data->>'lokasiId'\), ''\)\)/);
+    assert.match(text, /TUG10_NOTE_STOCK_SCOPE_CONFLICT/);
+    assert.match(text, /TUG10_NOTE_STOCK_SCOPE_UNRESOLVED/);
+    assert.match(text, /effective_upt := coalesce\(row_upt, data_upt, lokasi_upt\)/);
+    assert.match(text, /txn_row\.upt_id is distinct from effective_upt/);
+  }
+});
