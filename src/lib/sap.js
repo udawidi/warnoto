@@ -429,9 +429,10 @@ export function sourceLotLabels(stock, txns = []) {
   const labels = [];
   if (base && (!baseIsTug10 || !returns.length)) labels.push(base);
   returns.forEach(item => {
-    const detail = [item.docNo, item.pekerjaan].filter(Boolean).join(" — ");
-    labels.push(`Retur TUG-10${detail ? ` — ${detail}` : ""}${item.note ? ` · Catatan: ${item.note}` : ""}`);
+    const detail = item.pekerjaan || "pekerjaan belum tercatat";
+    labels.push(`Retur TUG-10 — ${detail}${item.note ? ` · Catatan: ${item.note}` : ""}`);
   });
+  if (!returns.length && baseIsTug10) return ["Retur TUG-10 — pekerjaan belum tercatat"];
   return labels.length ? labels : [base || "Sumber belum dicatat"];
 }
 

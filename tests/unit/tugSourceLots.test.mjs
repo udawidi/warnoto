@@ -15,10 +15,10 @@ test("TUG-3 source key separates suppliers and reuses identical contract", () =>
 
 test("TUG-10 source key is item-specific", () => {
   assert.notEqual(sourceLotKey({ kind: "TUG10_RETURN", transactionId: "T10", itemIndex: 0 }), sourceLotKey({ kind: "TUG10_RETURN", transactionId: "T10", itemIndex: 1 }));
-  assert.equal(sourceLotLabel({ sourceLot: { key: "T10", kind: "TUG10_RETURN" } }), "Retur TUG-10");
+  assert.deepEqual(sourceLotLabels({ sourceLot: { key: "T10", kind: "TUG10_RETURN" } }), ["Retur TUG-10 — pekerjaan belum tercatat"]);
 });
 
-test("TUG-10 source label includes document and originating job", () => {
+test("TUG-10 source label includes originating job without document", () => {
   const stock = { sourceLot: { kind: "TUG10_RETURN" }, tug10ReturnEffects: {
     "TX-10:0": { qty: 2, sourceDocumentNo: "001.TUG-10/UPT", note: "cek ulang" },
   } };
@@ -26,7 +26,12 @@ test("TUG-10 source label includes document and originating job", () => {
   assert.deepEqual(tug10ReturnSources(stock, txns)[0], {
     key: "TX-10:0", qty: 2, docNo: "001.TUG-10/UPT", pekerjaan: "Pengembalian material GIS", note: "cek ulang",
   });
-  assert.deepEqual(sourceLotLabels(stock, txns), ["Retur TUG-10 — 001.TUG-10/UPT — Pengembalian material GIS · Catatan: cek ulang"]);
+  assert.deepEqual(sourceLotLabels(stock, txns), ["Retur TUG-10 — Pengembalian material GIS · Catatan: cek ulang"]);
+  const missingJob = sourceLotLabels({ sourceLot: { kind: "TUG10_RETURN" }, tug10ReturnEffects: {
+    "TX-11:0": { qty: 1, sourceDocumentNo: "002.TUG-10/UPT" },
+  } }, [{ id: "TX-11" }]);
+  assert.deepEqual(missingJob, ["Retur TUG-10 — pekerjaan belum tercatat"]);
+  assert.doesNotMatch(missingJob[0], /002\.TUG-10\/UPT/);
 });
 
 test("legacy TUG-10 marker resolves document and job without generic duplicate", () => {
@@ -39,7 +44,7 @@ test("legacy TUG-10 marker resolves document and job without generic duplicate",
     docNumbers: { tug10: "010.TUG-10/UPT-GRS" },
     namaPekerjaan: "Pengembalian material pekerjaan PHJ4JC",
   }]);
-  assert.deepEqual(labels, ["Retur TUG-10 — 010.TUG-10/UPT-GRS — Pengembalian material pekerjaan PHJ4JC"]);
+  assert.deepEqual(labels, ["Retur TUG-10 — Pengembalian material pekerjaan PHJ4JC"]);
 });
 
 test("merged TUG-3 stock keeps base source and adds each TUG-10 return", () => {
@@ -49,8 +54,8 @@ test("merged TUG-3 stock keeps base source and adds each TUG-10 return", () => {
   const labels = sourceLotLabels(stock, [{ id: "TX-A", keteranganUmum: "Pekerjaan A" }, { id: "TX-B", namaPekerjaan: "Pekerjaan B" }]);
   assert.equal(labels.length, 3);
   assert.match(labels[0], /PT A/);
-  assert.match(labels[1], /T10-A.*Pekerjaan A/);
-  assert.match(labels[2], /T10-B.*Pekerjaan B/);
+  assert.equal(labels[1], "Retur TUG-10 — Pekerjaan A");
+  assert.equal(labels[2], "Retur TUG-10 — Pekerjaan B");
 });
 
 test("legacy multi-source stocks are blocked and catalog totals aggregate lots", () => {

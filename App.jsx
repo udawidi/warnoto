@@ -5537,17 +5537,16 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:16}}>
                       <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Sumber Retur TUG-10</div>
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                        {tug10ReturnSources(st, txns).map(source => {
+                        {tug10ReturnSources(st, txns).map((source, sourceIndex) => {
                           const effectMap = st.tug10ReturnEffects || st.data?.tug10ReturnEffects || {};
                           const legacyMap = st._tug10Applied || st.data?._tug10Applied || {};
                           const editable = Object.prototype.hasOwnProperty.call(effectMap, source.key) || Object.prototype.hasOwnProperty.call(legacyMap, source.key);
                           const draftKey = `${st.id}:${source.key}`;
                           const draft = Object.prototype.hasOwnProperty.call(tug10NoteDrafts, draftKey) ? tug10NoteDrafts[draftKey] : source.note;
                           return <div key={source.key} style={{borderTop:`1px solid ${C.border}`,paddingTop:8}}>
-                            <div style={{fontSize:12,fontWeight:700}}>Retur TUG-10{source.docNo ? ` — ${source.docNo}` : ""}</div>
-                            {source.pekerjaan && <div style={{fontSize:12,color:C.muted,marginTop:2}}>Pekerjaan: {source.pekerjaan}</div>}
+                            <div style={{fontSize:12,fontWeight:700}}>Retur TUG-10 — {source.pekerjaan || "pekerjaan belum tercatat"}</div>
                             {editable && hasRole(currentUser, "TL", "SUPERADMIN") && <div style={{display:"flex",gap:6,marginTop:6}}>
-                              <input aria-label={`Catatan ${source.docNo || source.key}`} style={{...sty.input,flex:1,minWidth:0}} value={draft} maxLength={500} placeholder="Catatan sumber (opsional)" onChange={e=>setTug10NoteDrafts(prev=>({...prev,[draftKey]:e.target.value}))}/>
+                              <input aria-label={`Catatan ${source.pekerjaan || `pekerjaan belum tercatat ${sourceIndex + 1}`}`} style={{...sty.input,flex:1,minWidth:0}} value={draft} maxLength={500} placeholder="Catatan sumber (opsional)" onChange={e=>setTug10NoteDrafts(prev=>({...prev,[draftKey]:e.target.value}))}/>
                               <button type="button" style={sty.btn("primary","sm")} onClick={async()=>{ if (await saveTug10ReturnNote(st.id, source.key, draft)) setTug10NoteDrafts(prev=>{const next={...prev}; delete next[draftKey]; return next;}); }}>Simpan</button>
                             </div>}
                             {!editable && source.note && <div style={{fontSize:12,color:C.muted,marginTop:3}}>Catatan: {source.note}</div>}
