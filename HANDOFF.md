@@ -82,7 +82,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Sumber retur TUG-10 di Data Stok selesai lokal (2026-10-28, `87886a1`, belum push).** Daftar dan detail stok menampilkan nomor TUG-10 serta nama pekerjaan dari transaksi, termasuk beberapa retur pada stok gabungan tanpa mengubah sumber TUG-3/4. TL/SUPERADMIN dapat mengisi catatan per retur lewat RPC `update_tug10_return_note`; migrasi `20261028_tug10_return_source_note.sql` baru disiapkan, belum diterapkan ke production. Tes 646/646, build, dan diff-check lulus. Akses SSH dari proses Codex masih timeout lewat LAN dan Cloudflare Access, sehingga migrasi serta deploy tertunda.
+- **Sumber retur TUG-10 di Data Stok aktif di production (2026-10-28, `87886a1`, deploy `391cc99`).** Daftar dan detail stok menampilkan nomor TUG-10 serta nama pekerjaan dari transaksi, termasuk beberapa retur pada stok gabungan tanpa mengubah sumber TUG-3/4. TL/SUPERADMIN dapat mengisi catatan per retur lewat RPC `update_tug10_return_note`; migrasi `20261028_tug10_return_source_note.sql` diterapkan secara transaksional ke self-host dan fungsi terverifikasi. Main sudah di-push; bundle production berisi tampilan serta editor baru. Tes 646/646, build, dan diff-check lulus. Uji simpan catatan dengan akun TL nyata masih diperlukan.
 
 - **Perbaikan BA Non Stock (2026-10-28).** Edit draft menyimpan nilai terbaru pada identitas, material, dan foto; validasi pengajuan menyebut field yang kurang. Pratinjau/PDF memakai Satpam terpilih dan TL tunggal sesuai UPT, lalu snapshot resmi setelah approval. Test BA 13/13, E2E desktop dan ponsel 2/2, build, dan pemeriksaan localhost lulus. Audit baca-saja self-host: keenam UPT punya ADMIN/TL; UPT-BLI, UPT-MDN, dan UPT-MLG belum punya master Satpam sehingga belum dapat mengajukan BA sampai master per gudang diisi. Tidak ada perubahan skema atau data production.
 
@@ -698,7 +698,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-- Pulihkan akses SSH dari proses Codex ke `minipc-gudang-home` atau LAN, verifikasi target self-host, lalu terapkan hanya migrasi `20261028_tug10_return_source_note.sql` secara transaksional. Pastikan RPC tersedia, kemudian push commit `87886a1` ke `main`, verifikasi deploy Vercel, dan smoke Data Stok memakai akun TL untuk sumber pekerjaan serta catatan retur TUG-10.
+- Smoke Data Stok di production memakai akun TL: pastikan sumber retur menampilkan nomor TUG-10 dan nama pekerjaan yang benar, catatan per retur tersimpan setelah reload, serta sumber TUG-3/4 pada stok gabungan tetap utuh.
 
 - Setelah deploy Vercel, scan ulang katalog 3060016 di UPT Probolinggo dengan sesi bersih; pastikan stok dan total masuk sama-sama 21. Spot-check katalog lain di setiap UPT yang memiliki riwayat transaksi; saldo awal/migrasi ditampilkan terpisah dari total masuk.
 - Hapus draft uji `TEST-TUG5-20261020-verifikasi-draft` setelah konfirmasi penghapusan permanen. Jangan me-reload form pengguna yang masih terisi di tab semula. Saat ada TUG-5 operasional yang siap diajukan, uji submit dan approval akun Asman; pastikan anak UIT hanya satu dan Manager tidak menerima approval baru.
@@ -844,7 +844,7 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - Migrasi Non-SAP UPT Surabaya review-first: 40 baris audit (34 kuat, 5 lemah, 1 tanpa kandidat) via UI Opname Non-SAP.
 - i18n ditunda (tunggu arahan user).
 
-**Blocker:** Akses SSH dari proses Codex ke self-host masih timeout, sehingga migrasi catatan sumber TUG-10 dan deploy tertunda. Smoke akun nyata setelah deploy masih diperlukan untuk persistensi draft TUG, approval Stock Opname, alokasi stok lama, saldo per sumber, dan lifecycle MTU.
+**Blocker:** Tidak ada blocker teknis. Smoke akun nyata setelah deploy masih diperlukan untuk catatan sumber TUG-10, persistensi draft TUG, approval Stock Opname, alokasi stok lama, saldo per sumber, dan lifecycle MTU.
 
 ## Perintah verifikasi
 - `npm run dev` → port 3001 (akses via `localhost`)
