@@ -17,7 +17,7 @@ import { logAudit } from "./src/lib/audit.js";
 import { C as C_LIGHT, C_DARK, makeSty, UPT_MAP_COLOR } from "./src/theme.js";
 import { generateDocNumbers, generateReservasiDocNo, uid, fmtDate, fmtDateOnly, fmtRp, buildStockStats, formatStockStatsText, parseSAPRowsFromCSV, parseUsulanPencocokanXLSX, parseSAPRowsFromXLSX, parseIndoNumber, mapSAPRow, parseSAPFile, terbilangHari, enrichStock, enrichStocks, dedupeById, mergeServerRowsById, migrateLegacyStocks } from "./src/lib/utils.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG5ULTGHTML, buildTUG7HTML, downloadTUG5HTML, buildHeavyEquipmentLoanHTML, downloadHeavyEquipmentLoanHTML, buildBeritaAcaraHTML, downloadTUG7HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, buildTUG2FrontHTML } from "./src/lib/docBuilders.js";
-import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, isLegacySourceAllocation, scopeKartuGantungData, resolveKartuGantungUptId, resolveKartuGantungOwner } from "./src/lib/sap.js";
+import { normalizeSearchText, expandHaystackSynonyms, queryTokenGroups, applyMaraNameSearch, matchesMaterialSearch, matchesStockSearch, matchesKatalogSearch, totalQtyForKatalog, lokasiUsedCapacity, statusMaterialBadgeStyle, getSAPStatus, getSAPBadgeStyle, jenisBarangAccentColor, buildKartuGantungHistory, normalizeKatalog, extractKatalogIdFromScan, stockSapLabel, sapBadgeStyleForLabel, katalogSapLabel, sourceLotKey, sourceLotLabels, tug10ReturnSources, isLegacySourceAllocation, scopeKartuGantungData, resolveKartuGantungUptId, resolveKartuGantungOwner } from "./src/lib/sap.js";
 import { ROLES, hasRole, getUserUptScope, canAccessGudang, getScopeUptIds, inScopeUpt, bolehTulisKatalog, stripUptPrefix } from "./src/lib/roles.js";
 import { getVisibleGudangForInspection } from "./src/lib/inspectionScope.mjs";
 import { activePairedGudangRows, dropCachedGiRows } from "./src/lib/giWarehouse.js";
@@ -122,7 +122,7 @@ import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, primeStoc
 import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, newTugIdempotencyKey, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
-import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final, formatTugMaraError } from "./src/lib/tug10Sync.js";
+import { loadTug10Transactions, upsertTug10Transaction, approveTug10Final, updateTug10ReturnNote, formatTugMaraError } from "./src/lib/tug10Sync.js";
 import { loadTugWorkflowTransactions, mergeWorkflowServerWins, migrateLegacyWorkflowDrafts, isWorkflowDoc } from "./src/lib/tugWorkflowSync.js";
 import { loadBaNonStock, saveBaNonStockDraft as persistBaNonStockDraft, submitBaNonStock as persistBaNonStockSubmit, decideBaNonStock } from "./src/lib/baNonStockSync.js";
 import { BaNonStockReviewModal } from "./src/components/BaNonStockReviewModal.jsx";
@@ -657,6 +657,7 @@ export default function PLNWarehouse() {
   const stockDetailTriggerRef = useRef(null); // elemen pemicu, difokuskan balik saat modal detail ditutup
   const stockDetailModalRef = useRef(null);
   const [stockForm, setStockForm] = useState({});
+  const [tug10NoteDrafts, setTug10NoteDrafts] = useState({});
   const stockFormDirty = stockModal === "edit" && stockFormSnapshotRef.current
     ? JSON.stringify(stockFormSnapshotRef.current) !== JSON.stringify(stockForm)
     : false;
@@ -2781,6 +2782,18 @@ export default function PLNWarehouse() {
     if (fresh) setStocks(fresh);
     showToast(`Alokasi sumber selesai: ${(data?.lotIds||[]).length} lot dibuat.`);
     return true;
+  }
+  async function saveTug10ReturnNote(stockId, effectKey, note) {
+    if (!hasRole(currentUser, "TL", "SUPERADMIN")) { showToast("Hanya TL atau SUPERADMIN yang dapat mengubah catatan sumber.", "error"); return false; }
+    try {
+      const row = await updateTug10ReturnNote(stockId, effectKey, note);
+      setStocks(prev => prev.map(s => s.id === row.id ? { ...s, ...row } : s));
+      showToast("Catatan sumber TUG-10 tersimpan.");
+      return true;
+    } catch (error) {
+      showToast(`Catatan sumber gagal disimpan: ${error?.message || "server menolak"}`, "error");
+      return false;
+    }
   }
   // openAddStock (tombol "+ Tambah Data Stok") dihapus 2026-07-02 — kebijakan bisnis: semua
   // material masuk WAJIB lewat TUG (TUG-3/9/dst), tidak boleh input langsung ke Data Stok.
@@ -4953,7 +4966,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
             stockQuickFilter={stockQuickFilter} setStockQuickFilter={setStockQuickFilter}
             stockSort={stockSort} setStockSort={setStockSort}
             stockViewMode={stockViewMode} setStockViewMode={setStockViewMode} stockViewCount={viewStocks.length}
-            filteredStocks={filteredStocks} stocks={stocks} setStocks={setStocks}
+            filteredStocks={filteredStocks} stocks={stocks} setStocks={setStocks} txns={txns}
             photoSearchResults={photoSearchResults} setPhotoSearchResults={setPhotoSearchResults}
             photoSearchResultMode={photoSearchResultMode} photoSearchOcrText={photoSearchOcrText}
             enrichedStocks={scopedEnrichedStocks} pagedStocks={pagedStocks}
@@ -5520,6 +5533,28 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                     <div><b>Harga:</b> Rp {fmtNum(st.price)}</div>
                     <div className="stock-detail-keterangan" style={{gridColumn:"1/-1"}}><b>Keterangan Barang:</b> <span>{keteranganBarang}</span></div>
                   </div>
+                  {tug10ReturnSources(st, txns).length > 0 && (
+                    <div style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,marginBottom:16}}>
+                      <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:8}}>Sumber Retur TUG-10</div>
+                      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                        {tug10ReturnSources(st, txns).map(source => {
+                          const effectMap = st.tug10ReturnEffects || st.data?.tug10ReturnEffects || {};
+                          const editable = Object.prototype.hasOwnProperty.call(effectMap, source.key);
+                          const draftKey = `${st.id}:${source.key}`;
+                          const draft = Object.prototype.hasOwnProperty.call(tug10NoteDrafts, draftKey) ? tug10NoteDrafts[draftKey] : source.note;
+                          return <div key={source.key} style={{borderTop:`1px solid ${C.border}`,paddingTop:8}}>
+                            <div style={{fontSize:12,fontWeight:700}}>Retur TUG-10{source.docNo ? ` — ${source.docNo}` : ""}</div>
+                            {source.pekerjaan && <div style={{fontSize:12,color:C.muted,marginTop:2}}>Pekerjaan: {source.pekerjaan}</div>}
+                            {editable && hasRole(currentUser, "TL", "SUPERADMIN") && <div style={{display:"flex",gap:6,marginTop:6}}>
+                              <input aria-label={`Catatan ${source.docNo || source.key}`} style={{...sty.input,flex:1,minWidth:0}} value={draft} maxLength={500} placeholder="Catatan sumber (opsional)" onChange={e=>setTug10NoteDrafts(prev=>({...prev,[draftKey]:e.target.value}))}/>
+                              <button type="button" style={sty.btn("primary","sm")} onClick={async()=>{ if (await saveTug10ReturnNote(st.id, source.key, draft)) setTug10NoteDrafts(prev=>{const next={...prev}; delete next[draftKey]; return next;}); }}>Simpan</button>
+                            </div>}
+                            {!editable && source.note && <div style={{fontSize:12,color:C.muted,marginTop:3}}>Catatan: {source.note}</div>}
+                          </div>;
+                        })}
+                      </div>
+                    </div>
+                  )}
                   <div style={{fontSize:12,fontWeight:800,color:C.muted,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Lokasi & Stok</div>
                   <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr":"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:16,fontSize:12}}>
                     <div><b>Qty:</b> {fmtNum(st.qty)} {st.unit}</div>

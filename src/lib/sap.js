@@ -397,6 +397,44 @@ export function sourceLotLabel(stock) {
   return formatKontrakSumber(lot || refs, refs) || "Sumber belum dicatat";
 }
 
+// TUG-10 effects are stored on the stock row so merged stock keeps its
+// provenance. Resolve the human-readable job name from the already-loaded
+// transaction list; older effects fall back to their document number.
+export function tug10ReturnSources(stock, txns = []) {
+  const data = stock?.data && typeof stock.data === "object" ? stock.data : stock;
+  const effects = data?.tug10ReturnEffects && typeof data.tug10ReturnEffects === "object"
+    ? data.tug10ReturnEffects : {};
+  const legacy = data?._tug10Applied && typeof data._tug10Applied === "object" ? data._tug10Applied : {};
+  const keys = [...new Set([...Object.keys(effects), ...Object.keys(legacy)])];
+  return keys.map(effectKey => {
+    const effect = effects[effectKey] && typeof effects[effectKey] === "object" ? effects[effectKey] : {};
+    const split = String(effectKey).match(/^(.*):(\d+)$/);
+    const txn = split ? (txns || []).find(t => String(t?.id || "") === split[1]) : null;
+    const docNo = effect.sourceDocumentNo || txn?.docNumbers?.tug10 || txn?.docNumber || (split ? split[1] : effectKey);
+    const pekerjaan = effect.namaPekerjaan || txn?.namaPekerjaan || txn?.keteranganUmum || "";
+    return {
+      key: effectKey,
+      qty: Number(effect.qty ?? legacy[effectKey]) || 0,
+      docNo: String(docNo || "").trim(),
+      pekerjaan: String(pekerjaan || "").trim(),
+      note: String(effect.note || "").trim(),
+    };
+  });
+}
+
+export function sourceLotLabels(stock, txns = []) {
+  const base = sourceLotLabel(stock);
+  const returns = tug10ReturnSources(stock, txns);
+  const baseIsTug10 = getSourceLot(stock)?.kind === "TUG10_RETURN" || /^Retur TUG-10\b/i.test(base);
+  const labels = [];
+  if (base && (!baseIsTug10 || !returns.length)) labels.push(base);
+  returns.forEach(item => {
+    const detail = [item.docNo, item.pekerjaan].filter(Boolean).join(" — ");
+    labels.push(`Retur TUG-10${detail ? ` — ${detail}` : ""}${item.note ? ` · Catatan: ${item.note}` : ""}`);
+  });
+  return labels.length ? labels : [base || "Sumber belum dicatat"];
+}
+
 export function aggregateStocksByKatalog(stocks = []) {
   const map = new Map();
   stocks.forEach(stock => {

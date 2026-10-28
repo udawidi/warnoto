@@ -6,7 +6,7 @@ import { useState, useRef, useEffect } from "react";
 import { useHardwareScanner } from "../hooks/useHardwareScanner.js";
 import { JENIS_BARANG, STATUS_SAP_FILTER } from "../constants.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
-import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabel, isLegacySourceAllocation, legacySourceCandidates, resolveKartuGantungUptId, resolveKartuGantungOwner } from "../lib/sap.js";
+import { sapBadgeStyleForLabel, stockSapLabel, extractKatalogIdFromScan, sourceLotLabels, isLegacySourceAllocation, legacySourceCandidates, resolveKartuGantungUptId, resolveKartuGantungOwner } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { hasRole } from "../lib/roles.js";
 import { getLokasiPetaInfo, sortBlokOptions } from "../lib/masterSync.js";
@@ -26,7 +26,7 @@ export function DataStokTab({
   stockGudangSelect, setStockGudangSelect, stockBlokSelect, setStockBlokSelect,
   stockQuickFilter, setStockQuickFilter, stockSort, setStockSort,
   stockViewMode, setStockViewMode, stockViewCount,
-  filteredStocks, stocks, setStocks,
+  filteredStocks, stocks, setStocks, txns = [],
   photoSearchResults, setPhotoSearchResults, photoSearchResultMode, photoSearchOcrText,
   enrichedStocks, pagedStocks, kritisCount, tanpaLokasiCount,
   setStockDetailId,
@@ -46,6 +46,7 @@ export function DataStokTab({
   const searchInputRef = useRef(null);
   const stockGudangOptions = (stockVisibleGudangList || visibleGudangList || [])
     .filter(g => !stockUptFilter || (g.uptId || g.upt_id) === stockUptFilter);
+  const sourceLabelsFor = st => sourceLotLabels(st, txns);
 
   function openSourceSplit(st) {
     const candidates = legacySourceCandidates(st);
@@ -361,7 +362,7 @@ export function DataStokTab({
                         <td className="stock-mobile-summary" aria-label={`Ringkasan ${st.name}`}>
                           <div className="stock-mobile-summary__head"><strong>{st.name}</strong><span>{canonicalKatalogCode(st.katalog)||"-"}</span></div>
                           <div className="stock-mobile-summary__description">{st.keteranganBarang || "Keterangan barang belum diisi."}</div>
-                          {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:2}}>Sumber: {sourceLotLabel(st)}</div>}
+                          {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:2}}>Sumber: {sourceLabelsFor(st).map((label,i)=><div key={i}>{label}</div>)}</div>}
                           <div className="stock-mobile-summary__meta"><span><MapPin size={14} weight="bold" aria-hidden="true"/> {[gdg?.kode||gdg?.nama, lok?.kode||st.lokasi].filter(Boolean).join(" • ") || "Lokasi belum diisi"}</span><span className={isLow ? "is-critical" : "is-ok"}>{fmtNum(st.qty)} {st.unit} {st.jenisBarang==="Non-Stock" && <small style={{color:"#be185d",fontWeight:800}}>Non-Stock</small>}</span></div>
                           <div className="stock-mobile-summary__detail" aria-hidden="true">{isAgg ? "Lihat sebaran" : "Detail"} <CaretRight size={11} weight="bold" aria-hidden="true"/></div>
                         </td>
@@ -372,7 +373,7 @@ export function DataStokTab({
                             <span aria-hidden="true" style={{color:"#cbd5e1"}}>•</span>
                             <span style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:sapBs.fg,flexShrink:0}}/> {sapLabel}</span>
                           </div>
-                          {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:3}}>Sumber: {sourceLotLabel(st)}</div>}
+                          {!isAgg && <div style={{fontSize:11,color:C.muted,marginTop:3}}>Sumber: {sourceLabelsFor(st).map((label,i)=><div key={i}>{label}</div>)}</div>}
                           {(st.deletePending || st.editPending) && (
                             <div title={[st.deletePending&&"Menunggu approval Hapus", st.editPending&&"Ada perubahan menunggu approval TL"].filter(Boolean).join(" • ")}
                               style={{display:"inline-flex",alignItems:"center",gap:4,marginTop:4,padding:"2px 7px",borderRadius: 10,fontSize:12,fontWeight:700,background:"#fffbeb",color:"#a16207"}}>

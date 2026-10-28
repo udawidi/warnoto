@@ -1,6 +1,6 @@
 {
   "name": "warnoto-pln",
-  "version": "2.2.20",
+  "version": "2.2.21",
   "description": "WARNOTO - Warehouse Intelligent Control for Transmission Operation - PT PLN UPT Surabaya",
   "private": true,
   "engines": {

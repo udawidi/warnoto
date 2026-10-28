@@ -86,6 +86,19 @@ export async function approveTug10Final(txnId, idempotencyKey = newTugIdempotenc
   return data;
 }
 
+export async function updateTug10ReturnNote(stockId, effectKey, note = "") {
+  if (!supabase) throw new Error("Layanan database belum tersedia.");
+  if (!stockId || !effectKey) throw new Error("Sumber TUG-10 tidak lengkap.");
+  const { data, error } = await supabase.rpc("update_tug10_return_note", {
+    p_stock_id: String(stockId),
+    p_effect_key: String(effectKey),
+    p_note: String(note || ""),
+  });
+  if (error) throw error;
+  if (!data?.id) throw new Error("Respons penyimpanan catatan TUG-10 tidak lengkap.");
+  return data;
+}
+
 export async function deleteTug10Transaction(id) {
   if (!supabase || !id) return false;
   const { data, error } = await supabase.from("tug10_transactions").delete().eq("id", id).select("id");
