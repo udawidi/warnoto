@@ -82,7 +82,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Status sekarang
 
-- **Sumber retur TUG-10 di Data Stok aktif di production (2026-10-28, `87886a1`, deploy `391cc99`).** Daftar dan detail stok menampilkan nomor TUG-10 serta nama pekerjaan dari transaksi, termasuk beberapa retur pada stok gabungan tanpa mengubah sumber TUG-3/4. TL/SUPERADMIN dapat mengisi catatan per retur lewat RPC `update_tug10_return_note`; migrasi `20261028_tug10_return_source_note.sql` diterapkan secara transaksional ke self-host dan fungsi terverifikasi. Main sudah di-push; bundle production berisi tampilan serta editor baru. Tes 646/646, build, dan diff-check lulus. Uji simpan catatan dengan akun TL nyata masih diperlukan.
+- **Sumber retur TUG-10 aktif di production untuk semua UPT (2026-10-28, `1c3f15f`).** Data Stok menampilkan nomor TUG-10 dan nama pekerjaan per retur, termasuk stok gabungan tanpa mengubah sumber TUG-3/4. RPC `update_tug10_return_note` di self-host telah diperluas lewat migrasi `20261028b_tug10_return_note_legacy.sql`: TL/SUPERADMIN dapat memberi catatan pada retur baru maupun lama; UPT stok diverifikasi terhadap data dan lokasi→gudang, konflik ditolak. Keenam UPT memiliki TL; data retur saat ini ada di GRS, PBG, SBY. Smoke transaksi-rollback pada retur modern PBG, legacy GRS, dan legacy SBY tanpa UPT stok lulus; saldo/lot tetap dan data kembali persis. Main sudah di-push, bundle production baru HTTP 200, 648/648 tes dan build lulus. Uji UI/reload dengan akun TL nyata masih diperlukan.
 
 - **Perbaikan BA Non Stock (2026-10-28).** Edit draft menyimpan nilai terbaru pada identitas, material, dan foto; validasi pengajuan menyebut field yang kurang. Pratinjau/PDF memakai Satpam terpilih dan TL tunggal sesuai UPT, lalu snapshot resmi setelah approval. Test BA 13/13, E2E desktop dan ponsel 2/2, build, dan pemeriksaan localhost lulus. Audit baca-saja self-host: keenam UPT punya ADMIN/TL; UPT-BLI, UPT-MDN, dan UPT-MLG belum punya master Satpam sehingga belum dapat mengajukan BA sampai master per gudang diisi. Tidak ada perubahan skema atau data production.
 
@@ -698,7 +698,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 ## Langkah berikutnya (urut, mengikat)
 
-- Smoke Data Stok di production memakai akun TL: pastikan sumber retur menampilkan nomor TUG-10 dan nama pekerjaan yang benar, catatan per retur tersimpan setelah reload, serta sumber TUG-3/4 pada stok gabungan tetap utuh.
+- Smoke UI Data Stok di production memakai akun TL GRS/PBG/SBY: pastikan sumber retur menampilkan nomor TUG-10 dan nama pekerjaan, catatan per retur tersimpan setelah reload, dan sumber TUG-3/4 pada stok gabungan tetap utuh. UPT BLI/MDN/MLG belum memiliki retur TUG-10 untuk diuji dengan data nyata.
 
 - Setelah deploy Vercel, scan ulang katalog 3060016 di UPT Probolinggo dengan sesi bersih; pastikan stok dan total masuk sama-sama 21. Spot-check katalog lain di setiap UPT yang memiliki riwayat transaksi; saldo awal/migrasi ditampilkan terpisah dari total masuk.
 - Hapus draft uji `TEST-TUG5-20261020-verifikasi-draft` setelah konfirmasi penghapusan permanen. Jangan me-reload form pengguna yang masih terisi di tab semula. Saat ada TUG-5 operasional yang siap diajukan, uji submit dan approval akun Asman; pastikan anak UIT hanya satu dan Manager tidak menerima approval baru.
