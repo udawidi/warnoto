@@ -46,7 +46,7 @@ const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT",
 // Kuota role per UPT/UIT (hard limit) — sama seperti admin-create-user/admin-update-user,
 // supaya batch import CSV tidak bisa bikin 2 Manager/Asman/TL/Admin/Pengadaan di 1 UPT/UIT
 // yang sama, konsisten dengan validasi yang sudah aktif di menu Kelola Akun.
-const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
+const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 3, PENGADAAN: 1 };
 const UIT_ROLE_QUOTA = { ADMIN_UIT: 1, ASMAN_LOG_UIT: 1, MGR_LOGISTIK_UIT: 1, PENGADAAN: 1 }; // ADMIN_LOG_PUSAT nasional, tidak terikat 1 UIT
 const UIT_SCOPED_ROLES = ["ADMIN_UIT", "ASMAN_LOG_UIT", "MGR_LOGISTIK_UIT"];
 const ROLE_LABELS = { ADMIN: "Admin Gudang", TL: "TL Logistik", ASMAN: "Asman Konstruksi", MANAGER: "Manager", PENGADAAN: "Tim Pengadaan", ADMIN_UIT: "Admin UIT", MGR_LOGISTIK_UIT: "Manager Logistik UIT", ASMAN_LOG_UIT: "Asman Logistik UIT", ADMIN_LOG_PUSAT: "Admin Logistik Pusat" };
@@ -98,11 +98,11 @@ async function run() {
   for (const p of existingProfiles || []) {
     if (p.upt_id) {
       const key = `${p.role}|upt:${p.upt_id}`;
-      if (!quotaHolder.has(key)) quotaHolder.set(key, { username: p.username, name: p.name });
+      quotaHolder.set(key, [...(quotaHolder.get(key) || []), { username: p.username, name: p.name }]);
     }
     if (p.uit_id) {
       const key = `${p.role}|uit:${p.uit_id}`;
-      if (!quotaHolder.has(key)) quotaHolder.set(key, { username: p.username, name: p.name });
+      quotaHolder.set(key, [...(quotaHolder.get(key) || []), { username: p.username, name: p.name }]);
     }
   }
 
@@ -148,8 +148,11 @@ async function run() {
 
     if (isUitScoped ? UIT_ROLE_QUOTA[role] !== undefined : UPT_ROLE_QUOTA[role] !== undefined) {
       const quotaKey = isUitScoped ? `${role}|uit:${uitId}` : `${role}|upt:${uptId}`;
-      const holder = quotaHolder.get(quotaKey);
-      if (holder && holder.username !== username) {
+      const holders = quotaHolder.get(quotaKey) || [];
+      const quota = (isUitScoped ? UIT_ROLE_QUOTA : UPT_ROLE_QUOTA)[role];
+      const hasUsername = holders.some(item => item.username === username);
+      const holder = holders.find(item => item.username !== username) || holders[0];
+      if (holders.length >= quota && !hasUsername) {
         const unitLabel = isUitScoped ? "UIT" : "UPT";
         console.log(`⚠️  Skip "${username}": ${unitLabel} ini sudah punya ${ROLE_LABELS[role]||role} (${holder.name}, username "${holder.username}"). Turunkan role user itu dulu sebelum daftarkan yang baru.`);
         skipped++; continue;
@@ -192,7 +195,9 @@ async function run() {
     updated++;
     if (isUitScoped ? UIT_ROLE_QUOTA[role] !== undefined : UPT_ROLE_QUOTA[role] !== undefined) {
       const quotaKey = isUitScoped ? `${role}|uit:${uitId}` : `${role}|upt:${uptId}`;
-      quotaHolder.set(quotaKey, { username, name });
+      const holders = quotaHolder.get(quotaKey) || [];
+      if (!holders.some(item => item.username === username)) holders.push({ username, name });
+      quotaHolder.set(quotaKey, holders);
     }
     console.log(`   → profil diperbarui: ${name}, role ${role}${jabatan?`, jabatan ${jabatan}`:""}${uptId?`, upt_id ${uptId}`:""}${ultgId?`, ultg_id ${ultgId}`:""}${uitId?`, uit_id ${uitId}`:""}`);
   }

@@ -100,12 +100,13 @@ export function AkunModal({ akunModal, setAkunModal, akunForm, setAkunForm, akun
                         {uptList.map(u=><option key={u.id} value={u.id}>{u.kode} — {u.nama}</option>)}
                       </select>
                       {UPT_ROLE_QUOTA[akunForm.role] !== undefined && akunForm.uptId && (() => {
-                        const holder = users.find(u => u.role===akunForm.role && u.uptId===akunForm.uptId && u.id!==akunForm.id);
-                        const filled = holder ? 1 : 0;
+                        const holders = users.filter(u => u.role===akunForm.role && u.uptId===akunForm.uptId);
+                        const filled = holders.length;
                         const quota = UPT_ROLE_QUOTA[akunForm.role];
+                        const holder = holders.slice(0, 3).map(u => u.name).filter(Boolean).join(", ");
                         return (
                           <div style={{fontSize:12,marginTop:4,color:filled>=quota?"#dc2626":C.muted}}>
-                            Slot {ROLES[akunForm.role]} di UPT ini: {filled}/{quota} terisi{holder?` (${holder.name})`:""}
+                            Slot {ROLES[akunForm.role]} di UPT ini: {filled}/{quota} terisi{holder?` (${holder})`:""}
                           </div>
                         );
                       })()}

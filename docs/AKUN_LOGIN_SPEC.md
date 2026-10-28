@@ -45,7 +45,7 @@ Status dokumen (2026-07-07): **Semua fitur (A, B termasuk kuota UIT, dan C/SUPER
 **Status: Kuota UPT DAN Kuota UIT SUDAH DIIMPLEMENTASIKAN & DIDEPLOY (2026-07-07).**
 
 ### Goal
-Cegah rangkap jabatan struktural: 1 unit tidak boleh punya lebih dari 1 orang di role yang sama untuk posisi kunci.
+Cegah rangkap jabatan struktural sesuai kuota tiap role dan unit. Admin Gudang dapat diisi hingga 3 orang per UPT; posisi kunci lain tetap mengikuti batasnya masing-masing.
 
 ### Keputusan 2026-07-07: kerjakan UPT dulu, UIT ditunda
 
@@ -54,7 +54,7 @@ Cegah rangkap jabatan struktural: 1 unit tidak boleh punya lebih dari 1 orang di
 | Per UPT | MANAGER (Manager UPT) | 1 | **Dikerjakan sekarang** |
 | Per UPT | ASMAN | 1 | **Dikerjakan sekarang** |
 | Per UPT | TL | 1 | **Dikerjakan sekarang** |
-| Per UPT | ADMIN (Admin Gudang) | 1 | **Dikerjakan sekarang** |
+| Per UPT | ADMIN (Admin Gudang) | 3 | ✅ Selesai (2026-10-28) |
 | Per UPT | PENGADAAN (scope UPT) | 1 | ✅ Selesai (2026-07-07) |
 | Per UIT | ADMIN_UIT | 1 | ✅ Selesai (2026-07-07) |
 | Per UIT | MGR_LOGISTIK_UIT | 1 | ✅ Selesai (2026-07-07) |
@@ -82,7 +82,7 @@ Catatan desain PENGADAAN (untuk fase UIT nanti): role value tetap `"PENGADAAN"` 
 - Submit ditolak dengan pesan error yang jelas, bukan validasi diam-diam.
 
 ### Status: SUDAH DIIMPLEMENTASIKAN & DIDEPLOY (2026-07-07)
-- **Hard limit dipilih** (bukan soft warning): `admin-create-user` dan `admin-update-user` (Edge Functions, sudah dideploy ke project `tadxodrzoquugnsyejld`) menolak total kalau slot MANAGER/ASMAN/TL/ADMIN/PENGADAAN di 1 UPT sudah terisi, pesan error menyebut nama pemegang slot. Admin wajib turunkan role user lama dulu — tidak ada auto-downgrade.
+- **Hard limit dipilih** (bukan soft warning): `admin-create-user` dan `admin-update-user` (Edge Functions) menolak total kalau slot MANAGER/ASMAN/TL/PENGADAAN di 1 UPT sudah terisi, atau slot ADMIN sudah mencapai 3 akun. Pesan error menyebut nama pemegang slot. Admin wajib turunkan role user lama dulu — tidak ada auto-downgrade.
 - Indikator kuota real-time ditambahkan di form Kelola Akun (App.jsx), dihitung dari data `users` yang sudah ada di state.
 - **Audit data existing (2026-07-07)**: dicek via SQL langsung ke Supabase — hasil **kosong, tidak ada UPT yang melanggar kuota ini**. Tidak ada akun yang perlu diturunkan/dinonaktifkan.
 - **`scripts/bulk_create_users.mjs` sudah ditambahkan validasi kuota yang sama** — baseline dihitung dari data existing di DB sebelum loop CSV berjalan, plus tracking in-memory supaya 2 baris CSV yang bentrok (klaim role sama di UPT sama) di batch yang sama juga tertangkap. Re-run CSV yang sama (idempotent, username sama) tetap diizinkan.

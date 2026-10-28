@@ -35,7 +35,7 @@ const VALID_ROLES = ["ADMIN","TL","ASMAN","MANAGER","ADMIN_UIT","ASMAN_LOG_UIT",
 // ini sekaligus, supaya tidak ada rangkap jabatan struktural. Hard limit:
 // ditolak total kalau slot penuh, Admin wajib turunkan role user lama dulu
 // (bukan auto-downgrade, sesuai preferensi WARNOTO: review-first).
-const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 1, PENGADAAN: 1 };
+const UPT_ROLE_QUOTA = { MANAGER: 1, ASMAN: 1, TL: 1, ADMIN: 3, PENGADAAN: 1 };
 // Kuota role per UIT — sama prinsipnya, level di atas UPT. PENGADAAN dibagi 2
 // scope independen (UPT vs UIT), dibedakan lewat upt_id vs uit_id yang terisi
 // (lihat pengecekan di bawah), bukan role value yang berbeda.
