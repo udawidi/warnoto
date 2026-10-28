@@ -1,6 +1,6 @@
 # HANDOFF — WARNOTO
 
-**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-25
+**Vendor aktif terakhir:** Codex (Vendor B) | **Update:** 2026-10-28
 
 ## Tujuan / benang merah
 WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel). Fokus: penyempurnaan UI bertahap + isolasi multi-UPT review-first, bukan redesign besar.
@@ -81,6 +81,8 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 - Vendor C = OpenCode Go (backup ke-3 setelah Claude→Codex→GLM, manual).
 
 ## Status sekarang
+
+- **Perbaikan BA Non Stock (2026-10-28).** Edit draft menyimpan nilai terbaru pada identitas, material, dan foto; validasi pengajuan menyebut field yang kurang. Pratinjau/PDF memakai Satpam terpilih dan TL tunggal sesuai UPT, lalu snapshot resmi setelah approval. Test BA 13/13, E2E desktop dan ponsel 2/2, build, dan pemeriksaan localhost lulus. Audit baca-saja self-host: keenam UPT punya ADMIN/TL; UPT-BLI, UPT-MDN, dan UPT-MLG belum punya master Satpam sehingga belum dapat mengajukan BA sampai master per gudang diisi. Tidak ada perubahan skema atau data production.
 
 - **Maturity sampling aktif di production (2026-10-25, `17a8d36`, v2.2.12).** Migrasi `20261025_maturity_sampling_evidence.sql` diterapkan setelah dump public 30 MB di `/home/admin_warnoto/maturity-public-before-sampling-20261025.dump`. Edge Function `maturity-drive` diperbarui dan sehat; versi lama disimpan sebagai `index.ts.bak_20261025`. Vercel mengonfirmasi deploy dan smoke browser menunjukkan menu Maturity terbuka tanpa error. Build, 629/629 test, serta bootstrap schema + migrasi dua kali pada PostgreSQL scratch lulus. Audit UPT Surabaya yang sudah ada belum memakai sampling; uji upload sampel nyata menunggu audit baru.
 
@@ -696,7 +698,7 @@ WARNOTO = aplikasi gudang PLN (React, Vite 4, Supabase self-host, deploy Vercel)
 
 - Setelah deploy Vercel, scan ulang katalog 3060016 di UPT Probolinggo dengan sesi bersih; pastikan stok dan total masuk sama-sama 21. Spot-check katalog lain di setiap UPT yang memiliki riwayat transaksi; saldo awal/migrasi ditampilkan terpisah dari total masuk.
 - Hapus draft uji `TEST-TUG5-20261020-verifikasi-draft` setelah konfirmasi penghapusan permanen. Jangan me-reload form pengguna yang masih terisi di tab semula. Saat ada TUG-5 operasional yang siap diajukan, uji submit dan approval akun Asman; pastikan anak UIT hanya satu dan Manager tidak menerima approval baru.
-- Setelah deploy, smoke production BA Non Stock dari draft sampai approval TL dan cetak PDF; cek juga PDF TUG-10 memiliki No. Catalog, lokasi gudang, tanggal, nama TL/Asman, serta warna tabel/aksen yang sama dengan preview. Bandingkan Print/Save PDF berwarna untuk TUG-2/3/4/5/5-ULTG/7/8/9/15. Migrasi `20261015_ba_non_stock.sql` sudah aktif dan terverifikasi di self-host; jangan apply ulang tanpa kebutuhan.
+- Verifikasi deploy Vercel setelah push BA Non Stock, lalu smoke production dari edit draft sampai approval TL dan cetak PDF pada UPT yang sudah punya Satpam. Pastikan nama pada pratinjau/PDF serta pesan validasi benar; isi master Satpam per gudang lebih dulu untuk UPT-BLI, UPT-MDN, dan UPT-MLG. Cek juga PDF TUG-10 memiliki No. Catalog, lokasi gudang, tanggal, nama TL/Asman, serta warna tabel/aksen yang sama dengan preview. Bandingkan Print/Save PDF berwarna untuk TUG-2/3/4/5/5-ULTG/7/8/9/15. Migrasi `20261015_ba_non_stock.sql` sudah aktif di self-host; jangan apply ulang tanpa kebutuhan.
 - Setelah deploy, uji Data Stok > Cari Foto > Bentuk Barang memakai foto katalog `000000004020014` UPT Surabaya; barang yang sama harus muncul sebagai hasil teratas. Unggah ulang satu foto legacy `spe_upt-sby_1002020226_utama` yang berukuran 5,31 MB agar melewati kompresi upload maksimum 4 MB, lalu jalankan ulang job embedding foto.
 - Pantau deploy Vercel versi `2.1.86`; perubahan SQL bootstrap tidak perlu dan tidak boleh diterapkan ke production. Gunakan `supabase/migrations/` untuk perubahan database existing.
 
@@ -874,5 +876,5 @@ lokal) supaya tak timpa lintas-device. Recount wajib & freeze=peringatan menyusu
 - **Versi app semver auto-bump.** Sumber tunggal `package.json` (baseline `2.0.0`), inject `__APP_VERSION__` via `vite.config.js`, tampil di sidebar bawah nama WARNOTO (`AppSidebar.jsx`). Hook `pre-commit` (`utils/hooks/pre-commit`, pasang `sh utils/install-hooks.sh` per-mesin) auto-naik patch di **tiap commit**. Minor/major manual. Detail STAGING.md §11.
 
 ## Riwayat shift (maksimal 2)
-- 2026-10-15 Codex: **BA Non Stock/Pinjam dan penyempurnaan form/PDF TUG-10 selesai; skema self-host terverifikasi, 593/593 test dan build lulus.**
 - 2026-10-25 Codex: **Maturity sampling dan folder pelengkap dirilis ke production; migrasi, Edge Function, Vercel, 629 test, dan bootstrap scratch terverifikasi.**
+- 2026-10-28 Codex: **Edit draft, validasi, dan nama pada PDF BA Non Stock diperbaiki; 13 test BA, 2 E2E, dan build lulus, tiga UPT menunggu master Satpam.**

@@ -162,32 +162,52 @@ export async function loadBaNonStockRows({ search = "", statuses = null } = {}) 
 
 export const loadBaNonStock = loadBaNonStockRows;
 
-function draftPayload(draft, items) {
+function draftValue(draft, ...keys) {
+  const key = keys.find(candidate => Object.prototype.hasOwnProperty.call(draft || {}, candidate));
+  return key === undefined ? null : (draft?.[key] || null);
+}
+
+export function draftPayload(draft, items) {
   const payload = {
-    kind: String(draft?.kind || draft?.jenis || "NON_STOCK").toUpperCase(),
-    issueDate: draft?.issueDate || draft?.tanggal || null,
-    warehouseId: draft?.warehouseId || draft?.gudangId || null,
-    securityGuardId: draft?.securityGuardId || draft?.satpamId || draft?.satpam || null,
-    sender: draft?.sender || draft?.sumber || null,
-    destinationUnit: draft?.destinationUnit || draft?.tujuan || null,
-    referenceDocument: draft?.referenceDocument || draft?.referensi || null,
-    purpose: draft?.purpose || draft?.keperluan || null,
-    recipientName: draft?.recipientName || draft?.penerimaNama || null,
-    recipientTitle: draft?.recipientTitle || draft?.penerimaJabatan || null,
-    recipientUnit: draft?.recipientUnit || draft?.penerimaUnit || null,
-    driverName: draft?.driverName || null,
-    vehicleNumber: draft?.vehicleNumber || null,
-    photoLabelUrl: draft?.photoLabelUrl || draft?.foto1 || null,
-    photoLoadedUrl: draft?.photoLoadedUrl || draft?.foto2 || null,
+    kind: String(draftValue(draft, "jenis", "kind") || "NON_STOCK").toUpperCase(),
+    issueDate: draftValue(draft, "tanggal", "issueDate"),
+    warehouseId: draftValue(draft, "gudangId", "warehouseId"),
+    securityGuardId: draftValue(draft, "satpamId", "satpam", "securityGuardId"),
+    sender: draftValue(draft, "sumber", "sender"),
+    destinationUnit: draftValue(draft, "tujuan", "destinationUnit"),
+    referenceDocument: draftValue(draft, "referensi", "referenceDocument"),
+    purpose: draftValue(draft, "keperluan", "purpose"),
+    recipientName: draftValue(draft, "penerimaNama", "recipientName"),
+    recipientTitle: draftValue(draft, "penerimaJabatan", "recipientTitle"),
+    recipientUnit: draftValue(draft, "penerimaUnit", "recipientUnit"),
+    driverName: draftValue(draft, "namaPengemudi", "driverName"),
+    vehicleNumber: draftValue(draft, "nomorKendaraan", "vehicleNumber"),
+    photoLabelUrl: Object.prototype.hasOwnProperty.call(draft || {}, "foto1") ? draft.foto1 : (draft?.photoLabelUrl || null),
+    photoLoadedUrl: Object.prototype.hasOwnProperty.call(draft || {}, "foto2") ? draft.foto2 : (draft?.photoLoadedUrl || null),
     items: (items || []).map(item => ({
-      materialName: item?.materialName ?? item?.name ?? item?.nama ?? "",
+      materialName: draftValue(item, "nama", "name", "materialName") || "",
       qty: item?.qty ?? "",
-      unit: item?.unit ?? item?.satuan ?? "",
-      description: item?.description ?? item?.keterangan ?? "",
+      unit: draftValue(item, "satuan", "unit") || "",
+      description: draftValue(item, "keterangan", "description") || "",
     })),
   };
   if (containsDataUrl(payload)) throw new Error("BA_PHOTO_NOT_STORED");
   return payload;
+}
+
+export function resolveBaNonStockPrintNames(record = {}, { satpamList = [], users = [] } = {}) {
+  const guard = satpamList.find(item => item.id === record.satpamId || item.id === record.securityGuardId);
+  const scopedTls = users.filter(user => user.role === "TL" && (user.uptId || user.upt_id) === record.uptId);
+  const tl = scopedTls.length === 1 ? scopedTls[0] : null;
+  return {
+    ...record,
+    satpamNama: record.status === "APPROVED" || record.stage === "APPROVED"
+      ? (record.securityGuardSnapshot?.name || record.securityGuardSnapshot?.nama || record.satpamNama || guard?.name || guard?.nama || "")
+      : (record.satpamNama || record.securityGuardSnapshot?.name || guard?.name || guard?.nama || ""),
+    tlNama: record.status === "APPROVED" || record.stage === "APPROVED"
+      ? (record.tlSnapshot?.name || record.tlSnapshot?.nama || record.tlNama || tl?.name || "")
+      : (record.tlNama || record.tlSnapshot?.name || tl?.name || ""),
+  };
 }
 
 export async function uploadBaNonStockPhoto(id, slot, file) {
@@ -219,8 +239,11 @@ export async function saveBaNonStockDraft(options = {}) {
     for (const slot of PHOTO_SLOTS) {
       const file = photoFiles?.[slot];
       if (!file) continue;
-      next[slot === "label" ? "photoLabelUrl" : "photoLoadedUrl"] = await uploadBaNonStockPhoto(id, slot, file);
-      uploaded.push(next[slot === "label" ? "photoLabelUrl" : "photoLoadedUrl"]);
+      const key = slot === "label" ? "photoLabelUrl" : "photoLoadedUrl";
+      const aliasKey = slot === "label" ? "foto1" : "foto2";
+      next[key] = await uploadBaNonStockPhoto(id, slot, file);
+      next[aliasKey] = next[key];
+      uploaded.push(next[key]);
     }
     const { data, error } = await supabase.rpc("save_ba_non_stock_draft", {
       p_id: id,

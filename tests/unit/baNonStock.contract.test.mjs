@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { buildBaNonStockHTML } from "../../src/lib/docBuilders.js";
+import { draftPayload, resolveBaNonStockPrintNames } from "../../src/lib/baNonStockSync.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const baseMigration = fs.readFileSync(path.join(root, "supabase/migrations/20261015_ba_non_stock.sql"), "utf8");
@@ -80,6 +81,7 @@ test("BA UI exposes TL creation, UPT-scoped history, and review gates", () => {
   const tab = fs.readFileSync(path.join(root, "src/components/BaNonStockTab.jsx"), "utf8");
   const form = fs.readFileSync(path.join(root, "src/components/BaNonStockFormModal.jsx"), "utf8");
   const review = fs.readFileSync(path.join(root, "src/components/BaNonStockReviewModal.jsx"), "utf8");
+  const preview = fs.readFileSync(path.join(root, "src/components/StockModals.jsx"), "utf8");
   const history = fs.readFileSync(path.join(root, "src/components/ApprovalHubTab.jsx"), "utf8");
   assert.match(tab, /filterStatus/);
   assert.match(tab, /tugUptFilter/);
@@ -94,11 +96,52 @@ test("BA UI exposes TL creation, UPT-scoped history, and review gates", () => {
   assert.match(tab, /Diputus oleh/);
   assert.match(review, /const readOnly=\["APPROVED","REJECTED"\]/);
   assert.match(review, /details open=\{readOnly\}/);
-  assert.match(review, /function printBa\(\)[\s\S]*onPreview\?\.\(data\)/);
+  assert.match(preview, /resolveBaNonStockPrintNames\(rawDp/);
   assert.match(review, /const canApprove=!loading&&!busy&&!error&&!readOnly&&CHECKS\.every\(\(\[key\]\)=>checked\[key\]\)/);
   assert.doesNotMatch(review, /canApprove[^\n]*previewed/);
   assert.match(review, /TL approver/);
   assert.match(review, /Keterangan/);
+});
+
+test("BA draft payload prefers edited form aliases over stale server fields", () => {
+  const payload = draftPayload({
+    kind: "NON_STOCK", jenis: "PINJAM", issueDate: "2026-01-01", tanggal: "2026-02-02",
+    warehouseId: "OLD-GUDANG", gudangId: "NEW-GUDANG", securityGuardId: "OLD-SATPAM", satpamId: "NEW-SATPAM",
+    sender: "Pengirim lama", sumber: "Pengirim baru", referenceDocument: "REF-LAMA", referensi: "REF-BARU",
+    purpose: "Keperluan lama", keperluan: "Keperluan baru", recipientName: "Lama", penerimaNama: "Baru",
+    recipientTitle: "Jabatan lama", penerimaJabatan: "Jabatan baru", recipientUnit: "Unit lama", penerimaUnit: "Unit baru",
+  }, [{ materialName: "Old material", nama: "New material", unit: "OLD", satuan: "NEW", description: "Old", keterangan: "New", qty: 2 }]);
+  assert.deepEqual(payload, {
+    kind: "PINJAM", issueDate: "2026-02-02", warehouseId: "NEW-GUDANG", securityGuardId: "NEW-SATPAM",
+    sender: "Pengirim baru", destinationUnit: null, referenceDocument: "REF-BARU", purpose: "Keperluan baru",
+    recipientName: "Baru", recipientTitle: "Jabatan baru", recipientUnit: "Unit baru", driverName: null,
+    vehicleNumber: null, photoLabelUrl: null, photoLoadedUrl: null,
+    items: [{ materialName: "New material", qty: 2, unit: "NEW", description: "New" }],
+  });
+});
+
+test("BA draft photo removal and replacement follow edited aliases", () => {
+  const removed = draftPayload({ photoLabelUrl: "old-label.jpg", photoLoadedUrl: "old-loaded.jpg", foto1: null, foto2: null }, []);
+  assert.equal(removed.photoLabelUrl, null);
+  assert.equal(removed.photoLoadedUrl, null);
+  const replaced = draftPayload({ photoLabelUrl: "old-label.jpg", foto1: "new-label.jpg", photoLoadedUrl: "old-loaded.jpg", foto2: "new-loaded.jpg" }, []);
+  assert.equal(replaced.photoLabelUrl, "new-label.jpg");
+  assert.equal(replaced.photoLoadedUrl, "new-loaded.jpg");
+});
+
+test("BA print names prefer approved snapshots and only use a unique UPT TL fallback", () => {
+  const users = [{ id: "tl-1", role: "TL", uptId: "UPT-A", name: "TL A" }, { id: "tl-2", role: "TL", uptId: "UPT-A", name: "TL A2" }];
+  const draft = resolveBaNonStockPrintNames({ uptId: "UPT-A", satpamId: "s1", securityGuardSnapshot: {}, tlSnapshot: {} }, { satpamList: [{ id: "s1", name: "Satpam A" }], users });
+  assert.equal(draft.satpamNama, "Satpam A");
+  assert.equal(draft.tlNama, "");
+  const approved = resolveBaNonStockPrintNames({ status: "APPROVED", uptId: "UPT-A", satpamId: "s1", satpamNama: "Wrong alias", securityGuardSnapshot: { name: "Approved guard" }, tlNama: "Wrong alias", tlSnapshot: { name: "TL Approver" } }, { satpamList: [], users });
+  assert.equal(approved.satpamNama, "Approved guard");
+  assert.equal(approved.tlNama, "TL Approver");
+});
+
+test("BA draft uses the single TL in its UPT", () => {
+  const draft = resolveBaNonStockPrintNames({ uptId: "UPT-B" }, { users: [{ role: "TL", uptId: "UPT-B", name: "TL B" }] });
+  assert.equal(draft.tlNama, "TL B");
 });
 
 test("BA review gate and print actions cover all workflow states", () => {

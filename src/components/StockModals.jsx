@@ -9,6 +9,7 @@ import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
 import { buildTUG9HTML, buildTUG10HTML, downloadTUG10HTML, buildTUG5HTML, buildTUG7HTML, downloadTUG5HTML, buildTUG3HTML, downloadTUG3HTML, downloadTUG9HTML, downloadTUG7HTML, buildBaNonStockHTML, downloadBaNonStockHTML } from "../lib/docBuilders.js";
 import { SearchableSelect } from "./SearchableSelect.jsx";
 import { sortBlokOptions } from "../lib/masterSync.js";
+import { resolveBaNonStockPrintNames } from "../lib/baNonStockSync.js";
 
 // Field-field form edit Data Stok — dipakai INLINE di dalam modal detail (App.jsx,
 // mode stockModal==="edit") supaya view+edit jadi SATU modal (bukan dua pop-up
@@ -148,7 +149,8 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
     && (docPreview?.status == null || docPreviewDoc?.status === docPreview.status)
     && (docPreview?.stage == null || docPreviewDoc?.stage === docPreview.stage)
     && (docPreview?.updatedAt == null || docPreviewDoc?.updatedAt === docPreview.updatedAt);
-  const dp = sameDocument ? docPreviewDoc : docPreview;
+  const rawDp = sameDocument ? docPreviewDoc : docPreview;
+  const dp = rawDp?.docType === "BA_NON_STOCK" ? resolveBaNonStockPrintNames(rawDp, { satpamList, users }) : rawDp;
   const iframeRef = useRef(null);
   const previewViewportRef = useRef(null);
   const [previewReady, setPreviewReady] = useState(false);

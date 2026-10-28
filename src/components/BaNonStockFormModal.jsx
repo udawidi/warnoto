@@ -21,8 +21,24 @@ export function BaNonStockFormModal({ C, sty, currentUser, initialValue, onClose
   async function save(submit){
     if(!uptId)return alert("Pilih UPT terlebih dahulu.");
     const items=form.items.filter(item=>item.nama.trim()||item.qty||item.satuan.trim()||item.keterangan.trim());
-    if(submit&&(!items.length||items.some(item=>!item.nama.trim()||!(Number(item.qty)>0)||!item.satuan.trim())))return alert("Lengkapi nama, qty, dan satuan setiap material.");
-    if(submit&&(!form.gudangId||!form.satpamId||!form.penerimaNama.trim()||!form.penerimaJabatan.trim()||!form.penerimaUnit.trim()||!form.sumber.trim()||!form.tujuan.trim()||!form.referensi.trim()||!form.keperluan.trim()||!form.foto1||!form.foto2))return alert("Lengkapi seluruh identitas, gudang, satpam, referensi, dan dua foto.");
+    if(submit){
+      const missing=[];
+      if(!form.tanggal) missing.push("Tanggal");
+      if(!form.gudangId) missing.push("Gudang");
+      if(!form.satpamId) missing.push("Satpam");
+      if(!form.sumber.trim()) missing.push("Sumber / Pengirim");
+      if(!form.tujuan.trim()) missing.push("Unit Tujuan");
+      if(!form.referensi.trim()) missing.push("Dokumen Referensi");
+      if(!form.keperluan.trim()) missing.push("Keperluan");
+      if(!form.penerimaNama.trim()) missing.push("Penerima Material");
+      if(!form.penerimaJabatan.trim()) missing.push("Jabatan Penerima");
+      if(!form.penerimaUnit.trim()) missing.push("Unit / Perusahaan Penerima");
+      if(!form.foto1) missing.push("Foto label / packing list");
+      if(!form.foto2) missing.push("Foto material sudah dimuat");
+      if(!items.length) missing.push("Minimal satu material");
+      if(items.some(item=>!item.nama.trim()||!(Number(item.qty)>0)||!item.satuan.trim())) missing.push("Nama, qty, dan satuan setiap material");
+      if(missing.length) return alert(`Data belum lengkap: ${missing.join(", ")}.`);
+    }
     setBusy(true);try{const saved=await onSave?.({...form,uptId,items});if(!saved)return;if(submit){const submitted=await onSubmit?.(saved);if(!submitted)return;}onClose();}finally{setBusy(false);}
   }
   const field=(label,control,key)=><div key={key}><label style={sty.label}>{label}</label>{control}</div>;
