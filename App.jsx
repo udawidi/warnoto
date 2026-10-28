@@ -352,6 +352,7 @@ export default function PLNWarehouse() {
   const [lokasiList, setLokasiList] = useState(() => dropCachedGiRows(readCachedList("pln_lokasi_v4")) ?? []); // Master Lokasi Gudang
   const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
   const [baNonStockRecords, setBaNonStockRecords] = useState([]);
+  const baNonStockRefreshSeqRef = useRef(0);
   const [baNonStockReview, setBaNonStockReview] = useState(null);
   const [satpamList, setSatpamList] = useState(() => readCachedList("pln_satpam_v1") ?? []);
   const [supplierList, setSupplierList] = useState(() => readCachedList("pln_supplier_v1") ?? []); // Master Supplier (nasional, dipakai jg di form TUG-3)
@@ -2043,17 +2044,19 @@ export default function PLNWarehouse() {
   showToastRef.current = showToast;
 
   async function refreshBaNonStock() {
+    const requestSeq = ++baNonStockRefreshSeqRef.current;
     const result = await loadBaNonStock();
-    if (!result.unavailable && !result.error) setBaNonStockRecords(result.rows);
+    if (requestSeq === baNonStockRefreshSeqRef.current && !result.unavailable && !result.error) setBaNonStockRecords(result.rows);
     return result;
   }
 
   async function refreshBaNonStockReview(record) {
+    const requestSeq = ++baNonStockRefreshSeqRef.current;
     const result = await loadBaNonStock();
     if (result.error || result.unavailable) throw result.error || new Error("BA Non Stock tidak tersedia.");
     const fresh = result.rows.find(row => row.id === record?.id);
     if (!fresh) throw new Error("BA tidak ditemukan atau di luar scope UPT.");
-    setBaNonStockRecords(result.rows);
+    if (requestSeq === baNonStockRefreshSeqRef.current) setBaNonStockRecords(result.rows);
     return fresh;
   }
 
@@ -2483,12 +2486,31 @@ export default function PLNWarehouse() {
 
   useEffect(() => {
     if (authLoading || !currentUser || !supabase) { setBaNonStockRecords([]); return; }
-    let alive = true;
-    loadBaNonStock().then(result => {
-      if (alive && !result.unavailable && !result.error) setBaNonStockRecords(result.rows);
-    }).catch(error => console.warn("BA Non Stock gagal dimuat.", error));
-    return () => { alive = false; };
+    const refresh = () => {
+      refreshBaNonStock().catch(error => console.warn("BA Non Stock gagal dimuat.", error));
+    };
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    refresh();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") refresh();
+    }, 30_000);
+    window.addEventListener("online", handleVisible);
+    document.addEventListener("visibilitychange", handleVisible);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", handleVisible);
+      document.removeEventListener("visibilitychange", handleVisible);
+      baNonStockRefreshSeqRef.current += 1;
+    };
   }, [authLoading, currentUser?.id]);
+
+  useEffect(() => {
+    if (tab === "approval" && currentUser && supabase) {
+      refreshBaNonStock().catch(error => console.warn("BA Non Stock gagal dimuat.", error));
+    }
+  }, [tab, currentUser?.id]);
 
   // RBAC guard render: kalau role tidak (lagi) punya izin menu untuk tab aktif
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama
@@ -4556,6 +4578,10 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
   const activeBaRecords = baNonStockRecords.filter(record =>
     (!tugUptFilter || record.uptId === tugUptFilter)
   );
+  const baNonStockScope = getScopeUptIds(currentUser, uptList);
+  const baNonStockPendingCount = hasRole(currentUser, "TL")
+    ? baNonStockRecords.filter(record => record.stage === "PENDING_TL" && inScopeUpt(record.uptId, baNonStockScope)).length
+    : 0;
   const activeTugTxns = tugSubTab === "BA_NON_STOCK"
     ? activeBaRecords
     : tugSubTab === "TUG15" ? [] : scopedTxns.filter(t=>t.docType===tugSubTab);
@@ -4710,7 +4736,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     {id:"kapasitasGudang",icon:<SidebarIcon name="capacity"/>,label:"Kapasitas Gudang"},
     {id:"master",icon:<SidebarIcon name="master"/>,label:"Master Data"},
     {id:"transaction",icon:<SidebarIcon name="transaction"/>,label:"TUG"},
-    ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge:myPendingApprovals.length + (hasRole(currentUser, "TL") ? baNonStockRecords.filter(r=>r.stage==="PENDING_TL").length : 0) + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "TL") ? scopedStocks.filter(s=>(s.lokasiMovePending&&["TL", "ASMAN"].includes(s.lokasiMoveApprover))||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0) + (hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0)}] : []),
+    ...(hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN") ? [{id:"approval",icon:<SidebarIcon name="approval"/>,label:"Approval",badge:myPendingApprovals.length + baNonStockPendingCount + (hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0) + (hasRole(currentUser, "TL","ASMAN") ? gudangCapacityImports.filter(i=>i.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "TL") ? lokasiList.filter(l=>l.status==="PENDING").length : 0) + (hasRole(currentUser, "TL") ? scopedStocks.filter(s=>(s.lokasiMovePending&&["TL", "ASMAN"].includes(s.lokasiMoveApprover))||s.editPending||s.deletePending).length : 0) + (hasRole(currentUser, "ASMAN") ? opnameList.filter(o=>o.status==="PENDING_ASMAN").length : 0) + (hasRole(currentUser, "MANAGER") ? opnameList.filter(o=>o.status==="PENDING_MANAGER").length : 0) + (hasRole(currentUser, "ASMAN") ? stockCountPendingCount : 0)}] : []),
     {id:"heavyEquipment",icon:<SidebarIcon name="equipment"/>,label:"Alat Berat",badge:(hasRole(currentUser, "ASMAN")?heavyEquipmentPendingCount:0)+heavyEquipmentOverdueCount},
     {id:"attb",icon:<SidebarIcon name="attb"/>,label:"MRWI",badge:attbPendingCount+attbBelumLanjutCount},
     {id:"opname",icon:<SidebarIcon name="opname"/>,label:"Stock Opname & Count",badge:stockCountPendingCount},
