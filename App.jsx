@@ -5539,7 +5539,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
                       <div style={{display:"flex",flexDirection:"column",gap:10}}>
                         {tug10ReturnSources(st, txns).map(source => {
                           const effectMap = st.tug10ReturnEffects || st.data?.tug10ReturnEffects || {};
-                          const editable = Object.prototype.hasOwnProperty.call(effectMap, source.key);
+                          const legacyMap = st._tug10Applied || st.data?._tug10Applied || {};
+                          const editable = Object.prototype.hasOwnProperty.call(effectMap, source.key) || Object.prototype.hasOwnProperty.call(legacyMap, source.key);
                           const draftKey = `${st.id}:${source.key}`;
                           const draft = Object.prototype.hasOwnProperty.call(tug10NoteDrafts, draftKey) ? tug10NoteDrafts[draftKey] : source.note;
                           return <div key={source.key} style={{borderTop:`1px solid ${C.border}`,paddingTop:8}}>

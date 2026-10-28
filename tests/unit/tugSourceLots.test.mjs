@@ -29,6 +29,19 @@ test("TUG-10 source label includes document and originating job", () => {
   assert.deepEqual(sourceLotLabels(stock, txns), ["Retur TUG-10 — 001.TUG-10/UPT — Pengembalian material GIS · Catatan: cek ulang"]);
 });
 
+test("legacy TUG-10 marker resolves document and job without generic duplicate", () => {
+  const stock = {
+    sourceLot: { kind: "TUG10_RETURN" },
+    _tug10Applied: { "TUG10-PHJ4JC:0": 1 },
+  };
+  const labels = sourceLotLabels(stock, [{
+    id: "TUG10-PHJ4JC",
+    docNumbers: { tug10: "010.TUG-10/UPT-GRS" },
+    namaPekerjaan: "Pengembalian material pekerjaan PHJ4JC",
+  }]);
+  assert.deepEqual(labels, ["Retur TUG-10 — 010.TUG-10/UPT-GRS — Pengembalian material pekerjaan PHJ4JC"]);
+});
+
 test("merged TUG-3 stock keeps base source and adds each TUG-10 return", () => {
   const stock = { sourceLot: { kind: "TUG3_CONTRACT", supplier: "PT A", contractNo: "SP-1" }, kontrakRefs: [{ supplier: "PT A", noKontrak: "SP-1" }], tug10ReturnEffects: {
     "TX-A:0": { sourceDocumentNo: "T10-A" }, "TX-B:1": { sourceDocumentNo: "T10-B" },
