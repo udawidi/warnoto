@@ -5,7 +5,11 @@ const { openApp, openRoute } = require("./support/responsive");
 
 const ADMIN = { id:"e2e-admin", name:"E2E Admin", username:"admin-e2e", role:"ADMIN", jabatan:"Admin Gudang", avatar:"AD", upt:"Surabaya", uptId:"UPT-SBY", gudangIds:null };
 const TL = { id:"e2e-tl", name:"E2E TL", username:"tl-e2e", role:"TL", jabatan:"Team Leader", avatar:"TL", upt:"Surabaya", uptId:"UPT-SBY", gudangIds:null };
-const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M/wHwAF/gL+XwG6WQAAAABJRU5ErkJggg==", "base64");
+const ONE_PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+const EXPORT_PHOTO = `data:image/png;base64,${ONE_PIXEL_PNG.toString("base64")}`;
+const EXPORT_WEBP = "data:image/webp;base64,UklGRmIAAABXRUJQVlA4IFYAAABQBQCdASp4AFAAPm02mUmkIyKhIMgAgA2JaQB2APwAAAxvdTfRtQ5xlAPdTfRtQ5xk/0AA/vCbQ//+QXLC65Gv//yA/5Af8gP/498W46CVoAgAAAAAAA==";
+const XLSX = require("xlsx");
+const { unzipSync, strFromU8 } = require("fflate");
 
 async function openFleetForE2E(page) {
   // Fixture memutus Supabase; production tidak memiliki mode demo.
@@ -294,6 +298,82 @@ test.describe("Alat Berat — otorisasi dan kontrak simpan", () => {
       await openFleetForE2E(page);
       const overflow = await page.locator(".heavy-equipment-page").evaluate(() => document.documentElement.scrollWidth-document.documentElement.clientWidth);
       expect(overflow).toBeLessThanOrEqual(1);
+    });
+  });
+});
+
+test.describe("Alat Berat — Excel export", () => {
+  test("superadmin mengunduh workbook inventaris dan lampiran foto", async ({ isolatedPage:page }) => {
+    await openFleetForE2E(page);
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name:"Export Excel Alat Berat", exact:true }).click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toMatch(/^Alat_Berat_.*\.xlsx$/);
+    const filePath = await download.path();
+    const workbook = XLSX.readFile(filePath);
+    expect(workbook.SheetNames).toEqual(expect.arrayContaining(["Inventaris", "Lampiran Foto"]));
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Inventaris, { defval:"" });
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.some(row => row["No. Seri"] === "E2E-CR-001")).toBe(true);
+  });
+
+  test.describe("UPT scope", () => {
+    test.use({
+      actorProfile: { ...TL, uptId:"UPT-SBY", upt:"Surabaya" },
+      cloudOverrides: {
+        pln_heavy_equipment_v1: [
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[0], id:"HE-EXPORT-SBY", upt:"Surabaya", uptId:"UPT-SBY", foto:EXPORT_WEBP },
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[1], id:"HE-EXPORT-GRS", upt:"Gresik", uptId:"UPT-GRS", isCrossUptBorrowable:true, foto:EXPORT_PHOTO },
+        ],
+      },
+    });
+
+    test("TL export hanya UPT sendiri dan mobile tidak overflow", async ({ isolatedPage:page }) => {
+      await page.setViewportSize({ width:360, height:800 });
+      await openFleetForE2E(page);
+      const button = page.getByRole("button", { name:"Export Excel Alat Berat", exact:true });
+      await expect(button).toBeVisible();
+      expect(await button.evaluate(el => el.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(1);
+      const downloadPromise = page.waitForEvent("download"); await button.click();
+      const download = await downloadPromise; const wb = XLSX.readFile(await download.path());
+      const ids = XLSX.utils.sheet_to_json(wb.Sheets.Inventaris, { defval:"" }).map(row => row.ID);
+      expect(ids).toEqual(["HE-EXPORT-SBY"]);
+      const zip = unzipSync(require("node:fs").readFileSync(await download.path()));
+      expect(Object.keys(zip).some(key => key.endsWith("image1.png"))).toBe(true);
+      const image = zip["xl/media/image1.png"];
+      expect([image[0], image[1], image[2], image[3]]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+      expect(strFromU8(zip["xl/drawings/drawing1.xml"])).toContain('cx="1143000" cy="762000"');
+    });
+  });
+
+  test.describe("UIT scope", () => {
+    test.use({
+      actorProfile: { id:"e2e-uit", name:"E2E UIT", username:"uit-e2e", role:"ADMIN_UIT", jabatan:"Admin UIT", uitId:"UIT-JBM", uptId:null, upt:null, gudangIds:null },
+      cloudOverrides: {
+        pln_upt_v1: [
+          { id:"UPT-SBY", nama:"UPT Surabaya", uitId:"UIT-JBM" }, { id:"UPT-GRS", nama:"UPT Gresik", uitId:"UIT-JBM" }, { id:"UPT-MLG", nama:"UPT Malang", uitId:"UIT-BALI" },
+        ],
+        pln_heavy_equipment_v1: [
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[0], id:"HE-EXPORT-SBY", upt:"Surabaya", uptId:"UPT-SBY", foto:EXPORT_PHOTO },
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[1], id:"HE-EXPORT-GRS", upt:"Gresik", uptId:"UPT-GRS", foto:EXPORT_PHOTO },
+          { ...CLOUD_FIXTURES.pln_heavy_equipment_v1[2], id:"HE-EXPORT-MLG", upt:"Malang", uptId:"UPT-MLG", foto:EXPORT_PHOTO },
+        ],
+      },
+    });
+
+    test("UIT export tetap seluruh UIT walau filter layar Surabaya", async ({ isolatedPage:page }) => {
+      await openFleetForE2E(page);
+      const filter = page.locator(".operations-hero__controls select").first();
+      await expect(filter).toBeVisible();
+      await filter.selectOption({ label:"Surabaya" });
+      await expect(filter).toHaveValue(/UPT-SBY|Surabaya/i);
+      const downloadPromise = page.waitForEvent("download"); await page.getByRole("button", { name:"Export Excel Alat Berat", exact:true }).click();
+      const download = await downloadPromise; const wb = XLSX.readFile(await download.path());
+      const ids = XLSX.utils.sheet_to_json(wb.Sheets.Inventaris, { defval:"" }).map(row => row.ID);
+      expect(ids.sort()).toEqual(["HE-EXPORT-GRS", "HE-EXPORT-SBY"].sort());
+      const zip = unzipSync(require("node:fs").readFileSync(await download.path()));
+      expect(Object.keys(zip).some(key => key.includes("xl/media/image1.png"))).toBe(true);
     });
   });
 });

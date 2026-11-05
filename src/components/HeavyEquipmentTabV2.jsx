@@ -1,5 +1,5 @@
 // Komponen HeavyEquipmentTabV2 — dipindah dari App.jsx (refactor Fase 5b).
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { UIT } from "../constants.js";
 import { getUserUptScope, roleTier } from "../lib/roles.js";
 import { downloadHeavyEquipmentLoanHTML } from "../lib/docBuilders.js";
@@ -9,6 +9,7 @@ import { validateHeavyEquipmentPhotoFile } from "../lib/heavyEquipmentPhoto.js";
 import { RiwayatPerjalananPanel } from "./RiwayatPerjalananPanel.jsx";
 import { fmtDate, fmtDateOnly } from "../lib/utils.js";
 import { supabase } from "../supabaseClient.js";
+import { exportHeavyEquipmentXlsx, scopeHeavyEquipmentForExport } from "../lib/heavyEquipmentExcel.js";
 
 const LOAN_APPROVAL_ATTESTATIONS = [
   ["alat", "Saya sudah memeriksa alat, ketersediaan, dan kondisinya."],
@@ -223,6 +224,20 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   const blankEquipment = () => ({upt:myUpt||"", uptId:currentUser?.uptId||"", gudangId:"", lokasi:"", nama:"", jenis:"", merkType:"", kapasitas:"", nomorSeri:"", tahun:"", specification:"", kondisi:"", suratIzinAlat:"", statusAlat:"LAYAK", assetType:"ALAT_BERAT", trackingMode:"UNIT", quantityTotal:1, unit:"unit", isCrossUptBorrowable:false, foto:null});
   const [addForm, setAddForm] = useState(blankEquipment);
   const [savingEquipment, setSavingEquipment] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const exportLockRef = useRef(false);
+  const handleExportExcel = async () => {
+    if (exportLockRef.current || !exportableEquipment.length) return;
+    exportLockRef.current = true; setExportingExcel(true); setExportProgress(0);
+    try {
+      const tier = roleTier(currentUser?.role);
+      const isUitAccount = officialUitRole || ["UIT", "HAR_UIT"].includes(tier);
+      const label = tier === "GLOBAL" || tier === "PUSAT" ? "Nasional" : isUitAccount ? (currentUser?.uitName || currentUser?.uitId || "UIT") : (myUpt || "UPT");
+      await exportHeavyEquipmentXlsx({ equipmentList, currentUser, uptList, scopeLabel: label, onProgress: setExportProgress, showToast });
+    } catch (error) { showToast?.(error?.message || "Ekspor Excel gagal.", "error"); }
+    finally { exportLockRef.current = false; setExportingExcel(false); }
+  };
   // Ajukan Peminjaman = "kita mau pinjam alat", jadi alat yang ditawarkan HARUS di luar UPT
   // sendiri (non-MSB) — pinjam alat sendiri lewat form sendiri tidak masuk akal. MSB/Manager UIT
   // memfasilitasi peminjaman UPT mana pun, jadi tetap lihat semua alat.
@@ -242,6 +257,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
   // Alat yang ter-scope ke UPT aktif (non-MSB dikunci ke UPT sendiri) — dipakai KPI di bawah &
   // status grid. Dulu 3 count ini dihitung dari equipmentList mentah tanpa filter UPT.
   const scopedEquipment = equipmentList.filter(e=>(!effectiveUptFilter||e.upt===effectiveUptFilter) && (!uitScopeUptIds||uitScopeUptIds.has(getHeavyEquipmentUptId(e, uptList))) && (!isHarUit || harUptIds.has(getHeavyEquipmentUptId(e, uptList))));
+  const exportableEquipment = scopeHeavyEquipmentForExport(equipmentList, currentUser, uptList);
 
   // 5 status alat yang bisa dipilih Admin/TL lewat tombol Edit Alat
   const STATUS_ALAT_OPTIONS = [
@@ -430,7 +446,7 @@ export function HeavyEquipmentTabV2({ equipmentList, loans, currentUser, uptList
 
       {viewMode==="armada" && (<>
       {/* ── SECTION: Daftar Alat Berat ── */}
-      <div className="operations-section-heading"><div><span>Fleet Registry</span><h2>Daftar Alat Berat &amp; Alat Bantu</h2></div><div style={{display:"flex",alignItems:"center",gap:8}}><small>{filteredEquipment.length} alat sesuai filter</small>{canEditAll&&<button style={sty.btn("primary","sm")} onClick={()=>{setAddForm(blankEquipment());setAddingEquipment(true);}}>+ Tambah Alat</button>}</div></div>
+      <div className="operations-section-heading"><div><span>Fleet Registry</span><h2>Daftar Alat Berat &amp; Alat Bantu</h2></div><div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><small>{filteredEquipment.length} alat sesuai filter</small><button aria-label="Export Excel Alat Berat" aria-busy={exportingExcel} style={{...sty.btn("ghost","sm"),minHeight:44}} disabled={exportingExcel || !exportableEquipment.length} onClick={handleExportExcel}>{exportingExcel?`Mengekspor… ${exportProgress}%`:`Export Excel (.xlsx)`}</button>{canEditAll&&<button style={sty.btn("primary","sm")} onClick={()=>{setAddForm(blankEquipment());setAddingEquipment(true);}}>+ Tambah Alat</button>}</div></div>
       {/* Kategori (kiri, wrap) + dropdown kondisi ringkas (kanan) — satu baris, hilangkan dualisme chip. */}
       <div className="equipment-filter-layout" style={{display:"flex",gap:12,alignItems:"flex-start",flexWrap:"wrap",marginBottom:10}}>
         <div className="operations-category-filters heavy-category-strip" role="tablist" aria-label="Kategori alat berat" style={{flex:1,minWidth:0,marginBottom:0}}>
