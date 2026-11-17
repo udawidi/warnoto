@@ -40,3 +40,10 @@ __pycache__/
 
 # Laporan generate script fill_sap_photos (artefak, bisa di-generate ulang) — jangan commit.
 sap_foto_report.json
+
+# Pengaturan lokal VS Code / Claude / Codex (spesifik mesin) — jangan commit.
+.vscode/
+.claude/settings.json
+.claude/settings.local.json*
+.codex/
+.codex-worktrees/
