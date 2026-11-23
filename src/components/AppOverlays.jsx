@@ -6,8 +6,8 @@ export function AppOverlays({ C, isMobile, toast, savingInfo, scannerOpen, handl
     <>
       {toast && (
         <div style={isMobile
-          ? { position: "fixed", top: 16, left: 16, right: 16, zIndex: 9999, background: toast.type === "error" ? C.red : C.green, color: "white", padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.25)", textAlign: "center" }
-          : { position: "fixed", top: 20, right: 20, maxWidth: 420, zIndex: 9999, background: toast.type === "error" ? C.red : C.green, color: "white", padding: "12px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.2)" }
+          ? { position: "fixed", top: 16, left: 16, right: 16, zIndex: 9999, pointerEvents: "none", background: toast.type === "error" ? C.red : C.green, color: "white", padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.25)", textAlign: "center" }
+          : { position: "fixed", top: 20, right: 20, maxWidth: 420, zIndex: 9999, pointerEvents: "none", background: toast.type === "error" ? C.red : C.green, color: "white", padding: "12px 20px", borderRadius: 10, fontSize: 13, fontWeight: 600, boxShadow: "0 8px 24px rgba(0,0,0,0.2)" }
         }>{toast.msg}</div>
       )}
       {savingInfo && (

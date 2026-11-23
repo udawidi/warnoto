@@ -10,7 +10,7 @@ import { STATUS_SAP } from "../constants.js";
 import { supabase } from "../supabaseClient.js";
 import { roleTier } from "../lib/roles.js";
 import { loadMasterTable } from "../lib/masterSync.js";
-import { CLOUD } from "../lib/cloud.js";
+import { CLOUD, txnCacheKey } from "../lib/cloud.js";
 import { applyMtuKhsTug3Receipt } from "../features/mtu-khs/mtuKhsApi.js";
 import { missingReceiptPhotos } from "../lib/receiptPhoto.js";
 import { saveTugWorkflowTransaction, transitionTugWorkflowTransaction, transitionTugWorkflowWithChild, approveTug5AsmanWithChild, issueTugWorkflowDocumentNumber, deleteTugWorkflowTransaction, isWorkflowDoc } from "../lib/tugWorkflowSync.js";
@@ -445,7 +445,7 @@ export function useTugApprovals({
     });
     if (savedOk === false) {
       setTxns(txns); setStocks(stocks); setKatalogList(katalogList);
-      try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
+      try { await CLOUD.set(txnCacheKey(currentUser), prevTxns); } catch {}
       showToast("TUG-3 gagal disimpan. Status tetap menunggu approval; stok tidak ditambahkan.", "error");
       return;
     }
@@ -453,7 +453,7 @@ export function useTugApprovals({
     try { dedicatedSaved = await upsertTug3Transaction(newTxns.find(t => t.id===txn.id)); } catch (err) { console.warn("upsertTug3Transaction (approve) gagal:", err); }
     if (!dedicatedSaved) {
       setTxns(prevTxns); setStocks(prevStocks); setKatalogList(prevKatalog);
-      try { await CLOUD.set("pln_txns_v3", prevTxns); } catch {}
+      try { await CLOUD.set(txnCacheKey(currentUser), prevTxns); } catch {}
       showToast("TUG-3 gagal disimpan ke transaksi utama. Coba lagi; stok tidak diulang saat retry.", "error");
       return false;
     }

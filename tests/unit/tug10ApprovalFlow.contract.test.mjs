@@ -20,7 +20,7 @@ test("TUG-10 TL forwarding persists server-first and only caches the transaction
   assert.match(app, /tug10ApprovalInFlightRef\.current\.has\(txn\.id\)/);
   assert.match(app, /await upsertTug10Transaction\(forwardedTxn\)/);
   assert.match(app, /const latestTxns = stateRef\.current\.txns \|\| txns/);
-  assert.match(app, /CLOUD\.set\("pln_txns_v3", newTxns\)/);
+  assert.match(app, /CLOUD\.set\(txnCacheKey\(currentUser\), newTxns\)/);
   assert.ok(!forwarding.includes("saveToCloud"), "TUG-10 TL forwarding must not full-sync before server ack");
 });
 

@@ -1,5 +1,5 @@
 // Cluster supabase-sync + proses foto TUG (dipindah dari App.jsx Fase 5f).
-// Sebagian dipakai app-wide (processTxnPhotos/resolveTxnPrivPhotos di alur simpan txn),
+// Sebagian dipakai app-wide (processTxnPhotos/resolvePrivPhoto di alur simpan txn),
 // sebagian dipakai TUG15Tab (buildMutasiRows/sync*).
 import { supabase, SUPABASE_URL, SUPABASE_KEY, fetchSupabase } from "../supabaseClient.js";
 import { UIT, UPT, STATUS_RETUR_TO_JENIS } from "../constants.js";
@@ -400,22 +400,13 @@ export async function processTxnPhotos(txn, prefix, onProgress) {
   return { data: t, pending };
 }
 
-// Versi single-value dari resolveTxnPrivPhotos, untuk display foto priv: di form (lihat PhotoSlot.jsx).
+// Resolve the private SIM/KTP marker for forms and print previews.
 export async function resolvePrivPhoto(marker) {
   if (!supabase || typeof marker !== "string" || !marker.startsWith("priv:")) return marker;
   try {
     const { data } = await supabase.storage.from("tug-docs-private").createSignedUrl(marker.slice(5), 3600);
     return data?.signedUrl || marker;
   } catch { return marker; }
-}
-
-// SIM/KTP "priv:<path>" → signed URL (1 jam) untuk ditampilkan/dicetak.
-export async function resolveTxnPrivPhotos(txn) {
-  if (!supabase || !txn || typeof txn.fotoSimKtp !== "string" || !txn.fotoSimKtp.startsWith("priv:")) return txn;
-  try {
-    const { data } = await supabase.storage.from("tug-docs-private").createSignedUrl(txn.fotoSimKtp.slice(5), 3600);
-    return data?.signedUrl ? { ...txn, fotoSimKtp: data.signedUrl } : txn;
-  } catch { return txn; }
 }
 
 export async function syncFotoMaterialToSupabase(stocks, katalogList) {

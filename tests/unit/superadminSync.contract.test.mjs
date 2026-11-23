@@ -26,7 +26,7 @@ test("TUG and material cadang loaders share the four-request bootstrap scheduler
   assert.match(app, /runBootstrapTasks\(\[\.\.\.masterTasks, \.\.\.maturityTasks, \.\.\.domainTasks\], \{ limit: 4/);
   assert.match(app, /normalizeDomainLoad = value => value && Array\.isArray\(value\.rows\)/);
   assert.match(app, /\{ unavailable:true, rows:\[\] \}/);
-  assert.match(app, /bootstrap TUG canonical/);
+  assert.match(app, /\(\) => loadTug\("canonical"\)/);
   assert.match(app, /bootstrap material cadang/);
 });
 
@@ -37,7 +37,7 @@ test("MARA satuan query is lazy and session-cached", () => {
 });
 
 test("auxiliary bootstrap loaders wait for the initial refresh", () => {
-  assert.match(app, /if \(authLoading \|\| !currentUser \|\| dataRefreshing \|\| !supabase\) return;[\s\S]{0,220}Promise\.all\(\[reloadUsers\(\), reloadRolePerms\(\)\]\)/);
+  assert.match(app, /if \(authLoading \|\| !currentUser \|\| dataRefreshing \|\| !supabase\) return;[\s\S]{0,220}reloadRolePerms\(\)/);
   assert.match(app, /if \(authLoading \|\| !currentUser \|\| dataRefreshing \|\| currentUser\?\.role === "HAR_UIT"\) return;/);
   assert.match(maturity, /if \(!currentUser\?\.id \|\| dataRefreshing \|\| !selectedMaturityUptId/);
   assert.match(maturity, /selectedMaturityUptId, dataRefreshing\]/);

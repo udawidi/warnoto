@@ -8,8 +8,8 @@ create table public.sub_gudang (id text primary key, data jsonb not null);
 grant select, insert, update on public.stocks, public.gudang, public.sub_gudang to authenticated;
 alter table public.stocks enable row level security;
 create policy master_media_visible on public.stocks to authenticated using (upt_id=current_setting('test.upt'));
-\ir ../../supabase/proposals/20261123_master_media.sql
-\ir ../../supabase/proposals/20261123_master_media.sql
+\ir ../../supabase/migrations/20261123_master_media.sql
+\ir ../../supabase/migrations/20261123_master_media.sql
 begin;
 insert into public.stocks(id,upt_id,data) values
   ('TEST-MEDIA-A','A','{"img":"data:image/png;base64,OLD","qty":1}'),

@@ -58,7 +58,7 @@ test("catalog sync completes before stock sync and TUG-3 rolls back on save fail
   assert.match(approvalsSource, /txn\.stockItems\.forEach\(\(si, itemIdx\) =>/);
   assert.doesNotMatch(approvalsSource, /txn\.stockItems\.indexOf\(si\)/);
   assert.match(approvalsSource, /const dedicatedSaved = false|let dedicatedSaved = false/);
-  assert.match(approvalsSource, /if \(!dedicatedSaved\) \{[\s\S]*?CLOUD\.set\("pln_txns_v3", prevTxns\)/);
+  assert.match(approvalsSource, /if \(!dedicatedSaved\) \{[\s\S]*?CLOUD\.set\(txnCacheKey\(currentUser\), prevTxns\)/);
 });
 
 test("master table loader paginates beyond the PostgREST 1000-row limit", () => {

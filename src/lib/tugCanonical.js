@@ -105,8 +105,12 @@ export function canonicalRowToTxn(row) {
   const document = row.document || {};
   const docKey = { TUG3: "tug3", TUG5: "tug5", TUG7: "tug7", TUG8: "tug8", TUG9: "tug9", TUG10: "tug10" }[row.doc_type];
   const approvals = [...(row.tug_approvals || [])].filter(e => e.decision === "APPROVE").sort((a,b) => String(a.created_at).localeCompare(String(b.created_at)));
-  const tlApproval = approvals.find(e => e.actor_snapshot?.role === "TL");
-  const asmanApproval = approvals.find(e => e.actor_snapshot?.role === "ASMAN" && e.stage === "FINAL_APPROVED");
+  const tlApproval = approvals.find(e => e.stage === "PENDING_TL");
+  // tug_decide records the stage before advancing it. A superadmin can
+  // complete the same review on behalf of the assigned role.
+  const asmanApproval = row.status === "FINAL_APPROVED"
+    ? approvals.slice().reverse().find(e => e.stage === "PENDING_ASMAN" || e.stage === "FINAL_APPROVED")
+    : null;
   return {
     ...document,
     id: row.id,

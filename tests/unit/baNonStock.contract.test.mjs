@@ -96,7 +96,7 @@ test("BA UI exposes TL creation, UPT-scoped history, and review gates", () => {
   assert.match(tab, /Diputus oleh/);
   assert.match(review, /const readOnly=\["APPROVED","REJECTED"\]/);
   assert.match(review, /details open=\{readOnly\}/);
-  assert.match(preview, /resolveBaNonStockPrintNames\(rawDp/);
+  assert.match(preview, /resolveBaNonStockPrintNames\(docPreview/);
   assert.match(review, /const canApprove=!loading&&!busy&&!error&&!readOnly&&CHECKS\.every\(\(\[key\]\)=>checked\[key\]\)/);
   assert.doesNotMatch(review, /canApprove[^\n]*previewed/);
   assert.match(review, /TL approver/);

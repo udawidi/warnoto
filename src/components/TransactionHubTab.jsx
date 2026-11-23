@@ -17,7 +17,7 @@ export function TransactionHubTab({
   C, sty, currentUser, isMobile,
   TUG_UI, TUG_GROUP_UI,
   tugGroup, tugSubTab, setTugSubTab,
-  activeTugSummary, rolePerms,
+  activeTugSummary, rolePerms, loadNotice,
   filterStatus, setFilterStatus,
   tugUptFilter, setTugUptFilter, tugUptFilterOptions,
   openNewTxn,
@@ -192,7 +192,8 @@ export function TransactionHubTab({
               </div>}
             </section>}
 
-            {tugSubTab==="BA_NON_STOCK" ? <BaNonStockTab C={C} sty={sty} currentUser={currentUser} records={baNonStockRecords} onSave={saveBaNonStockDraft} onSubmit={submitBaNonStock} onReview={onReviewBaNonStock} onPreview={setDocPreview} gudangList={gudangList} satpamList={satpamList} users={users} uptList={uptList} currentUptId={currentUptId} filterStatus={filterStatus} tugUptFilter={tugUptFilter} isMobile={isMobile} /> : tugSubTab==="TUG3" ? (
+            {loadNotice}
+            {loadNotice && tugSubTab !== "TUG15" && !uptFilteredTxns.some(row => row.docType === tugSubTab) ? null : tugSubTab==="BA_NON_STOCK" ? <BaNonStockTab C={C} sty={sty} currentUser={currentUser} records={baNonStockRecords} onSave={saveBaNonStockDraft} onSubmit={submitBaNonStock} onReview={onReviewBaNonStock} onPreview={setDocPreview} gudangList={gudangList} satpamList={satpamList} users={users} uptList={uptList} currentUptId={currentUptId} filterStatus={filterStatus} tugUptFilter={tugUptFilter} isMobile={isMobile} /> : tugSubTab==="TUG3" ? (
               <>
                 <TUG3Tab
                   txns={pagedDocTxns}
@@ -237,7 +238,7 @@ export function TransactionHubTab({
               />
             ) : (
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {filteredDocTxns.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>{deferredHistorySearch ? "Tidak ada hasil. Coba kata lain atau reset pencarian." : `Belum ada transaksi ${tugSubTab.replace("TUG","TUG-")}`}</div>}
+              {!loadNotice && filteredDocTxns.length===0 && <div style={{...sty.card,textAlign:"center",color:C.muted,padding:30}}>{deferredHistorySearch ? "Tidak ada hasil. Coba kata lain atau reset pencarian." : `Belum ada transaksi ${tugSubTab.replace("TUG","TUG-")}`}</div>}
               {pagedDocTxns.map(t=>{
                 const creator = users.find(u=>u.id===t.createdBy)||{};
                 const approver = users.find(u=>u.id===t.approvedBy)||{};

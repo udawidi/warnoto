@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { canonicalRowToTxn } from "../../src/lib/tugCanonical.js";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const read = file => fs.readFileSync(path.join(root, file), "utf8");
@@ -166,6 +167,16 @@ test("canonical client maps queue approver from server stage and does not choose
   assert.match(client, /approvalEvents: row\.tug_approvals/);
   assert.match(client, /approvedByTL: tlApproval\?\.actor_id/);
   assert.match(client, /approvedBy: asmanApproval\?\.actor_id/);
+});
+
+test("approved TUG history uses the recorded reviewers even when a superadmin handles both stages", () => {
+  const transaction = { doc_type:"TUG8", status:"FINAL_APPROVED", tug_approvals:[
+    { decision:"APPROVE", stage:"PENDING_TL", actor_id:"reviewer1", actor_snapshot:{ role:"SUPERADMIN" } },
+    { decision:"APPROVE", stage:"PENDING_ASMAN", actor_id:"reviewer2", actor_snapshot:{ role:"SUPERADMIN" } },
+  ] };
+  assert.equal(canonicalRowToTxn(transaction).approvedByTL, "reviewer1");
+  assert.equal(canonicalRowToTxn(transaction).approvedBy, "reviewer2");
+  assert.equal(canonicalRowToTxn({ ...transaction, status:"PENDING" }).approvedBy, null);
 });
 
 test("TL intermediate approval remains pending and canonical Asman is explicit", () => {

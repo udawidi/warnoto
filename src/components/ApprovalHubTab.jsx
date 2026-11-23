@@ -15,7 +15,7 @@ import { StockOpnameApprovalReview } from "./StockOpnameApprovalReview.jsx";
 
 export function ApprovalHubTab({
   currentUser, sty, C, isMobile,
-  myPendingApprovals, gudangCapacityImports, lokasiList, stocks,
+  tugLoadNotice, myPendingApprovals, gudangCapacityImports, lokasiList, stocks,
   heavyEquipmentPendingCount, opnameList, stockCountPendingCount,
   approvalTypeFilter, setApprovalTypeFilter, approvalPageSize, setApprovalPageSize,
   enrichedStocks, katalogList, users,
@@ -113,7 +113,9 @@ export function ApprovalHubTab({
       {(approvalTypeFilter==="ALL"||approvalTypeFilter==="TUG") && (
         <div className="approval-section-title"><span>↔</span><div>Transaksi TUG<small>Dokumen operasional yang membutuhkan keputusan Anda</small></div></div>
       )}
+      {tugLoadNotice}
       <ApprovalTab
+        tugListIncomplete={!!tugLoadNotice}
         pendingTxns={myPendingApprovals}
         stocks={enrichedStocks} katalogList={katalogList} lokasiList={lokasiList}
         users={users} sty={sty} C={C}
@@ -436,7 +438,7 @@ export function ApprovalHubTab({
                 {approvalHistoryShowAll ? "Tampilkan per halaman" : "Tampilkan semua"}
               </button>
             </div>
-            {filtered.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
+            {!tugLoadNotice && filtered.length===0 && <div style={{textAlign:"center",color:C.muted,padding:20,fontSize:13}}>Belum ada riwayat approval.</div>}
             {groupsByType.map(g=>(
               <div key={g.type} style={{marginBottom:14}}>
                 <div style={{fontSize:12,fontWeight:800,color:"#0098da",marginBottom:4}}>{typeLabel[g.type]||g.type} ({g.items.length})</div>

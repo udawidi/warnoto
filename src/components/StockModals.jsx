@@ -2,8 +2,9 @@ import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Modal-modal terkait stok & dokumen (dipindah dari App.jsx, refactor batch 1).
 // StockDetailModal (form tambah/edit stok), MaturityAssessmentModal (asesmen manual),
 // DocPreviewModal (preview & unduh dokumen TUG).
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { JENIS_BARANG, STATUS_SAP } from "../constants.js";
+import { resolvePrivPhoto } from "../lib/supabaseSync.js";
 import { resolveStockPhotoUrl } from "../lib/stockCache.js";
 import { resolveSapLabel } from "../lib/sap.js";
 import { canonicalKatalogCode } from "../lib/normalizeKatalogCode.js";
@@ -140,33 +141,77 @@ export function MaturityAssessmentModal({ setMaturityModal, maturityForm, setMat
   );
 }
 
-export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docKeyOf, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, timMutuList, uitList, uptList, ultgList, enrichedStocks, showToast, sty, C }) {
-  // dp = transaksi dgn SIM/KTP privat sudah jadi signed URL (foto lain sudah
-  // URL publik). Fallback ke docPreview mentah selama resolusi berjalan.
-  // Do not render a stale snapshot while the resolver catches up with a
-  // reopened BA/TUG whose workflow state or version has changed.
-  const sameDocument = Boolean(docPreview?.id) && docPreviewDoc?.id === docPreview.id
-    && (docPreview?.workflowVersion == null || docPreviewDoc?.workflowVersion === docPreview.workflowVersion)
-    && (docPreview?.status == null || docPreviewDoc?.status === docPreview.status)
-    && (docPreview?.stage == null || docPreviewDoc?.stage === docPreview.stage)
-    && (docPreview?.updatedAt == null || docPreviewDoc?.updatedAt === docPreview.updatedAt);
-  const rawDp = sameDocument ? docPreviewDoc : docPreview;
-  const dp = rawDp?.docType === "BA_NON_STOCK" ? resolveBaNonStockPrintNames(rawDp, { satpamList, users }) : rawDp;
+// The iframe paints the document before starting its attachments. A retry can
+// replace a failed image in place without resetting scroll position or text.
+function loadPreviewImage(image, photoLinks, signal) {
+  const source = image.dataset.previewSrc;
+  const isPrivate = source.startsWith("priv:");
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = ok => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      image.removeEventListener("load", loaded);
+      image.removeEventListener("error", failed);
+      signal.removeEventListener("abort", aborted);
+      if (!ok && isPrivate && !signal.aborted) photoLinks.delete(source);
+      resolve(ok);
+    };
+    const loaded = () => finish(image.naturalWidth > 0);
+    const failed = () => finish(false);
+    const aborted = () => finish(false);
+    const timer = setTimeout(failed, 30000);
+    signal.addEventListener("abort", aborted, { once: true });
+    image.addEventListener("load", loaded, { once: true });
+    image.addEventListener("error", failed, { once: true });
+    if (!isPrivate) {
+      image.src = source;
+      return;
+    }
+    const cached = photoLinks.get(source);
+    if (cached && cached.expires > Date.now()) {
+      image.src = cached.url;
+      return;
+    }
+    resolvePrivPhoto(source).then(url => {
+      if (settled) return;
+      if (!url || url === source) return failed();
+      // Links last an hour at Storage. Reuse briefly inside this account only.
+      if (photoLinks.size >= 32) photoLinks.delete(photoLinks.keys().next().value);
+      photoLinks.set(source, { url, expires: Date.now() + 300000 });
+      image.src = url;
+    }, failed);
+  });
+}
+
+export function DocPreviewModal({ docPreview, setDocPreview, photoLinks, mastersReady, masterLoadFailed, onRetryMasters, docKeyOf, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, timMutuList, uitList, uptList, ultgList, enrichedStocks, showToast, sty, C }) {
+  const dp = useMemo(() => docPreview.docType === "BA_NON_STOCK"
+    ? resolveBaNonStockPrintNames(docPreview, { satpamList, users })
+    : docPreview, [docPreview, satpamList, users]);
   const iframeRef = useRef(null);
   const previewViewportRef = useRef(null);
-  const [previewReady, setPreviewReady] = useState(false);
+  const attemptRef = useRef(null);
+  const [assets, setAssets] = useState(null);
   const [previewScale, setPreviewScale] = useState(1);
   const [previewHeight, setPreviewHeight] = useState(1123);
-  const documentHtml = dp.docType==="BA_NON_STOCK" ? buildBaNonStockHTML(dp) : dp.docType==="TUG10" ? buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList) : dp.docType==="TUG3" ? buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList) : dp.docType==="TUG5" ? buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList) : dp.docType==="TUG7" ? buildTUG7HTML(dp, katalogList, uitList, uptList, users) : buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList, gudangList);
-  const previewHtml = dp.docType === "BA_NON_STOCK"
-    ? documentHtml.replace(/<div class="bar">[\s\S]*?<\/div>/, "")
-    : documentHtml.replace(/<div class="print-bar">[\s\S]*?<\/div>/, "");
+  const documentHtml = useMemo(() => {
+    switch (dp.docType) {
+      case "BA_NON_STOCK": return buildBaNonStockHTML(dp);
+      case "TUG10": return buildTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, uptList);
+      case "TUG3": return buildTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, uptList);
+      case "TUG5": return buildTUG5HTML(dp, katalogList, uitList, users, ultgList, uptList);
+      case "TUG7": return buildTUG7HTML(dp, katalogList, uitList, uptList, users);
+      default: return buildTUG9HTML(dp, enrichedStocks, users, satpamList, uptList, gudangList);
+    }
+  }, [dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, timMutuList, uitList, uptList, ultgList, enrichedStocks]);
+  const previewHtml = useMemo(() => documentHtml
+    .replace(/<div class="(?:bar|print-bar)">[\s\S]*?<\/div>/, "")
+    .replace(/(<img\b[^>]*?\s)src="/gi, '$1data-preview-src="'), [documentHtml]);
+  const currentAssets = assets?.html === previewHtml ? assets : null;
+  const previewReady = Boolean(mastersReady && currentAssets && !currentAssets.errors.length);
 
-  useEffect(() => {
-    setPreviewReady(false);
-    setPreviewHeight(1123);
-  }, [documentHtml]);
-
+  useEffect(() => () => attemptRef.current?.abort(), []);
   useEffect(() => {
     const viewport = previewViewportRef.current;
     if (!viewport) return undefined;
@@ -177,28 +222,26 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
     return () => observer.disconnect();
   }, []);
 
-  const handlePreviewLoad = () => {
+  const handlePreviewLoad = async () => {
     const frameDocument = iframeRef.current?.contentDocument;
-    if (!frameDocument) {
-      setPreviewReady(true);
-      return;
-    }
-    const imageReady = Array.from(frameDocument.images || []).map(image => {
-      if (image.complete) return Promise.resolve();
-      return new Promise(resolve => {
-        const settle = () => resolve();
-        image.addEventListener("load", settle, { once: true });
-        image.addEventListener("error", settle, { once: true });
-      });
-    });
-    const fontReady = frameDocument.fonts?.ready
-      ? Promise.resolve(frameDocument.fonts.ready).catch(() => undefined)
-      : Promise.resolve();
-    Promise.all([fontReady, ...imageReady]).then(() => {
-      const height = Math.max(1123, frameDocument.documentElement?.scrollHeight || frameDocument.body?.scrollHeight || 1123);
-      setPreviewHeight(height);
-      setPreviewReady(true);
-    });
+    if (!frameDocument?.body || frameDocument.URL === "about:blank") return;
+    attemptRef.current?.abort();
+    const attempt = new AbortController();
+    attemptRef.current = attempt;
+    setAssets(null);
+    const updateHeight = () => setPreviewHeight(Math.max(1123, frameDocument.documentElement?.scrollHeight || 0));
+    updateHeight();
+    const images = Array.from(frameDocument.querySelectorAll("img[data-preview-src]"));
+    const pending = images.filter(image => !image.complete || !image.naturalWidth);
+    const [results] = await Promise.all([
+      Promise.all(pending.map(image => loadPreviewImage(image, photoLinks, attempt.signal))),
+      frameDocument.fonts?.ready,
+    ]);
+    if (attempt.signal.aborted || iframeRef.current?.contentDocument !== frameDocument) return;
+    const errors = pending.filter((_, index) => !results[index]).map(image => image.alt || "Gambar dokumen");
+    const privateImage = images.find(image => image.dataset.previewSrc === dp.fotoSimKtp);
+    setAssets({ html: previewHtml, errors: [...new Set(errors)], privateUrl: privateImage?.src });
+    updateHeight();
   };
   return (
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",flexDirection:"column",zIndex:1500}}>
@@ -206,12 +249,13 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
             <div style={{color:"white",fontWeight:700,fontSize:13}}>📄 Dokumen {dp.docType.replace("TUG","TUG-")} — {dp.docNumbers?.[docKeyOf(dp)]||dp.draftLabel||dp.id}</div>
             <div style={{display:"flex",gap:8}}>
               <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("success"),padding:"7px 16px"}} onClick={()=>{
-                if (dp.docType==="BA_NON_STOCK") downloadBaNonStockHTML(dp, showToast);
-                else if (dp.docType==="TUG10") downloadTUG10HTML(dp, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast, uptList);
-                else if (dp.docType==="TUG3") downloadTUG3HTML(dp, katalogList, lokasiList, timMutuList, users, satpamList, showToast, uptList);
-                else if (dp.docType==="TUG5") downloadTUG5HTML(dp, katalogList, uitList, users, showToast, ultgList, uptList);
-                else if (dp.docType==="TUG7") downloadTUG7HTML(dp, katalogList, uitList, uptList, users, showToast);
-                else downloadTUG9HTML(dp, enrichedStocks, users, satpamList, showToast, uptList, gudangList);
+                const printable = currentAssets.privateUrl ? { ...dp, fotoSimKtp: currentAssets.privateUrl } : dp;
+                if (dp.docType==="BA_NON_STOCK") downloadBaNonStockHTML(printable, showToast);
+                else if (dp.docType==="TUG10") downloadTUG10HTML(printable, katalogList, lokasiList, users, satpamList, gudangList, subGudangList, showToast, uptList);
+                else if (dp.docType==="TUG3") downloadTUG3HTML(printable, katalogList, lokasiList, timMutuList, users, satpamList, showToast, uptList);
+                else if (dp.docType==="TUG5") downloadTUG5HTML(printable, katalogList, uitList, users, showToast, ultgList, uptList);
+                else if (dp.docType==="TUG7") downloadTUG7HTML(printable, katalogList, uitList, uptList, users, showToast);
+                else downloadTUG9HTML(printable, enrichedStocks, users, satpamList, showToast, uptList, gudangList);
               }}>⬇️ Unduh File (untuk Print/PDF)</button>
               <button disabled={!previewReady} aria-disabled={!previewReady} style={{...sty.btn("primary"),padding:"7px 16px"}} onClick={()=>iframeRef.current?.contentWindow?.print()}>🖨️ Print / Save PDF</button>
               <button style={sty.btn("danger","sm")} onClick={()=>setDocPreview(null)}>✕ Tutup</button>
@@ -230,7 +274,15 @@ export function DocPreviewModal({ docPreview, setDocPreview, docPreviewDoc, docK
             </div>
           </div>
           <div tabIndex={0} className="info-note" style={{padding:"8px 18px",background:"#fef3c7",fontSize:12,color:"#92400e",flexShrink:0}}>
-            {previewReady ? "✅ Dokumen siap dicetak." : "⏳ Menunggu font dan foto selesai dimuat..."} Tips: klik "Unduh File", buka file-nya di browser HP/laptop, lalu pilih menu Print → Save as PDF untuk dapat file PDF asli.
+            <span role="status">{currentAssets?.errors.length
+              ? `Gagal memuat: ${currentAssets.errors.join(", ")}. `
+              : !currentAssets ? "Memuat lampiran dokumen... "
+              : masterLoadFailed ? "Data referensi cetak belum tersedia. "
+              : !mastersReady ? "Menunggu data referensi dokumen untuk cetak. "
+              : "Dokumen siap dicetak. "}</span>
+            {masterLoadFailed && <button onClick={onRetryMasters}>Muat ulang data referensi</button>}
+            {currentAssets?.errors.length > 0 && <button onClick={handlePreviewLoad}>Coba lagi</button>}
+
           </div>
         </div>
   );

@@ -165,7 +165,7 @@ test("all TUG document builders keep one physical A4 layout for screen and print
 
 test("document preview gates print/open until iframe assets settle", () => {
   const source = fs.readFileSync(new URL("../../src/components/StockModals.jsx", import.meta.url), "utf8");
-  assert.match(source, /useState\(false\)/);
+  assert.match(source, /mastersReady && currentAssets && !currentAssets\.errors\.length/);
   assert.match(source, /onLoad=\{handlePreviewLoad\}/);
   assert.match(source, /frameDocument\.fonts\?\.ready/);
   assert.match(source, /image\.addEventListener\("load"/);

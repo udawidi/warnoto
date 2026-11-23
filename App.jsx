@@ -7,7 +7,7 @@ import { X } from "@phosphor-icons/react";
 import * as Sentry from "@sentry/react";
 import { COMPANY, UIT, UPT, WAREHOUSE, DOC_CODE, APP_VERSION, KAPASITAS_LABEL, ROMAN, JENIS_BARANG, STATUS_RETUR_TO_JENIS, STATUS_SAP } from "./src/constants.js";
 import { supabase, SUPABASE_URL, SUPABASE_KEY, SUPABASE_AUTH_STORAGE_KEY, usernameToAuthEmail, describeLoginError, isRetryableLoginError, fetchSupabase } from "./src/supabaseClient.js";
-import { CLOUD } from "./src/lib/cloud.js";
+import { CLOUD, readTxnCache, txnCacheKey } from "./src/lib/cloud.js";
 import { leanStocksForCache, resolveStockPhotoUrl } from "./src/lib/stockCache.js";
 import { approveStockLocationMove, rejectStockLocationMove } from "./src/lib/stockLocationApproval.js";
 import { applyStockRealtimeEvent, applyStockRealtimeEvents, stockListsEqual } from "./src/lib/stockRealtime.js";
@@ -29,6 +29,7 @@ import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, at
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
 import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, stockRevisionsMatch, syncMasterTable, syncMasterTableRows, deleteMasterTableRow, loadWarehouseCapacity, syncWarehouseCapacity, syncWarehouseCapacityRows, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { createTugWriteGuard } from "./src/lib/tugWriteGuard.js";
 import { runBootstrapTasks } from "./src/lib/bootstrapScheduler.js";
 import { getDefaultMaturityAuditHistory, loadMaturityAssessments, loadMaturityAudits, loadMaturityAuditHistory, loadMaturity5SAssessments, upsertMaturityAssessments, upsertMaturityAudits } from "./src/lib/maturitySync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
@@ -118,7 +119,7 @@ import { useMasterDataCrud } from "./src/hooks/useMasterDataCrud.jsx";
 import { useWarehouseConfig } from "./src/hooks/useWarehouseConfig.jsx";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./src/lib/openLocationCode.js";
 import { fmtNum, buildKatalogRagContent, getKritisAgg, splitChunksForEmbed } from "./src/lib/ragShared.mjs";
-import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, primeStockQtySyncSnapshot, syncFotoMaterialToSupabase, processTxnPhotos, resolveTxnPrivPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
+import { buildMutasiRows, syncTUG15ToSupabase, syncStockQtyToSupabase, primeStockQtySyncSnapshot, syncFotoMaterialToSupabase, processTxnPhotos, compressImage, _isDataUrl, uploadPhotoToStorage, _withTimeout } from "./src/lib/supabaseSync.js";
 import { syncSignature } from "./src/lib/syncGuard.js";
 import { createAndSubmitCanonicalTug, decideCanonicalTug, loadCanonicalTugTransactions, newCanonicalActionKeys, newTugIdempotencyKey, prepareCanonicalTugReview } from "./src/lib/tugCanonical.js";
 import { loadTug3Transactions } from "./src/lib/tug3Sync.js";
@@ -236,6 +237,21 @@ WAVE TRAP = Line Trap; WP = Water Proof (Kedap Air)`;
 // network — dipakai sebagai initial state currentUser/authLoading (lihat effect
 // onAuthStateChange di bawah), profil sebenarnya tetap di-refresh dari Supabase.
 const PROFILE_CACHE_KEY = "warnoto_profile_cache_v3"; // bump v2->v3: rollout 2FA wajib — paksa semua sesi lama (cache-first) lewat gate handleAuthSession, lihat App.jsx:1712
+const EMPTY_TXNS = [];
+const PRINT_REFERENCES = {
+  TUG3: ["katalog", "lokasi", "tim_mutu", "profiles", "satpam", "upt"],
+  TUG10: ["katalog", "lokasi", "profiles", "satpam", "gudang", "sub_gudang", "upt"],
+  TUG5: ["katalog", "uit", "profiles", "ultg", "upt"],
+  TUG7: ["katalog", "uit", "upt", "profiles"],
+  BA_NON_STOCK: [],
+};
+const OUTGOING_PRINT_REFERENCES = ["stocks", "katalog", "lokasi", "profiles", "satpam", "upt", "gudang"];
+const TUG_SOURCES = {
+  canonical: { label: "TUG-8/9", load: loadCanonicalTugTransactions },
+  canonical3: { label: "TUG-3/4", load: loadTug3Transactions },
+  canonical10: { label: "TUG-10", load: loadTug10Transactions },
+  workflow: { label: "TUG-5/7 dan draft TUG-8/9", load: loadTugWorkflowTransactions },
+};
 const LEGACY_PROFILE_CACHE_KEY = "warnoto_profile_cache_v1";
 function readCachedProfile() {
   try {
@@ -248,7 +264,13 @@ function readCachedProfile() {
 }
 
 function writeCachedProfile(profile) {
-  try { localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ endpoint: SUPABASE_URL, profile })); } catch {}
+  try {
+    if (!localStorage.getItem("warnoto_legacy_txn_owner")) {
+      const previous = readCachedProfile();
+      localStorage.setItem("warnoto_legacy_txn_owner", previous?.id ? txnCacheKey(previous) : "unknown");
+    }
+    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify({ endpoint: SUPABASE_URL, profile }));
+  } catch {}
 }
 
 // Reader cache generik (sinkron, langsung localStorage) untuk lazy-initializer
@@ -350,7 +372,20 @@ export default function PLNWarehouse() {
   const [stocks, setStocks] = useState(() => readCachedList("pln_stocks_v4") ?? []); // junction rows: katalogId + lokasiId + qty/price/jenis
   const [katalogList, setKatalogList] = useState(() => readCachedList("pln_katalog_v4") ?? []); // Master Katalog Barang
   const [lokasiList, setLokasiList] = useState(() => dropCachedGiRows(readCachedList("pln_lokasi_v4")) ?? []); // Master Lokasi Gudang
-  const [txns, setTxns] = useState(() => readCachedList("pln_txns_v3") ?? []);
+  const [txnState, setTxnState] = useState([]);
+  const [txnOwner, setTxnOwner] = useState(null);
+  const txnScope = currentUser ? txnCacheKey(currentUser) : null;
+  const activeTxnScope = useRef(txnScope);
+  activeTxnScope.current = txnScope;
+  const setTxns = useCallback(update => {
+    if (activeTxnScope.current === txnScope) setTxnState(update);
+  }, [txnScope]);
+  const txns = txnOwner && txnOwner === txnScope ? txnState : EMPTY_TXNS;
+  const [tugLoads, setTugLoads] = useState({});
+  const tugRefresh = useRef(null);
+  const [printLoads, setPrintLoads] = useState({});
+  const retryPrintLoads = useRef(null);
+  const legacyTxnOwner = useRef(txnScope);
   const [baNonStockRecords, setBaNonStockRecords] = useState([]);
   const baNonStockRefreshSeqRef = useRef(0);
   const [baNonStockReview, setBaNonStockReview] = useState(null);
@@ -632,14 +667,23 @@ export default function PLNWarehouse() {
     return () => clearTimeout(timer);
   }, [txns, stocks, katalogList, currentUser, loading, dataRefreshing]);
   const [scannerOpen, setScannerOpen] = useState(false);
-  const [docPreview, setDocPreview] = useState(null); // txn object when previewing TUG-9 document
+  const previewScope = JSON.stringify([currentUser?.id, currentUser?.role, currentUser?.uptId, currentUser?.uitId, currentUser?.ultgId, currentUser?.gudangIds]);
+  const [previewEntry, setPreviewEntry] = useState(null);
+  const docPreview = previewEntry?.scope === previewScope ? previewEntry.record : null;
+  const requiredRefs = PRINT_REFERENCES[docPreview?.docType] || OUTGOING_PRINT_REFERENCES;
+  const failedRefs = requiredRefs.filter(table => printLoads[table] === "error");
+  const tugPrintMastersReady = supabase ? txnOwner === txnScope && requiredRefs.every(table => printLoads[table] === "ready") : !dataRefreshing;
+  const setDocPreview = useCallback(record => setPreviewEntry(record ? { scope: previewScope, record } : null), [previewScope]);
+  useEffect(() => {
+    setPreviewEntry(entry => entry?.scope === previewScope ? entry : null);
+  }, [previewScope]);
   // One user action keeps the same RPC idempotency keys across retry after a timeout.
   const canonicalActionKeysRef = useRef(null);
   const canonicalDecisionKeysRef = useRef({});
   const canonicalApprovalInFlightRef = useRef(new Set());
   const tug10ApprovalKeysRef = useRef({});
   const tug10ApprovalInFlightRef = useRef(new Set());
-  const [docPreviewDoc, setDocPreviewDoc] = useState(null); // versi docPreview dgn SIM/KTP privat sudah jadi signed URL
+  const previewPhotoLinks = useMemo(() => new Map(), [previewScope]);
   const [kartuGantungDetail, setKartuGantungDetail] = useState(null);
   const [petaMiniDetail, setPetaMiniDetail] = useState(null); // {stock, lokasi, gudang}
   const handleGiMapSaved = row => {
@@ -775,6 +819,9 @@ export default function PLNWarehouse() {
       stocksBootstrapUserIdRef.current = null;
       bootstrapStockSnapshot.current = null;
       setDataRefreshing(true);
+      setPrintLoads({});
+      setTxnOwner(null);
+      setTugLoads({});
       bootstrapBaselinePendingRef.current = true;
       // Satu request cloud yang menggantung tidak boleh menahan seluruh bootstrap.
       // Timeout hanya mengubah hasil request yang macet menjadi null; request normal
@@ -860,13 +907,18 @@ export default function PLNWarehouse() {
       // Semua cache dibaca paralel. Pada browser dengan window.storage asinkron ini
       // menghilangkan waterfall sebelum request REST bahkan dimulai.
       const [cs, ckat, clokLocal, ct, cseq, crk, copn, csc, cah, cma, cmau, cmah, cm5s, che, chel, cattb, cmcd, cmch, cmcai, cgcap, cgcapi, cmig, cmpr] = await Promise.all([
-        CLOUD.get("pln_stocks_v4"), CLOUD.get("pln_katalog_v4"), CLOUD.get("pln_lokasi_v4"), CLOUD.get("pln_txns_v3"), CLOUD.get("pln_docseq_v3"),
+        CLOUD.get("pln_stocks_v4"), CLOUD.get("pln_katalog_v4"), CLOUD.get("pln_lokasi_v4"), readTxnCache(txnScope, legacyTxnOwner.current), CLOUD.get("pln_docseq_v3"),
         CLOUD.get("pln_rencana_v1"), CLOUD.get("pln_opname_v1"), CLOUD.get("pln_stockcount_v1"), CLOUD.get("pln_approval_history_v1"), CLOUD.get("pln_maturity_v1"),
         CLOUD.get("pln_maturity_audits_v1"), CLOUD.get("pln_maturity_audit_history_v1"), CLOUD.get("pln_maturity_5s_assessments_v1"), CLOUD.get("pln_heavy_equipment_v1"), CLOUD.get("pln_heavy_equipment_loans_v1"), CLOUD.get("pln_attb_v1"),
         CLOUD.get("pln_material_cadang_v1"), CLOUD.get("pln_material_cadang_health_v1"), CLOUD.get("pln_material_cadang_ai_insights_v1"),
         CLOUD.get("pln_gudang_capacity_v1"), CLOUD.get("pln_gudang_capacity_imports_v1"), CLOUD.get("pln_migrated_tug15_v1"), CLOUD.get("pln_migrasi_pending_review_v1"),
       ].map((p, i) => bootstrapLoad(p, `bootstrap cache ${i}`)));
 
+      if (sessionAbort.signal.aborted) return;
+      const legacyTxns = ct || DEFAULT_TXNS;
+      setTxns(legacyTxns);
+      setTxnOwner(txnScope);
+      legacyTxnOwner.current = txnScope;
       // Master data (UIT/UPT/Gudang/Lokasi/Satpam/Tim Mutu) sekarang sumber
       // utamanya Supabase, bukan localStorage lagi — load dulu (seed dari
       // DEFAULT_* kalau tabelnya masih kosong, mis. instalasi baru).
@@ -887,29 +939,55 @@ export default function PLNWarehouse() {
         if (!sessionAbort.signal.aborted) onResult?.(result);
         return result;
       };
+      const printMasterTables = ["uit", "upt", "ultg", "gudang", "sub_gudang", "lokasi", "satpam", "tim_mutu", "katalog", "stocks"];
+      const printSetters = [setUitList, setUptList, setUltgList, setGudangList, setSubGudangList, setLokasiList, setSatpamList, setTimMutuList, setKatalogList, setStocks];
+      const recordPrintLoad = (table, status) => setPrintLoads(prev => ({ ...prev, [table]: status }));
+      const printResults = new Map();
+      const retriesDuringFallback = new Map();
+      let applyingFallbacks = false;
+      let fallbacksApplied = false;
+      const printMasterTask = (index, onResult) => bootstrapTask(() => loadMaster(printMasterTables[index]), `bootstrap master ${index}`, result => {
+        const table = printMasterTables[index];
+        if (Array.isArray(result)) printResults.set(index, result);
+        else {
+          onResult?.(null); // release UPT scope and first-screen waiters even on failure
+          recordPrintLoad(table, "error");
+          return;
+        }
+        const publish = () => onResult ? onResult(result) : printSetters[index](result);
+        publish();
+        if (applyingFallbacks) retriesDuringFallback.set(index, publish);
+        // Empty master tables can still be replaced by legacy migration or default
+        // seeds. Wait until that decision is reflected in state before enabling print.
+        const needsFallback = !result.length || (table === "katalog" && !result.some(row => row.name));
+        recordPrintLoad(table, applyingFallbacks || (needsFallback && !fallbacksApplied) ? "loading" : "ready");
+      });
       const masterTasks = [
-        bootstrapTask(() => loadMaster("uit"), "bootstrap master 0"),
-        bootstrapTask(() => loadMaster("upt"), "bootstrap master 1", result => resolveUptLoad(result)),
-        bootstrapTask(() => loadMaster("ultg"), "bootstrap master 2"),
-        bootstrapTask(() => loadMaster("gudang"), "bootstrap master 3"),
-        bootstrapTask(() => loadMaster("sub_gudang"), "bootstrap master 4"),
-        bootstrapTask(() => loadMaster("lokasi"), "bootstrap master 5", result => {
+        printMasterTask(0),
+        printMasterTask(1, result => {
+          if (result !== null) setUptList(result);
+          resolveUptLoad(result);
+        }),
+        printMasterTask(2),
+        printMasterTask(3),
+        printMasterTask(4),
+        printMasterTask(5, result => {
           try {
             if (result !== null) setLokasiList(result?.length ? dedupeById(result).list : (result ? [] : (dropCachedGiRows(clokLocal) || DEFAULT_LOKASI)));
           } finally {
             initialResolvers[5](result);
           }
         }),
-        bootstrapTask(() => loadMaster("satpam"), "bootstrap master 6"),
-        bootstrapTask(() => loadMaster("tim_mutu"), "bootstrap master 7"),
-        bootstrapTask(() => loadMaster("katalog"), "bootstrap master 8", result => {
+        printMasterTask(6),
+        printMasterTask(7),
+        printMasterTask(8, result => {
           try {
             if (result !== null) setKatalogList(result?.some(k => k.name) ? dedupeById(result.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
           } finally {
             initialResolvers[8](result);
           }
         }),
-        bootstrapTask(() => loadMaster("stocks"), "bootstrap master 9", result => {
+        printMasterTask(9, result => {
           try {
             if (result !== null) setStocks(result?.length ? dedupeById(result).list : (cs || DEFAULT_STOCKS));
           } finally {
@@ -932,14 +1010,44 @@ export default function PLNWarehouse() {
         bootstrapTask(() => loadMaturityAuditHistory(), "bootstrap maturity audit history"),
         bootstrapTask(() => loadMaturity5SAssessments(), "bootstrap maturity 5s"),
       ];
+      const normalizeDomainLoad = value => value && Array.isArray(value.rows)
+        ? value : { unavailable:true, rows:[] };
+      const started = new Set();
+      const pending = new Set();
+      async function loadTug(source) {
+        if (sessionAbort.signal.aborted || pending.has(source)) return;
+        started.add(source);
+        pending.add(source);
+        setTugLoads(prev => ({ ...prev, [source]: "loading" }));
+        const result = normalizeDomainLoad(await bootstrapLoad(Promise.resolve().then(TUG_SOURCES[source].load), `bootstrap TUG ${source}`));
+        pending.delete(source);
+        if (sessionAbort.signal.aborted || activeTxnScope.current !== txnScope) return;
+        if (!result.unavailable) {
+          setTxns(prev => source === "workflow"
+            ? [...prev.filter(t => !isWorkflowDoc(t)), ...mergeWorkflowServerWins(result.rows, prev)]
+            : mergeServerRowsById(prev, result.rows, source));
+        }
+        setTugLoads(prev => ({ ...prev, [source]: result.unavailable ? "error" : "ready" }));
+        return result;
+      }
+      tugRefresh.current = sources => sources.forEach(source => {
+        if (started.has(source)) void loadTug(source);
+      });
       const domainTasks = [
-        bootstrapTask(async () => (await loadCanonicalTugTransactions()) || { unavailable:true, rows:[] }, "bootstrap TUG canonical"),
-        bootstrapTask(async () => (await loadTug3Transactions()) || { unavailable:true, rows:[] }, "bootstrap TUG3"),
-        bootstrapTask(async () => (await loadTug10Transactions()) || { unavailable:true, rows:[] }, "bootstrap TUG10"),
-        bootstrapTask(async () => (await loadTugWorkflowTransactions()) || { unavailable:true, rows:[] }, "bootstrap TUG workflow"),
+        () => loadTug("canonical"),
+        () => loadTug("canonical3"),
+        () => loadTug("canonical10"),
+        () => loadTug("workflow"),
         bootstrapTask(() => supabase?.from("material_cadang_state").select("upt_id,uit_id,data,health,ai"), "bootstrap material cadang"),
+        bootstrapTask(() => reloadUsers(sessionAbort.signal), "bootstrap profiles", ok => recordPrintLoad("profiles", ok ? "ready" : "error")),
       ];
-      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks, ...domainTasks], { limit: 4, priority: [5, 8, 9] });
+      retryPrintLoads.current = tables => {
+        setPrintLoads(prev => ({ ...prev, ...Object.fromEntries(tables.map(table => [table, "loading"])) }));
+        void runBootstrapTasks(tables.map(table => table === "profiles" ? domainTasks[5] : masterTasks[printMasterTables.indexOf(table)]), { limit: 4 });
+      };
+      const tugStart = masterTasks.length + maturityTasks.length;
+      const priority = [tugStart, 1, 8, 5, tugStart + 1, tugStart + 2, tugStart + 3, 9, tugStart + 5];
+      const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks, ...domainTasks], { limit: 4, priority });
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis berjalan bertahap di belakang scheduler.
       await Promise.race([Promise.all(initialLoads), bootstrapLoadsPromise]);
@@ -949,17 +1057,12 @@ export default function PLNWarehouse() {
       const allBootstrapLoads = await bootstrapLoadsPromise;
       if (sessionAbort.signal.aborted) return;
       const masterLoads = allBootstrapLoads.slice(0, masterTasks.length);
+      applyingFallbacks = true;
+      printResults.forEach((result, index) => { masterLoads[index] = result; });
       const maturityLoads = allBootstrapLoads.slice(masterTasks.length, masterTasks.length + maturityTasks.length);
       const domainLoads = allBootstrapLoads.slice(masterTasks.length + maturityTasks.length);
       const [cuit, cupt, cultg, cgdg, csgdg, clokRemote, csp, ctm, ckatRemote, csRemote, cgcapRemote, cgcapiRemote, cheRemote, chelRemote, copnRemote, cscRemote, cattbRemote, csup, cmaRemote, cmauRemote, cmahRemote, cm5sRemote] = masterLoads.concat(maturityLoads);
-      const normalizeDomainLoad = value => value && Array.isArray(value.rows)
-        ? value
-        : { unavailable:true, rows:[] };
-      const [canonicalLoad, tug3Load, tug10Load, workflowLoad, materialCadangStateLoad] = [
-        normalizeDomainLoad(domainLoads[0]), normalizeDomainLoad(domainLoads[1]),
-        normalizeDomainLoad(domainLoads[2]), normalizeDomainLoad(domainLoads[3]), domainLoads[4],
-      ];
-      if (supabase && canonicalLoad.unavailable) loadFailures.push("Transaksi TUG-8/9");
+      const [canonicalLoad, , , workflowLoad, materialCadangStateLoad] = domainLoads;
       const clok = clokRemote || dropCachedGiRows(clokLocal); // cache virtual dibuang; shadow DB dipertahankan untuk history
       const cgdgRows = cgdg;
       // Seed DEFAULT (gudang/lokasi) hanya boleh oleh viewer NASIONAL (Pusat/SUPERADMIN).
@@ -1063,45 +1166,14 @@ export default function PLNWarehouse() {
           CLOUD.set("pln_lokasi_v4", lokasiFallback);
         }
       }
-      // TUG canonical is the source of truth once the reviewed migration exists.
-      // Legacy cache remains only for non-canonical records and as a pre-migration fallback.
-      const legacyTxns = ct || DEFAULT_TXNS;
-      try {
-        const withCanonical = canonicalLoad.unavailable ? legacyTxns : [
-          ...legacyTxns.filter(t => !t.canonical && !canonicalLoad.rows.some(c => c.id === t.id)),
-          ...canonicalLoad.rows,
-        ];
-        // TUG-3/4 (barang masuk) — sumber kebenaran tabel `tug3_transactions` sejak
-        // migrasi persistensi ini. Buang blob legacy TUG-3 yang punya baris DB (dedupe
-        // by id) + yang sudah ber-flag canonical3, lalu tambah baris DB.
-        const withTug3 = tug3Load.unavailable ? withCanonical : [
-          ...withCanonical.filter(t => !t.canonical3 && !tug3Load.rows.some(r => r.id === t.id)),
-          ...tug3Load.rows,
-        ];
-        // TUG-10 (barang kembali/retur) — sumber kebenaran tabel `tug10_transactions`
-        // sejak migrasi persistensi ini. Pola sama persis lapisan tug3 di atas.
-        const withTug10 = tug10Load.unavailable ? withTug3 : [
-          ...withTug3.filter(t => !t.canonical10 && !tug10Load.rows.some(r => r.id === t.id)),
-          ...tug10Load.rows,
-        ];
-        if (workflowLoad.unavailable) {
-          setTxns(withTug10);
-        } else {
-          // Server wins for an existing id. Cache-only legacy drafts are uploaded
-          // additively; a failed upload remains visible locally but is never
-          // presented as durable.
-          const imported = await migrateLegacyWorkflowDrafts(withTug10, workflowLoad.rows);
-          if (sessionAbort.signal.aborted) return;
-          const workflowRows = mergeWorkflowServerWins(imported.rows, withTug10);
-          setTxns([
-            ...withTug10.filter(t => !isWorkflowDoc(t)),
-            ...workflowRows,
-          ]);
-        }
-      } catch (err) {
+      // Import cache-only workflow drafts after canonical IDs are known. Merge only
+      // newly imported versions so this background step cannot replace a newer refresh.
+      if (canonicalLoad && !canonicalLoad.unavailable && workflowLoad && !workflowLoad.unavailable) {
+        const legacy = mergeServerRowsById(legacyTxns, canonicalLoad.rows, "canonical");
+        const imported = await migrateLegacyWorkflowDrafts(legacy, workflowLoad.rows);
         if (sessionAbort.signal.aborted) return;
-        console.warn("Canonical TUG load gagal; mempertahankan cache legacy tanpa menulis balik.", err);
-        setTxns(legacyTxns);
+        const additions = new Map(imported.rows.slice(workflowLoad.rows.length).map(row => [row.id, row]));
+        if (additions.size) setTxns(prev => prev.map(row => !row.workflow && additions.has(row.id) ? additions.get(row.id) : row));
       }
       setDocSeq(cseq || 196);
       // Master data organisasi/gudang (satpam/tim_mutu/uit/upt/ultg/gudang/sub_gudang)
@@ -1187,6 +1259,10 @@ export default function PLNWarehouse() {
         setSubGudangList(csgdg);
         CLOUD.set("pln_sub_gudang_v1", csgdg);
       }
+      retriesDuringFallback.forEach(publish => publish());
+      applyingFallbacks = false;
+      fallbacksApplied = true;
+      setPrintLoads(prev => ({ ...prev, ...Object.fromEntries([...printResults.keys()].map(index => [printMasterTables[index], "ready"])) }));
       setRencanaKedatanganList(crk || []);
       // Stock Opname & Stock Count — Supabase (stock_opname/stock_count) sekarang sumber
       // utama kalau sudah ada isinya; kalau masih kosong (instalasi lama yang baru upgrade,
@@ -1444,8 +1520,8 @@ export default function PLNWarehouse() {
       setDataRefreshing(false);
       showToastRef.current && showToastRef.current("⚠️ Sinkronisasi cloud gagal. Data lokal tetap ditampilkan.", "error");
     });
-    return () => sessionAbort.abort();
-  }, [authLoading, currentUser?.id]);
+    return () => { sessionAbort.abort(); tugRefresh.current = null; retryPrintLoads.current = null; };
+  }, [authLoading, txnScope]);
 
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
   // sengaja tidak memakai cache/saveToCloud agar tidak ikut full sync state lama.
@@ -1739,6 +1815,7 @@ export default function PLNWarehouse() {
   // termasuk reconciliation-delete) — hint HANYA dipakai untuk kasus "beberapa baris
   // spesifik berubah", BUKAN untuk kasus yang butuh deteksi banyak baris terhapus.
   const saveToCloud = useCallback(async (overrides = {}, hints = {}) => {
+    if (!txnScope || txnScope !== activeTxnScope.current) return false;
     const s = overrides.stocks ?? stateRef.current.stocks;
     const t = overrides.txns ?? stateRef.current.txns;
     const seq = overrides.docSeq ?? stateRef.current.docSeq;
@@ -1761,7 +1838,7 @@ export default function PLNWarehouse() {
     const [, , txnsSaveOk] = await Promise.all([
       CLOUD.set("pln_stocks_v4", leanStocks(s)), // cache lean (tanpa foto base64) — cegah QuotaExceededError
       CLOUD.set("pln_katalog_v4", kat),
-      CLOUD.set("pln_txns_v3", t),
+      CLOUD.set(txnScope, t),
       CLOUD.set("pln_docseq_v3", seq),
       CLOUD.set("pln_rencana_v1", rk),
       CLOUD.set("pln_opname_v1", opn),
@@ -1906,7 +1983,7 @@ export default function PLNWarehouse() {
       }, 90000);
     }
     return cloudSyncOk;
-  }, []);
+  }, [txnScope]);
   // useHeavyEquipment dipanggil sebelum saveToCloud ada (lihat stateRef di atas) — isi
   // baru bisa dilewat lewat mutasi stateRef.current, bukan sbg argumen hook.
   stateRef.current.saveToCloud = saveToCloud;
@@ -2270,8 +2347,14 @@ export default function PLNWarehouse() {
     try { sessionStorage.removeItem("warnoto_tug_route"); } catch {}
     try { localStorage.removeItem(PROFILE_CACHE_KEY); localStorage.removeItem(LEGACY_PROFILE_CACHE_KEY); } catch {}
     try { localStorage.removeItem(SUPABASE_AUTH_STORAGE_KEY); } catch {}
+    try {
+      if (stateRef.current.currentUser?.id) localStorage.removeItem('warnoto_' + txnCacheKey(stateRef.current.currentUser));
+    } catch {}
     try { PHASE1_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
     try { PHASE2_CACHE_KEYS.forEach(k => localStorage.removeItem('warnoto_' + k)); } catch {}
+    legacyTxnOwner.current = null;
+    setTxnOwner(null);
+    setTxns([]);
     setCurrentUser(null); setUsers([]);
   }
 
@@ -2299,10 +2382,13 @@ export default function PLNWarehouse() {
     }
   }
 
-  async function reloadUsers() {
+  async function reloadUsers(signal) {
     if (!supabase) return;
-    const { data: allProfiles } = await supabase.from("profiles").select("*");
+    const query = supabase.from("profiles").select("*");
+    const { data: allProfiles, error } = await (signal ? query.abortSignal(signal) : query);
+    if (error || signal?.aborted || !stateRef.current.currentUser || txnCacheKey(stateRef.current.currentUser) !== txnScope) return false;
     setUsers((allProfiles||[]).map(p => ({ id: p.id, name: p.name, username: p.username, role: p.role, jabatan: p.jabatan, officialPhone: p.official_phone, notifEvents: p.notif_events || [], avatar: p.avatar, uptId: p.upt_id, ultgId: p.ultg_id, uitId: p.uit_id, gudangIds: p.gudang_ids })));
+    return true;
   }
 
   // Muat override izin per role (RBAC) dari Supabase. Latar belakang, tidak
@@ -2535,7 +2621,7 @@ export default function PLNWarehouse() {
   // Auxiliary admin data is loaded after bootstrap; DEFAULT_PERMS remains the safe fallback.
   useEffect(() => {
     if (authLoading || !currentUser || dataRefreshing || !supabase) return;
-    Promise.all([reloadUsers(), reloadRolePerms()]).catch(error => {
+    Promise.all([["HAR_UIT", "OPERATOR"].includes(currentUser.role) && reloadUsers(), reloadRolePerms()]).catch(error => {
       console.warn("Data admin latar belakang gagal dimuat.", error);
     });
   }, [authLoading, currentUser?.id, dataRefreshing]);
@@ -2566,7 +2652,7 @@ export default function PLNWarehouse() {
     if (!authLoading && tab === "approval" && currentUser && supabase) {
       refreshBaNonStock().catch(error => console.warn("BA Non Stock gagal dimuat.", error));
     }
-  }, [tab, currentUser?.id, authLoading]);
+  }, [tab, txnScope, authLoading]);
 
   // RBAC guard render: kalau role tidak (lagi) punya izin menu untuk tab aktif
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama
@@ -2598,28 +2684,8 @@ export default function PLNWarehouse() {
   // Refetch saat buka tab ini menutup celah itu tanpa perlu realtime penuh.
   useEffect(() => {
     if (authLoading || tab !== "approval" || !currentUser) return;
-    let alive = true;
-    loadCanonicalTugTransactions().then(res => {
-      if (!alive || res.unavailable) return;
-      setTxns(prev => mergeServerRowsById(prev, res.rows, "canonical"));
-    }).catch(err => console.warn("Refresh TUG canonical gagal saat buka tab Approval.", err));
-    loadTug3Transactions().then(res => {
-      if (!alive || res.unavailable) return;
-      setTxns(prev => mergeServerRowsById(prev, res.rows, "canonical3"));
-    }).catch(err => console.warn("Refresh TUG-3 gagal saat buka tab Approval.", err));
-    loadTug10Transactions().then(res => {
-      if (!alive || res.unavailable) return;
-      setTxns(prev => mergeServerRowsById(prev, res.rows, "canonical10"));
-    }).catch(err => console.warn("Refresh TUG-10 gagal saat buka tab Approval.", err));
-    loadTugWorkflowTransactions().then(res => {
-      if (!alive || res.unavailable) return;
-      setTxns(prev => [
-        ...prev.filter(t => !isWorkflowDoc(t)),
-        ...mergeWorkflowServerWins(res.rows, prev),
-      ]);
-    }).catch(err => console.warn("Refresh TUG workflow gagal saat buka tab Approval.", err));
-    return () => { alive = false; };
-  }, [tab, currentUser?.id, authLoading]);
+    tugRefresh.current?.(Object.keys(TUG_SOURCES));
+  }, [tab, txnScope, authLoading]);
 
   // Simpan tab aktif ke sessionStorage supaya refresh halaman tetap di menu yang
   // sama (per-tab-browser).
@@ -2631,7 +2697,8 @@ export default function PLNWarehouse() {
   // gudang). Dicoba saat app load, saat daftar transaksi berubah, dan saat koneksi
   // kembali online. Guard + cek _fotoPending mencegah loop.
   const syncPendingTxnPhotos = useCallback(async () => {
-    if (syncingPhotosRef.current || !supabase) return;
+    if (syncingPhotosRef.current || !supabase || dataRefreshing || txnOwner !== txnScope) return;
+    const photoOwner = currentUser.id;
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     const list = stateRef.current.txns || [];
     if (!list.some(x => x._fotoPending)) return;
@@ -2644,9 +2711,9 @@ export default function PLNWarehouse() {
         const { data } = await processTxnPhotos(x, x.id || `TXN-${x.docSeq}`);
         updated.push(data); if (data !== x) changed = true;
       }
-      if (changed) { setTxns(updated); await saveToCloud({ txns: updated }); }
+      if (changed && stateRef.current.currentUser?.id === photoOwner && stateRef.current.txns === list) { setTxns(updated); await saveToCloud({ txns: updated }); }
     } finally { syncingPhotosRef.current = false; }
-  }, [saveToCloud]);
+  }, [saveToCloud, currentUser?.id, txnOwner, dataRefreshing]);
 
   useEffect(() => {
     syncPendingTxnPhotos();
@@ -2654,15 +2721,6 @@ export default function PLNWarehouse() {
     window.addEventListener("online", on);
     return () => window.removeEventListener("online", on);
   }, [syncPendingTxnPhotos, txns]);
-
-  // Saat preview dokumen dibuka, ubah SIM/KTP "priv:<path>" jadi signed URL supaya
-  // tampil di iframe & ikut saat diunduh (foto lain sudah URL publik).
-  useEffect(() => {
-    let alive = true;
-    if (!docPreview) { setDocPreviewDoc(null); return; }
-    resolveTxnPrivPhotos(docPreview).then((r) => { if (alive) setDocPreviewDoc(r); });
-    return () => { alive = false; };
-  }, [docPreview]);
 
   // ── Stock CRUD ──
   // ── MASTER KATALOG BARANG CRUD ── (openAdd/openEdit/save/delete di useMasterDataCrud.jsx)
@@ -3669,7 +3727,7 @@ export default function PLNWarehouse() {
           const latestTxns = stateRef.current.txns || txns;
           const newTxns = latestTxns.map(t => t.id === txn.id ? forwardedTxn : t);
           setTxns(newTxns);
-          try { CLOUD.set("pln_txns_v3", newTxns); } catch (error) { console.warn("Cache TUG-10 gagal diperbarui:", error); }
+          try { CLOUD.set(txnCacheKey(currentUser), newTxns); } catch (error) { console.warn("Cache TUG-10 gagal diperbarui:", error); }
           logAudit(currentUser, "APPROVE", txn.docType, txn.docNumbers?.[dKey] || txn.id, { stage: "PENDING_ASMAN" });
           showToast(`✅ ${txn.docNumbers?.[dKey] || txn.id} diteruskan ke Asman. Stok belum berubah.`);
           enqueueTugNotif({ eventType: "PENDING", docType: "TUG10", docNumber: txn.docNumbers?.[dKey] || "", uptId: txn.uptId, txnId: txn.id, arah: "MASUK", pekerjaan: txn.namaPekerjaan || "", lokasi: txn.lokasiPekerjaan || "", asal: { vendor: txn.menyerahkanUnit || "", pic: txn.menyerahkanNama || "" }, items: (txn.stockItems || []).map(si => ({ kode: si.katalogBaru || si.katalogId || "", nama: si.namaBaru || si.katalogId || "", qty: si.qty, satuan: si.satuanBaru || si.unit || "" })) });
@@ -4766,7 +4824,8 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
     </div>
   );
 
-  if (loading) return (
+  const earlyTugScreen = ["transaction", "approval"].includes(tab) && can(currentUser, "menu." + tab, rolePerms);
+  if (loading && ["HAR_UIT", "OPERATOR"].includes(currentUser.role)) return (
     <div style={{minHeight:"100vh",background:C.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <div style={{textAlign:"center"}}><img src={PLN_LOGO_DATA_URI} alt="Logo PLN" style={{height:56,marginBottom:14,objectFit:"contain"}}/><div style={{fontSize:15,fontWeight:700,color:C.accent}}>Memuat data dari cloud...</div></div>
     </div>
@@ -4774,6 +4833,36 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
   // ══════════════════════ MAIN APP ══════════════════════
   // Role PENGADAAN hanya punya akses Dashboard + Rencana Kedatangan
+  const activeTugSources = tab === "approval" || tugSubTab === "TUG15" ? Object.keys(TUG_SOURCES)
+    : ({ TUG8: ["canonical", "workflow"], TUG9: ["canonical", "workflow"], TUG3: ["canonical3"],
+         TUG10: ["canonical10"], TUG5: ["workflow"], TUG7: ["workflow"] }[tugSubTab] || []);
+  const failedTugSources = activeTugSources.filter(key => txnOwner === txnScope && tugLoads[key] === "error");
+  const waitingForTug = activeTugSources.some(key => txnOwner !== txnScope || !["ready", "error"].includes(tugLoads[key]));
+  const tugLoadNotice = !supabase ? null : failedTugSources.length ? (
+    <div role="alert" style={sty.card}>
+      Gagal memuat {failedTugSources.map(key => TUG_SOURCES[key].label).join(", ")}.{" "}
+      <button type="button" style={sty.btn("ghost","sm")} onClick={() => tugRefresh.current?.(failedTugSources)}>Coba lagi</button>
+    </div>
+  ) : waitingForTug ? <div role="status" style={sty.card}>Memuat daftar TUG...</div> : null;
+  // Mutations can persist a whole cache snapshot or post stock movements. The
+  // read-only list/preview is usable earlier than these operations.
+  const writeRefs = [...new Set(["stocks", "katalog", "lokasi", "upt", "gudang", "profiles",
+    ...(tab === "approval" ? Object.values(PRINT_REFERENCES).flat() : (PRINT_REFERENCES[tugSubTab] || OUTGOING_PRINT_REFERENCES))])];
+  const failedWriteRefs = writeRefs.filter(table => printLoads[table] === "error");
+  const tugWritesReady = !loading && !dataRefreshing && txnScope === txnOwner && (!supabase ||
+    (writeRefs.every(table => printLoads[table] === "ready") && activeTugSources.every(source => tugLoads[source] === "ready")));
+  stateRef.current.tugWritesReady = tugWritesReady;
+  const guardTugWrite = createTugWriteGuard(
+    () => activeTxnScope.current === txnScope && stateRef.current.tugWritesReady,
+    () => showToast("Aksi belum tersedia. Tunggu sinkronisasi atau coba lagi pada data yang gagal dimuat.", "error")
+  );
+  const tugWriteNotice = !tugWritesReady && (
+    <div role="status" style={sty.card}>
+      {failedWriteRefs.length ? <>Gagal memuat referensi transaksi ({failedWriteRefs.join(", ")}).{" "}
+        <button type="button" style={sty.btn("ghost","sm")} onClick={() => retryPrintLoads.current?.(failedWriteRefs)}>Coba lagi</button></>
+        : "Mode baca sementara. Perubahan dan persetujuan tersedia setelah data transaksi siap."}
+    </div>
+  );
   const isPengadaan = currentUser?.role === "PENGADAAN";
   // Role ULTG (Admin/Manager ULTG): sidebar terbatas — semua view-only kecuali TUG-5 & Approval TUG-5
   const isUltgRole = ULTG_ROLES.includes(currentUser?.role);
@@ -4877,6 +4966,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
         <div className="app-content" style={{padding:isMobile?16:"clamp(18px, 2vw, 30px)"}}>
 
+        {loading && !earlyTugScreen ? <div role="status" style={sty.card}>Memuat data dari cloud...</div> : <>
         {/* DASHBOARD */}
         {tab==="dashboard" && (
           <DashboardTabRouter
@@ -5043,32 +5133,36 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
         {/* MASTER DATA — Master Katalog, Master Lokasi, Satpam (identity/reference data) */}
         {tab==="master" && <MasterDataTab C={C} sty={sty} currentUser={currentUser} isMobile={isMobile} rolePerms={rolePerms} stockSubTab={stockSubTab} filteredKatalog={filteredKatalog} satpamList={satpamList} supplierList={supplierList} openAddSupplier={openAddSupplier} openEditSupplier={openEditSupplier} deleteSupplier={deleteSupplier} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} users={users} gudangList={gudangList} lokasiList={lokasiList} subGudangList={subGudangList} subGudangModal={subGudangModal} subGudangForm={subGudangForm} setSubGudangForm={setSubGudangForm} openAddSubGudang={openAddSubGudang} closeSubGudangModal={closeSubGudangModal} saveSubGudang={saveSubGudang} visibleGudangList={visibleGudangList} onGiSaved={handleGiMapSaved} openAddKatalog={openAddKatalog} openAddSatpam={openAddSatpam} openAddUIT={openAddUIT} openAddGudang={openAddGudang} openAddAkun={openAddAkun} importGudangOpen={importGudangOpen} setImportGudangOpen={setImportGudangOpen} showGudangMaintenance={showGudangMaintenance} setShowGudangMaintenance={setShowGudangMaintenance} importLokasiOpen={importLokasiOpen} setImportLokasiOpen={setImportLokasiOpen} gudangCapacityImports={gudangCapacityImports} setGudangCapacityImports={setGudangCapacityImports} saveToCloud={saveToCloud} showToast={showToast} backfillGudangCoordFromCapacity={backfillGudangCoordFromCapacity} dedupeGudangDanSubGudang={dedupeGudangDanSubGudang} isKodeDuplicateInSubGudang={isKodeDuplicateInSubGudang} setLokasiList={setLokasiList} syncLokasi={syncLokasi} maraUploadProgress={maraUploadProgress} maraUploadLoading={maraUploadLoading} uploadMaraToDB={uploadMaraToDB} katalogList={katalogList} katalogSearch={katalogSearch} setKatalogSearch={setKatalogSearch} katalogFilterBelumMara={katalogFilterBelumMara} setKatalogFilterBelumMara={setKatalogFilterBelumMara} pagedKatalog={pagedKatalog} stocks={stocks} openEditKatalog={openEditKatalog} deleteKatalog={deleteKatalog} katalogPageSize={katalogPageSize} setKatalogPageSize={setKatalogPageSize} katalogPageClamped={katalogPageClamped} setKatalogPage={setKatalogPage} katalogTotalPages={katalogTotalPages} openEditSatpam={openEditSatpam} deleteSatpam={deleteSatpam} openEditTimMutu={openEditTimMutu} orgSearch={orgSearch} setOrgSearch={setOrgSearch} collapsedUitIds={collapsedUitIds} setCollapsedUitIds={setCollapsedUitIds} openAddUPT={openAddUPT} openEditUIT={openEditUIT} deleteUIT={deleteUIT} openAddULTG={openAddULTG} openEditUPT={openEditUPT} deleteUPT={deleteUPT} openEditULTG={openEditULTG} deleteULTG={deleteULTG} expandedGudangId={expandedGudangId} setExpandedGudangId={setExpandedGudangId} openEditGudang={openEditGudang} deleteGudang={deleteGudang} showGudangDenahTools={showGudangDenahTools} setShowGudangDenahTools={setShowGudangDenahTools} uploadDenahGudang={uploadDenahGudang} denahLoading={denahLoading} mapConfigGudangId={mapConfigGudangId} setMapConfigGudangId={setMapConfigGudangId} pendingMapLokasi={pendingMapLokasi} setPendingMapLokasi={setPendingMapLokasi} manualAddMode={manualAddMode} setManualAddMode={setManualAddMode} ocrSuggestGudangId={ocrSuggestGudangId} setOcrSuggestGudangId={setOcrSuggestGudangId} ocrSuggestSubGudangId={ocrSuggestSubGudangId} setOcrSuggestSubGudangId={setOcrSuggestSubGudangId} ocrSuggestions={ocrSuggestions} setOcrSuggestions={setOcrSuggestions} assignLokasiKoordinat={assignLokasiKoordinat} suggestKodeFromOcr={suggestKodeFromOcr} expandedSubGudangToolsIds={expandedSubGudangToolsIds} setExpandedSubGudangToolsIds={setExpandedSubGudangToolsIds} uploadDenahSubGudang={uploadDenahSubGudang} denahSubLoading={denahSubLoading} mapConfigSubGudangId={mapConfigSubGudangId} setMapConfigSubGudangId={setMapConfigSubGudangId} pendingMapLokasiSub={pendingMapLokasiSub} setPendingMapLokasiSub={setPendingMapLokasiSub} manualAddModeSub={manualAddModeSub} setManualAddModeSub={setManualAddModeSub} assignLokasiKoordinatSub={assignLokasiKoordinatSub} openEditLokasi={openEditLokasi} requestDeleteLokasi={requestDeleteLokasi} selectedSubGudangId={selectedSubGudangId} setSelectedSubGudangId={setSelectedSubGudangId} openEditAkun={openEditAkun} resetMfa={resetMfa} openResetPassword={openResetPassword} txns={txns} migratedTug15History={migratedTug15History} setMigratedTug15History={setMigratedTug15History} migrasiPendingReview={migrasiPendingReview} setMigrasiPendingReview={setMigrasiPendingReview} maraReference={maraReference} setMaraReference={setMaraReference} setStocks={setStocks} setKatalogList={setKatalogList} setTxns={setTxns} reloadRolePerms={reloadRolePerms} />}
         {tab==="transaction" && (
+          <>
+          {tugWriteNotice}
           <TransactionHubTab
+            loadNotice={tugLoadNotice}
             C={C} sty={sty} currentUser={currentUser} isMobile={isMobile}
             TUG_UI={tugUiForUser} TUG_GROUP_UI={tugGroupUiForUser}
             tugGroup={tugGroup} tugSubTab={tugSubTab} setTugSubTab={setTugSubTab}
             activeTugSummary={activeTugSummary} rolePerms={rolePerms}
             filterStatus={filterStatus} setFilterStatus={setFilterStatus}
             tugUptFilter={tugUptFilter} setTugUptFilter={setTugUptFilter} tugUptFilterOptions={multiUptFilterOptions}
-            openNewTxn={openNewTxn}
+            openNewTxn={guardTugWrite(openNewTxn)}
             txns={scopedTxns} filteredTxns={filteredTxns} users={users} enrichedStocks={scopedEnrichedStocks} stocks={stocks}
             katalogList={katalogList} lokasiList={lokasiList} gudangList={gudangList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList}
             tug15Filter={tug15Filter} setTug15Filter={setTug15Filter}
             setDocPreview={setDocPreview} handleImg={handleImg}
-            approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
-            submitTUG4DanLampiran={submitTUG4DanLampiran}
-            approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
-            editDraftTug3={editDraftTug3} submitDraftTug3={submitDraftTug3} deleteDraftTug3={deleteDraftTug3}
-            editDraftTug10={editDraftTug10} submitDraftTug10={submitDraftTug10} deleteDraftTug10={deleteDraftTug10}
-            editDraftTug9={openDraftTug9} submitDraftTug9={submitDraftTug9} deleteDraftTug9={deleteDraftTug9}
-            openEditCanonicalTug={editCanonicalTug98}
-            approveTUG5_Asman={approveTUG5_Asman} rejectTUG5_Asman={rejectTUG5_Asman} approveTUG5_Manager={approveTUG5_Manager} rejectTUG5_Manager={rejectTUG5_Manager}
-            submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik}
-            konfirmasiDraftTUG8={konfirmasiDraftTUG8} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG}
-            adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9} editTug5={editTug5} deleteDraftTug5={deleteDraftTug5}
-            baNonStockRecords={baNonStockRecords} saveBaNonStockDraft={saveBaNonStockDraft} submitBaNonStock={submitBaNonStock}
+            approveTUG3_TL={guardTugWrite(approveTUG3_TL)} rejectTUG3_TL={guardTugWrite(rejectTUG3_TL)}
+            submitTUG4DanLampiran={guardTugWrite(submitTUG4DanLampiran)}
+            approveTUG3Final_Asman={guardTugWrite(approveTUG3Final_Asman)} rejectTUG3Final_Asman={guardTugWrite(rejectTUG3Final_Asman)}
+            editDraftTug3={guardTugWrite(editDraftTug3)} submitDraftTug3={guardTugWrite(submitDraftTug3)} deleteDraftTug3={guardTugWrite(deleteDraftTug3)}
+            editDraftTug10={guardTugWrite(editDraftTug10)} submitDraftTug10={guardTugWrite(submitDraftTug10)} deleteDraftTug10={guardTugWrite(deleteDraftTug10)}
+            editDraftTug9={guardTugWrite(openDraftTug9)} submitDraftTug9={guardTugWrite(submitDraftTug9)} deleteDraftTug9={guardTugWrite(deleteDraftTug9)}
+            openEditCanonicalTug={guardTugWrite(editCanonicalTug98)}
+            approveTUG5_Asman={guardTugWrite(approveTUG5_Asman)} rejectTUG5_Asman={guardTugWrite(rejectTUG5_Asman)} approveTUG5_Manager={guardTugWrite(approveTUG5_Manager)} rejectTUG5_Manager={guardTugWrite(rejectTUG5_Manager)}
+            submitTUG7_AdminUIT={guardTugWrite(submitTUG7_AdminUIT)} approveTUG7_MgrLogistik={guardTugWrite(approveTUG7_MgrLogistik)} rejectTUG7_MgrLogistik={guardTugWrite(rejectTUG7_MgrLogistik)}
+            konfirmasiDraftTUG8={guardTugWrite(konfirmasiDraftTUG8)} approveTUG5_MgrULTG={guardTugWrite(approveTUG5_MgrULTG)} rejectTUG5_MgrULTG={guardTugWrite(rejectTUG5_MgrULTG)}
+            adoptTUG5ULTG={guardTugWrite(adoptTUG5ULTG)} openDraftTug9={guardTugWrite(openDraftTug9)} editTug5={guardTugWrite(editTug5)} deleteDraftTug5={guardTugWrite(deleteDraftTug5)}
+            baNonStockRecords={baNonStockRecords} saveBaNonStockDraft={guardTugWrite(saveBaNonStockDraft)} submitBaNonStock={guardTugWrite(submitBaNonStock)}
             onReviewBaNonStock={setBaNonStockReview} currentUptId={currentUserUptId} satpamList={satpamList}
           />
+          </>
         )}
 
         {tab==="lacakAlat" && (
@@ -5217,39 +5311,43 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
 
         {/* APPROVAL — semua notifikasi approval (TUG, Lokasi/Blok, Pemindahan Stok, dkk) dikumpulkan di sini, dipisah per-bagian + riwayat di bawah */}
         {tab==="approval" && hasRole(currentUser, "TL","ASMAN","MANAGER","ADMIN_UIT","MGR_LOGISTIK_UIT","ADMIN","MGR_ULTG","ADMIN_ULTG","SUPERADMIN") && (
+          <>
+          {tugWriteNotice}
           <ApprovalHubTab
+            tugLoadNotice={tugLoadNotice}
             currentUser={currentUser} sty={sty} C={C} isMobile={isMobile}
             myPendingApprovals={myPendingApprovals} gudangCapacityImports={gudangCapacityImports} lokasiList={lokasiList} stocks={scopedStocks}
             heavyEquipmentPendingCount={heavyEquipmentPendingCount} opnameList={opnameList} stockCountPendingCount={stockCountPendingCount}
             approvalTypeFilter={approvalTypeFilter} setApprovalTypeFilter={setApprovalTypeFilter} approvalPageSize={approvalPageSize} setApprovalPageSize={setApprovalPageSize}
             enrichedStocks={scopedEnrichedStocks} katalogList={katalogList} users={users}
-            approveTxn={approveTxn} rejectTxn={rejectTxn} prepareReview={prepareCanonicalTugReview} uptList={uptList}
-            submitTUG7_AdminUIT={submitTUG7_AdminUIT} approveTUG7_MgrLogistik={approveTUG7_MgrLogistik} rejectTUG7_MgrLogistik={rejectTUG7_MgrLogistik} konfirmasiDraftTUG8={konfirmasiDraftTUG8}
-            startCapacityApproval={startCapacityApproval} rejectCapacityImport={rejectCapacityImport}
-            approveLokasiChange={approveLokasiChange} rejectLokasiChange={rejectLokasiChange}
-            ultgList={ultgList} approveTUG5_MgrULTG={approveTUG5_MgrULTG} rejectTUG5_MgrULTG={rejectTUG5_MgrULTG} ultgPengajuanUntukAdopt={ultgPengajuanUntukAdopt} adoptTUG5ULTG={adoptTUG5ULTG} openDraftTug9={openDraftTug9}
-            approvalStokPage={approvalStokPage} setApprovalStokPage={setApprovalStokPage} approveStockMove={approveStockMove} rejectStockMove={rejectStockMove} renderApprovalPager={renderApprovalPager}
-            approvalEditStokPage={approvalEditStokPage} setApprovalEditStokPage={setApprovalEditStokPage} approveStockEdit={approveStockEdit} rejectStockEdit={rejectStockEdit}
-            approvalHapusStokPage={approvalHapusStokPage} setApprovalHapusStokPage={setApprovalHapusStokPage} approveStockDelete={approveStockDelete} rejectStockDelete={rejectStockDelete}
+            approveTxn={guardTugWrite(approveTxn)} rejectTxn={guardTugWrite(rejectTxn)} prepareReview={prepareCanonicalTugReview} uptList={uptList}
+            submitTUG7_AdminUIT={guardTugWrite(submitTUG7_AdminUIT)} approveTUG7_MgrLogistik={guardTugWrite(approveTUG7_MgrLogistik)} rejectTUG7_MgrLogistik={guardTugWrite(rejectTUG7_MgrLogistik)} konfirmasiDraftTUG8={guardTugWrite(konfirmasiDraftTUG8)}
+            startCapacityApproval={guardTugWrite(startCapacityApproval)} rejectCapacityImport={guardTugWrite(rejectCapacityImport)}
+            approveLokasiChange={guardTugWrite(approveLokasiChange)} rejectLokasiChange={guardTugWrite(rejectLokasiChange)}
+            ultgList={ultgList} approveTUG5_MgrULTG={guardTugWrite(approveTUG5_MgrULTG)} rejectTUG5_MgrULTG={guardTugWrite(rejectTUG5_MgrULTG)} ultgPengajuanUntukAdopt={ultgPengajuanUntukAdopt} adoptTUG5ULTG={guardTugWrite(adoptTUG5ULTG)} openDraftTug9={guardTugWrite(openDraftTug9)}
+            approvalStokPage={approvalStokPage} setApprovalStokPage={setApprovalStokPage} approveStockMove={guardTugWrite(approveStockMove)} rejectStockMove={guardTugWrite(rejectStockMove)} renderApprovalPager={renderApprovalPager}
+            approvalEditStokPage={approvalEditStokPage} setApprovalEditStokPage={setApprovalEditStokPage} approveStockEdit={guardTugWrite(approveStockEdit)} rejectStockEdit={guardTugWrite(rejectStockEdit)}
+            approvalHapusStokPage={approvalHapusStokPage} setApprovalHapusStokPage={setApprovalHapusStokPage} approveStockDelete={guardTugWrite(approveStockDelete)} rejectStockDelete={guardTugWrite(rejectStockDelete)}
             heavyEquipmentLoans={heavyEquipmentLoans} approvalAlatBeratPage={approvalAlatBeratPage} setApprovalAlatBeratPage={setApprovalAlatBeratPage} heavyEquipmentList={heavyEquipmentList}
-            approveHeavyEquipmentLoan={approveHeavyEquipmentLoan} rejectHeavyEquipmentLoan={rejectHeavyEquipmentLoan}
-            approvalOpnamePage={approvalOpnamePage} setApprovalOpnamePage={setApprovalOpnamePage} approveOpname_Asman={approveOpname_Asman} approveOpname_Manager={approveOpname_Manager} rejectOpname={rejectOpname}
-            stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={approveStockCountItem} approveStockCountItems={approveStockCountItems} rejectStockCountItem={rejectStockCountItem}
+            approveHeavyEquipmentLoan={guardTugWrite(approveHeavyEquipmentLoan)} rejectHeavyEquipmentLoan={guardTugWrite(rejectHeavyEquipmentLoan)}
+            approvalOpnamePage={approvalOpnamePage} setApprovalOpnamePage={setApprovalOpnamePage} approveOpname_Asman={guardTugWrite(approveOpname_Asman)} approveOpname_Manager={guardTugWrite(approveOpname_Manager)} rejectOpname={guardTugWrite(rejectOpname)}
+            stockCountList={stockCountList} approvalStockCountPage={approvalStockCountPage} setApprovalStockCountPage={setApprovalStockCountPage} approveStockCountItem={guardTugWrite(approveStockCountItem)} approveStockCountItems={guardTugWrite(approveStockCountItems)} rejectStockCountItem={guardTugWrite(rejectStockCountItem)}
             txns={txns} approvalHistoryList={approvalHistoryList} approvalHistoryPage={approvalHistoryPage} setApprovalHistoryPage={setApprovalHistoryPage}
             approvalHistoryMineOnly={approvalHistoryMineOnly} setApprovalHistoryMineOnly={setApprovalHistoryMineOnly}
             approvalHistorySearch={approvalHistorySearch} setApprovalHistorySearch={setApprovalHistorySearch}
             approvalHistoryDateFrom={approvalHistoryDateFrom} setApprovalHistoryDateFrom={setApprovalHistoryDateFrom}
             approvalHistoryDateTo={approvalHistoryDateTo} setApprovalHistoryDateTo={setApprovalHistoryDateTo}
             approvalHistoryShowAll={approvalHistoryShowAll} setApprovalHistoryShowAll={setApprovalHistoryShowAll}
-            deleteDraftTug3={deleteDraftTug3}
-            editDraftTug3={editDraftTug3} editTug5={editTug5} editTug10={editTug10} openEditCanonicalTug={editCanonicalTug98}
+            deleteDraftTug3={guardTugWrite(deleteDraftTug3)}
+            editDraftTug3={guardTugWrite(editDraftTug3)} editTug5={guardTugWrite(editTug5)} editTug10={guardTugWrite(editTug10)} openEditCanonicalTug={guardTugWrite(editCanonicalTug98)}
             timMutuList={timMutuList}
-            submitTUG4DanLampiran={submitTUG4DanLampiran}
-            approveTUG3Final_Asman={approveTUG3Final_Asman} rejectTUG3Final_Asman={rejectTUG3Final_Asman}
-            approveTUG3_TL={approveTUG3_TL} rejectTUG3_TL={rejectTUG3_TL}
-            baNonStockRecords={baNonStockRecords} approveBaNonStock={approveBaNonStock} rejectBaNonStock={rejectBaNonStock} reviewBaNonStock={setBaNonStockReview} previewBaNonStock={setDocPreview}
+            submitTUG4DanLampiran={guardTugWrite(submitTUG4DanLampiran)}
+            approveTUG3Final_Asman={guardTugWrite(approveTUG3Final_Asman)} rejectTUG3Final_Asman={guardTugWrite(rejectTUG3Final_Asman)}
+            approveTUG3_TL={guardTugWrite(approveTUG3_TL)} rejectTUG3_TL={guardTugWrite(rejectTUG3_TL)}
+            baNonStockRecords={baNonStockRecords} approveBaNonStock={guardTugWrite(approveBaNonStock)} rejectBaNonStock={guardTugWrite(rejectBaNonStock)} reviewBaNonStock={setBaNonStockReview} previewBaNonStock={setDocPreview}
             handleImg={handleImg}
           />
+          </>
         )}
 
         {tab==="inspeksiMaterial" && (
@@ -5346,6 +5444,7 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
           />
         )}
 
+        </>}
         </div>
       </main>
 
@@ -5711,26 +5810,26 @@ Sumber: Data TUG WARNOTO UPT Surabaya`;
       {resetPasswordModal && <ResetPasswordModal resetPasswordModal={resetPasswordModal} setResetPasswordModal={setResetPasswordModal} resetPasswordForm={resetPasswordForm} setResetPasswordForm={setResetPasswordForm} resetPasswordBusy={resetPasswordBusy} submitResetPassword={submitResetPassword} sty={sty} />}
 
       {/* TXN MODAL - TUG5 FORM */}
-      {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} enrichedStocks={enrichedStocks} gudangList={visibleTugGudangList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} />}
+      {txnModal && txnForm && txnForm.docType==="TUG5" && <Tug5FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} uitList={uitList} ultgList={ultgList} katalogList={katalogList} enrichedStocks={enrichedStocks} gudangList={visibleTugGudangList} tug5MaterialPage={tug5MaterialPage} setTug5MaterialPage={setTug5MaterialPage} tug5ExpandedIdx={tug5ExpandedIdx} setTug5ExpandedIdx={setTug5ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} saveTxn={guardTugWrite(saveTxn)} isMobile={isMobile} sty={sty} C={C} uptKode={tug5UptKode} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} />}
 
       {/* TXN MODAL - TUG9 / TUG8 FORM (outgoing material) */}
-      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} visibleGudangList={visibleTugGudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={saveTxn} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && (txnForm.docType==="TUG9" || txnForm.docType==="TUG8") && <Tug98FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} docSeq={nextSafeDocSeq(docSeq, txns)} gudangList={gudangList} visibleGudangList={visibleTugGudangList} satpamList={satpamList} enrichedStocks={enrichedStocks} tug98Collapsed={tug98Collapsed} setTug98Collapsed={setTug98Collapsed} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} openScanner={openScanner} handleImg={handleImg} handleMaterialImg={handleMaterialImg} editingDraftTxnId={editingDraftTxnId} setEditingDraftTxnId={setEditingDraftTxnId} saveTxn={guardTugWrite(saveTxn)} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SCAN PICKER MODAL — kode scan TUG cocok >1 stok, biarkan user pilih (jangan auto-pilih) */}
       <ScanPickerModal scanPicker={scanPicker} setScanPicker={setScanPicker} chooseScanPickerMatch={chooseScanPickerMatch} sty={sty} C={C} isMobile={isMobile} />
 
       {/* TXN MODAL - TUG10 FORM (incoming material / return to warehouse) */}
-      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleTugGudangList} uptList={uptList} katalogList={katalogList} stocks={enrichedStocks} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG10" && <Tug10FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} docSeq={nextSafeDocSeq(docSeq, txns)} currentUser={currentUser} rolePerms={rolePerms} tug10Highlight={tug10Highlight} tug10Refs={tug10Refs} tug10Missing={tug10Missing} tug10Collapsed={tug10Collapsed} setTug10Collapsed={setTug10Collapsed} lokasiList={lokasiList} subGudangList={subGudangList} satpamList={satpamList} gudangList={gudangList} visibleGudangList={visibleTugGudangList} uptList={uptList} katalogList={katalogList} stocks={enrichedStocks} CATEGORIES={CATEGORIES} STATUS_MATERIAL_RETUR={STATUS_MATERIAL_RETUR} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} savingTxn={savingTxn} saveTxn={guardTugWrite(saveTxn)} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* TXN MODAL - TUG3 FORM (Karantina — penerimaan barang tahap 1) */}
-      {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={nextSafeDocSeq(docSeq, txns)} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleTugGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={saveTxn} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
+      {txnModal && txnForm && txnForm.docType==="TUG3" && <Tug3FormModal txnForm={txnForm} setTxnForm={setTxnForm} setTxnModal={setTxnModal} setEditingDraftTxnId={setEditingDraftTxnId} editingDraftTxnId={editingDraftTxnId} savingTxn={savingTxn} docSeq={nextSafeDocSeq(docSeq, txns)} katalogList={katalogList} lokasiList={lokasiList} visibleGudangList={visibleTugGudangList} supplierList={supplierList} openAddSupplier={openAddSupplier} CATEGORIES={CATEGORIES} tug3ExpandedIdx={tug3ExpandedIdx} setTug3ExpandedIdx={setTug3ExpandedIdx} addItemRow={addItemRow} removeItemRow={removeItemRow} updateItemRow={updateItemRow} handleImg={handleImg} saveTxn={guardTugWrite(saveTxn)} maraSearch={maraSearch} setMaraSearch={setMaraSearch} maraSearchResults={maraSearchResults} setMaraSearchResults={setMaraSearchResults} maraSearchLoading={maraSearchLoading} maraSearchError={maraSearchError} searchMaraCatalog={searchMaraCatalog} applyMaraToItemRow={applyMaraToItemRow} isMobile={isMobile} sty={sty} C={C} />}
 
       {/* SUPPLIER MODAL — dirender setelah TUG3 supaya "+ Tambah supplier baru" (dari SearchableSelect di TUG3) stack di atas form TUG3 */}
       {supplierModal && <SupplierModal supplierModal={supplierModal} setSupplierModal={setSupplierModal} supplierForm={supplierForm} setSupplierForm={setSupplierForm} saveSupplier={saveSupplier} sty={sty} C={C} />}
 
       {/* DOCUMENT PREVIEW MODAL (TUG-9 / TUG-8 / TUG-10 / TUG-3 package) */}
-      {baNonStockReview && <BaNonStockReviewModal record={baNonStockReview} C={C} sty={sty} onLoad={refreshBaNonStockReview} onApprove={approveBaNonStock} onReject={rejectBaNonStock} onClose={()=>setBaNonStockReview(null)} onPreview={setDocPreview} uptList={uptList} gudangList={gudangList} satpamList={satpamList} users={users} />}
-      {docPreview && <DocPreviewModal docPreview={docPreview} setDocPreview={setDocPreview} docPreviewDoc={docPreviewDoc} docKeyOf={docKeyOf} katalogList={katalogList} lokasiList={lokasiList} users={users} satpamList={satpamList} gudangList={gudangList} subGudangList={subGudangList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} enrichedStocks={enrichedStocks} showToast={showToast} sty={sty} C={C} />}
+      {baNonStockReview && <BaNonStockReviewModal record={baNonStockReview} C={C} sty={sty} onLoad={refreshBaNonStockReview} onApprove={guardTugWrite(approveBaNonStock)} onReject={guardTugWrite(rejectBaNonStock)} onClose={()=>setBaNonStockReview(null)} onPreview={setDocPreview} uptList={uptList} gudangList={gudangList} satpamList={satpamList} users={users} />}
+      {docPreview && <DocPreviewModal docPreview={docPreview} setDocPreview={setDocPreview} photoLinks={previewPhotoLinks} mastersReady={tugPrintMastersReady} masterLoadFailed={failedRefs.length > 0} onRetryMasters={() => retryPrintLoads.current?.(failedRefs)} docKeyOf={docKeyOf} katalogList={katalogList} lokasiList={lokasiList} users={users} satpamList={satpamList} gudangList={gudangList} subGudangList={subGudangList} timMutuList={timMutuList} uitList={uitList} uptList={uptList} ultgList={ultgList} enrichedStocks={enrichedStocks} showToast={showToast} sty={sty} C={C} />}
 
     </div>
   );
