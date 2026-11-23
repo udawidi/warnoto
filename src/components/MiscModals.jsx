@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Kumpulan modal/popup kecil — dipindah dari App.jsx (refactor batch 2g).
 // Murni relokasi JSX; tidak ada perubahan tampilan/teks/logic. State & handler
 // tetap hidup di App.jsx dan diteruskan sebagai props.
@@ -150,7 +151,7 @@ export function PhotoSearchModal({ photoSearchOpen, photoSearchLoading, setPhoto
 export function LightboxModal({ lightboxImg, setLightboxImg, sty }) {
   return (
     <div onClick={()=>setLightboxImg(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2000,padding:20,cursor:"zoom-out"}}>
-      <img src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90dvh",objectFit:"contain",borderRadius: 10}}/>
+      <MasterMediaImage src={lightboxImg} alt="Overview" style={{maxWidth:"90vw",maxHeight:"90dvh",objectFit:"contain",borderRadius: 10}}/>
       <button style={{...sty.btn("danger","sm"),position:"fixed",top:20,right:20}} onClick={()=>setLightboxImg(null)}>✕ Tutup</button>
     </div>
   );
@@ -190,7 +191,7 @@ export function PetaMiniDetailModal({ petaMiniDetail, setPetaMiniDetail, lokasiL
           <button style={sty.btn("danger","sm")} onClick={()=>setPetaMiniDetail(null)}>✕</button>
         </div>
         <div style={{position:"relative",width:"100%"}}>
-          <img src={petaMiniDetail.petaInfo.denahImageData} alt="Denah" style={{width:"100%",borderRadius: 10,display:"block",filter:"brightness(0.7)"}}/>
+          <MasterMediaImage src={petaMiniDetail.petaInfo.denahImageData} alt="Denah" style={{width:"100%",borderRadius: 10,display:"block",filter:"brightness(0.7)"}}/>
           {/* Semua blok lain di scope denah yang sama — abu */}
           {(petaMiniDetail.petaInfo.subGudang
             ? lokasiList.filter(l=>l.subGudangId===petaMiniDetail.petaInfo.subGudang.id&&l.subMapX!=null&&l.id!==petaMiniDetail.lokasi.id)

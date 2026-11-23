@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Modal-modal terkait stok & dokumen (dipindah dari App.jsx, refactor batch 1).
 // StockDetailModal (form tambah/edit stok), MaturityAssessmentModal (asesmen manual),
 // DocPreviewModal (preview & unduh dokumen TUG).
@@ -70,7 +71,7 @@ export function StockEditFields({ stockModal, stockForm, setStockForm, katalogLi
               </div>
               <div style={{gridColumn:"1/-1"}}>
                 <label style={sty.label}>Foto Kondisi Barang (opsional)</label>
-                {stockForm.img && <img src={resolveStockPhotoUrl(stockForm.img)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.img))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
+                {stockForm.img && <MasterMediaImage src={resolveStockPhotoUrl(stockForm.img)} alt="prev" onClick={()=>setLightboxImg(resolveStockPhotoUrl(stockForm.img))} style={{width:80,height:80,objectFit:"cover",borderRadius: 10,marginBottom:6,border:`1px solid ${C.border}`,display:"block",cursor:"zoom-in"}}/>}
                 <label style={{...sty.btn("ghost","sm"),display:"inline-block",cursor:"pointer"}}>
                   🔄 Update Gambar
                   <input type="file" accept="image/*" onChange={e=>handleImg(e, img=>setStockForm(sf=>({...sf,img})))} style={{display:"none"}}/>

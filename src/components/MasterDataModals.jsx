@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Modal-modal Master Data (dipindah dari App.jsx, refactor batch 1).
 // Katalog, Lokasi (Blok), Gudang edit, Gudang add (wizard 3 langkah).
 import { extractLatLngFromAddress } from "../lib/masterSync.js";
@@ -171,7 +172,7 @@ export function GudangEditModal({ gudangForm, setGudangForm, uptList, setGudangM
               <label style={sty.label}>Foto Gudang (opsional)</label>
               <div style={{display:"flex",gap:12,alignItems:"center"}}>
                 <div style={{width:96,height:96,borderRadius: 14,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {gudangForm.fotoGudang ? <img src={gudangForm.fotoGudang} alt="Foto gudang" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🏬</span>}
+                  {gudangForm.fotoGudang ? <MasterMediaImage src={gudangForm.fotoGudang} alt="Foto gudang" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🏬</span>}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   <label style={{...sty.btn("ghost","sm"),textAlign:"center",cursor:"pointer"}}>
@@ -225,7 +226,7 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                   <label style={sty.label}>Foto Gudang (opsional)</label>
                   <div style={{display:"flex",gap:12,alignItems:"center"}}>
                     <div style={{width:96,height:96,borderRadius: 14,background:"#f3f4f6",border:`1px solid ${C.border}`,overflow:"hidden",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      {gudangForm.fotoGudang ? <img src={gudangForm.fotoGudang} alt="Foto gudang" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🏬</span>}
+                      {gudangForm.fotoGudang ? <MasterMediaImage src={gudangForm.fotoGudang} alt="Foto gudang" style={{width:"100%",height:"100%",objectFit:"cover"}}/> : <span style={{fontSize:32}}>🏬</span>}
                     </div>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       <label style={{...sty.btn("ghost","sm"),textAlign:"center",cursor:"pointer"}}>
@@ -255,7 +256,7 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                   {denahLoading && <div style={{fontSize:12,color:"#1d4ed8",marginTop:8}}>⏳ Mengompres, menyimpan, dan membaca label di gambar (OCR)...</div>}
                   {g?.denahImageData && !denahLoading && (
                     <div style={{marginTop:12}}>
-                      <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
+                      <MasterMediaImage src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:220,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
                     </div>
                   )}
                   <div style={{display:"flex",gap:10,marginTop:18}}>
@@ -286,7 +287,7 @@ export function GudangAddModal({ gudangWizardStep, setGudangWizardStep, gudangFo
                         const kodeUsulan = suggestKodeFromOcr(g, xPct, yPct) || `${g.kode||"BLOK"}-${String(bloklokasi.length+1).padStart(2,"0")}`;
                         setWizardBlokDraft({ kode:kodeUsulan, keterangan:"", kapasitas:50, xPct, yPct });
                       }}>
-                      <img src={g.denahImageData} alt="Denah" style={{width:"100%",borderRadius: 10,border:`2px dashed #3b82f6`,display:"block"}}/>
+                      <MasterMediaImage src={g.denahImageData} alt="Denah" style={{width:"100%",borderRadius: 10,border:`2px dashed #3b82f6`,display:"block"}}/>
                       {bloklokasi.filter(l=>l.mapX!=null).map(l=>(
                         <div key={l.id} title={l.kode} style={{position:"absolute",left:`${l.mapX}%`,top:`${l.mapY}%`,transform:"translate(-50%,-50%)",width:14,height:14,borderRadius:"50%",background:l.status==="PENDING"?"#9ca3af":"#dc2626",border:l.status==="PENDING"?"2px dashed white":"2px solid white",boxShadow:"0 1px 4px rgba(0,0,0,0.4)"}}/>
                       ))}

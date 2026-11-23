@@ -1,4 +1,7 @@
+import { hasUnwritableMedia } from "./masterMedia.js";
+
 export async function approveStockOpnameAtomically({ supabase, opnameId, opnameData, katalogRows, stockRows }) {
+  if (hasUnwritableMedia("stocks", stockRows || [])) return { ok: false, error: new Error("Tunggu sampai data stok selesai dimuat dari server.") };
   if (!supabase) return { ok: false, error: new Error("Koneksi server Stock Opname tidak tersedia.") };
   const { data, error } = await supabase.rpc("approve_stock_opname_asman", {
     p_opname_id: opnameId,

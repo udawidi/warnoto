@@ -2,6 +2,27 @@ const { test, expect, CLOUD_FIXTURES } = require("./fixtures");
 const { openApp, openRoute } = require("./support/responsive");
 
 test.describe("WARNOTO desktop preservation smoke", () => {
+  test("SUPERADMIN can cache stock and warehouse lists with legacy images", async ({ isolatedPage: page }) => {
+    await openApp(page);
+    const saved = await page.evaluate(async () => {
+      const { leanStocksForCache } = await import("/src/lib/stockCache.js");
+      const { CLOUD } = await import("/src/lib/cloud.js");
+      const image = "data:image/png;base64," + "A".repeat(340000);
+      const stocks = Array.from({ length: 18 }, (_, i) => ({ id: "TEST-" + i, qty: i, img: image }));
+      const stockSaved = await CLOUD.set("pln_stocks_v4", leanStocksForCache(stocks));
+      const mapsSaved = await CLOUD.set("pln_sub_gudang_v1", stocks.map(s => ({ id: s.id, denahImageData: image })));
+      return {
+        stockSaved, mapsSaved,
+        stock: (await CLOUD.get("pln_stocks_v4"))[17],
+        map: (await CLOUD.get("pln_sub_gudang_v1"))[17],
+      };
+    });
+    expect(saved).toEqual({
+      stockSaved: true, mapsSaved: true,
+      stock: { id: "TEST-17", qty: 17, img: "wcache:stocks:img:current:TEST-17" },
+      map: { id: "TEST-17", denahImageData: "wcache:sub_gudang:denahImageData:current:TEST-17" },
+    });
+  });
   test.describe("TUG-10 final approval", () => {
     test.use({
       cloudOverrides: {

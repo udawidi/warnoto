@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Komponen DataStokTab — dipindah dari App.jsx (refactor batch 2a).
 // Batch 1 simplifikasi tampilan (2026-08-11): tabel 5 kolom ringkas, detail
 // lengkap (Kategori/Harga/Status/Gudang/Blok/Lokasi UPT/Edit/Hapus) pindah ke
@@ -262,7 +263,7 @@ export function DataStokTab({
                         const pct = Math.round((r.similarity||0)*100);
                         return (
                           <div key={`${resultUpt}|${r.katalog}`} onClick={()=>est&&setStockDetailId(est.id)} style={{border:`1px solid ${C.border}`,borderRadius:10,padding:10,cursor:est?"pointer":"default",display:"flex",gap:10,alignItems:"center",background:C.surface}}>
-                            {thumb ? <img src={thumb} alt="" loading="lazy" decoding="async" style={{width:54,height:54,objectFit:"cover",borderRadius: 10,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius: 10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ImageSquare size={22} color={C.accent} aria-hidden="true"/></div>}
+                            {thumb ? <MasterMediaImage src={thumb} alt="" loading="lazy" decoding="async" style={{width:54,height:54,objectFit:"cover",borderRadius: 10,flexShrink:0,border:`1px solid ${C.border}`}}/> : <div style={{width:54,height:54,borderRadius: 10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><ImageSquare size={22} color={C.accent} aria-hidden="true"/></div>}
                             <div style={{minWidth:0,flex:1}}>
                               <div style={{fontWeight:700,fontSize:12,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{est.name}</div>
                               <div style={{fontSize:12,color:"#0098da",fontWeight:700}}><Tag size={13} style={{verticalAlign:"-0.15em",marginRight:3}} aria-hidden="true"/> {r.katalog}</div>

@@ -3,6 +3,7 @@
 import { supabase } from "../supabaseClient.js";
 import { decode as olcDecode, isFull as olcIsFull, recoverNearest as olcRecoverNearest } from "./openLocationCode.js";
 import { mapStockScopeRow } from "./stockScope.js";
+import { compactMasterTables, hasUnwritableMedia } from "./masterMedia.js";
 
 // Satpam, Tim Mutu, UIT, UPT, Gudang, Lokasi dulu hanya tersimpan di
 // localStorage/CLOUD (per-browser, tidak sinkron antar device/user). Sekarang
@@ -96,20 +97,27 @@ export function extractLatLngFromAddress(text) {
   }
 }
 
-export async function loadMasterTable(table, { uptIds } = {}) {
+export async function loadMasterTable(table, { uptIds, signal, onRevisions } = {}) {
   if (!supabase) return null;
   if ((table === "stock_opname" || table === "stock_count") && Array.isArray(uptIds) && uptIds.length === 0) return [];
   const pageSize = 1000; // PostgREST default max-rows; explicit paging prevents silent truncation.
   const fetchAll = async () => {
     const rows = [];
     for (let from = 0; ; from += pageSize) {
-      let query = supabase.from(table).select("*").order("id", { ascending: true }).range(from, from + pageSize - 1);
+      const compact = compactMasterTables.has(table) && compactMasterTables.get(table) !== false;
+      let query = supabase.from(compact ? table + "_compact" : table).select("*").order("id", { ascending: true }).range(from, from + pageSize - 1);
       // Defense-in-depth only. RLS remains the security boundary. Undefined means
       // scope belum diketahui (mis. UPT master gagal dimuat), jadi jangan filter
       // client dan biarkan server policy menentukan baris yang boleh terlihat.
       if (Array.isArray(uptIds)) query = query.in("upt_id", uptIds);
+      if (signal) query = query.abortSignal(signal);
       const { data, error } = await query;
+      if (compact && ["PGRST205", "42P01"].includes(error?.code)) {
+        compactMasterTables.set(table, false);
+        return fetchAll();
+      }
       if (error) throw error;
+      if (compact) compactMasterTables.set(table, true);
       rows.push(...(data || []));
       if (!data || data.length < pageSize) return rows;
     }
@@ -117,13 +125,15 @@ export async function loadMasterTable(table, { uptIds } = {}) {
   let data;
   try { data = await fetchAll(); }
   catch (firstError) {
+    if (signal?.aborted) return null;
     // Retry SEKALI kalau gagal (mis. timeout parsial server self-host/Cloudflare Tunnel)
     // sebelum menyerah ke cache localStorage lama di caller (App.jsx loadCloud()).
     await new Promise(r => setTimeout(r, 1200));
+    if (signal?.aborted) return null;
     try { data = await fetchAll(); }
     catch (error) { console.error(`loadMasterTable(${table}): ${error.message}`, error); return null; }
   }
-  return data.map(row => {
+  const mapped = data.map(row => {
     if (table === "stock_opname" || table === "stock_count") return mapStockScopeRow(row);
     const item = { ...row.data, id: row.id };
     // Sumber scope UIT harus sama dengan RLS. can_access_upt (DB) membaca KOLOM
@@ -150,11 +160,29 @@ export async function loadMasterTable(table, { uptIds } = {}) {
     }
     return item;
   });
+  if (onRevisions && compactMasterTables.get(table) && data.every(row => row.revision != null)) {
+    onRevisions({ rows: mapped, versions: new Map(data.map(row => [row.id, row.revision])) });
+  }
+  return mapped;
+}
+
+// Compare the complete RLS-visible id/version set after subscribing. Changed,
+// deleted and newly visible rows all require a fresh snapshot.
+export async function stockRevisionsMatch(versions, signal) {
+  let count = 0;
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase.from("stocks_compact").select("id,revision")
+      .order("id").range(offset, offset + 999).abortSignal(signal);
+    if (error || !data || data.some(row => versions.get(row.id) !== row.revision)) return false;
+    count += data.length;
+    if (data.length < 1000) return count === versions.size;
+  }
 }
 
 // extraCols(item) => kolom tambahan per baris (FK/status) di luar id & data, opsional
 export async function syncMasterTable(table, list, extraCols) {
   if (!supabase) return false;
+  if (hasUnwritableMedia(table, list)) return false;
   // Dedupe by id (keep-last) sebelum di-upsert: Postgres upsert().onConflict("id") GAGAL TOTAL
   // (error 21000, "ON CONFLICT DO UPDATE command cannot affect row a second time within one
   // command") kalau ada id yang sama muncul >1 kali dalam satu batch. Item terakhir dalam array
@@ -217,6 +245,7 @@ export async function syncMasterTable(table, list, extraCols) {
 export async function syncMasterTableRows(table, rows, extraCols) {
   if (!supabase) return false;
   if (!rows?.length) return true; // tidak ada baris berubah → tidak ada yang perlu ditulis
+  if (hasUnwritableMedia(table, rows)) return false;
   // Dedupe by id (keep-last) — sama seperti syncMasterTable: upsert().onConflict("id")
   // GAGAL (error 21000) kalau id yang sama muncul >1 kali dalam satu batch.
   const dedupedRows = [...new Map(rows.map(item => [item.id, item])).values()];

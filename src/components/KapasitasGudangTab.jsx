@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowClockwise, ArrowUp, ChartBar, ImageSquare, LinkSimple, PencilSimple,
@@ -100,7 +101,7 @@ function PhotoView({ record, gudangList, className = "" }) {
     } catch { setBroken(true); }
   }
   if (photo.loading) return <div className={`capacity-photo capacity-photo--loading ${className}`} aria-label="Memuat foto" />;
-  if (photo.src && !broken) return <div className={`capacity-photo ${className}`}><img src={retrySrc || photo.src} alt={`Foto ${record.subGudang || "sub-gudang"}`} onError={retrySignedUrl} /><span className="capacity-photo__caption">{photo.legacy ? "Foto gudang umum" : "Foto sub-gudang"}</span></div>;
+  if (photo.src && !broken) return <div className={`capacity-photo ${className}`}><MasterMediaImage src={retrySrc || photo.src} alt={`Foto ${record.subGudang || "sub-gudang"}`} onError={retrySignedUrl} /><span className="capacity-photo__caption">{photo.legacy ? "Foto gudang umum" : "Foto sub-gudang"}</span></div>;
   return <div className={`capacity-photo capacity-photo--empty ${className}`}><ImageSquare size={30} aria-hidden /><span>{photo.error ? "Foto tidak dapat dimuat" : "Belum ada foto sub-gudang"}</span></div>;
 }
 

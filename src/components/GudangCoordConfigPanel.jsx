@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Komponen GudangCoordConfigPanel — dipindah dari App.jsx (refactor Fase 4).
 
 // Digabung dari 2 salinan JSX yang tadinya nyaris identik (satu untuk denah Gudang
@@ -63,7 +64,7 @@ export function GudangCoordConfigPanel({
               if (manualAddMode) { onAddDraft(xPct, yPct); }
               else if (pendingMapLokasi) { onAssignCoord(pendingMapLokasi, xPct, yPct); setPendingMapLokasi(null); }
             }}>
-            <img src={denahImage} alt="Denah" style={{width:"100%",height:"auto",borderRadius: 10,border:"2px dashed #3b82f6",display:"block"}}/>
+            <MasterMediaImage src={denahImage} alt="Denah" style={{width:"100%",height:"auto",borderRadius: 10,border:"2px dashed #3b82f6",display:"block"}}/>
             {withCoord.map(l=>{
               const c = getCoord(l);
               return (

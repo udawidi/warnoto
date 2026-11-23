@@ -105,9 +105,9 @@ test("HAR_UIT bootstrap exits before full-domain loader and keeps stock realtime
   const end = appSource.indexOf('if (currentUser?.role === "OPERATOR") {', start);
   assert.ok(start >= 0 && end > start);
   const branch = appSource.slice(start, end);
-  assert.match(branch, /loadMasterTable\("stocks"\)/);
-  assert.match(branch, /loadMasterTable\("heavy_equipment_loans"\)/);
-  assert.doesNotMatch(branch, /loadWarehouseCapacity|loadMasterTable\("(stock_opname|stock_count|attb_list|supplier|maturity|material_cadang|tug)/i);
+  const tables = JSON.parse(branch.match(/const tables = (\[[^;]+\]);/)[1]);
+  assert.deepEqual(tables, ["uit", "upt", "gudang", "sub_gudang", "lokasi", "katalog", "stocks", "heavy_equipment", "heavy_equipment_loans"]);
+  assert.match(branch, /tables\.map\(table => \(\) => loadMaster\(table\)\)/);
   assert.match(branch, /setTxns\(\[\]\).*setRencanaKedatanganList\(\[\]\).*setOpnameList\(\[\]\)/s);
   assert.match(branch, /setApprovalHistoryList\(\[\]\).*setAttbList\(\[\]\)/s);
   assert.match(branch, /stocksBootstrapUserIdRef\.current = currentUser\.id/);

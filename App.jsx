@@ -28,7 +28,7 @@ import { DEFAULT_HEAVY_EQUIPMENT, normalizeHeavyEquipmentJenis, heavyEquipmentSt
 import { ATTB_JENIS_ASET, ATTB_JENIS_ASET_LABEL, ATTB_STAGES, attbStageIndex, attbStageLabel, canApproveAttb, isPendingAttbApproval, ATTB_FIELDS_BY_JENIS, ATTB_ALASAN_PENGHAPUSBUKUAN, ATTB_WAKTU_USULAN_OPTIONS, ATTB_CORE_FIELDS, ATTB_STAGE2_FIELDS, ATTB_STAGE3_FIELDS, ATTB_STAGE4_FIELDS, ATTB_STAGE5_FIELDS, parseAttbCurrency, parseAttbMaterialFile2, parseAttbMaterialFile4 } from "./src/lib/attb.js";
 import { npNorm, npTokens, npNums, NAMEPLATE_MIN, cohereEmbed, cohereEmbedImage, ocrSpaceOCR, matchNameplateToKatalog, nameplateTextSim, matchNameplateAll, buildTxnRagContent } from "./src/lib/rag.js";
 import { computeForecast } from "./src/lib/forecast.js";
-import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, syncMasterTable, syncMasterTableRows, deleteMasterTableRow, loadWarehouseCapacity, syncWarehouseCapacity, syncWarehouseCapacityRows, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
+import { subGudangAbbr, subGudangKodeMap, getLokasiPetaInfo, extractLatLngFromAddress, loadMasterTable, stockRevisionsMatch, syncMasterTable, syncMasterTableRows, deleteMasterTableRow, loadWarehouseCapacity, syncWarehouseCapacity, syncWarehouseCapacityRows, loadWarehouseCapacityImports, syncWarehouseCapacityImports } from "./src/lib/masterSync.js";
 import { runBootstrapTasks } from "./src/lib/bootstrapScheduler.js";
 import { getDefaultMaturityAuditHistory, loadMaturityAssessments, loadMaturityAudits, loadMaturityAuditHistory, loadMaturity5SAssessments, upsertMaturityAssessments, upsertMaturityAudits } from "./src/lib/maturitySync.js";
 import { Sparkline } from "./src/components/Sparkline.jsx";
@@ -744,6 +744,7 @@ export default function PLNWarehouse() {
   // Hanya aktif setelah bootstrap untuk user ini selesai. Ref mencegah channel
   // sempat terbuka saat login ulang sebelum effect loadCloud sempat set state refresh.
   const stocksBootstrapUserIdRef = useRef(null);
+  const bootstrapStockSnapshot = useRef(null);
   const bootstrapBaselinePendingRef = useRef(false);
 
   useEffect(() => {
@@ -751,17 +752,40 @@ export default function PLNWarehouse() {
     // kalau dipanggil saat mount sebagai anon, Supabase mengembalikan daftar kosong
     // dan data remote (termasuk warehouse_capacity) tidak pernah dimuat ulang.
     if (authLoading || !currentUser) return;
+    const sessionAbort = new AbortController();
+    async function loadMaster(table, options = {}) {
+      if (sessionAbort.signal.aborted) return null;
+      const request = new AbortController();
+      const abort = () => request.abort();
+      sessionAbort.signal.addEventListener("abort", abort, { once: true });
+      const timer = setTimeout(abort, 30_000);
+      try {
+        return await loadMasterTable(table, {
+          ...options, signal: request.signal,
+          onRevisions: table === "stocks" ? snapshot => {
+            if (!request.signal.aborted) bootstrapStockSnapshot.current = snapshot;
+          } : undefined,
+        });
+      } finally {
+        clearTimeout(timer);
+        sessionAbort.signal.removeEventListener("abort", abort);
+      }
+    }
     async function loadCloud() {
       stocksBootstrapUserIdRef.current = null;
+      bootstrapStockSnapshot.current = null;
       setDataRefreshing(true);
       bootstrapBaselinePendingRef.current = true;
       // Satu request cloud yang menggantung tidak boleh menahan seluruh bootstrap.
       // Timeout hanya mengubah hasil request yang macet menjadi null; request normal
       // dan alur fallback/cache tetap sama.
       const bootstrapLoad = (promise, label = "bootstrap cloud") =>
-        _withTimeout(Promise.resolve(promise), 30000, label).catch(() => null);
+        _withTimeout(Promise.resolve(promise), 30000, label).catch(error => {
+          if (!sessionAbort.signal.aborted) console.warn(label, error?.message);
+          return null;
+        });
       // Self-host melalui tunnel mudah overload saat semua master ditembak bersamaan.
-      // Scheduler di bawah menjaga maksimal tiga request aktif dan memprioritaskan layar awal.
+      // Empat tugas master berjalan paralel dengan data layar awal diprioritaskan.
       if (currentUser?.role === "HAR_UIT") {
         // Jangan render cache domain tersembunyi selama bootstrap HAR_UIT.
         setLoading(true);
@@ -775,12 +799,14 @@ export default function PLNWarehouse() {
         // HAR_UIT hanya memakai Dashboard, Data Stok, dan Alat Berat. Jangan
         // menjalankan loader domain tersembunyi karena selain boros, cache domain
         // itu dapat membuat layar awal menunggu request yang tidak relevan.
-        const [cuit, cupt, cgdg, csgdg, clok, ckat, cs, che, chel] = await Promise.all([
-          loadMasterTable("uit"), loadMasterTable("upt"), loadMasterTable("gudang"),
-          loadMasterTable("sub_gudang"), loadMasterTable("lokasi"), loadMasterTable("katalog"),
-          loadMasterTable("stocks"), loadMasterTable("heavy_equipment"),
-          loadMasterTable("heavy_equipment_loans"),
-        ].map((p, i) => bootstrapLoad(p, `bootstrap HAR_UIT ${i}`)));
+        const tables = ["uit", "upt", "gudang", "sub_gudang", "lokasi", "katalog", "stocks", "heavy_equipment", "heavy_equipment_loans"];
+        const results = await runBootstrapTasks(
+          tables.map(table => () => loadMaster(table)), { limit: 4, priority: [4, 5, 6] }
+        );
+        if (sessionAbort.signal.aborted) return;
+        const [cuit, cupt, cgdg, csgdg, clok, ckat, cs, che, chel] = results;
+        const missing = tables.filter((table, index) => results[index] === null);
+        if (supabase && missing.length) showToastRef.current?.(`Gagal memuat data ${missing.join(", ")}. Coba muat ulang saat koneksi tersedia.`, "error");
         if (cuit !== null) setUitList(cuit);
         if (cupt !== null) setUptList(cupt);
         if (cgdg !== null) setGudangList(cgdg);
@@ -813,7 +839,8 @@ export default function PLNWarehouse() {
         // penuh (stocks/katalog/txns/maturity dkk, bisa ribuan baris) di-skip sepenuhnya —
         // stocksBootstrapUserIdRef TIDAK di-set di sini sehingga effect realtime stocks (yang
         // menunggu ref itu) juga otomatis tidak pernah menyala untuk role ini.
-        const [cupt, che] = await Promise.all([loadMasterTable("upt"), loadMasterTable("heavy_equipment")].map((p, i) => bootstrapLoad(p, `bootstrap operator ${i}`)));
+        const [cupt, che] = await Promise.all([loadMaster("upt"), loadMaster("heavy_equipment")].map((p, i) => bootstrapLoad(p, `bootstrap operator ${i}`)));
+        if (sessionAbort.signal.aborted) return;
         if (cupt !== null) setUptList(cupt);
         if (che !== null) setHeavyEquipmentList(che.map(normalizeHeavyEquipmentRecord));
         setLoading(false);
@@ -850,38 +877,39 @@ export default function PLNWarehouse() {
       const uptLoadPromise = new Promise(resolve => { resolveUptLoad = resolve; });
       const stockScopeLoad = table => uptLoadPromise.then(remoteUpts => {
         const uptIds = Array.isArray(remoteUpts) ? getScopeUptIds(currentUser, remoteUpts) : undefined;
-        return loadMasterTable(table, { uptIds });
+        return loadMaster(table, { uptIds });
       });
       const initialResolvers = {};
       const initialLoads = [5, 8, 9].map(index => new Promise(resolve => { initialResolvers[index] = resolve; }));
       const bootstrapTask = (loader, label, onResult) => async () => {
+        if (sessionAbort.signal.aborted) return null;
         const result = await bootstrapLoad(Promise.resolve().then(loader), label);
-        onResult?.(result);
+        if (!sessionAbort.signal.aborted) onResult?.(result);
         return result;
       };
       const masterTasks = [
-        bootstrapTask(() => loadMasterTable("uit"), "bootstrap master 0"),
-        bootstrapTask(() => loadMasterTable("upt"), "bootstrap master 1", result => resolveUptLoad(result)),
-        bootstrapTask(() => loadMasterTable("ultg"), "bootstrap master 2"),
-        bootstrapTask(() => loadMasterTable("gudang"), "bootstrap master 3"),
-        bootstrapTask(() => loadMasterTable("sub_gudang"), "bootstrap master 4"),
-        bootstrapTask(() => loadMasterTable("lokasi"), "bootstrap master 5", result => {
+        bootstrapTask(() => loadMaster("uit"), "bootstrap master 0"),
+        bootstrapTask(() => loadMaster("upt"), "bootstrap master 1", result => resolveUptLoad(result)),
+        bootstrapTask(() => loadMaster("ultg"), "bootstrap master 2"),
+        bootstrapTask(() => loadMaster("gudang"), "bootstrap master 3"),
+        bootstrapTask(() => loadMaster("sub_gudang"), "bootstrap master 4"),
+        bootstrapTask(() => loadMaster("lokasi"), "bootstrap master 5", result => {
           try {
             if (result !== null) setLokasiList(result?.length ? dedupeById(result).list : (result ? [] : (dropCachedGiRows(clokLocal) || DEFAULT_LOKASI)));
           } finally {
             initialResolvers[5](result);
           }
         }),
-        bootstrapTask(() => loadMasterTable("satpam"), "bootstrap master 6"),
-        bootstrapTask(() => loadMasterTable("tim_mutu"), "bootstrap master 7"),
-        bootstrapTask(() => loadMasterTable("katalog"), "bootstrap master 8", result => {
+        bootstrapTask(() => loadMaster("satpam"), "bootstrap master 6"),
+        bootstrapTask(() => loadMaster("tim_mutu"), "bootstrap master 7"),
+        bootstrapTask(() => loadMaster("katalog"), "bootstrap master 8", result => {
           try {
             if (result !== null) setKatalogList(result?.some(k => k.name) ? dedupeById(result.filter(k => k.name)).list : (ckat || DEFAULT_KATALOG));
           } finally {
             initialResolvers[8](result);
           }
         }),
-        bootstrapTask(() => loadMasterTable("stocks"), "bootstrap master 9", result => {
+        bootstrapTask(() => loadMaster("stocks"), "bootstrap master 9", result => {
           try {
             if (result !== null) setStocks(result?.length ? dedupeById(result).list : (cs || DEFAULT_STOCKS));
           } finally {
@@ -890,12 +918,12 @@ export default function PLNWarehouse() {
         }),
         bootstrapTask(() => loadWarehouseCapacity(), "bootstrap master 10"),
         bootstrapTask(() => loadWarehouseCapacityImports(), "bootstrap master 11"),
-        bootstrapTask(() => loadMasterTable("heavy_equipment"), "bootstrap master 12"),
-        bootstrapTask(() => loadMasterTable("heavy_equipment_loans"), "bootstrap master 13"),
+        bootstrapTask(() => loadMaster("heavy_equipment"), "bootstrap master 12"),
+        bootstrapTask(() => loadMaster("heavy_equipment_loans"), "bootstrap master 13"),
         bootstrapTask(() => stockScopeLoad("stock_opname"), "bootstrap master 14"),
         bootstrapTask(() => stockScopeLoad("stock_count"), "bootstrap master 15"),
-        bootstrapTask(() => loadMasterTable("attb_list"), "bootstrap master 16"),
-        bootstrapTask(() => loadMasterTable("supplier"), "bootstrap master 17"),
+        bootstrapTask(() => loadMaster("attb_list"), "bootstrap master 16"),
+        bootstrapTask(() => loadMaster("supplier"), "bootstrap master 17"),
       ];
       // Maturity punya tabel typed khusus; jangan lewat masterSync/blob warnoto_state.
       const maturityTasks = [
@@ -914,10 +942,12 @@ export default function PLNWarehouse() {
       const bootstrapLoadsPromise = runBootstrapTasks([...masterTasks, ...maturityTasks, ...domainTasks], { limit: 4, priority: [5, 8, 9] });
       // Hanya tiga dataset ini diperlukan untuk layar kerja pertama. Request
       // non-kritis berjalan bertahap di belakang scheduler.
-      await Promise.all(initialLoads);
+      await Promise.race([Promise.all(initialLoads), bootstrapLoadsPromise]);
+      if (sessionAbort.signal.aborted) return;
       setLoading(false);
 
       const allBootstrapLoads = await bootstrapLoadsPromise;
+      if (sessionAbort.signal.aborted) return;
       const masterLoads = allBootstrapLoads.slice(0, masterTasks.length);
       const maturityLoads = allBootstrapLoads.slice(masterTasks.length, masterTasks.length + maturityTasks.length);
       const domainLoads = allBootstrapLoads.slice(masterTasks.length + maturityTasks.length);
@@ -929,6 +959,7 @@ export default function PLNWarehouse() {
         normalizeDomainLoad(domainLoads[0]), normalizeDomainLoad(domainLoads[1]),
         normalizeDomainLoad(domainLoads[2]), normalizeDomainLoad(domainLoads[3]), domainLoads[4],
       ];
+      if (supabase && canonicalLoad.unavailable) loadFailures.push("Transaksi TUG-8/9");
       const clok = clokRemote || dropCachedGiRows(clokLocal); // cache virtual dibuang; shadow DB dipertahankan untuk history
       const cgdgRows = cgdg;
       // Seed DEFAULT (gudang/lokasi) hanya boleh oleh viewer NASIONAL (Pusat/SUPERADMIN).
@@ -1001,6 +1032,7 @@ export default function PLNWarehouse() {
         } else if (canSeedMaster && DEFAULT_LOKASI.length > 0) {
           setLokasiList(DEFAULT_LOKASI);
           await syncMasterTable("lokasi", DEFAULT_LOKASI, l => ({ gudang_id: l.gudangId || null, status: l.status || null }));
+          if (sessionAbort.signal.aborted) return;
           CLOUD.set("pln_lokasi_v4", DEFAULT_LOKASI);
         } else {
           setLokasiList([]); // akun scoped tanpa lokasi UPT sendiri — jangan seed/tampilkan data UPT lain
@@ -1009,6 +1041,7 @@ export default function PLNWarehouse() {
       } else {
         // Check for legacy flat-stock data from older version of the app
         const legacyStocks = await CLOUD.get("pln_stocks_v3");
+        if (sessionAbort.signal.aborted) return;
         const migrated = migrateLegacyStocks(legacyStocks);
         if (migrated) {
           setStocks(migrated.stocks); setKatalogList(migrated.katalog); setLokasiList(migrated.lokasi);
@@ -1058,6 +1091,7 @@ export default function PLNWarehouse() {
           // additively; a failed upload remains visible locally but is never
           // presented as durable.
           const imported = await migrateLegacyWorkflowDrafts(withTug10, workflowLoad.rows);
+          if (sessionAbort.signal.aborted) return;
           const workflowRows = mergeWorkflowServerWins(imported.rows, withTug10);
           setTxns([
             ...withTug10.filter(t => !isWorkflowDoc(t)),
@@ -1065,6 +1099,7 @@ export default function PLNWarehouse() {
           ]);
         }
       } catch (err) {
+        if (sessionAbort.signal.aborted) return;
         console.warn("Canonical TUG load gagal; mempertahankan cache legacy tanpa menulis balik.", err);
         setTxns(legacyTxns);
       }
@@ -1083,6 +1118,7 @@ export default function PLNWarehouse() {
       } else if (DEFAULT_SATPAM.length > 0) {
         setSatpamList(DEFAULT_SATPAM);
         await syncMasterTable("satpam", DEFAULT_SATPAM);
+        if (sessionAbort.signal.aborted) return;
         CLOUD.set("pln_satpam_v1", DEFAULT_SATPAM);
       }
       if (ctm === null) {
@@ -1093,6 +1129,7 @@ export default function PLNWarehouse() {
       } else if (DEFAULT_TIM_MUTU.length > 0) {
         setTimMutuList(DEFAULT_TIM_MUTU);
         await syncMasterTable("tim_mutu", DEFAULT_TIM_MUTU);
+        if (sessionAbort.signal.aborted) return;
         CLOUD.set("pln_tim_mutu_v1", DEFAULT_TIM_MUTU);
       }
       // Supplier — nasional (bukan scoped per-UPT seperti satpam), tanpa DEFAULT_* seed.
@@ -1110,6 +1147,7 @@ export default function PLNWarehouse() {
       } else if (DEFAULT_UIT.length > 0) {
         setUitList(DEFAULT_UIT);
         await syncMasterTable("uit", DEFAULT_UIT);
+        if (sessionAbort.signal.aborted) return;
         CLOUD.set("pln_uit_v1", DEFAULT_UIT);
       }
       if (cupt === null) {
@@ -1120,6 +1158,7 @@ export default function PLNWarehouse() {
       } else if (DEFAULT_UPT_LIST.length > 0) {
         setUptList(DEFAULT_UPT_LIST);
         await syncMasterTable("upt", DEFAULT_UPT_LIST, u => ({ uit_id: u.uitId || null }));
+        if (sessionAbort.signal.aborted) return;
         CLOUD.set("pln_upt_v1", DEFAULT_UPT_LIST);
       }
       if (cultg === null) {
@@ -1136,6 +1175,7 @@ export default function PLNWarehouse() {
       } else if (canSeedMaster && DEFAULT_GUDANG.length > 0) {
           setGudangList(DEFAULT_GUDANG);
         await syncMasterTable("gudang", DEFAULT_GUDANG, g => ({ upt_id: g.uptId || null }));
+        if (sessionAbort.signal.aborted) return;
         CLOUD.set("pln_gudang_v1", DEFAULT_GUDANG);
       } else {
         setGudangList([]); // akun scoped tanpa gudang UPT sendiri — jangan seed data UPT lain
@@ -1398,11 +1438,13 @@ export default function PLNWarehouse() {
     // menggantung selamanya. Cache yang sudah ada tetap dipakai; refresh berikutnya
     // dapat dicoba tanpa mengubah alur bisnis.
     loadCloud().catch(error => {
+      if (sessionAbort.signal.aborted) return;
       console.error("Bootstrap cloud gagal:", error);
       setLoading(false);
       setDataRefreshing(false);
       showToastRef.current && showToastRef.current("⚠️ Sinkronisasi cloud gagal. Data lokal tetap ditampilkan.", "error");
     });
+    return () => sessionAbort.abort();
   }, [authLoading, currentUser?.id]);
 
   // Inspeksi Material Cadang bersifat database-canonical dan append-only;
@@ -1542,6 +1584,7 @@ export default function PLNWarehouse() {
     if (authLoading || !currentUser || dataRefreshing || !supabase || stocksBootstrapUserIdRef.current !== currentUser.id) return;
     let disposed = false;
     let outageWarned = false;
+    const channelAbort = new AbortController();
     const sync = { active:false, queued:false, bufferedEvents:[] };
 
     const persistLeanStocks = next => { void CLOUD.set("pln_stocks_v4", leanStocks(next)); };
@@ -1572,7 +1615,18 @@ export default function PLNWarehouse() {
       }
       sync.active = true;
       try {
-        const snapshot = await loadMasterTable("stocks");
+        const initial = bootstrapStockSnapshot.current;
+        bootstrapStockSnapshot.current = null;
+        const canReuse = initial && stockListsEqual(stateRef.current.stocks, initial.rows)
+          && await stockRevisionsMatch(initial.versions, channelAbort.signal);
+        if (disposed) return;
+        if (canReuse) {
+          const buffered = sync.bufferedEvents;
+          sync.bufferedEvents = [];
+          updateStocks(previous => applyStockRealtimeEvents(previous, buffered));
+          return;
+        }
+        const snapshot = await loadMasterTable("stocks", { signal: channelAbort.signal });
         if (disposed) return;
         if (snapshot === null) {
           // Snapshot gagal: pertahankan state/cache yang sudah ada. Buffer dibuang
@@ -1630,6 +1684,7 @@ export default function PLNWarehouse() {
     if (typeof document !== "undefined") document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       disposed = true;
+      channelAbort.abort();
       sync.bufferedEvents = [];
       if (typeof window !== "undefined") window.removeEventListener("online", handleOnline);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", handleVisibility);
@@ -2508,10 +2563,10 @@ export default function PLNWarehouse() {
   }, [authLoading, currentUser?.id]);
 
   useEffect(() => {
-    if (tab === "approval" && currentUser && supabase) {
+    if (!authLoading && tab === "approval" && currentUser && supabase) {
       refreshBaNonStock().catch(error => console.warn("BA Non Stock gagal dimuat.", error));
     }
-  }, [tab, currentUser?.id]);
+  }, [tab, currentUser?.id, authLoading]);
 
   // RBAC guard render: kalau role tidak (lagi) punya izin menu untuk tab aktif
   // (mis. Admin mencabut via Matrix Izin), lempar balik ke Dashboard. Selama
@@ -2542,7 +2597,7 @@ export default function PLNWarehouse() {
   // server (TUG_VERSION_MISMATCH) walau kartunya masih tampil seolah pending di UI.
   // Refetch saat buka tab ini menutup celah itu tanpa perlu realtime penuh.
   useEffect(() => {
-    if (tab !== "approval" || !currentUser) return;
+    if (authLoading || tab !== "approval" || !currentUser) return;
     let alive = true;
     loadCanonicalTugTransactions().then(res => {
       if (!alive || res.unavailable) return;
@@ -2564,7 +2619,7 @@ export default function PLNWarehouse() {
       ]);
     }).catch(err => console.warn("Refresh TUG workflow gagal saat buka tab Approval.", err));
     return () => { alive = false; };
-  }, [tab, currentUser]);
+  }, [tab, currentUser?.id, authLoading]);
 
   // Simpan tab aktif ke sessionStorage supaya refresh halaman tetap di menu yang
   // sama (per-tab-browser).

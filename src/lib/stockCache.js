@@ -1,5 +1,7 @@
 // Cache helpers for Data Stok. Keep only durable remote photo URLs; data/blob
 // URLs are either too large or invalid after a page reload.
+import { cachedMasterMedia } from "./masterMedia.js";
+
 export function keepRemoteStockPhoto(value) {
   if (typeof value !== "string" || !value.trim()) return undefined;
   return /^https?:\/\//i.test(value) ? value : undefined;
@@ -24,7 +26,7 @@ export function resolveStockPhotoUrl(value) {
 
 export function leanStocksForCache(list) {
   return (Array.isArray(list) ? list : []).map(s => ({
-    ...s,
+    ...cachedMasterMedia("stocks", s),
     fotoKeseluruhan: keepRemoteStockPhoto(s.fotoKeseluruhan),
     fotoNameplate: keepRemoteStockPhoto(s.fotoNameplate),
   }));

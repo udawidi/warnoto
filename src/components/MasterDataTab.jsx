@@ -1,3 +1,4 @@
+import { MasterMediaImage } from "./MasterMediaImage.jsx";
 // Komponen MasterDataTab — dipindah dari App.jsx (refactor batch 2b).
 // Murni relokasi tab "Master Data" (tab==="master") beserta semua sub-tab
 // (katalog, satpam, timmutu, organisasi, gudang, akun, migrasi, auditLog, perms).
@@ -211,7 +212,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                       return (
                         <tr tabIndex={0} className="mobile-card-table__row" key={k.id} style={{borderBottom:`1px solid ${C.border}`}}>
                           <td className="mobile-card-table__photo" data-label="Foto" style={{padding:"8px 10px",textAlign:"center"}}>
-                            {sampleFoto ? <img src={sampleFoto} alt={k.name} style={{width:40,height:40,borderRadius: 10,objectFit:"cover",border:`1px solid ${C.border}`}}/>
+                            {sampleFoto ? <MasterMediaImage loading="lazy" src={sampleFoto} alt={k.name} style={{width:40,height:40,borderRadius: 10,objectFit:"cover",border:`1px solid ${C.border}`}}/>
                               : <div style={{width:40,height:40,background:"#eff6ff",borderRadius: 10,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,border:`1px solid #bfdbfe`,margin:"0 auto"}}>📦</div>}
                           </td>
                           <td className="catalog-card-table__meta" data-label="No Katalog" style={{padding:"8px 10px",whiteSpace:"nowrap"}}>
@@ -569,7 +570,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                         {g.denahImageData && (
                           <div style={{marginBottom:12}}>
                             <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah (peta keseluruhan Gudang):</div>
-                            <img src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:200,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
+                            <MasterMediaImage src={g.denahImageData} alt="Denah Gudang" style={{width:"100%",maxHeight:200,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
                           </div>
                         )}
 
@@ -664,7 +665,7 @@ export function MasterDataTab({ C, sty, currentUser, isMobile, rolePerms, stockS
                                       {grp.sg?.denahImageData && (
                                         <div style={{marginBottom:10}}>
                                           <div style={{fontSize:12,fontWeight:700,color:C.muted,marginBottom:6}}>Preview Denah Sub Gudang:</div>
-                                          <img src={grp.sg.denahImageData} alt="Denah Sub Gudang" style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
+                                          <MasterMediaImage loading="lazy" src={grp.sg.denahImageData} alt="Denah Sub Gudang" style={{width:"100%",maxHeight:180,objectFit:"contain",borderRadius: 10,border:`1px solid ${C.border}`}}/>
                                         </div>
                                       )}
                                       {hasRole(currentUser, "TL") && grp.sg.denahImageData && (

@@ -40,7 +40,7 @@ test("verifier is read-only and checks boundary invariants", () => {
 });
 
 test("generic loader exposes an optional UPT filter without changing its default", () => {
-  assert.match(masterSync, /loadMasterTable\(table,\s*\{\s*uptIds\s*\}\s*=\s*\{\}\)/);
+  assert.match(masterSync, /loadMasterTable\(table,\s*\{\s*uptIds, signal, onRevisions\s*\}\s*=\s*\{\}\)/);
   assert.match(masterSync, /uptIds\.length === 0\) return \[\]/);
   assert.match(masterSync, /if \(Array\.isArray\(uptIds\)[\s\S]*?\.in\("upt_id", uptIds\)/);
 });

@@ -1,5 +1,7 @@
 // Abstraksi penyimpanan cloud/local (window.storage atau localStorage) — dipindah dari App.jsx Fase 5h.
 
+import { cachedMasterMedia } from "./masterMedia.js";
+
 export const CLOUD = {
   async get(key) {
     try {
@@ -14,6 +16,8 @@ export const CLOUD = {
   },
   async set(key, val) {
     try {
+      const table = { pln_gudang_v1: "gudang", pln_sub_gudang_v1: "sub_gudang" }[key];
+      if (table && Array.isArray(val)) val = val.map(row => cachedMasterMedia(table, row));
       if (typeof window.storage !== 'undefined') {
         await window.storage.set(key, JSON.stringify(val));
       } else {
